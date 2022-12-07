@@ -16,11 +16,12 @@ import logging
 import os
 import subprocess
 import time
-import boto.ec2
-
 from uuid import uuid4
 
+import boto.ec2
+
 from toil.lib.aws import zone_to_region
+from toil.lib.retry import retry
 from toil.provisioners.aws import get_best_aws_zone
 from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance
 
@@ -142,6 +143,7 @@ class AbstractClusterTest(ToilTest):
             log.error("Failed to run %s.", str(cmd))
             raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
 
+    @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
 

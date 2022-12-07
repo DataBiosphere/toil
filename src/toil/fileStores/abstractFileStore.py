@@ -17,27 +17,25 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    Generator,
-    IO,
-    Iterator,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    Union,
-    cast,
-)
+from typing import (IO,
+                    TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Generator,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Type,
+                    Union,
+                    cast)
 
 import dill
 
-from toil.common import cacheDirName, Toil
+from toil.common import Toil, cacheDirName
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -93,7 +91,7 @@ class AbstractFileStore(ABC):
         :param jobStore: the job store in use for the current Toil run.
         :param jobDesc: the JobDescription object for the currently
                running job.
-        
+
         :param file_store_dir: the per-worker local temporary directory where
                the file store should store local files. Per-job directories will be
                created under here by the file store.
@@ -111,7 +109,7 @@ class AbstractFileStore(ABC):
         self.localTempDir: str = os.path.abspath(file_store_dir)
         assert self.jobStore.config.workflowID is not None
         self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
-        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
+        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
         self.jobName: str = (
             self.jobDesc.command.split()[1] if self.jobDesc.command else ""
         )
@@ -149,7 +147,7 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str]) -> None:
+    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -162,13 +160,14 @@ class AbstractFileStore(ABC):
 
         :param workflowID: The workflow ID for this invocation of the workflow
         :param config_work_dir: The path to the work directory in the Toil Config.
+        :param config_coordination_dir: The path to the coordination directory in the Toil Config.
         """
         # Defer these imports until runtime, since these classes depend on our file
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
         workflowDir = Toil.getLocalWorkflowDir(workflowID, config_work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir, config_coordination_dir)
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
             # The presence of the cacheDir suggests this was a cached run. We don't need
@@ -214,23 +213,37 @@ class AbstractFileStore(ABC):
         """
         return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self) -> str:
+    def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
+
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
 
         :return: The absolute path to a local temporary file. This file will exist
                  for the duration of the job only, and is guaranteed to be deleted
                  once the job terminates.
         """
         handle, tmpFile = tempfile.mkstemp(
-            prefix="tmp", suffix=".tmp", dir=self.localTempDir
+            suffix=".tmp" if suffix is None else suffix,
+            prefix="tmp" if prefix is None else prefix,
+            dir=self.localTempDir
         )
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self) -> str:
+    def getLocalTempFileName(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
+
+        :param suffix: If not None, the file name will end with this string.
+               Otherwise, default value ".tmp" will be used
+
+        :param prefix: If not None, the file name will start with this string.
+               Otherwise, default value "tmp" will be used
 
         :return: Path to valid file
         """
@@ -238,7 +251,7 @@ class AbstractFileStore(ABC):
         # unused file name. There is a very, very, very low chance that another
         # job will create the same file name in the span of this one being deleted
         # and then being used by the user.
-        tempFile = self.getLocalTempFile()
+        tempFile = self.getLocalTempFile(suffix, prefix)
         os.remove(tempFile)
         return tempFile
 

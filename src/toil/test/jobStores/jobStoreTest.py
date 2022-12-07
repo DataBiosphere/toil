@@ -42,6 +42,7 @@ from toil.jobStores.abstractJobStore import (NoSuchFileException,
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
 from toil.lib.memoize import memoize
+from toil.lib.retry import retry
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        make_tests,
@@ -928,6 +929,14 @@ class AbstractJobStoreTest:
                     hashOut.update(buf)
             self.assertEqual(hashIn.digest(), hashOut.digest())
 
+        @retry(errors=[ConnectionError])
+        def fetch_url(self, url: str) -> None:
+            """
+            Fetch the given URL. Throw an error if it cannot be fetched in a
+            reasonable number of attempts.
+            """
+            urlopen(Request(url))
+
         def assertUrl(self, url):
 
             prefix, path = url.split(':', 1)
@@ -935,7 +944,7 @@ class AbstractJobStoreTest:
                 self.assertTrue(os.path.exists(path))
             else:
                 try:
-                    urlopen(Request(url))
+                    self.fetch_url(url)
                 except:
                     self.fail()
 
@@ -1274,8 +1283,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from boto.sdb import connect_to_region
         from botocore.exceptions import ClientError
 
-        from toil.lib.aws.session import establish_boto3_session
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
+        from toil.lib.aws.session import establish_boto3_session
         from toil.lib.aws.utils import retry_s3
 
         externalAWSLocation = 'us-west-1'

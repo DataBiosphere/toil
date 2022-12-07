@@ -31,11 +31,9 @@ from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
-from toil.cwl.utils import (
-    CWL_INTERNAL_JOBS,
-    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-)
+from toil.cwl.utils import (CWL_INTERNAL_JOBS,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job, JobDescription
@@ -227,7 +225,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     assert config.workflowID is not None
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
-    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir)
+    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir, config.coordination_dir)
     localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
 
@@ -323,9 +321,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         if jobDesc.command is None:
             logger.debug("Job description has no body to run.")
             # Cleanup jobs already finished
-            predicate = lambda jID: jobStore.job_exists(jID)
-            jobDesc.filterSuccessors(predicate)
-            jobDesc.filterServiceHosts(predicate)
+            jobDesc.clear_nonexistent_dependents(jobStore)
             logger.debug("Cleaned up any references to completed successor jobs")
 
         # This cleans the old log file which may
@@ -634,7 +630,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
     # This must happen after the log file is done with, else there is no place to put the log
-    if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
+    if (not jobAttemptFailed) and jobDesc.is_subtree_done():
         # We can now safely get rid of the JobDescription, and all jobs it chained up
         for otherID in jobDesc.jobsToDelete:
             jobStore.delete_job(otherID)

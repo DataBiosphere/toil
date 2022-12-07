@@ -118,6 +118,12 @@ To further break down each of these commands:
 
     **--keyPairName id_rsa** --- The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
 
+.. note::
+
+   You can set the ``TOIL_AWS_TAGS`` environment variable to a JSON object to specify arbitrary tags for AWS resources.
+   For example, if you ``export TOIL_AWS_TAGS='{"project-name": "variant-calling"}'`` in your shell before using Toil,
+   AWS resources created by Toil will be tagged with a ``project-name`` tag with the value ``variant-calling``.
+
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
 .. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws

@@ -22,7 +22,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
@@ -58,6 +58,18 @@ r3_8xlarge = Shape(wallTime=3600,
                    memory=h2b('260G'),
                    cores=32,
                    disk=h2b('600G'),
+                   preemptable=False)
+# simplified r5.2xlarge (non-preemptable)
+r5_2xlarge = Shape(wallTime=3600,
+                   memory=h2b('64Gi'),
+                   cores=8,
+                   disk=h2b('50G'),
+                   preemptable=False)
+# simplified r5.4xlarge (non-preemptable)
+r5_4xlarge = Shape(wallTime=3600,
+                   memory=h2b('128Gi'),
+                   cores=16,
+                   disk=h2b('50G'),
                    preemptable=False)
 # simplified t2.micro (non-preemptable)
 t2_micro = Shape(wallTime=3600,
@@ -320,9 +332,10 @@ class ClusterScalerTest(ToilTest):
                                 memory=h2b('1G'),
                                 disk=h2b('2G'),
                                 preemptable=False)] * 1000)
-        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
+        self.assertEqual(len(could_not_fit), 0)
 
     def testMinNodes(self):
         """
@@ -332,9 +345,10 @@ class ClusterScalerTest(ToilTest):
         self.config.minNodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         jobShapes = []
-        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
+        self.assertEqual(len(could_not_fit), 0)
 
     def testPreemptableDeficitResponse(self):
         """
@@ -354,7 +368,7 @@ class ClusterScalerTest(ToilTest):
         # preemptableCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptable, c4_8xlarge]
         self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
-        
+
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
         # "deficit" of 5 preemptable nodes (e.g. a spot bid was lost)
@@ -366,11 +380,12 @@ class ClusterScalerTest(ToilTest):
                            memory=h2b('1G'),
                            disk=h2b('2G'),
                            preemptable=True)] * 1000
-        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         # We don't care about the estimated size of the preemptable
         # nodes. All we want to know is if we responded to the deficit
         # properly: 0.5 * 5 (preemptableCompensation * the deficit) = 3 (rounded up).
         self.assertEqual(estimatedNodeCounts[self.provisioner.node_shapes_for_testing[1]], 3)
+        self.assertEqual(len(could_not_fit), 0)
 
     def testPreemptableDeficitIsSet(self):
         """
@@ -438,6 +453,122 @@ class ClusterScalerTest(ToilTest):
             scaler.smoothEstimate(c4_8xlarge_preemptable, 100)
         self.assertEqual(scaler.smoothEstimate(c4_8xlarge_preemptable, 100), 100)
 
+    def test_overhead_accounting_large(self):
+        """
+        If a node has a certain raw memory or disk capacity, that won't all be
+        available when it actually comes up; some disk and memory will be used
+        by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+
+        Make sure this overhead is accounted for for large nodes.
+        """
+
+        # Use a small node (60G) and a big node (260G)
+
+        # If the job needs 100% of the memory of the instance type, it won't
+        # fit and will need a bigger node.
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=h2b('60G'))
+
+        # If the job needs 98% of the memory of the instance type, it won't
+        # fit and will need a bigger node.
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=int(h2b('60G') * 0.98))
+
+        # If the job needs 90% of the memory of the instance type, it will fit.
+        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], memory=int(h2b('60G') * 0.90))
+
+        # If the job needs 100% of the disk of the instance type, it won't
+        # fit and will need a bigger node.
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('100G'))
+
+        # If the job needs all but 7G of the disk of the instance type, it won't
+        # fit and will need a bigger node.
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('93G'))
+
+        # If the job leaves 10% and 10G of the disk free, it fits
+        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], disk=h2b('90G'))
+
+    def test_overhead_accounting_small(self):
+        """
+        If a node has a certain raw memory or disk capacity, that won't all be
+        available when it actually comes up; some disk and memory will be used
+        by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+
+        Make sure this overhead is accounted for for small nodes.
+        """
+
+        # Use a small node (1G) and a big node (260G)
+
+        # If the job needs 100% of the memory of the instance type, it won't
+        # fit and will need a bigger node.
+        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G'))
+
+        # If the job needs all but 100M of the memory of the instance type, it
+        # won't fit and will need a bigger node.
+        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G') - h2b('100M'))
+
+        # If the job needs no more than 90% of the memory on the node *and*
+        # leaves at least 384M free for overhead, we can rely on it fitting on a 1G
+        # memory node.
+        jobs = [
+            Shape(
+                wallTime=3600,
+                cores=1,
+                memory=h2b('1G') - h2b('384M'),
+                disk=h2b('2G'),
+                preemptable=True
+            )
+        ]
+        self._check_job_estimate([(t2_micro, 1), (r3_8xlarge, 0)], memory=h2b('1G') - h2b('384M'))
+
+    def test_overhead_accounting_observed(self):
+        """
+        If a node has a certain raw memory or disk capacity, that won't all be
+        available when it actually comes up; some disk and memory will be used
+        by the OS, and the backing scheduler (Mesos, Kubernetes, etc.).
+
+        Make sure this overhead is accounted for so that real-world observed
+        failures cannot happen again.
+        """
+        # In
+        # https://github.com/DataBiosphere/toil/issues/4147#issuecomment-1179587561
+        # a user observed what seems to be a nominally 64 GiB node
+        # (r5.2xlarge?) with Mesos reporting "61.0 GB" available, and a
+        # nominally 32 GiB node with Mesos reporting "29.9 GB" available. It's
+        # not clear if Mesos is thinking in actual GB or GiB here.
+
+        # A 62.5Gi job is sent to the larger node
+        self._check_job_estimate([(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b('62.5 Gi'))
+
+    def _check_job_estimate(self, nodes: List[Tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
+        """
+        Make sure that a job with the given requirements, when run on the given
+        nodes, produces the given numbers of them.
+        """
+
+        self.provisioner.setAutoscaledNodeTypes([({node}, None) for node, _ in nodes])
+        self.config.targetTime = 1
+        self.config.betaInertia = 0.0
+        # We only need up to one node
+        self.config.maxNodes = [1] * len(nodes)
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+
+        jobs = [
+            Shape(
+                wallTime=3600,
+                cores=cores,
+                memory=memory,
+                disk=disk,
+                preemptable=True
+            )
+        ]
+
+        logger.debug('Try and fit jobs: %s', jobs)
+        counts, could_not_fit = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
+        for node, count in nodes:
+            seen_count = counts.get(node, 0)
+            if seen_count != count:
+                logger.error('Saw %s/%s instances of node %s', seen_count, count, node)
+            self.assertEqual(seen_count, count)
+        self.assertEqual(len(could_not_fit), 0)
 
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
@@ -452,7 +583,7 @@ class ScalerThreadTest(ToilTest):
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         mock.start()
-        clusterScaler = ScalerThread(mock, mock, config)
+        clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
         try:
             # Add 100 jobs to complete
@@ -468,9 +599,9 @@ class ScalerThreadTest(ToilTest):
                     for _ in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
                         iJ = JobDescription(requirements=dict(
-                                                memory=random.choice(list(range(1, x.memory))),
-                                                cores=random.choice(list(range(1, x.cores))),
-                                                disk=random.choice(list(range(1, x.disk))),
+                                                memory=random.randrange(1, x.memory),
+                                                cores=random.randrange(1, x.cores),
+                                                disk=random.randrange(1, x.disk),
                                                 preemptable=preemptable),
                                             jobName='testClusterScaling', unitName='')
                         clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
@@ -509,15 +640,15 @@ class ScalerThreadTest(ToilTest):
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # No preemptable nodes/jobs
         config.maxPreemptableNodes = []  # No preemptable nodes
 
         # Non-preemptable parameters
-        config.nodeTypes = [Shape(20, 10, 10, 10, False)]
+        config.nodeTypes = [Shape(20, h2b('10Gi'), 10, h2b('100Gi'), False)]
         config.minNodes = [0]
         config.maxNodes = [10]
 
@@ -527,23 +658,26 @@ class ScalerThreadTest(ToilTest):
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0,
-                                 jobShape=config.nodeTypes[0])
+                                 jobShape=Shape(20, h2b('7Gi'), 10, h2b('80Gi'), False))
 
     @slow
     def testClusterScalingMultipleNodeTypes(self):
 
-        smallNode = Shape(20, 5, 10, 10, False)
-        mediumNode = Shape(20, 10, 10, 10, False)
-        largeNode = Shape(20, 20, 10, 10, False)
+        small_node = Shape(20, h2b('5Gi'), 10, h2b('20Gi'), False)
+        small_job = Shape(20, h2b('3Gi'), 10, h2b('4Gi'), False)
+        medium_node = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), False)
+        medium_job = Shape(20, h2b('7Gi'), 10, h2b('4Gi'), False)
+        large_node = Shape(20, h2b('20Gi'), 10, h2b('20Gi'), False)
+        large_job = Shape(20, h2b('16Gi'), 10, h2b('4Gi'), False)
 
         numJobs = 100
 
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # No preemptable nodes/jobs
         config.preemptableNodeTypes = []
@@ -551,7 +685,7 @@ class ScalerThreadTest(ToilTest):
         config.maxPreemptableNodes = []  # No preemptable nodes
 
         # Make sure the node types don't have to be ordered
-        config.nodeTypes = [largeNode, smallNode, mediumNode]
+        config.nodeTypes = [large_node, small_node, medium_node]
         config.minNodes = [0, 0, 0]
         config.maxNodes = [10, 10]  # test expansion of this list
 
@@ -562,21 +696,21 @@ class ScalerThreadTest(ToilTest):
 
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
         mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
-        clusterScaler = ScalerThread(mock, mock, config)
+        clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
         mock.start()
 
         try:
             # Add small jobs
-            list(map(lambda x: mock.addJob(jobShape=smallNode), list(range(numJobs))))
-            list(map(lambda x: mock.addJob(jobShape=mediumNode), list(range(numJobs))))
+            list(map(lambda x: mock.addJob(jobShape=small_job), list(range(numJobs))))
+            list(map(lambda x: mock.addJob(jobShape=medium_job), list(range(numJobs))))
 
             # Add medium completed jobs
             for i in range(1000):
                 iJ = JobDescription(requirements=dict(
-                                        memory=random.choice(range(smallNode.memory, mediumNode.memory)),
-                                        cores=mediumNode.cores,
-                                        disk=largeNode.cores,
+                                        memory=random.choice(range(small_job.memory, medium_job.memory)),
+                                        cores=medium_job.cores,
+                                        disk=large_job.disk,
                                         preemptable=False),
                                     jobName='testClusterScaling', unitName='')
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
@@ -584,7 +718,7 @@ class ScalerThreadTest(ToilTest):
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:
                 logger.debug("%i nodes currently provisioned" % mock.getNumberOfNodes())
                 # Make sure there are no large nodes
-                self.assertEqual(mock.getNumberOfNodes(nodeType=largeNode), 0)
+                self.assertEqual(mock.getNumberOfNodes(nodeType=large_node), 0)
                 clusterScaler.check()
                 time.sleep(0.5)
         finally:
@@ -593,10 +727,10 @@ class ScalerThreadTest(ToilTest):
 
         # Make sure jobs ran on both the small and medium node types
         self.assertTrue(mock.totalJobs > 0)
-        self.assertTrue(mock.maxWorkers[smallNode] > 0)
-        self.assertTrue(mock.maxWorkers[mediumNode] > 0)
+        self.assertTrue(mock.maxWorkers[small_node] > 0)
+        self.assertTrue(mock.maxWorkers[medium_node] > 0)
 
-        self.assertEqual(mock.maxWorkers[largeNode], 0)
+        self.assertEqual(mock.maxWorkers[large_node], 0)
 
     @slow
     def testClusterScalingWithPreemptableJobs(self):
@@ -605,16 +739,18 @@ class ScalerThreadTest(ToilTest):
         """
         config = Config()
 
-        jobShape = Shape(20, 10, 10, 10, False)
-        preemptableJobShape = Shape(20, 10, 10, 10, True)
+        node_shape = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), False)
+        preemptable_node_shape = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), True)
+        job_shape = Shape(20, h2b('7Gi'), 10, h2b('2Gi'), False)
+        preemptable_job_shape = Shape(20, h2b('7Gi'), 10, h2b('2Gi'), True)
 
         # Make defaults dummy values
-        config.defaultMemory = 1
+        config.defaultMemory = h2b('1Gi')
         config.defaultCores = 1
-        config.defaultDisk = 1
+        config.defaultDisk = h2b('1Gi')
 
         # non-preemptable node parameters
-        config.nodeTypes = [jobShape, preemptableJobShape]
+        config.nodeTypes = [node_shape, preemptable_node_shape]
         config.minNodes = [0, 0]
         config.maxNodes = [10, 10]
 
@@ -623,7 +759,7 @@ class ScalerThreadTest(ToilTest):
         config.betaInertia = 0.9
         config.scaleInterval = 3
 
-        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
+        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=job_shape)
 
 
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):

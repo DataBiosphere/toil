@@ -16,22 +16,21 @@ import os
 import subprocess
 import tempfile
 import time
-import pytest
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
 
+import pytest
+
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (
-    ToilTest,
-    integrative,
-    needs_aws_ec2,
-    needs_fetchable_appliance,
-    slow,
-    timeLimit,
-)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_fetchable_appliance,
+                       slow,
+                       timeLimit)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.version import exactPython
 
@@ -114,7 +113,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
     def getRootVolID(self):
-        instances = self.cluster._getNodesInCluster(both=True)
+        instances = self.cluster._get_nodes_in_cluster()
         instances.sort(key=lambda x: x.launch_time)
         leader = instances[0]  # assume leader was launched first
 
@@ -304,7 +303,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # visible to EC2 read requests immediately after the create returns,
         # which is the last thing that starting the cluster does.
         time.sleep(10)
-        nodes = self.cluster._getNodesInCluster(both=True)
+        nodes = self.cluster._get_nodes_in_cluster()
         nodes.sort(key=lambda x: x.launch_time)
         # assuming that leader is first
         workers = nodes[1:]

@@ -134,7 +134,7 @@ class Node:
                                     "https://toil.readthedocs.io/en/latest/running/cloud/cloud.html."
                                     if last_error and 'Permission denied' in last_error else ""))
             try:
-                logger.info('Attempting to establish SSH connection...')
+                logger.info('Attempting to establish SSH connection to %s@%s...', keyName, self.effectiveIP)
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
             except RuntimeError as err:
                 last_error = str(err)

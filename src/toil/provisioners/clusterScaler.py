@@ -11,24 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import json
 import logging
+import math
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-from toil.batchSystems.abstractBatchSystem import (
-    AbstractBatchSystem,
-    AbstractScalableBatchSystem,
-    NodeInfo,
-)
-from toil.bus import ClusterSizeMessage, ClusterDesiredSizeMessage
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   AbstractScalableBatchSystem,
+                                                   NodeInfo)
+from toil.bus import ClusterDesiredSizeMessage, ClusterSizeMessage
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
+from toil.lib.conversions import human2bytes, bytes2human
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
-from toil.lib.throttle import throttle
+from toil.lib.throttle import LocalThrottle, throttle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 
 if TYPE_CHECKING:
@@ -37,6 +38,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Properties of GKE's memory overhead algorithm
+EVICTION_THRESHOLD = human2bytes('100MiB')
+RESERVE_SMALL_LIMIT = human2bytes('1GiB')
+RESERVE_SMALL_AMOUNT = human2bytes('255MiB')
+RESERVE_BREAKPOINTS: List[Union[int, float]] = [human2bytes('4GiB'), human2bytes('8GiB'), human2bytes('16GiB'), human2bytes('128GiB'), math.inf]
+RESERVE_FRACTIONS = [0.25, 0.2, 0.1, 0.06, 0.02]
+
+# Guess of how much disk space on the root volume is used for the OS and essential container images
+OS_SIZE = human2bytes('5G')
+
+# Define a type for an explanation of why a job can't fit on a node.
+# Consists of a resource name and a constraining value for that resource.
+FailedConstraint = Tuple[str, Union[int, float, bool]]
 
 class BinPackedFit:
     """
@@ -64,8 +78,14 @@ class BinPackedFit:
         self.targetTime = targetTime
         self.nodeReservations = {nodeShape: [] for nodeShape in nodeShapes}
 
-    def binPack(self, jobShapes: List[Shape]) -> None:
-        """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
+    def binPack(self, jobShapes: List[Shape]) -> Dict[Shape, List[FailedConstraint]]:
+        """
+        Pack a list of jobShapes into the fewest nodes reasonable.
+        
+        Can be run multiple times.
+        
+        Returns any distinct Shapes that did not fit, mapping to reasons they did not fit.
+        """
         # TODO: Check for redundancy with batchsystems.mesos.JobQueue() sorting
         logger.debug('Running bin packing for node shapes %s and %s job(s).',
                      self.nodeShapes, len(jobShapes))
@@ -74,14 +94,20 @@ class BinPackedFit:
         jobShapes.sort()
         jobShapes.reverse()
         assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
+        could_not_fit = {}
         for jS in jobShapes:
-            self.addJobShape(jS)
+            rejection = self.addJobShape(jS)
+            if rejection is not None:
+                # The job bounced because it didn't fit in any bin.
+                could_not_fit[rejection[0]] = rejection[1]
+        return could_not_fit
 
-    def addJobShape(self, jobShape: Shape) -> None:
+    def addJobShape(self, jobShape: Shape) -> Optional[Tuple[Shape, List[FailedConstraint]]]:
         """
-        Add the job to the first node reservation in which it will fit.
-
-        (this is the bin-packing aspect).
+        Add the job to the first node reservation in which it will fit. (This
+        is the bin-packing aspect).
+        
+        Returns the job shape again, and a list of failed constraints, if it did not fit.
         """
         chosenNodeShape = None
         for nodeShape in self.nodeShapes:
@@ -91,16 +117,26 @@ class BinPackedFit:
                 break
 
         if chosenNodeShape is None:
-            logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes "
-                           "list." % jobShape)
-            return
+            logger.debug("Couldn't fit job with requirements %s into any nodes in the nodeTypes "
+                         "list.", jobShape)
+            # Go back and debug why this happened.
+            fewest_constraints: Optional[List[FailedConstraint]] = None
+            for shape in self.nodeShapes:
+                failures = NodeReservation(nodeShape).get_failed_constraints(jobShape)
+                if fewest_constraints is None or len(failures) < len(fewest_constraints):
+                    # This was closer to fitting.
+                    # TODO: Check the actual constraint values so we don't tell
+                    # the user to raise the memory on the smallest machine?
+                    fewest_constraints = failures
+            
+            return jobShape, fewest_constraints if fewest_constraints is not None else []
 
         # grab current list of job objects appended to this instance type
         nodeReservations = self.nodeReservations[chosenNodeShape]
         for nodeReservation in nodeReservations:
             if nodeReservation.attemptToAddJob(jobShape, chosenNodeShape, self.targetTime):
                 # We succeeded adding the job to this node reservation. Now we're done.
-                return
+                return None
 
         reservation = NodeReservation(chosenNodeShape)
         currentTimeAllocated = chosenNodeShape.wallTime
@@ -113,6 +149,7 @@ class BinPackedFit:
             currentTimeAllocated += chosenNodeShape.wallTime
             reservation.nReservation = extendThisReservation
             reservation = extendThisReservation
+        return None
 
     def getRequiredNodes(self) -> Dict[Shape, int]:
         """Return a dict from node shape to number of nodes required to run the packed jobs."""
@@ -167,6 +204,29 @@ class NodeReservation:
                 self.nReservation.shape.preemptable if self.nReservation is not None else str(None),
                 str(len(self.shapes())))
 
+    def get_failed_constraints(self, job_shape: Shape) -> List[FailedConstraint]:
+        """
+        Check if a job shape's resource requirements will fit within this allocation.
+        
+        If the job does *not* fit, returns the failing constraints: the resources
+        that can't be accomodated, and the limits that were hit.
+        
+        If the job *does* fit, returns an empty list.
+        
+        Must always agree with fits()! This codepath is slower and used for diagnosis.
+        """
+        
+        failures: List[FailedConstraint] = []
+        if job_shape.memory > self.shape.memory:
+            failures.append(("memory", self.shape.memory))
+        if job_shape.cores > self.shape.cores:
+            failures.append(("cores", self.shape.cores))
+        if job_shape.disk > self.shape.disk:
+            failures.append(("disk", self.shape.disk))
+        if not job_shape.preemptable and self.shape.preemptable:
+            failures.append(("preemptable", self.shape.preemptable))
+        return failures
+    
     def fits(self, jobShape: Shape) -> bool:
         """Check if a job shape's resource requirements will fit within this allocation."""
         return jobShape.memory <= self.shape.memory and \
@@ -292,10 +352,17 @@ def split(
                                   nodeShape.preemptable)))
 
 
-def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Dict[Shape, int]:
+def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
+    """
+    Using the given node shape bins, pack the given job shapes into nodes to
+    get them done in the given amount of time.
+    
+    Returns a dict saying how many of each node will be needed, a dict from job
+    shapes that could not fit to reasons why.
+    """
     bpf = BinPackedFit(nodeShapes, goalTime)
-    bpf.binPack(jobShapes)
-    return bpf.getRequiredNodes()
+    could_not_fit = bpf.binPack(jobShapes)
+    return bpf.getRequiredNodes(), could_not_fit
 
 
 class ClusterScaler:
@@ -313,6 +380,11 @@ class ClusterScaler:
         self.leader = leader
         self.config = config
         self.static: Dict[bool, Dict[str, "Node"]] = {}
+        
+        # If we encounter a Shape of job that we don't think we can run, call
+        # these callbacks with the Shape that didn't fit and the Shapes that
+        # were available.
+        self.on_too_big: List[Callable[[Shape, List[Shape]], Any]] = []
 
         # Dictionary of job names to their average runtime, used to estimate wall time of queued
         # jobs for bin-packing
@@ -372,11 +444,15 @@ class ClusterScaler:
 
         self.nodeShapes.sort()
 
+        # Nodes might not actually provide all the resources of their nominal shapes
+        self.node_shapes_after_overhead = self.nodeShapes if config.assume_zero_overhead else [self._reserve_overhead(s) for s in self.nodeShapes]
+        self.without_overhead = {k: v for k, v in zip(self.node_shapes_after_overhead, self.nodeShapes)}
+
         #Node shape to number of currently provisioned nodes
         totalNodes: Dict[Shape, int] = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem) and leader.provisioner:
             for preemptable in (True, False):
-                nodes: List[Node] = []
+                nodes: List["Node"] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                               preemptable=preemptable)
@@ -417,6 +493,91 @@ class ClusterScaler:
         else:
             # If we get here, something has gone wrong.
             raise RuntimeError(f"Could not round {number}")
+
+    def _reserve_overhead(self, full_node: Shape) -> Shape:
+        """
+        Given the shape of an entire virtual machine, return the Shape of the
+        resources we expect to actually be available to the backing scheduler
+        (i.e. Mesos or Kubernetes) to run jobs on. Some disk may need to be
+        used to install the OS, and some memory may be needed to run the
+        kernel, Mesos, a Kubelet, Kubernetes system pods, and so on.
+
+        Because shapes are used as dictionary keys, this function must be 1 to
+        1: any two distinct inputs (that are actual node shapes and not
+        pathological inputs off by a single byte) must produce distinct
+        outputs.
+        """
+
+        # See
+        # https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu
+        # for how EKS works. We are going to just implement their scheme and
+        # hope it is a good enough overestimate of actual overhead.
+        smaller = copy.copy(full_node)
+
+        # Take away some memory to account for how much the scheduler is going to use.
+        smaller.memory -= self._gke_overhead(smaller.memory)
+        # And some disk to account for the OS and possibly superuser reservation
+        # TODO: Figure out if the disk is an OS disk of a scratch disk
+        smaller.disk -= self._disk_overhead(smaller.disk)
+
+        logger.debug('Node shape %s can hold jobs of shape %s', full_node, smaller)
+
+        return smaller
+
+    def _gke_overhead(self, memory_bytes: int) -> int:
+        """
+        Get the number of bytes of memory that Google Kubernetes Engine would
+        reserve or lose to the eviction threshold on a machine with the given
+        number of bytes of memory, according to
+        <https://cloud.google.com/kubernetes-engine/docs/concepts/cluster-architecture#memory_cpu>.
+
+        We assume that this is a good estimate of how much memory will be lost
+        to overhead in a Toil cluster, even though we aren't actually running a
+        GKE cluster.
+        """
+
+        if memory_bytes < RESERVE_SMALL_LIMIT:
+            # On machines with just a little memory, use a flat amount of it.
+            return RESERVE_SMALL_AMOUNT
+
+        # How many bytes are reserved so far?
+        reserved = 0.0
+        # How many bytes of memory have we accounted for so far?
+        accounted: Union[float, int] = 0
+        for breakpoint, fraction in zip(RESERVE_BREAKPOINTS, RESERVE_FRACTIONS):
+            # Below each breakpoint, reserve the matching portion of the memory
+            # since the previous breakpoint, like a progressive income tax.
+            limit = min(breakpoint, memory_bytes)
+            reservation = fraction * (limit - accounted)
+            logger.debug('Reserve %s of memory between %s and %s', bytes2human(reservation), bytes2human(accounted), bytes2human(limit))
+            reserved += reservation
+            accounted = limit
+            if accounted >= memory_bytes:
+                break
+        logger.debug('Reserved %s/%s memory for overhead', bytes2human(reserved), bytes2human(memory_bytes))
+
+        return int(reserved) + EVICTION_THRESHOLD
+
+    def _disk_overhead(self, disk_bytes: int) -> int:
+        """
+        Get the number of bytes of disk that are probably not usable on a
+        machine with a disk of the given size.
+        """
+
+        # How much do we think we need for OS and possible super-user
+        # reservation?
+        disk_needed = OS_SIZE + int(0.05 * disk_bytes)
+
+        if disk_bytes <= disk_needed:
+            # We don't think we can actually use any of this disk
+            logger.warning('All %sB of disk on a node type are likely to be needed by the OS! The node probably cannot do any useful work!', bytes2human(disk_bytes))
+            return disk_bytes
+
+        if disk_needed * 2 > disk_bytes:
+            logger.warning('A node type has only %sB disk, of which more than half are expected to be used by the OS. Consider using a larger --nodeStorage', bytes2human(disk_bytes))
+
+        return disk_needed
+
 
     def getAverageRuntime(self, jobName: str, service: bool = False) -> float:
         if service:
@@ -462,7 +623,7 @@ class ClusterScaler:
         self.totalAvgRuntime = float(self.totalAvgRuntime * (self.totalJobsCompleted - 1) + \
                                      wallTime)/self.totalJobsCompleted
 
-    def setStaticNodes(self, nodes: List["Node"], preemptable: bool) -> bool:
+    def setStaticNodes(self, nodes: List["Node"], preemptable: bool) -> None:
         """
         Used to track statically provisioned nodes. This method must be called
         before any auto-scaled nodes are provisioned.
@@ -499,15 +660,25 @@ class ClusterScaler:
 
     def getEstimatedNodeCounts(
         self, queuedJobShapes: List[Shape], currentNodeCounts: Dict[Shape, int]
-    ) -> Dict[Shape, int]:
+    ) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
         """
         Given the resource requirements of queued jobs and the current size of the cluster.
 
-        Returns a dict mapping from nodeShape to the number of nodes we want in the cluster right now.
+        Returns a dict mapping from nodeShape to the number of nodes we want in
+        the cluster right now, and a dict from job shapes that are too big to run
+        on any node to reasons why.
         """
-        nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes,
-                                          nodeShapes=self.nodeShapes,
-                                          goalTime=self.targetTime)
+
+        # Do the bin packing with overhead reserved
+        nodesToRunQueuedJobs, could_not_fit = binPacking(
+            jobShapes=queuedJobShapes,
+            nodeShapes=self.node_shapes_after_overhead,
+            goalTime=self.targetTime
+        )
+        
+        # Then translate back to get results in terms of full nodes without overhead.
+        nodesToRunQueuedJobs = {self.without_overhead[k]: v for k, v in nodesToRunQueuedJobs.items()}
+
         estimatedNodeCounts = {}
         for nodeShape in self.nodeShapes:
             instance_type = self.nodeShapeToType[nodeShape]
@@ -558,7 +729,7 @@ class ClusterScaler:
                             self.minNodes[nodeShape])
                 estimatedNodeCount = self.minNodes[nodeShape]
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
-        return estimatedNodeCounts
+        return estimatedNodeCounts, could_not_fit
 
     def updateClusterSize(self, estimatedNodeCounts: Dict[Shape, int]) -> Dict[Shape, int]:
         """
@@ -846,6 +1017,41 @@ class ClusterScaler:
             instance_type = self.nodeShapeToType[nodeShape]
             self.setNodeCount(instance_type=instance_type, numNodes=0, preemptable=preemptable, force=True)
 
+class JobTooBigError(Exception):
+    """
+    Raised in the scaler thread when a job cannot fit in any available node
+    type and is likely to lock up the workflow.
+    """
+    
+    def __init__(self, job: Optional[JobDescription] = None, shape: Optional[Shape] = None, constraints: Optional[List[FailedConstraint]] = None):
+        """
+        Make a JobTooBigError.
+        
+        Can have a job, the job's shape, and the limiting resources and amounts. All are optional.
+        """
+        self.job = job
+        self.shape = shape
+        self.constraints = constraints if constraints is not None else []
+        
+        parts = [
+            f"The job {self.job}" if self.job else "A job",
+            f" with shape {self.shape}" if self.shape else "",
+            " is too big for any available node type."
+        ]
+        
+        if self.constraints:
+            parts.append(" It could have fit if it only needed ")
+            parts.append(", ".join([f"{limit} {resource}" for resource, limit in self.constraints]))
+            parts.append(".") 
+        
+        self.msg = ''.join(parts)
+        super().__init__()
+
+    def __str__(self) -> str:
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
 
 class ScalerThread(ExceptionalThread):
     """
@@ -862,12 +1068,15 @@ class ScalerThread(ExceptionalThread):
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
     """
-    def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config) -> None:
+    def __init__(self, provisioner: AbstractProvisioner, leader: "Leader", config: Config, stop_on_exception: bool = False) -> None:
         super().__init__(name='scaler')
         self.scaler = ClusterScaler(provisioner, leader, config)
-
+        
         # Indicates that the scaling thread should shutdown
         self.stop = False
+        # Indicates that we should stop the thread if we encounter an error.
+        # Mostly for testing.
+        self.stop_on_exception = stop_on_exception
 
         self.stats = None
         if config.clusterStats:
@@ -878,7 +1087,7 @@ class ScalerThread(ExceptionalThread):
             for preemptable in [True, False]:
                 self.stats.startStats(preemptable=preemptable)
             logger.debug("...Cluster stats started.")
-
+            
     def check(self) -> None:
         """
         Attempt to join any existing scaler threads that may have died or finished.
@@ -926,15 +1135,36 @@ class ScalerThread(ExceptionalThread):
                                 preemptable=nodeShape.preemptable,
                             )
                         )
-                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(
+                    estimatedNodeCounts, could_not_fit = self.scaler.getEstimatedNodeCounts(
                         queuedJobShapes, currentNodeCounts
                     )
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
+                    
+                    if len(could_not_fit) != 0: 
+                        # If we have any jobs left over that we couldn't fit, complain.
+                        bad_job: Optional[JobDescription] = None
+                        bad_shape: Optional[Shape] = None
+                        for job, shape in zip(queuedJobs, queuedJobShapes):
+                            # Try and find an example job with an offending shape
+                            if shape in could_not_fit:
+                                bad_job = job
+                                bad_shape = shape
+                                break
+                        if bad_shape is None:
+                            # If we can't find an offending job, grab an arbitrary offending shape.
+                            bad_shape = next(iter(could_not_fit))
+                        
+                        raise JobTooBigError(job=bad_job, shape=bad_shape, constraints=could_not_fit[bad_shape])
+                        
                 except:
-                    logger.exception("Exception encountered in scaler thread. Making a best-effort "
-                                     "attempt to keep going, but things may go wrong from now on.")
+                    if self.stop_on_exception:
+                        logger.critical("Stopping ScalerThread due to an error.")
+                        raise
+                    else:
+                        logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                         "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
 class ClusterStats:

@@ -61,6 +61,11 @@ the appliance images to, for example:
 
 	TOIL_DOCKER_REGISTRY=quay.io/USER make docker
 
+You might also want to build just for one architecture and load into your
+Docker daemon. We have a 'load_docker' target for this.
+
+    make load_docker arch=amd64
+
 If Docker is not installed, Docker-related targets tasks and tests will be skipped. The
 same can be achieved by setting TOIL_DOCKER_REGISTRY to an empty string.
 
@@ -131,6 +136,11 @@ test_offline: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
 
+# This target will run about 1 minute of tests, and stop at the first failure
+test_1min: check_venv check_build_reqs
+	TOIL_SKIP_DOCKER=True \
+	    python -m pytest -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior
+
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
@@ -149,7 +159,7 @@ docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
 pre_pull_docker:
 	# Pre-pull everything
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:20.04 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:22.04 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
 	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
@@ -191,9 +201,15 @@ push_docker: docker
 	cd dashboard/grafana ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 	cd dashboard/mtail ; for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker buildx build --platform $(arch) --push --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile . && break || sleep 60; done
 
+load_docker: docker
+	cd docker ; docker buildx build --platform $(arch) --load --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	cd dashboard/prometheus ; docker buildx build --platform $(arch) --load --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile . 
+	cd dashboard/grafana ; docker buildx build --platform $(arch) --load --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+	cd dashboard/mtail ; docker buildx build --platform $(arch) --load --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
+
 else
 
-docker docker_push clean_docker:
+docker push_docker load_docker clean_docker:
 	@printf "$(cyan)Skipping '$@' target as TOIL_DOCKER_REGISTRY is empty or Docker is not installed.$(normal)\n"
 
 endif
@@ -240,7 +256,7 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 # Linting and code style related targets
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
-	isort -m VERTICAL $^
+	isort -m VERTICAL $^ contrib/mypy-stubs
 	make format
 
 remove_unused_imports: $(PYSOURCES)
@@ -251,10 +267,17 @@ remove_trailing_whitespace:
 	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
 
 format: $(wildcard src/toil/cwl/*.py)
-	black $^
+	black $^ contrib/mypy-stubs
 
 mypy:
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
+	
+# This target will check any modified files for pylint errors.
+# We have a lot of pylint errors already, because pylint can't understand our
+# all our duck typing, but new ones can suggest that code won't actually work.
+# Assumes an "upstream" remote
+touched_pylint:
+	pylint -E $(shell git diff --name-only upstream/master src | grep .py$$) || true
 
 pydocstyle_report.txt: src/toil
 	pydocstyle setup.py $^ > $@ 2>&1 || true
@@ -272,15 +295,18 @@ pyupgrade: $(PYSOURCES)
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^
 
+preflight: mypy touched_pylint
+
 .PHONY: help \
 		prepare \
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test test_offline \
+		test test_offline test_1min \
 		docs clean_docs \
 		clean \
-		format mypy sort_imports remove_unused_imports \
+		sort_imports remove_unused_imports remove_trailing_whitespace \
+		format mypy touched_pylint diff_pydocstyle_report diff_mypy pyupgrade flake8 preflight \
 		check_venv \
 		check_clean_working_copy \
 		check_build_reqs \

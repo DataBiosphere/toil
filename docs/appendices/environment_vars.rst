@@ -36,6 +36,17 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
 |                                  | line option.                                       |
 +----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR            | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This directory must exist on |
+|                                  | each worker node and may be set to a different     |
+|                                  | value on each worker. The ``--coordinationDir``    |
+|                                  | command line option overrides this.                |
++----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR_OVERRIDE   | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This overrides               |
+|                                  | ``TOIL_COORDINATION_DIR`` and the                  |
+|                                  | ``--coordinationDir`` command    line option.      |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
 |                                  | for shared caching. Will be created if it doesn't  |
@@ -213,6 +224,13 @@ There are several environment variables that affect the way Toil runs.
 |                                  | at UCSC to stop a bot we have that terminates      |
 |                                  | untagged resources.                                |
 +----------------------------------+----------------------------------------------------+
+| TOIL_AWS_PROFILE                 | The name of an AWS profile to run TOIL with.       |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_TAGS                    | This will tag cloud resources with any arbitrary   |
+|                                  | tags given in a JSON format. These are overwritten |
+|                                  | in favor of CLI options when using launch cluster. |
+|                                  | For information on valid AWS tags, see `AWS Tags`_.|
++----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
 |                                  | for Docker Hub.                                    |
@@ -227,3 +245,4 @@ There are several environment variables that affect the way Toil runs.
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
 .. _Gunicorn settings: https://docs.gunicorn.org/en/stable/settings.html#settings
+.. _AWS Tags: https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html

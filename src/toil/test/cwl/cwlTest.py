@@ -12,10 +12,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from functools import partial
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -24,13 +24,14 @@ import unittest
 import uuid
 import zipfile
 from io import StringIO
+from pathlib import Path
 from typing import Dict, List, MutableMapping, Optional, Union
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
 import pytest
 
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
 from toil.cwl.utils import (
@@ -40,23 +41,23 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.threading import cpu_count
 from toil.lib.aws import zone_to_region
+from toil.lib.threading import cpu_count
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
-from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
-from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.test import (
     ToilTest,
     needs_aws_ec2,
     needs_aws_s3,
     needs_cwl,
     needs_docker,
+    needs_docker_cuda,
     needs_env_var,
     needs_fetchable_appliance,
     needs_gridengine,
     needs_kubernetes,
     needs_lsf,
+    needs_local_cuda,
     needs_mesos,
     needs_parasol,
     needs_slurm,
@@ -64,7 +65,8 @@ from toil.test import (
     needs_wes_server,
     slow,
 )
-
+from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
+from toil.test.provisioners.clusterTest import AbstractClusterTest
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
@@ -136,6 +138,7 @@ def run_conformance_tests(
             "--clean=always",
             "--logDebug",
             "--statusWait=10",
+            "--retryCount=2",
         ]
         if not caching:
             # Turn off caching for the run
@@ -191,6 +194,7 @@ def run_conformance_tests(
             print(error_log)
             raise e
 
+
 @needs_cwl
 class CWLWorkflowTest(ToilTest):
     """
@@ -211,7 +215,6 @@ class CWLWorkflowTest(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
-
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
 
@@ -227,9 +230,9 @@ class CWLWorkflowTest(ToilTest):
         )
         cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
-        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
-        out[out_name].pop("nameext", None)
-        out[out_name].pop("nameroot", None)
+        out.get(out_name, {}).pop("http://commonwl.org/cwltool#generation", None)
+        out.get(out_name, {}).pop("nameext", None)
+        out.get(out_name, {}).pop("nameroot", None)
         self.assertEqual(out, expect)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
@@ -259,6 +262,13 @@ class CWLWorkflowTest(ToilTest):
             self._expected_revsort_output(self.outDir),
         )
 
+    def revsort_no_checksum(self, cwl_filename, tester_fn):
+        tester_fn(
+            "src/toil/test/cwl/" + cwl_filename,
+            "src/toil/test/cwl/revsort-job.json",
+            self._expected_revsort_nochecksum_output(self.outDir),
+        )
+
     def download(self, inputs, tester_fn):
         input_location = os.path.join("src/toil/test/cwl", inputs)
         tester_fn(
@@ -266,7 +276,6 @@ class CWLWorkflowTest(ToilTest):
             input_location,
             self._expected_download_output(self.outDir),
         )
-
 
     def load_contents(self, inputs, tester_fn):
         input_location = os.path.join("src/toil/test/cwl", inputs)
@@ -338,6 +347,11 @@ class CWLWorkflowTest(ToilTest):
 
     def test_run_revsort(self):
         self.revsort("revsort.cwl", self._tester)
+
+    def test_run_revsort_nochecksum(self):
+        self.revsort_no_checksum(
+            "revsort.cwl", partial(self._tester, main_args=["--no-compute-checksum"])
+        )
 
     def test_run_revsort2(self):
         self.revsort("revsort2.cwl", self._tester)
@@ -413,6 +427,17 @@ class CWLWorkflowTest(ToilTest):
             self._expected_seqtk_output(self.outDir),
             main_args=["--beta-use-biocontainers"],
             out_name="output1",
+        )
+
+    @needs_docker
+    @needs_docker_cuda
+    @needs_local_cuda
+    def test_cuda(self):
+        self._tester(
+            "src/toil/test/cwl/nvidia_smi.cwl",
+            "src/toil/test/cwl/empty.json",
+            {},
+            out_name="result",
         )
 
     @slow
@@ -524,6 +549,18 @@ class CWLWorkflowTest(ToilTest):
         }
 
     @staticmethod
+    def _expected_revsort_nochecksum_output(outDir):
+        loc = "file://" + os.path.join(outDir, "output.txt")
+        return {
+            "output": {
+                "location": loc,
+                "basename": "output.txt",
+                "size": 1111,
+                "class": "File",
+            }
+        }
+
+    @staticmethod
     def _expected_download_output(outDir):
         loc = "file://" + os.path.join(outDir, "output.txt")
         return {
@@ -543,7 +580,7 @@ class CWLWorkflowTest(ToilTest):
         output files to the given directory.
         """
         expected = cls._expected_download_output(out_dir)
-        expected['length'] = 146
+        expected["length"] = 146
         return expected
 
     @staticmethod
@@ -586,6 +623,7 @@ class CWLv10Test(ToilTest):
     """
     Run the CWL 1.0 conformance tests in various environments.
     """
+
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
@@ -672,6 +710,7 @@ class CWLv10Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -720,6 +759,7 @@ class CWLv10Test(ToilTest):
     def test_kubernetes_cwl_conformance_with_caching(self):
         return self.test_kubernetes_cwl_conformance(caching=True)
 
+
 @needs_cwl
 class CWLv11Test(ToilTest):
     """
@@ -760,6 +800,7 @@ class CWLv11Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # These tests don't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -829,6 +870,7 @@ class CWLv12Test(ToilTest):
             )
         return self.test_run_conformance(
             batchSystem="kubernetes",
+            extra_args=["--retryCount=3"],
             # This test doesn't work with
             # Singularity; see
             # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
@@ -878,7 +920,7 @@ class CWLv12Test(ToilTest):
         return self.test_run_conformance(
             runner="toil-wes-cwl-runner",
             selected_tests="1-309,313-337",
-            extra_args=extra_args
+            extra_args=extra_args,
         )
 
 
@@ -892,37 +934,65 @@ class CWLOnARMTest(AbstractClusterTest):
 
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
-        self.clusterName = 'cwl-test-' + str(uuid.uuid4())
-        self.leaderNodeType = 't4g.2xlarge'
-        self.clusterType = 'kubernetes'
+        self.clusterName = "cwl-test-" + str(uuid.uuid4())
+        self.leaderNodeType = "t4g.2xlarge"
+        self.clusterType = "kubernetes"
         # We need to be running in a directory which Flatcar and the Toil Appliance both have
-        self.cwl_test_dir = '/tmp/toil/cwlTests'
+        self.cwl_test_dir = "/tmp/toil/cwlTests"
 
     def setUp(self):
         super().setUp()
-        self.jobStore = f'aws:{self.awsRegion()}:cluster-{uuid.uuid4()}'
+        self.jobStore = f"aws:{self.awsRegion()}:cluster-{uuid.uuid4()}"
 
-    @needs_env_var('CI_COMMIT_SHA', 'a git commit sha')
+    @needs_env_var("CI_COMMIT_SHA", "a git commit sha")
     def test_cwl_on_arm(self):
         # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already ensures the leader is running
-        self.cluster = cluster_factory(provisioner='aws', zone=self.zone, clusterName=self.clusterName)
+        self.cluster = cluster_factory(
+            provisioner="aws", zone=self.zone, clusterName=self.clusterName
+        )
         self.leader = self.cluster.getLeader()
 
-        commit = os.environ['CI_COMMIT_SHA']
-        self.sshUtil(['bash', '-c', f'mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git'])
+        commit = os.environ["CI_COMMIT_SHA"]
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git",
+            ]
+        )
 
         # We use CI_COMMIT_SHA to retrieve the Toil version needed to run the CWL tests
-        self.sshUtil(['bash', '-c', f'cd {self.cwl_test_dir}/toil && git checkout {commit}'])
+        self.sshUtil(
+            ["bash", "-c", f"cd {self.cwl_test_dir}/toil && git checkout {commit}"]
+        )
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        self.sshUtil(['bash', '-c', f'virtualenv --system-site-packages --never-download {self.venvDir}'])
-        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]'])
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"virtualenv --system-site-packages --never-download {self.venvDir}",
+            ]
+        )
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]",
+            ]
+        )
 
         # Runs the CWLv12Test on an ARM instance
-        self.sshUtil(['bash', '-c', f'. .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance'])
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance",
+            ]
+        )
 
 
 @needs_cwl
@@ -945,7 +1015,7 @@ class CWLSmallLogDir(ToilTest):
         unittest.TestCase.tearDown(self)
 
     def test_workflow_echo_string_scatter_stderr_log_dir(self):
-        job_store = 'test_workflow_echo_string_scatter_stderr_log_dir'
+        job_store = "test_workflow_echo_string_scatter_stderr_log_dir"
         toil = "toil-cwl-runner"
         jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
@@ -987,7 +1057,7 @@ class CWLSmallLogDir(ToilTest):
         assert os.path.exists(list_1)
 
     def test_log_dir_echo_no_output(self) -> None:
-        job_store  = 'test_log_dir_echo_no_output'
+        job_store = "test_log_dir_echo_no_output"
         toil = "toil-cwl-runner"
         jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
@@ -1012,9 +1082,10 @@ class CWLSmallLogDir(ToilTest):
         assert result.name == "out.txt"
         output = open(result).read()
         assert "hello" in output
+
     def test_log_dir_echo_stderr(self) -> None:
 
-        job_store  = 'test_log_dir_echo_stderr'
+        job_store = "test_log_dir_echo_stderr"
         toil = "toil-cwl-runner"
         jobstore = f"--jobStore={job_store}"
         option_1 = "--strict-memory-limit"
@@ -1047,16 +1118,17 @@ class CWLSmallLogDir(ToilTest):
         cwl = os.path.join(
             os.path.dirname(__file__), "test_filename_conflict_resolution.cwl"
         )
-        input = os.path.join(os.path.dirname(__file__), "test_filename_conflict_resolution.ms")
-        output = input + '.sector_*'
-        cwl_inputs = [
-            "--msin", input
-        ]
+        input = os.path.join(
+            os.path.dirname(__file__), "test_filename_conflict_resolution.ms"
+        )
+        output = input + ".sector_*"
+        cwl_inputs = ["--msin", input]
         cmd = [toil] + options + [cwl] + cwl_inputs
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert b"Finished toil run successfully" in stderr
         assert p.returncode == 0
+
 
 @needs_cwl
 class CWLSmallTests(ToilTest):

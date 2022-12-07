@@ -366,7 +366,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+            self.check_resource_request(jobDesc)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
             self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
@@ -390,6 +390,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if killedJobId is None:
                 break
             jobIDs.remove(killedJobId)
+            if killedJobId in self._getRunningBatchJobIDsCache:
+                # Running batch id cache can sometimes contain a job we kill, so to ensure cache doesn't contain the job, we delete it here
+                del self._getRunningBatchJobIDsCache[killedJobId]
             if killedJobId in self.currentJobs:
                 self.currentJobs.remove(killedJobId)
             if jobIDs:

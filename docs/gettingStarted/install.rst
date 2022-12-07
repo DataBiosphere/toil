@@ -17,7 +17,7 @@ below.
 Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently supports Python 2.7, 3.5, and 3.6, and requires a virtualenv to be active to install.
+Toil currently supports Python 3.7, 3.8, 3.9, and 3.10, and requires a virtualenv to be active to install.
 
 If not already present, please install the latest Python ``virtualenv`` using pip_::
 
@@ -89,7 +89,7 @@ Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
 install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run ::
 
-    $ pip install toil[aws,mesos,google,encryption,cwl]
+    $ pip install toil[aws,google,mesos,encryption,cwl,wdl,kubernetes,server]
 
 or ::
 
@@ -151,6 +151,9 @@ Here's what each extra provides:
 |                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
+| ``kubernetes`` | Provides support for running workflows written using a     |
+|                | `Kubernetes`_ cluster.                                     |
++----------------+------------------------------------------------------------+
 | ``server``     | Provides support for Toil server mode, including support   |
 |                | for the GA4GH `Workflow Execution Service`_ API.           |
 +----------------+------------------------------------------------------------+
@@ -162,6 +165,7 @@ Here's what each extra provides:
 .. _Workflow Execution Service: https://ga4gh.github.io/workflow-execution-service-schemas/docs/
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
+.. _Kubernetes: https://kubernetes.io/docs/concepts/overview/
 
 .. _buildFromSource:
 

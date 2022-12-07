@@ -17,7 +17,7 @@ import os
 import signal
 import sys
 
-from toil.common import Config, Toil, parser_with_common_options, getNodeID
+from toil.common import Config, Toil, getNodeID, parser_with_common_options
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.statsAndLogging import set_logging_from_options
 

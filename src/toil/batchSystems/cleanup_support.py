@@ -15,7 +15,8 @@ import logging
 from types import TracebackType
 from typing import Any, ContextManager, List, Optional, Type
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
+from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
+                                                   WorkerCleanupInfo)
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.common import Config, Toil
 from toil.lib.threading import LastProcessStandingArena
@@ -68,8 +69,8 @@ class WorkerCleanupContext:
 
     def __enter__(self) -> None:
         # Set up an arena so we know who is the last worker to leave
-        self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.workDir),
-                                              self.workerCleanupInfo.workflowID + '-cleanup')
+        self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir),
+                                              self.workerCleanupInfo.workflow_id + '-cleanup')
         self.arena.enter()
 
     # This is exactly the signature MyPy demands.

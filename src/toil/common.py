@@ -22,34 +22,31 @@ import tempfile
 import time
 import uuid
 import warnings
-from argparse import (
-    ArgumentDefaultsHelpFormatter,
-    ArgumentParser,
-    Namespace,
-    _ArgumentGroup,
-)
+from argparse import (ArgumentDefaultsHelpFormatter,
+                      ArgumentParser,
+                      Namespace,
+                      _ArgumentGroup)
 from functools import lru_cache
 from types import TracebackType
-from typing import (
-    IO,
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-    cast
-)
+from typing import (IO,
+                    TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast,
+                    overload)
 from urllib.parse import urlparse
 
 import requests
+
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -59,31 +56,33 @@ from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
                                        set_batchsystem_config_defaults,
                                        set_batchsystem_options)
-from toil.bus import (MessageBus, 
-                      JobIssuedMessage,
+from toil.bus import (ClusterDesiredSizeMessage,
+                      ClusterSizeMessage,
                       JobCompletedMessage,
                       JobFailedMessage,
+                      JobIssuedMessage,
                       JobMissingMessage,
-                      QueueSizeMessage,
-                      ClusterSizeMessage,
-                      ClusterDesiredSizeMessage)
+                      MessageBus,
+                      QueueSizeMessage)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.io import try_path
 from toil.lib.retry import retry
-from toil.provisioners import add_provisioner_options, cluster_factory, parse_node_types
+from toil.provisioners import (add_provisioner_options,
+                               cluster_factory,
+                               parse_node_types)
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (
-    add_logging_options,
-    root_logger,
-    set_logging_from_options,
-)
+from toil.statsAndLogging import (add_logging_options,
+                                  root_logger,
+                                  set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-    from toil.job import Job, JobDescription, TemporaryID
+    from toil.batchSystems.options import OptionSetter
+    from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
     from toil.resource import ModuleDescriptor
@@ -124,6 +123,7 @@ class Config:
         self.jobStore: Optional[str] = None  # type: ignore
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
         self.workDir: Optional[str] = None
+        self.coordination_dir: Optional[str] = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
 
@@ -155,6 +155,7 @@ class Config:
         self.nodeStorage: int = 50
         self.nodeStorageOverrides: List[str] = []
         self.metrics: bool = False
+        self.assume_zero_overhead: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs: int = sys.maxsize
@@ -166,8 +167,11 @@ class Config:
         self.defaultMemory: int = 2147483648
         self.defaultCores: Union[float, int] = 1
         self.defaultDisk: int = 2147483648
-        self.readGlobalFileMutableByDefault: bool = False
         self.defaultPreemptable: bool = False
+        # TODO: These names are generated programmatically in
+        # Requirer._fetchRequirement so we can't use snake_case until we fix
+        # that (and add compatibility getters/setters?)
+        self.defaultAccelerators: List['AcceleratorRequirement'] = []
         self.maxCores: int = SYS_MAX_SIZE
         self.maxMemory: int = SYS_MAX_SIZE
         self.maxDisk: int = SYS_MAX_SIZE
@@ -196,7 +200,7 @@ class Config:
         self.forceDockerAppliance: bool = False
         self.statusWait: int = 3600
         self.disableProgress: bool = False
-
+        self.readGlobalFileMutableByDefault: bool = False
         self.kill_polling_interval: int = 5
 
         # Debug options
@@ -299,6 +303,11 @@ class Config:
                 logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
                                f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
                                f'like "/tmp" to avoid overly long paths.')
+        set_option("coordination_dir")
+        if self.coordination_dir is not None:
+            self.coordination_dir = os.path.abspath(self.coordination_dir)
+            if not os.path.exists(self.coordination_dir):
+                raise RuntimeError(f"The path provided to --coordinationDir ({self.coordination_dir}) does not exist.")
 
         set_option("noStdOutErr")
         set_option("stats")
@@ -318,7 +327,7 @@ class Config:
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(self.batchSystem, set_option)
+        set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
 
         # File store options
         set_option("linkImports", bool, default=True)
@@ -338,6 +347,7 @@ class Config:
             raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
         set_option("scaleInterval", float)
         set_option("metrics")
+        set_option("assume_zero_overhead")
         set_option("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
             raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
@@ -365,6 +375,7 @@ class Config:
         set_option("defaultMemory", h2b, iC(1))
         set_option("defaultCores", float, fC(1.0))
         set_option("defaultDisk", h2b, iC(1))
+        set_option("defaultAccelerators", parse_accelerator_list)
         set_option("readGlobalFileMutableByDefault")
         set_option("maxCores", int, iC(1))
         set_option("maxMemory", h2b, iC(1))
@@ -377,14 +388,14 @@ class Config:
         set_option("doubleMem")
         set_option("maxJobDuration", int, iC(1))
         set_option("rescueJobsFrequency", int, iC(1))
-        
+
         # Log management
         set_option("maxLogFileSize", h2b, iC(1))
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
-        
+
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
@@ -480,6 +491,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                    "variables (TMPDIR, TEMP, TMP) via mkdtemp. This directory needs to exist on "
                                    "all machines running jobs; if capturing standard output and error from batch "
                                    "system jobs is desired, it will generally need to be on a shared file system. "
+                                   "When sharing a cache between containers on a host, this directory must be "
+                                   "shared between the containers.")
+    core_options.add_argument("--coordinationDir", dest="coordination_dir", default=None,
+                              help="Absolute path to directory where Toil will keep state and lock files."
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
     core_options.add_argument("--noStdOutErr", dest="noStdOutErr", action="store_true", default=None,
@@ -621,6 +636,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     autoscaling_options.add_argument("--metrics", dest="metrics", default=False, action="store_true",
                                      help="Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, "
                                           "queue size, and issued jobs.")
+    autoscaling_options.add_argument("--assumeZeroOverhead", dest="assume_zero_overhead", default=False, action="store_true",
+                                     help="Ignore scheduler and OS overhead and assume jobs can use every last byte "
+                                          "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
     if not config.cwl:
@@ -661,12 +679,18 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                          'Default is {}.')
     cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
     disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
+    accelerators_note = ('Each accelerator specification can have a type (gpu [default], nvidia, amd, cuda, rocm, opencl, '
+                         'or a specific model like nvidia-tesla-k80), and a count [default: 1]. If both a type and a count '
+                         'are used, they must be separated by a colon. If multiple types of accelerators are '
+                         'used, the specifications are separated by commas')
     resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note, bytes2human(config.defaultMemory)))
     resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
+    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None, metavar='ACCELERATOR[,ACCELERATOR...]',
+                                  help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
     resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
                                   type=bool, nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptable (spot) nodes by default.')
@@ -733,7 +757,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                              help="File to send messages from the leader's message bus to.")
     log_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                              help="Enable real-time logging from workers to leader")
-    
+
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options.",
@@ -1294,32 +1318,48 @@ class Toil(ContextManager["Toil"]):
         return workDir
 
     @classmethod
-    def get_toil_coordination_dir(cls, configWorkDir: Optional[str] = None) -> str:
+    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
         """
         Return a path to a writable directory, which will be in memory if
         convenient. Ought to be used for file locking and coordination.
 
-        :param configWorkDir: Value passed to the program using the --workDir flag
-        :return: Path to the Toil coordination directory.
+        :param config_work_dir: Value passed to the program using the
+               --workDir flag
+        :param config_coordination_dir: Value passed to the program using the
+               --coordinationDir flag
+
+        :return: Path to the Toil coordination directory. Ought to be on a
+                 POSIX filesystem that allows directories containing open files to be
+                 deleted.
         """
 
-        # Get our user ID
-        user_id = os.getuid()
-        in_memory_base = os.path.join('/var/run/user', str(user_id), 'toil')
-        if os.path.exists(in_memory_base):
-            # We have an in-memory directory to use
-            return in_memory_base
-        else:
-            try:
-                # Try to make it opportunistically.
-                os.makedirs(in_memory_base, exist_ok=True)
-                return in_memory_base
-            except:
-                pass
+        # Go get a coordination directory, using a lot of short-circuiting of
+        # or and the fact that and returns its second argument when it
+        # succeeds.
+        coordination_dir: Optional[str] = (
+            # First try an override env var
+            os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
+            # Then the value from the config
+            config_coordination_dir or
+            # Then a normal env var
+            # TODO: why/how would this propagate when not using single machine?
+            os.getenv('TOIL_COORDINATION_DIR') or
+            # Then try a `toil` subdirectory of the XDG runtime directory
+            # (often /var/run/users/<UID>). But only if we are actually in a
+            # session that has the env var set. Otherwise it might belong to a
+            # different set of sessions and get cleaned up out from under us
+            # when that session ends.
+            ('XDG_RUNTIME_DIR' in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
+            # Try under /run/lock. It might be a temp dir style sticky directory.
+            try_path('/run/lock') or
+            # Finally, fall back on the work dir and hope it's a legit filesystem.
+            cls.getToilWorkDir(config_work_dir)
+        )
 
-        # Otherwise use the on-disk one.
-        return cls.getToilWorkDir(configWorkDir)
+        if coordination_dir is None:
+            raise RuntimeError("Could not determine a coordination directory by any method!")
 
+        return coordination_dir
 
     @staticmethod
     def _get_workflow_path_component(workflow_id: str) -> str:
@@ -1362,7 +1402,10 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def get_local_workflow_coordination_dir(
-        cls, workflow_id: str, config_work_dir: Optional[str] = None
+        cls,
+        workflow_id: str,
+        config_work_dir: Optional[str],
+        config_coordination_dir: Optional[str]
     ) -> str:
         """
         Return the directory where coordination files should be located for
@@ -1376,13 +1419,15 @@ class Toil(ContextManager["Toil"]):
         :param workflow_id: Unique ID of the current workflow.
         :param config_work_dir: Value used for the work directory in the
                current Toil Config.
+        :param config_coordination_dir: Value used for the coordination
+               directory in the current Toil Config.
 
         :return: Path to the local workflow coordination directory on this
                  machine.
         """
 
         # Start with the base coordination or work dir
-        base = cls.get_toil_coordination_dir(config_work_dir)
+        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
 
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
@@ -1391,8 +1436,6 @@ class Toil(ContextManager["Toil"]):
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
         # Return it
         return subdir
-
-
 
     def _runMainLoop(self, rootJob: "JobDescription") -> Any:
         """
@@ -1505,7 +1548,7 @@ class ToilMetrics:
                 self.nodeExporterProc = None
             except KeyboardInterrupt:
                 self.nodeExporterProc.terminate()  # type: ignore[union-attr]
-                
+
         # When messages come in on the message bus, call our methods.
         # TODO: Just annotate the methods with some kind of @listener and get
         # their argument types and magically register them?
@@ -1592,7 +1635,7 @@ class ToilMetrics:
         self, m: ClusterSizeMessage
     ) -> None:
         self.log("current_size '%s' %i" % (m.instance_type, m.current_size))
-    
+
     def logClusterDesiredSize(
         self, m: ClusterDesiredSizeMessage
     ) -> None:
@@ -1600,7 +1643,7 @@ class ToilMetrics:
 
     def logQueueSize(self, m: QueueSizeMessage) -> None:
         self.log("queue_size %i" % m.queue_size)
-        
+
     def logMissingJob(self, m: JobMissingMessage) -> None:
         self.log("missing_job")
 
@@ -1676,6 +1719,20 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
+    
+def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
+    """
+    Parse a string description of one or more accelerator requirements.
+    """
+    
+    if specs is None or len(specs) == 0:
+        # Not specified, so the default default is to not need any.
+        return []
+    # Otherwise parse each requirement.
+    from toil.job import AcceleratorRequirement
+    # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
+    parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
+    return [parser(r) for r in specs.split(',')]
 
 
 def cacheDirName(workflowID: str) -> str:
