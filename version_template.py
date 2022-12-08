@@ -55,7 +55,7 @@ def exactPython():
     for. Something like 'python2.7' or 'python3.6'.
     """
     import sys
-    return 'python{}.{}'.format(sys.version_info[0], sys.version_info[1])
+    return f'python{sys.version_info[0]}.{sys.version_info[1]}'
 
 
 def python():
@@ -81,7 +81,7 @@ def _pythonVersionSuffix():
 
     # For now, we assume all Python 3 releases are intercompatible.
     # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
-    return '-py{}.{}'.format(sys.version_info[0], sys.version_info[1])
+    return f'-py{sys.version_info[0]}.{sys.version_info[1]}'
 
 
 def dockerTag():
@@ -149,7 +149,7 @@ def expand_(name=None, others=None):
         return v
 
     if name is None:
-        return ''.join("{} = {}\n".format(k, repr(resolve(k))) for k, v in variables.items())
+        return ''.join(f"{k} = {repr(resolve(k))}\n" for k, v in variables.items())
     else:
         return resolve(name)
 

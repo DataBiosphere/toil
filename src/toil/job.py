@@ -35,22 +35,21 @@ from typing import (TYPE_CHECKING,
                     List,
                     Mapping,
                     Optional,
-                    Set,
                     Sequence,
+                    Set,
                     Tuple,
                     Union,
                     cast,
                     overload)
+
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
 # TODO: When this gets into the standard library, get it from there and drop
+import dill
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
-
-
-import dill
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -68,9 +67,9 @@ from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
 if TYPE_CHECKING:
+    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
-    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
 logger = logging.getLogger(__name__)
 

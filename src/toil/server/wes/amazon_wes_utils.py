@@ -82,7 +82,7 @@ class FilesDict(TypedDict, total=False):
     workflowDependencies: IO[bytes]
 
 def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
-    """
+    r"""
     Processes a workflow zip bundle
 
     :param file: String or Path-like path to a workflow.zip file
@@ -156,7 +156,7 @@ def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
 
 
 def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
-    """
+    r"""
     Reads a MANIFEST.json file for a workflow zip bundle
 
     :param manifest_file: String or Path-like path to a MANIFEST.json file
@@ -187,7 +187,7 @@ def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
     """
     data: DataDict = dict()
     files: FilesDict = dict()
-    with open(manifest_file, "rt") as f:
+    with open(manifest_file) as f:
         manifest = json.loads(f.read())
 
     u = urlparse(manifest["mainWorkflowURL"])

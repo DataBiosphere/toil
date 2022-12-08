@@ -62,15 +62,15 @@ class hidden:
             if self.jobStoreType == 'file':
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
-                return 'aws:{}:cache-tests-{}'.format(self.awsRegion(), str(uuid4()))
+                return f'aws:{self.awsRegion()}:cache-tests-{str(uuid4())}'
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-                return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
+                return f'google:{projectID}:cache-tests-{str(uuid4())}'
             else:
                 raise RuntimeError('Illegal job store type.')
 
         def setUp(self):
-            super(hidden.AbstractFileStoreTest, self).setUp()
+            super().setUp()
             self.work_dir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
@@ -383,7 +383,7 @@ class hidden:
         """
 
         def setUp(self):
-            super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
+            super().setUp()
             self.options.disableCaching = True
 
     class AbstractCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
@@ -393,7 +393,7 @@ class hidden:
         """
 
         def setUp(self):
-            super(hidden.AbstractCachingFileStoreTest, self).setUp()
+            super().setUp()
             self.options.disableCaching = False
 
         @slow

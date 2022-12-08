@@ -43,8 +43,9 @@ from toil.lib.retry import (DEFAULT_DELAYS,
 if sys.version_info >= (3, 8):
     from typing import Literal, MutableMapping
 else:
-    from typing_extensions import Literal
     from typing import MutableMapping
+
+    from typing_extensions import Literal
 
 try:
     from boto.exception import BotoServerError, S3ResponseError

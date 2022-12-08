@@ -18,8 +18,7 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (cast,
-                    Any,
+from typing import (Any,
                     Callable,
                     ContextManager,
                     Dict,
@@ -28,14 +27,15 @@ from typing import (cast,
                     NamedTuple,
                     Optional,
                     TypeVar,
-                    Union)
+                    Union,
+                    cast)
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import JobDescription, Requirer, ParsedRequirement
+from toil.job import JobDescription, ParsedRequirement, Requirer
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
