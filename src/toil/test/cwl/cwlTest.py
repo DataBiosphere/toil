@@ -56,8 +56,8 @@ from toil.test import (
     needs_fetchable_appliance,
     needs_gridengine,
     needs_kubernetes,
-    needs_lsf,
     needs_local_cuda,
+    needs_lsf,
     needs_mesos,
     needs_parasol,
     needs_slurm,
@@ -996,423 +996,427 @@ class CWLOnARMTest(AbstractClusterTest):
 
 
 @needs_cwl
-class CWLSmallLogDir(ToilTest):
-    @classmethod
-    def setUpClass(cls):
-        """Runs anew before each test to create farm fresh temp dirs."""
-        cls.out_dir = f"/tmp/cwl-out-dir-{str(uuid.uuid4())}"
-        cls.log_dir = Path(os.path.join(os.path.dirname(__file__), "cwl-logs"))
-        os.makedirs(cls.out_dir)
-        os.makedirs(cls.log_dir)
+@pytest.mark.cwl_small_log_dir
+def test_workflow_echo_string_scatter_stderr_log_dir(tmp_path: Path):
+    log_dir = tmp_path / "cwl-logs"
+    job_store = "test_workflow_echo_string_scatter_stderr_log_dir"
+    toil = "toil-cwl-runner"
+    jobstore = f"--jobStore={job_store}"
+    option_1 = "--strict-memory-limit"
+    option_2 = "--force-docker-pull"
+    option_3 = "--clean=always"
+    option_4 = f"--log-dir={log_dir}"
+    cwl = os.path.join(
+        os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
+    )
+    cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    outputs = json.loads(stdout)
+    out_list = outputs["list_out"]
+    assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+    out_base = outputs["list_out"][0]
+    # This is a test on the scatter functionality and stdout.
+    # Each value of scatter should generate a separate file in the output.
+    for index, file in enumerate(out_list):
+        if index > 0:
+            new_file_loc = out_base["location"] + f"_{index + 1}"
+        else:
+            new_file_loc = out_base["location"]
+        assert (
+            new_file_loc == file["location"]
+        ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
 
-    def tearDown(self):
-        """Clean up outputs."""
-        if os.path.exists(self.out_dir):
-            shutil.rmtree(self.out_dir)
-        if os.path.exists(self.log_dir):
-            shutil.rmtree(self.log_dir)
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
 
-        unittest.TestCase.tearDown(self)
-
-    def test_workflow_echo_string_scatter_stderr_log_dir(self):
-        job_store = "test_workflow_echo_string_scatter_stderr_log_dir"
-        toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={job_store}"
-        option_1 = "--strict-memory-limit"
-        option_2 = "--force-docker-pull"
-        option_3 = "--clean=always"
-        option_4 = f"--log-dir={self.log_dir}"
-        cwl = os.path.join(
-            os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
-        )
-        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        outputs = json.loads(stdout)
-        out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
-        out_base = outputs["list_out"][0]
-        # This is a test on the scatter functionality and stdout.
-        # Each value of scatter should generate a separate file in the output.
-        for index, file in enumerate(out_list):
-            if index > 0:
-                new_file_loc = out_base["location"] + f"_{index + 1}"
-            else:
-                new_file_loc = out_base["location"]
-            assert (
-                new_file_loc == file["location"]
-            ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
-
-        assert b"Finished toil run successfully" in stderr
-        assert p.returncode == 0
-
-        assert os.path.exists(self.log_dir)
-        scatter_0 = os.path.join(self.log_dir, "echo-test-scatter.0.scatter")
-        scatter_1 = os.path.join(self.log_dir, "echo-test-scatter.1.scatter")
-        list_0 = os.path.join(self.log_dir, "echo-test-scatter.0.list")
-        list_1 = os.path.join(self.log_dir, "echo-test-scatter.1.list")
-        assert os.path.exists(scatter_0)
-        assert os.path.exists(scatter_1)
-        assert os.path.exists(list_0)
-        assert os.path.exists(list_1)
-
-    def test_log_dir_echo_no_output(self) -> None:
-        job_store = "test_log_dir_echo_no_output"
-        toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={job_store}"
-        option_1 = "--strict-memory-limit"
-        option_2 = "--force-docker-pull"
-        option_3 = "--clean=always"
-        option_4 = f"--log-dir={self.log_dir}"
-        cwl = os.path.join(os.path.dirname(__file__), "echo-stdout-log-dir.cwl")
-        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-
-        tmp_path = self.log_dir
-
-        assert os.path.exists(self.log_dir)
-        assert len(list(tmp_path.iterdir())) == 1
-
-        subdir = next(tmp_path.iterdir())
-        assert subdir.name == "echo"
-        assert subdir.is_dir()
-        assert len(list(subdir.iterdir())) == 1
-        result = next(subdir.iterdir())
-        assert result.name == "out.txt"
-        output = open(result).read()
-        assert "hello" in output
-
-    def test_log_dir_echo_stderr(self) -> None:
-
-        job_store = "test_log_dir_echo_stderr"
-        toil = "toil-cwl-runner"
-        jobstore = f"--jobStore={job_store}"
-        option_1 = "--strict-memory-limit"
-        option_2 = "--force-docker-pull"
-        option_3 = "--clean=always"
-        option_4 = f"--log-dir={self.log_dir}"
-        cwl = os.path.join(os.path.dirname(__file__), "echo-stderr.cwl")
-        cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        tmp_path = self.log_dir
-
-        assert len(list(tmp_path.iterdir())) == 1
-
-        subdir = next(tmp_path.iterdir())
-        assert subdir.name == "echo-stderr.cwl"
-        assert subdir.is_dir()
-        assert len(list(subdir.iterdir())) == 1
-        result = next(subdir.iterdir())
-        assert result.name == "out.txt"
-        output = open(result).read()
-        assert output == "hello\n"
-
-    def test_filename_conflict_resolution(self):
-        toil = "toil-cwl-runner"
-        options = [
-            f"--outdir={self.out_dir}",
-            "--clean=always",
-        ]
-        cwl = os.path.join(
-            os.path.dirname(__file__), "test_filename_conflict_resolution.cwl"
-        )
-        input = os.path.join(
-            os.path.dirname(__file__), "test_filename_conflict_resolution.ms"
-        )
-        output = input + ".sector_*"
-        cwl_inputs = ["--msin", input]
-        cmd = [toil] + options + [cwl] + cwl_inputs
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert b"Finished toil run successfully" in stderr
-        assert p.returncode == 0
+    assert log_dir.exists()
+    scatter_0 = log_dir / "echo-test-scatter.0.scatter"
+    scatter_1 = log_dir / "echo-test-scatter.1.scatter"
+    list_0 = log_dir / "echo-test-scatter.0.list"
+    list_1 = log_dir / "echo-test-scatter.1.list"
+    assert scatter_0.exists()
+    assert scatter_1.exists()
+    assert list_0.exists()
+    assert list_1.exists()
 
 
 @needs_cwl
-class CWLSmallTests(ToilTest):
-    def test_usage_message(self):
-        """
-        This is purely to ensure a (more) helpful error message is printed if a user does
-        not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
-        """
-        toil = "toil-cwl-runner"
-        cwl = "test/cwl/revsort.cwl"
-        cwl_job_json = "test/cwl/revsort-job.json"
-        jobstore = "delete-test-toil"
-        random_option_1 = "--logInfo"
-        random_option_2 = "--disableChaining"
-        cmd_wrong_ordering_1 = [
-            toil,
-            cwl,
-            cwl_job_json,
-            jobstore,
-            random_option_1,
-            random_option_2,
-        ]
-        cmd_wrong_ordering_2 = [
-            toil,
-            cwl,
-            jobstore,
-            random_option_1,
-            random_option_2,
-            cwl_job_json,
-        ]
-        cmd_wrong_ordering_3 = [
-            toil,
-            jobstore,
-            random_option_1,
-            random_option_2,
-            cwl,
-            cwl_job_json,
-        ]
+@pytest.mark.cwl_small_log_dir
+def test_log_dir_echo_no_output(tmp_path: Path) -> None:
+    log_dir = tmp_path / "cwl-logs"
+    job_store = "test_log_dir_echo_no_output"
+    toil = "toil-cwl-runner"
+    jobstore = f"--jobStore={job_store}"
+    option_1 = "--strict-memory-limit"
+    option_2 = "--force-docker-pull"
+    option_3 = "--clean=always"
+    option_4 = f"--log-dir={log_dir}"
+    cwl = os.path.join(os.path.dirname(__file__), "echo-stdout-log-dir.cwl")
+    cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
 
-        for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = p.communicate()
-            self.assertIn(
-                b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml", stderr
-            )
-            self.assertIn(
-                b"All positional arguments [cwl, yml_or_json] "
-                b"must always be specified last for toil-cwl-runner.",
-                stderr,
-            )
+    tmp_path = log_dir
 
-    def test_workflow_echo_string(self):
-        toil = "toil-cwl-runner"
-        jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
-        option_1 = "--strict-memory-limit"
-        option_2 = "--force-docker-pull"
-        option_3 = "--clean=always"
-        cwl = os.path.join(os.path.dirname(__file__), "echo_string.cwl")
-        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+    assert log_dir.exists()
+    assert len(list(tmp_path.iterdir())) == 1
+
+    subdir = next(tmp_path.iterdir())
+    assert subdir.name == "echo"
+    assert subdir.is_dir()
+    assert len(list(subdir.iterdir())) == 1
+    result = next(subdir.iterdir())
+    assert result.name == "out.txt"
+    output = open(result).read()
+    assert "hello" in output
+
+
+@needs_cwl
+@pytest.mark.cwl_small_log_dir
+def test_log_dir_echo_stderr(tmp_path: Path) -> None:
+    log_dir = tmp_path / "cwl-logs"
+
+    job_store = "test_log_dir_echo_stderr"
+    toil = "toil-cwl-runner"
+    jobstore = f"--jobStore={job_store}"
+    option_1 = "--strict-memory-limit"
+    option_2 = "--force-docker-pull"
+    option_3 = "--clean=always"
+    option_4 = f"--log-dir={log_dir}"
+    cwl = os.path.join(os.path.dirname(__file__), "echo-stderr.cwl")
+    cmd = [toil, jobstore, option_1, option_2, option_3, option_4, cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    tmp_path = log_dir
+
+    assert len(list(tmp_path.iterdir())) == 1
+
+    subdir = next(tmp_path.iterdir())
+    assert subdir.name == "echo-stderr.cwl"
+    assert subdir.is_dir()
+    assert len(list(subdir.iterdir())) == 1
+    result = next(subdir.iterdir())
+    assert result.name == "out.txt"
+    output = open(result).read()
+    assert output == "hello\n"
+
+
+@needs_cwl
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_resolution(tmp_path: Path):
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_resolution.cwl"
+    )
+    input = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_resolution.ms"
+    )
+    cwl_inputs = ["--msin", input]
+    cmd = [toil] + options + [cwl] + cwl_inputs
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
+
+
+@needs_cwl
+@pytest.mark.cwl_small
+def test_usage_message():
+    """
+    This is purely to ensure a (more) helpful error message is printed if a user does
+    not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
+    """
+    toil = "toil-cwl-runner"
+    cwl = "test/cwl/revsort.cwl"
+    cwl_job_json = "test/cwl/revsort-job.json"
+    jobstore = "delete-test-toil"
+    random_option_1 = "--logInfo"
+    random_option_2 = "--disableChaining"
+    cmd_wrong_ordering_1 = [
+        toil,
+        cwl,
+        cwl_job_json,
+        jobstore,
+        random_option_1,
+        random_option_2,
+    ]
+    cmd_wrong_ordering_2 = [
+        toil,
+        cwl,
+        jobstore,
+        random_option_1,
+        random_option_2,
+        cwl_job_json,
+    ]
+    cmd_wrong_ordering_3 = [
+        toil,
+        jobstore,
+        random_option_1,
+        random_option_2,
+        cwl,
+        cwl_job_json,
+    ]
+
+    for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
-        assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
-        assert b"Finished toil run successfully" in stderr
-        assert p.returncode == 0
-
-    def test_workflow_echo_string_scatter_capture_stdout(self):
-        toil = "toil-cwl-runner"
-        jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
-        option_1 = "--strict-memory-limit"
-        option_2 = "--force-docker-pull"
-        option_3 = "--clean=always"
-        cwl = os.path.join(
-            os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
+        assert (
+            b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml" in stderr
         )
-        cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        outputs = json.loads(stdout)
-        out_list = outputs["list_out"]
-        assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
-        out_base = outputs["list_out"][0]
-        # This is a test on the scatter functionality and stdout.
-        # Each value of scatter should generate a separate file in the output.
-        for index, file in enumerate(out_list):
-            if index > 0:
-                new_file_loc = out_base["location"] + f"_{index + 1}"
-            else:
-                new_file_loc = out_base["location"]
-            assert (
-                new_file_loc == file["location"]
-            ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
+        assert (
+            b"All positional arguments [cwl, yml_or_json] "
+            b"must always be specified last for toil-cwl-runner." in stderr
+        )
 
-        assert b"Finished toil run successfully" in stderr
-        assert p.returncode == 0
 
-    def test_visit_top_cwl_class(self):
-        structure = {
-            "class": "Directory",
-            "listing": [
-                {
-                    "class": "Directory",
-                    "listing": [
-                        {"class": "File"},
-                        {
-                            "class": "File",
-                            "secondaryFiles": [
-                                {"class": "Directory"},
-                                {"class": "File"},
-                                {"cruft"},
-                            ],
-                        },
-                    ],
-                },
-                {"some garbage": "yep"},
-                [],
-                None,
-            ],
-        }
+@needs_cwl
+@pytest.mark.cwl_small
+def test_workflow_echo_string():
+    toil = "toil-cwl-runner"
+    jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
+    option_1 = "--strict-memory-limit"
+    option_2 = "--force-docker-pull"
+    option_3 = "--clean=always"
+    cwl = os.path.join(os.path.dirname(__file__), "echo_string.cwl")
+    cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
 
-        self.counter = 0
 
-        def increment(thing: Dict) -> None:
-            """
-            Make sure we are at something CWL object like, and count it.
-            """
-            self.assertIn("class", thing)
-            self.counter += 1
+@needs_cwl
+@pytest.mark.cwl_small
+def test_workflow_echo_string_scatter_capture_stdout():
+    toil = "toil-cwl-runner"
+    jobstore = f"--jobStore=file:explicit-local-jobstore-{uuid.uuid4()}"
+    option_1 = "--strict-memory-limit"
+    option_2 = "--force-docker-pull"
+    option_3 = "--clean=always"
+    cwl = os.path.join(
+        os.path.dirname(__file__), "echo_string_scatter_capture_stdout.cwl"
+    )
+    cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    outputs = json.loads(stdout)
+    out_list = outputs["list_out"]
+    assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
+    out_base = outputs["list_out"][0]
+    # This is a test on the scatter functionality and stdout.
+    # Each value of scatter should generate a separate file in the output.
+    for index, file in enumerate(out_list):
+        if index > 0:
+            new_file_loc = out_base["location"] + f"_{index + 1}"
+        else:
+            new_file_loc = out_base["location"]
+        assert (
+            new_file_loc == file["location"]
+        ), f"Toil should have detected conflicts for these stdout files {new_file_loc} and {file}"
 
-        # We should stop at the root when looking for a Directory
-        visit_top_cwl_class(structure, ("Directory",), increment)
-        self.assertEqual(self.counter, 1)
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
 
-        # We should see the top-level files when looking for a file
-        self.counter = 0
-        visit_top_cwl_class(structure, ("File",), increment)
-        self.assertEqual(self.counter, 2)
 
-        # When looking for a file or a directory we should stop at the first match to either.
-        self.counter = 0
-        visit_top_cwl_class(structure, ("File", "Directory"), increment)
-        self.assertEqual(self.counter, 1)
-
-    def test_visit_cwl_class_and_reduce(self):
-        structure = {
-            "class": "Directory",
-            "listing": [
-                {
-                    "class": "Directory",
-                    "listing": [
-                        {"class": "File"},
-                        {
-                            "class": "File",
-                            "secondaryFiles": [
-                                {"class": "Directory"},
-                                {"class": "File"},
-                                {"cruft"},
-                            ],
-                        },
-                    ],
-                },
-                {"some garbage": "yep"},
-                [],
-                None,
-            ],
-        }
-
-        self.down_count = 0
-
-        def op_down(thing: MutableMapping) -> int:
-            """
-            Grab the ID of the thing we are at, and count what we visit going
-            down.
-            """
-            self.down_count += 1
-            return id(thing)
-
-        self.up_count = 0
-        self.up_child_count = 0
-
-        def op_up(
-            thing: MutableMapping, down_value: int, child_results: List[str]
-        ) -> str:
-            """
-            Check the down return value and the up return values, and count
-            what we visit going up and what child relationships we have.
-            """
-            self.assertEqual(down_value, id(thing))
-            for res in child_results:
-                self.assertEqual(res, "Sentinel value!")
-                self.up_child_count += 1
-            self.up_count += 1
-            return "Sentinel value!"
-
-        visit_cwl_class_and_reduce(structure, ("Directory",), op_down, op_up)
-        self.assertEqual(self.down_count, 3)
-        self.assertEqual(self.up_count, 3)
-        # Only 2 child relationships
-        self.assertEqual(self.up_child_count, 2)
-
-    def test_download_structure(self) -> None:
-        """
-        Make sure that download_structure makes the right calls to what it thinks is the file store.
-        """
-
-        # Define what we would download
-        fid1 = FileID("afile", 10, False)
-        fid2 = FileID("adifferentfile", 1000, True)
-
-        # And what directory structure it would be in
-        structure = {
-            "dir1": {
-                "dir2": {
-                    "f1": "toilfile:" + fid1.pack(),
-                    "f1again": "toilfile:" + fid1.pack(),
-                    "dir2sub": {},
-                },
-                "dir3": {},
+@needs_cwl
+@pytest.mark.cwl_small
+def test_visit_top_cwl_class():
+    structure = {
+        "class": "Directory",
+        "listing": [
+            {
+                "class": "Directory",
+                "listing": [
+                    {"class": "File"},
+                    {
+                        "class": "File",
+                        "secondaryFiles": [
+                            {"class": "Directory"},
+                            {"class": "File"},
+                            {"cruft"},
+                        ],
+                    },
+                ],
             },
-            "anotherfile": "toilfile:" + fid2.pack(),
-        }
+            {"some garbage": "yep"},
+            [],
+            None,
+        ],
+    }
 
-        # Say where to put it on the filesystem
-        to_dir = self._createTempDir()
+    counter = 0
 
-        # Make a fake file store
-        file_store = Mock(AbstractFileStore)
+    def increment(thing: Dict) -> None:
+        """
+        Make sure we are at something CWL object like, and count it.
+        """
+        assert "class" in thing
+        nonlocal counter
+        counter += 1
 
-        # These will be populated.
-        # TODO: This cache seems unused. Remove it?
-        # This maps filesystem path to CWL URI
-        index = {}
-        # This maps CWL URI to filesystem path
-        existing = {}
+    # We should stop at the root when looking for a Directory
+    visit_top_cwl_class(structure, ("Directory",), increment)
+    assert counter == 1
 
-        # Do the download
-        download_structure(file_store, index, existing, structure, to_dir)
+    # We should see the top-level files when looking for a file
+    counter = 0
+    visit_top_cwl_class(structure, ("File",), increment)
+    assert counter == 2
 
-        # Check the results
-        # 3 files should be made
-        self.assertEqual(len(index), 3)
-        # From 2 unique URIs
-        self.assertEqual(len(existing), 2)
+    # When looking for a file or a directory we should stop at the first match to either.
+    counter = 0
+    visit_top_cwl_class(structure, ("File", "Directory"), increment)
+    assert counter == 1
 
-        # Make sure that the index contents (path to URI) are correct
-        self.assertIn(os.path.join(to_dir, "dir1/dir2/f1"), index)
-        self.assertIn(os.path.join(to_dir, "dir1/dir2/f1again"), index)
-        self.assertIn(os.path.join(to_dir, "anotherfile"), index)
-        self.assertEqual(
-            index[os.path.join(to_dir, "dir1/dir2/f1")], structure["dir1"]["dir2"]["f1"]
-        )
-        self.assertEqual(
-            index[os.path.join(to_dir, "dir1/dir2/f1again")],
-            structure["dir1"]["dir2"]["f1again"],
-        )
-        self.assertEqual(
-            index[os.path.join(to_dir, "anotherfile")], structure["anotherfile"]
-        )
 
-        # And the existing contents (URI to path)
-        self.assertIn("toilfile:" + fid1.pack(), existing)
-        self.assertIn("toilfile:" + fid2.pack(), existing)
-        self.assertIn(
-            existing["toilfile:" + fid1.pack()],
-            [
-                os.path.join(to_dir, "dir1/dir2/f1"),
-                os.path.join(to_dir, "dir1/dir2/f1again"),
-            ],
-        )
-        self.assertEqual(
-            existing["toilfile:" + fid2.pack()], os.path.join(to_dir, "anotherfile")
-        )
+@needs_cwl
+@pytest.mark.cwl_small
+def test_visit_cwl_class_and_reduce():
+    structure = {
+        "class": "Directory",
+        "listing": [
+            {
+                "class": "Directory",
+                "listing": [
+                    {"class": "File"},
+                    {
+                        "class": "File",
+                        "secondaryFiles": [
+                            {"class": "Directory"},
+                            {"class": "File"},
+                            {"cruft"},
+                        ],
+                    },
+                ],
+            },
+            {"some garbage": "yep"},
+            [],
+            None,
+        ],
+    }
 
-        # The directory structure should be created for real
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1")))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir2")))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir2/dir2sub")))
-        self.assertTrue(os.path.isdir(os.path.join(to_dir, "dir1/dir3")))
+    down_count = 0
 
-        # The file store should have been asked to do the download
-        file_store.readGlobalFile.assert_has_calls(
-            [
-                call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=True),
-                call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=True),
-                call(fid2, os.path.join(to_dir, "anotherfile"), symlink=True),
-            ],
-            any_order=True,
-        )
+    def op_down(thing: MutableMapping) -> int:
+        """
+        Grab the ID of the thing we are at, and count what we visit going
+        down.
+        """
+        nonlocal down_count
+        down_count += 1
+        return id(thing)
+
+    up_count = 0
+    up_child_count = 0
+
+    def op_up(thing: MutableMapping, down_value: int, child_results: List[str]) -> str:
+        """
+        Check the down return value and the up return values, and count
+        what we visit going up and what child relationships we have.
+        """
+        nonlocal up_child_count
+        nonlocal up_count
+        assert down_value == id(thing)
+        for res in child_results:
+            assert res == "Sentinel value!"
+            up_child_count += 1
+        up_count += 1
+        return "Sentinel value!"
+
+    visit_cwl_class_and_reduce(structure, ("Directory",), op_down, op_up)
+    assert down_count == 3
+    assert up_count == 3
+    # Only 2 child relationships
+    assert up_child_count == 2
+
+
+@needs_cwl
+@pytest.mark.cwl_small
+def test_download_structure(tmp_path) -> None:
+    """
+    Make sure that download_structure makes the right calls to what it thinks is the file store.
+    """
+
+    # Define what we would download
+    fid1 = FileID("afile", 10, False)
+    fid2 = FileID("adifferentfile", 1000, True)
+
+    # And what directory structure it would be in
+    structure = {
+        "dir1": {
+            "dir2": {
+                "f1": "toilfile:" + fid1.pack(),
+                "f1again": "toilfile:" + fid1.pack(),
+                "dir2sub": {},
+            },
+            "dir3": {},
+        },
+        "anotherfile": "toilfile:" + fid2.pack(),
+    }
+
+    # Say where to put it on the filesystem
+    to_dir = str(tmp_path)
+
+    # Make a fake file store
+    file_store = Mock(AbstractFileStore)
+
+    # These will be populated.
+    # TODO: This cache seems unused. Remove it?
+    # This maps filesystem path to CWL URI
+    index = {}
+    # This maps CWL URI to filesystem path
+    existing = {}
+
+    # Do the download
+    download_structure(file_store, index, existing, structure, to_dir)
+
+    # Check the results
+    # 3 files should be made
+    assert len(index) == 3
+    # From 2 unique URIs
+    assert len(existing) == 2
+
+    # Make sure that the index contents (path to URI) are correct
+    assert os.path.join(to_dir, "dir1/dir2/f1") in index
+    assert os.path.join(to_dir, "dir1/dir2/f1again") in index
+    assert os.path.join(to_dir, "anotherfile") in index
+    assert (
+        index[os.path.join(to_dir, "dir1/dir2/f1")] == structure["dir1"]["dir2"]["f1"]
+    )
+    assert (
+        index[os.path.join(to_dir, "dir1/dir2/f1again")]
+        == structure["dir1"]["dir2"]["f1again"]
+    )
+    assert index[os.path.join(to_dir, "anotherfile")] == structure["anotherfile"]
+
+    # And the existing contents (URI to path)
+    assert "toilfile:" + fid1.pack() in existing
+    assert "toilfile:" + fid2.pack() in existing
+    assert existing["toilfile:" + fid1.pack()] in [
+        os.path.join(to_dir, "dir1/dir2/f1"),
+        os.path.join(to_dir, "dir1/dir2/f1again"),
+    ]
+    assert existing["toilfile:" + fid2.pack()] == os.path.join(to_dir, "anotherfile")
+
+    # The directory structure should be created for real
+    assert os.path.isdir(os.path.join(to_dir, "dir1")) is True
+    assert os.path.isdir(os.path.join(to_dir, "dir1/dir2")) is True
+    assert os.path.isdir(os.path.join(to_dir, "dir1/dir2/dir2sub")) is True
+    assert os.path.isdir(os.path.join(to_dir, "dir1/dir3")) is True
+
+    # The file store should have been asked to do the download
+    file_store.readGlobalFile.assert_has_calls(
+        [
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=True),
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=True),
+            call(fid2, os.path.join(to_dir, "anotherfile"), symlink=True),
+        ],
+        any_order=True,
+    )
