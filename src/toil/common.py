@@ -1140,8 +1140,8 @@ class Toil(ContextManager["Toil"]):
 
         if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
-                               'does not support cleaning up a worker after the last job finishes. Set the '
-                               '--disableCaching flag if you want to use this batch system.')
+                               'does not support cleaning up a worker after the last job finishes. Set '
+                               '--caching=FALSE')
 
         logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
