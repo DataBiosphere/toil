@@ -43,7 +43,7 @@ from toil.bus import (JobAnnotationMessage,
                       JobIssuedMessage,
                       JobUpdatedMessage,
                       MessageBus,
-                      replay_message_bus)
+                      replay_message_bus, JobStatus)
 from toil.lib.io import AtomicFileCreate
 from toil.lib.threading import global_mutex
 from toil.server.utils import (WorkflowStateMachine,
@@ -209,7 +209,7 @@ class ToilWorkflow:
         """
         return self._get_scratch_file_path('bus_messages')
 
-    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, Dict[str, str]], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, JobStatus], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
 
@@ -232,7 +232,7 @@ class ToilWorkflow:
         else:
             # Replay all the messages and work out what they mean for jobs.
             abs_path = os.path.join(self.scratch_dir, path)
-            job_statuses =  replay_message_bus(abs_path)
+            job_statuses = replay_message_bus(abs_path)
             # Compose log objects from recovered job info.
             logs: List[TaskLog] = []
             for job_status in job_statuses.values():
@@ -241,7 +241,7 @@ class ToilWorkflow:
                     # Convince MyPy the task is set
                     assert task is not None
                     # Give the filter function hook a chance to modify or omit the task
-                    task = filter_function(task, job_status.annotations)
+                    task = filter_function(task, job_status)
                 if task is not None:
                     logs.append(task)
             logger.info('Recovered task logs: %s', logs)

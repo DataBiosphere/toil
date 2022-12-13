@@ -633,7 +633,23 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         self._set_bus(bus)
 
 
-def replay_message_bus(path: str) -> Dict[str, Any]:
+@dataclass
+class JobStatus:
+    """
+    Records the status of a job.
+    """
+
+    job_store_id: str
+    name: str
+    exit_code: int
+    annotations: Dict[str, str]
+    toil_batch_id: int
+    external_batch_id: str
+    batch_system: str
+
+    def toJSON(self) -> str:
+        return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.
 
@@ -648,22 +664,6 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
     the external batch id, and the batch system on which the job
     is running.
     """
-    @dataclass
-    class JobStatus:
-        """
-        Records the status of a job.
-        """
-
-        job_store_id: str
-        name: str
-        exit_code: int
-        annotations: Dict[str, str]
-        toil_batch_id: int
-        external_batch_id: str
-        batch_system: str
-
-        def toJSON(self) -> str:
-            return json.dumps(self, default= lambda o: o.__dict__, indent=4)
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
     batch_to_job_id = {}
