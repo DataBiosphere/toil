@@ -705,7 +705,8 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
 
 def gen_message_bus_path() -> str:
     """
-    If given a path, return absolute path otherwise generate path to store message bus at
+    Return a file path in tmp to store the message bus at.
+    Calling function is responsible for cleaning the generated file.
     """
     fd, path = tempfile.mkstemp()
     os.close(fd)

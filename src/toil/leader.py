@@ -160,8 +160,6 @@ class Leader:
             # Message bus messages need to go to the given file.
             # Keep a reference to the return value so the listener stays alive.
             self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
-        else:
-            raise RuntimeError("Write messages not set")
 
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.
@@ -745,7 +743,7 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
-            self._messages.publish(JobCompletedMessage(updatedJob.get_job_type(), updatedJob.jobStoreID, exitStatus))
+            self._messages.publish(JobCompletedMessage(updatedJob.get_job_kind(), updatedJob.jobStoreID, exitStatus))
             self.process_finished_job(bsID, exitStatus, wall_time=wallTime, exit_reason=exitReason)
 
     def _processLostJobs(self):
@@ -952,7 +950,7 @@ class Leader:
                    "%s and %s",
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())
         # Tell everyone it is issued and the queue size changed
-        self._messages.publish(JobIssuedMessage(jobNode.get_job_type(), jobNode.jobStoreID, jobBatchSystemID))
+        self._messages.publish(JobIssuedMessage(jobNode.get_job_kind(), jobNode.jobStoreID, jobBatchSystemID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1
@@ -1344,7 +1342,7 @@ class Leader:
 
         # Tell everyone it failed
 
-        self._messages.publish(JobFailedMessage(job_desc.get_job_type(), job_id))
+        self._messages.publish(JobFailedMessage(job_desc.get_job_kind(), job_id))
 
         if job_id in self.toilState.service_to_client:
             # Is a service job
