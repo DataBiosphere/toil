@@ -139,7 +139,7 @@ class Config:
         set_batchsystem_config_defaults(self)
 
         # File store options
-        self.disableCaching: bool = False
+        self.caching: Optional[bool] = None
         self.linkImports: bool = True
         self.moveExports: bool = False
 
@@ -332,7 +332,7 @@ class Config:
         # File store options
         set_option("linkImports", bool, default=True)
         set_option("moveExports", bool, default=False)
-        set_option("disableCaching", bool, default=False)
+        set_option("caching", bool, default=None)
 
         # Autoscaling options
         set_option("provisioner")
@@ -559,10 +559,12 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
     move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
     move_exports.set_defaults(moveExports=False)
-    file_store_options.add_argument('--disableCaching', dest='disableCaching', action='store_true',
-                                    default=False,
-                                    help='Disables caching in the file store. This flag must be set to use '
-                                         'a batch system that does not support cleanup, such as Parasol.')
+
+    caching = file_store_options.add_mutually_exclusive_group()
+    caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
+    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=caching_help)
+    caching.add_argument('--caching', dest='caching', type=bool, help=caching_help)
+    caching.set_defaults(caching=None)
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -915,6 +917,11 @@ class Toil(ContextManager["Toil"]):
         config = Config()
         config.setOptions(self.options)
         jobStore = self.getJobStore(config.jobStore)
+        if config.caching is None:
+            config.caching = jobStore.default_caching()
+            #Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
+            self.options.caching = config.caching
+
         if not config.restart:
             config.workflowAttemptNumber = 0
             jobStore.initialize(config)
@@ -1131,10 +1138,11 @@ class Toil(ContextManager["Toil"]):
             raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
                                f'(choose from: {BATCH_SYSTEM_FACTORY_REGISTRY.keys()})')
 
-        if not config.disableCaching and not batch_system.supportsWorkerCleanup():
+        if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
                                'does not support cleaning up a worker after the last job finishes. Set the '
                                '--disableCaching flag if you want to use this batch system.')
+
         logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
         return batch_system(**kwargs)

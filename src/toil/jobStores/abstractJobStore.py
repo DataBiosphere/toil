@@ -1628,6 +1628,16 @@ class AbstractJobStore(ABC):
             killed = False
         return killed
 
+    def default_caching(self) -> bool:
+        """
+        Jobstore's preference as to whether it likes caching or doesn't care about it.
+        Some jobstores benefit from caching, however on some local configurations it can be flaky.
+
+        see https://github.com/DataBiosphere/toil/issues/4218
+        """
+
+        return True
+
     # Helper methods for subclasses
 
     def _defaultTryCount(self) -> int:
@@ -1643,7 +1653,6 @@ class AbstractJobStore(ABC):
     def _requireValidSharedFileName(cls, sharedFileName: str) -> None:
         if not cls._validateSharedFileName(sharedFileName):
             raise ValueError("Not a valid shared file name: '%s'." % sharedFileName)
-
 
 class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     """

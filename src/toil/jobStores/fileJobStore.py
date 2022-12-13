@@ -67,6 +67,16 @@ class FileJobStore(AbstractJobStore):
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760  # 10Mb
 
+    def default_caching(self) -> bool:
+        """
+        Jobstore's preference as to whether it likes caching or doesn't care about it.
+        Some jobstores benefit from caching, however on some local configurations it can be flaky.
+
+        see https://github.com/DataBiosphere/toil/issues/4218
+        """
+
+        return False
+
     def __init__(self, path: str, fanOut: int = 1000) -> None:
         """
         :param path: Path to directory holding the job store
