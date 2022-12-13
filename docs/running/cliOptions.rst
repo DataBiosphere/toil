@@ -361,8 +361,8 @@ the logging module:
 
 **Miscellaneous Options**
 
-  --disableCaching      Disables caching in the file store. This flag must be
-                        set to use a batch system that does not support
+  --caching BOOL        Set caching options. This must be set to FALSE
+                        to use a batch system that does not support
                         cleanup, such as Parasol.
   --disableChaining     Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
