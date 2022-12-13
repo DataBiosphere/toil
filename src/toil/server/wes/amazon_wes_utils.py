@@ -244,7 +244,7 @@ def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = 
     return relpath
 
 # This one is all UCSC code
-def task_filter(task: TaskLog, jobStatus: JobStatus) -> Optional[TaskLog]:
+def task_filter(task: TaskLog, job_status: JobStatus) -> Optional[TaskLog]:
     """
     AGC requires task names to be annotated with an AWS Batch job ID that they
     were run under. If it encounters an un-annotated task name, it will crash.
@@ -256,7 +256,7 @@ def task_filter(task: TaskLog, jobStatus: JobStatus) -> Optional[TaskLog]:
     """
 
     # Get the Batch ID for the task
-    batch_id = jobStatus.external_batch_id
+    batch_id = job_status.external_batch_id
 
     if batch_id is None:
         return None

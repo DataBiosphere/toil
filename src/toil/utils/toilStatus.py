@@ -236,7 +236,7 @@ class ToilStatus:
         replayed_messages = replay_message_bus(self.message_bus_path)
         for key in replayed_messages:
             if replayed_messages[key].exit_code != 0:
-                print(replayed_messages[key].toJSON())
+                print(replayed_messages[key])
 
         return None
 

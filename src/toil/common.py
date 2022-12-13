@@ -397,7 +397,7 @@ class Config:
         set_option("writeLogsFromAllJobs")
 
         set_option("write_messages", os.path.abspath)
-        if self.write_messages is None:
+        if not self.write_messages:
             self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
