@@ -126,9 +126,6 @@ class AbstractBatchSystem(ABC):
         Give the batch system an opportunity to connect directly to the message
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
-
-        Currently the only message a batch system may send is
-        JobAnnotationMessage.
         """
         pass
 
@@ -382,9 +379,6 @@ class BatchSystemSupport(AbstractBatchSystem):
         Give the batch system an opportunity to connect directly to the message
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
-
-        Currently the only message a batch system may send is
-        JobAnnotationMessage.
         """
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()

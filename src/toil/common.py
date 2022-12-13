@@ -64,7 +64,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobMissingMessage,
                       MessageBus,
                       QueueSizeMessage,
-                      gen_messBus_path)
+                      gen_message_bus_path)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
@@ -398,7 +398,7 @@ class Config:
 
         set_option("write_messages", os.path.abspath)
         if self.write_messages is None:
-            self.write_messages = gen_messBus_path()
+            self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."

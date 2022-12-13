@@ -155,7 +155,7 @@ class JobAnnotationMessage(NamedTuple):
     # The annotation data
     annotation_value: str
 
-class BatchSystemMessage(NamedTuple):
+class ExternalBatchIdMessage(NamedTuple):
     """
     Produced when using a batch system, links toil assigned batch ID to
     Batch system ID (Whatever's returned by local implementation, PID, batch ID, etc)
@@ -642,6 +642,13 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
     We track the state and name of jobs here, by ID.
     We would use a list of two items but MyPy can't understand a list
     of items of multiple types, so we need to define a new class.
+
+    Returns a dictionary from the job_id to a dataclass, JobStatus.
+    A JobStatus contains information about a job which we have gathered
+    from the message bus, including the job store id, name of the job
+    the exit code, any associated annotations, the toil batch id
+    the external batch id, and the batch system on which the job
+    is running.
     """
     @dataclass
     class JobStatus:
@@ -665,7 +672,7 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
     with open(path, 'rb') as log_stream:
         # Read all the full, properly-terminated messages about job updates
         for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
-                                                               JobFailedMessage, JobAnnotationMessage, BatchSystemMessage]):
+                                                               JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
             # And for each of them
             logger.info('Got message from workflow: %s', event)
 
@@ -689,14 +696,14 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
             elif isinstance(event, JobAnnotationMessage):
                 # Remember the last value of any annotation that is set
                 job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
-            elif isinstance(event, BatchSystemMessage):
+            elif isinstance(event, ExternalBatchIdMessage):
                 if event.toil_batch_id in batch_to_job_id:
                     job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
                     job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
 
     return job_statuses
 
-def gen_messBus_path() -> str:
+def gen_message_bus_path() -> str:
     """
     If given a path, return absolute path otherwise generate path to store message bus at
     """
