@@ -88,8 +88,6 @@ from pubsub.core.listener import Listener
 from pubsub.core.topicobj import Topic
 from pubsub.core.topicutils import ALL_TOPICS
 
-from toil.server.wes.abstract_backend import TaskLog
-
 logger = logging.getLogger( __name__ )
 
 # We define a bunch of named tuple message types.
