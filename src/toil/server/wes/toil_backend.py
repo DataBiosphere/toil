@@ -72,8 +72,7 @@ class ToilWorkflow:
         :param base_work_dir: The directory where workflows keep their
                                  output/scratch directories under their run
                                  IDs. Includes the MessageBus which requires
-                                 a reliable location, thus should always be
-                                 the work_dir specified by the user.
+                                 a reliable location.
 
         :param state_store_url: URL or file path at which we communicate with
                                 running workflows.

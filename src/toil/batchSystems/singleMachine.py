@@ -227,7 +227,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             if self._outbox is not None:
                                 # Annotate the job with the PID generated.
                                 self._outbox.publish(
-                                   ExternalBatchIdMessage(jobID, result, self.__class__.__name__))
+                                   ExternalBatchIdMessage(jobID, str(result), self.__class__.__name__))
 
                         # Otherwise False
 

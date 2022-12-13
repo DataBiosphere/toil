@@ -224,7 +224,7 @@ class ToilStatus:
         return 'RUNNING'
 
 
-    def readBusMessages(self) -> None:
+    def read_bus_messages(self) -> None:
         """
         Goes through bus messages, returns a list of tuples which have correspondence between
         PID on assigned batch system and
@@ -233,6 +233,7 @@ class ToilStatus:
         """
 
         print("\nMessage bus path: ", self.message_bus_path)
+
         replayed_messages = replay_message_bus(self.message_bus_path)
         for key in replayed_messages:
             if replayed_messages[key].exit_code != 0:
@@ -401,7 +402,7 @@ def main() -> None:
               (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
                len(hasServices), len(services), len(hasLogFile), status.jobStore))
     if options.replayBus:
-        status.readBusMessages()
+        status.read_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)

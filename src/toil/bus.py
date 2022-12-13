@@ -669,37 +669,40 @@ def replay_message_bus(path: str) -> Dict[str, Any]:
 
     job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
     batch_to_job_id = {}
-    with open(path, 'rb') as log_stream:
-        # Read all the full, properly-terminated messages about job updates
-        for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
-                                                               JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
-            # And for each of them
-            logger.info('Got message from workflow: %s', event)
+    try:
+        with open(path, 'rb') as log_stream:
+            # Read all the full, properly-terminated messages about job updates
+            for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
+                                                                   JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
+                # And for each of them
+                logger.info('Got message from workflow: %s', event)
 
-            if isinstance(event, JobUpdatedMessage):
-                # Apply the latest return code from the job with this ID.
-                job_statuses[event.job_id].exit_code = event.result_status
-            elif isinstance(event, JobIssuedMessage):
-                job_statuses[event.job_id].job_store_id = event.job_id
-                job_statuses[event.job_id].name = event.job_type
-                job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
-                job_statuses[event.job_id].exit_code = -1
-                batch_to_job_id[event.toil_batch_id] = event.job_id
-            elif isinstance(event, JobCompletedMessage):
-                job_statuses[event.job_id].name = event.job_type
-                job_statuses[event.job_id].exit_code = event.exit_code
-            elif isinstance(event, JobFailedMessage):
-                job_statuses[event.job_id].name = event.job_type
-                if job_statuses[event.job_id].exit_code == 0:
-                    # Record the failure if we never got a failed exit code.
-                    job_statuses[event.job_id].exit_code = 1
-            elif isinstance(event, JobAnnotationMessage):
-                # Remember the last value of any annotation that is set
-                job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
-            elif isinstance(event, ExternalBatchIdMessage):
-                if event.toil_batch_id in batch_to_job_id:
-                    job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
-                    job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
+                if isinstance(event, JobUpdatedMessage):
+                    # Apply the latest return code from the job with this ID.
+                    job_statuses[event.job_id].exit_code = event.result_status
+                elif isinstance(event, JobIssuedMessage):
+                    job_statuses[event.job_id].job_store_id = event.job_id
+                    job_statuses[event.job_id].name = event.job_type
+                    job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
+                    job_statuses[event.job_id].exit_code = -1
+                    batch_to_job_id[event.toil_batch_id] = event.job_id
+                elif isinstance(event, JobCompletedMessage):
+                    job_statuses[event.job_id].name = event.job_type
+                    job_statuses[event.job_id].exit_code = event.exit_code
+                elif isinstance(event, JobFailedMessage):
+                    job_statuses[event.job_id].name = event.job_type
+                    if job_statuses[event.job_id].exit_code == 0:
+                        # Record the failure if we never got a failed exit code.
+                        job_statuses[event.job_id].exit_code = 1
+                elif isinstance(event, JobAnnotationMessage):
+                    # Remember the last value of any annotation that is set
+                    job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
+                elif isinstance(event, ExternalBatchIdMessage):
+                    if event.toil_batch_id in batch_to_job_id:
+                        job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
+                        job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
+    except FileNotFoundError:
+        logger.warning("We were unable to access the file")
 
     return job_statuses
 
