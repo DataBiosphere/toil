@@ -81,8 +81,7 @@ class hidden:
             # defaultCores defaults to 1 - this is coincidentally the core requirement relied upon by this
             # test, so we change defaultCores to 2 to make the test more strict
             options.defaultCores = 2
-            if not caching:
-                options.disableCaching = True
+            options.caching = caching
             return options
 
         def getCounterPath(self, tempDir):
