@@ -647,7 +647,7 @@ class JobStatus:
     external_batch_id: str
     batch_system: str
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return json.dumps(self, default= lambda o: o.__dict__, indent=4)
 def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
