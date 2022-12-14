@@ -299,12 +299,6 @@ class ResolveSource:
         self.name, self.input, self.source_key = name, input, source_key
 
         source_names = aslist(self.input[self.source_key])
-        # with open("/Users/wlgao/Desktop/log.txt", "a") as f:
-        #     f.write(f"{name=}\n")
-        #     f.write(f"{input=}\n")
-        #     f.write(f"{source_key=}\n")
-        #     f.write(f"{source_names=}\n\n")
-
         # Rule is that source: [foo] is just foo
         #                      unless it also has linkMerge: merge_nested
         if input.get("linkMerge") or len(source_names) > 1:
@@ -341,9 +335,6 @@ class ResolveSource:
         else:
             name, rv = self.promise_tuples
             result = cast(Dict[str, Any], rv).get(name)
-
-        # logger.warning(f"{result=}")
-        # logger.warning(f"{self.promise_tuples=}")
 
         result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
