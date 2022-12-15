@@ -31,7 +31,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
-                         # 'python3.9-venv' if python == 'python3.9' else '',
+                         'python3.10-distutils' if python == 'python3.10' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -53,6 +53,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'less',
                          'vim',
                          'git',
+                         'docker.io',
+                         'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
                          'libcurl4-nss-dev',
@@ -82,7 +84,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:20.04
+    FROM ubuntu:22.04
 
     ARG TARGETARCH
 
@@ -101,12 +103,13 @@ print(heredoc('''
 
     # Find a repo with a Mesos build.
     # See https://rpm.aventer.biz/README.txt
-    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/
+    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/ for https://rpm.aventer.biz/Ubuntu
+    # And one that works with https://rpm.aventer.biz/Ubuntu/focal (the new URL) is at https://ipfs.io/ipfs/Qmcrmx7T1YkEnyexMXdd7QjoBZxf7DMDrQ5ErUKi9mDRw6/
     # As archived with:
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://rpm.aventer.biz/Ubuntu focal main" \
+    RUN echo "deb https://rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
         && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
@@ -118,10 +121,32 @@ print(heredoc('''
         rm -rf /var/lib/apt/lists/*
     
     # Install a particular old Debian Sid Singularity from somewhere.
-    ADD singularity-sources.tsv /etc/singularity/singularity-sources.tsv
-    RUN wget -q "$(cat /etc/singularity/singularity-sources.tsv | grep "^$TARGETARCH" | cut -f3)" && \
-        dpkg -i singularity-container_3*.deb && \
-        rm singularity-container_3*.deb && \
+    # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
+    # than Ubuntu 20.04 ships. So we need a 22.04+ base.
+    #
+    # But 22.04 ships squashfs-tools 4.4 or 4.5 or so, which is new enough that
+    # errors encountered during extraction produce a nonzero exit code, without
+    # a special option:
+    # <https://github.com/plougher/squashfs-tools/commit/1dd7f32e79b7600d379a4f26fb8d138ebdfc70be>.
+    # If unsquashfs thinks it is root, but it can't change UIDs and GIDs freely, it
+    # will continue but fail the whole command instead of returning success. It complains:
+    #
+    # set_attributes: failed to change uid and gids on /image/rootfs/etc/gshadow, because Invalid argument
+    #
+    # But inside a Kubernetes container we can be root but not actually be
+    # allowed to set UIDs and GIDs arbitrarily. Singularity can't handle this,
+    # and can't pass the flag to ignore these errors, and we can't wrap
+    # unsquashfs with a shell script because of how it gets mounted into the
+    # container under construction along with its libraries (see
+    # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
+    #
+    # So we need to make sure to install a downgraded squashfs first.
+    ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
+    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
+        dpkg -i squashfs-tools_*.deb && \
+        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
+        dpkg -i singularity-container_*.deb && \
+        rm singularity-container_*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
         mkdir -p /usr/local/libexec/toil && \
         mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
@@ -134,12 +159,14 @@ print(heredoc('''
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
 
-    ADD singularity-wrapper.sh /usr/local/bin/singularity
+    # Wrap Singularity to use a Docker mirror instead of always Docker Hub
+    # We need to put it where the installed singularity expects singularity to actually be.
+    ADD singularity-wrapper.sh /usr/bin/singularity
 
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/local/bin/singularity
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==21.3.1
+    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==59.7.0
@@ -151,12 +178,6 @@ print(heredoc('''
     RUN virtualenv --python {python} --never-download /home/s3am \
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
-
-    # Install statically linked version of docker client
-    RUN curl https://download.docker.com/linux/static/stable/$(if [ $TARGETARCH = amd64 ] ; then echo x86_64 ; else echo aarch64 ; fi)/docker-18.06.1-ce.tgz \
-        | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
-        && chmod u+x /usr/local/bin/docker \
-        && /usr/local/bin/docker -v
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix

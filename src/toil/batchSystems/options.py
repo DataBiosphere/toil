@@ -13,8 +13,13 @@
 
 import logging
 import os
+import sys
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import cast, Any, Callable, List, Optional, TypeVar, Union
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
 
 from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
                                         BATCH_SYSTEMS,
@@ -23,7 +28,27 @@ from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
-def set_batchsystem_options(batch_system: Optional[str], set_option: Callable) -> None:
+class OptionSetter(Protocol):
+    """
+    Protocol for the setOption function we get to let us set up CLI options for
+    each batch system.
+
+    Actual functionality is defined in the Config class.
+    """
+
+    OptionType = TypeVar('OptionType')
+    def __call__(
+        self,
+        option_name: str,
+        parsing_function: Optional[Callable[[Any], OptionType]] = None,
+        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
+        default: Optional[OptionType] = None,
+        env: Optional[List[str]] = None,
+        old_names: Optional[List[str]] = None
+    ) -> bool:
+        ...
+
+def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSetter) -> None:
     """
     Call set_option for all the options for the given named batch system, or
     all batch systems if no name is provided.
@@ -50,7 +75,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: Callable) -
     set_option("manualMemArgs")
     set_option("runCwlInternalJobsOnWorkers", bool, default=False)
     set_option("statePollingWait")
-    
+
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     # Do the global cross-batch-system arguments
@@ -189,6 +214,7 @@ def set_batchsystem_config_defaults(config) -> None:
             setattr(config, option_name, option_value)
 
     # Set up defaults from all the batch systems
-    set_batchsystem_options(None, set_option)
+    set_batchsystem_options(None, cast(OptionSetter, set_option))
 
-    
+
+

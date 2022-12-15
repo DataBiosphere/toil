@@ -83,16 +83,6 @@ quick_test_offline:
     - make develop extras=[aws,google,wdl]
     - TOIL_TEST_QUICK=True make test_offline
 
-# Python3.7
-py37_main:
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.7 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
-
 py37_appliance_build:
   stage: basic_tests
   script:
@@ -101,16 +91,6 @@ py37_appliance_build:
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
-
-# Python3.8
-py38_main:
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.8 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 py38_appliance_build:
   stage: basic_tests
@@ -121,16 +101,6 @@ py38_appliance_build:
     - python setup_gitlab_docker.py
     - make push_docker
 
-# Python3.9
-py39_main:
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
-
 py39_appliance_build:
   stage: basic_tests
   script:
@@ -139,6 +109,24 @@ py39_appliance_build:
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
+
+py310_appliance_build:
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 &&  pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
+py310_main:
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
+    - make test tests=src/toil/test/src
+    - make test tests=src/toil/test/utils
+    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 batch_systems:
   stage: main_tests
@@ -225,7 +213,7 @@ cwl_misc:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests='src/toil/test/cwl/cwlTest.py::CWLWorkflowTest src/toil/test/cwl/cwlTest.py::CWLSmallLogDir src/toil/test/cwl/cwlTest.py::CWLSmallTests'
+    - make test tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
 
 cwl_v1.0_kubernetes:
   stage: main_tests
@@ -294,6 +282,7 @@ jobstore_and_provisioning:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
+    - make test tests=src/toil/test/lib/aws/
     - make test tests=src/toil/test/jobStores/jobStoreTest.py
     - make test tests=src/toil/test/sort/sortTest.py
     - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
@@ -370,10 +359,10 @@ cactus_integration:
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
-    - git checkout 3345cc0ce8dbf27ec765178f6031c5558d6d3525
+    - git checkout f5adf4013326322ae58ef1eccb8409b71d761583
     - git submodule update --init --recursive
     - pip install --upgrade setuptools pip
     - pip install --upgrade .
     - pip install --upgrade numpy psutil # Cactus installs an old psutil that Toil isn't compatible with. TODO: Do we really need Numpy?
     - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --retryCount=3 --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug

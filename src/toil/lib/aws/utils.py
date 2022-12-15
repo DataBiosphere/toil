@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
+import json
 import logging
 import os
 import socket
@@ -40,9 +41,10 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             retry)
 
 if sys.version_info >= (3, 8):
-    from typing import Literal
+    from typing import Literal, MutableMapping
 else:
     from typing_extensions import Literal
+    from typing import MutableMapping
 
 try:
     from boto.exception import BotoServerError, S3ResponseError
@@ -301,12 +303,12 @@ def region_to_bucket_location(region: str) -> str:
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
-def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> Object:
+def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Object":
         """
         Extracts a key (object) from a given parsed s3:// URL.
 
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
+                exists and it will be created. If None, the key will be created if it doesn't exist.
         """
 
         key_name = url.path[1:]
@@ -370,7 +372,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
             key_name = key_name + '/'
 
         # Decide if we need to override Boto's built-in URL here.
-        # TODO: Decuplicate with get_object_for_url, or push down into session module
+        # TODO: Deduplicate with get_object_for_url, or push down into session module
         endpoint_url: Optional[str] = None
         host = os.environ.get('TOIL_S3_HOST', None)
         port = os.environ.get('TOIL_S3_PORT', None)
@@ -392,9 +394,38 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
                     listing.append(prefix_item['Prefix'][len(key_name):])
             if 'Contents' in page:
                 for content_item in page['Contents']:
+                    if content_item['Key'] == key_name:
+                        # Ignore folder name itself
+                        continue
                     listing.append(content_item['Key'][len(key_name):])
 
         logger.debug('Found in %s items: %s', url, listing)
         return listing
 
 
+def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> Dict[str, str]:
+    tags = dict()
+    owner_tag = environment.get('TOIL_OWNER_TAG')
+    if owner_tag:
+        tags.update({'Owner': owner_tag})
+
+    user_tags = environment.get('TOIL_AWS_TAGS')
+    if user_tags:
+        try:
+            json_user_tags = json.loads(user_tags)
+            if isinstance(json_user_tags, dict):
+                tags.update(json.loads(user_tags))
+            else:
+                logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+                exit(1)
+        except json.decoder.JSONDecodeError:
+            logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+            exit(1)
+    return tags
+
+
+def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
+    """
+    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
+    """
+    return [{'Key': k, 'Value': v} for k, v in tags.items()]

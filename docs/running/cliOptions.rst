@@ -249,6 +249,8 @@ the logging module:
                         where some tasks require much more disk than others.
   --metrics             Enable the prometheus/grafana dashboard for monitoring
                         CPU/RAM usage, queue size, and issued jobs.
+  --assumeZeroOverhead  Ignore scheduler and OS overhead and assume jobs can use every
+                        last byte of memory and disk on a node when autoscaling.
   --defaultMemory INT   The default amount of memory to request for a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
@@ -265,6 +267,16 @@ the logging module:
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
                         2.0G
+  --defaultAccelerators ACCELERATOR[,ACCELERATOR...]
+                        The default amount of accelerators to request for a
+                        job. Only applicable to jobs that do not specify an
+                        explicit value for this requirement. Each accelerator
+                        specification can have a type (gpu [default], nvidia,
+                        amd, cuda, rocm, opencl, or a specific model like
+                        nvidia-tesla-k80), and a count [default: 1]. If both a
+                        type and a count are used, they must be separated by a
+                        colon. If multiple types of accelerators are used, the
+                        specifications are separated by commas. Default is [].
   --defaultPreemptable BOOL
                         Set if jobs that do not specifically prohibit it should
                         able to run on preemptable (spot) nodes.

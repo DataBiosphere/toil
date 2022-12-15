@@ -14,12 +14,58 @@
 
 """
 Message types and message bus for leader component coordination.
+
+Historically, the Toil Leader has been organized around functions calling other
+functions to "handle" different things happening. Over time, it has become very
+brittle: exactly the right handling functions need to be called in exactly the
+right order, or it gets confused and does the wrong thing.
+
+The MessageBus is meant to let the leader avoid this by more losely coupling
+its components together, by having them communicate by sending messages instead
+of by calling functions.
+
+When events occur (like a job coming back from the batch system with a failed
+exit status), this will be translated into a message that will be sent to the
+bus. Then, all the leader components that need to react to this message in some
+way (by, say, decrementing the retry count) would listen for the relevant
+messages on the bus and react to them. If a new component needs to be added, it
+can be plugged into the message bus and receive and react to messages without
+interfering with existing components' ability to react to the same messages.
+
+Eventually, the different aspects of the Leader could become separate objects.
+
+By default, messages stay entirely within the Toil leader process, and are not
+persisted anywhere, not even in the JobStore.
+
+The Message Bus also provides an extension point: its messages can be
+serialized to a file by the leader (see the --writeMessages option), and they
+can then be decoded using MessageBus.scan_bus_messages() (as is done in the
+Toil WES server backend). By replaying the messages and tracking their effects
+on job state, you can get an up-to-date view of the state of the jobs in a
+workflow. This includes information, such as whether jobs are issued or
+running, or what jobs have completely finished, which is not persisted in the
+JobStore.
+
+The MessageBus instance for the leader process is owned by the Toil leader, but
+the BatchSystem has an opportunity to connect to it, and can send (or listen
+for) messages. Right now the BatchSystem deos not *have* to send or receive any
+messages; the Leader is responsible for polling it via the BatchSystem API and
+generating the events. But a BatchSystem implementation *may* send additional
+events (like JobAnnotationMessage).
+
+Currently, the MessageBus is implemented using pypubsub, and so messages are
+always handled in a single Thread, the Toil leader's main loop thread. If other
+components send events, they will be shipped over to that thread inside the
+MessageBus. Communication between processes is allowed using
+MessageBus.connect_output_file() and MessageBus.scan_bus_messages().
 """
 
 import collections
 import inspect
 import logging
+import queue
 import sys
+import threading
 from typing import (IO,
                     Any,
                     Callable,
@@ -197,15 +243,17 @@ class MessageBus:
     All messages are NamedTuple objects of various subtypes.
 
     Message order is guaranteed to be preserved within a type.
-
-    TODO: Not yet thread safe, but should be made thread safe if we want e.g.
-    the ServiceManager to talk to it. Note that defaultdict itself isn't
-    necessarily thread safe.
     """
 
     def __init__(self) -> None:
         # Each MessageBus has an independent PyPubSub instance
         self._pubsub = Publisher()
+
+        # We will deliver messages to the thread we were constructed in
+        self._owning_thread = threading.get_ident()
+
+        # Messages from other threads go in this queue
+        self._queue: queue.Queue[Any] = queue.Queue()
 
     @classmethod
     def _type_to_name(cls, message_type: type) -> str:
@@ -220,7 +268,41 @@ class MessageBus:
     # from NamedTupe, so MyPy complains if we require that here.
     def publish(self, message: Any) -> None:
         """
-        Put a message onto the bus.
+        Put a message onto the bus. Can be called from any thread.
+        """
+
+        if threading.get_ident() == self._owning_thread:
+            # We can deliver this now
+            self._deliver(message)
+            # Also do any waiting messages
+            self.check()
+        else:
+            # We need to put it in the queue for the main thread
+            self._queue.put(message)
+
+    def check(self) -> None:
+        """
+        If we are in the owning thread, deliver any messages that are in the
+        queue for us. Must be called every once in a while in the main thread,
+        possibly through inbox objects.
+        """
+
+        if threading.get_ident() == self._owning_thread:
+            # We are supposed to receive messages
+            while True:
+                # Until we can't get a message, get one
+                message: Optional[Any] = None
+                try:
+                    message = self._queue.get_nowait()
+                except queue.Empty:
+                    # No messages are waiting
+                    return
+                # Handle the message
+                self._deliver(message)
+
+    def _deliver(self, message: Any) -> None:
+        """
+        Runs only in the owning thread. Delivers a message to its listeners.
         """
         topic = self._type_to_name(type(message))
         logger.debug('Notifying %s with message: %s', topic, message)
@@ -346,7 +428,29 @@ class MessageBus:
             # And produce it
             yield message
 
-class MessageInbox:
+class MessageBusClient:
+    """
+    Base class for clients (inboxes and outboxes) of a message bus. Handles
+    keeping a reference to the message bus.
+    """
+
+    def __init__(self) -> None:
+        """
+        Make a disconnected client.
+        """
+
+        # We might be given a reference to the message bus
+        self._bus: Optional[MessageBus] = None
+
+    def _set_bus(self, bus: MessageBus) -> None:
+        """
+        Connect to the given bus.
+
+        Should only ever be called once on a given instance.
+        """
+        self._bus = bus
+
+class MessageInbox(MessageBusClient):
     """
     A buffered connection to a message bus that lets us receive messages.
     Buffers incoming messages until you are ready for them.
@@ -377,26 +481,40 @@ class MessageInbox:
         Should only ever be called once on a given instance.
         """
 
+        self._set_bus(bus)
+
         for t in wanted_types:
-            # or every kind of message we are subscribing to
+            # For every kind of message we are subscribing to
 
             # Make a queue for the messages
             self._messages_by_type[t] = []
             # Make and save a subscription
             self._listeners_by_type[t] = bus.subscribe(t, self._handler)
 
+    def _check_bus(self) -> None:
+        """
+        Make sure we are connected to a bus, and let the bus check for messages
+        and deliver them to us. We call this before we access our delivered
+        messages.
+        """
+
+        if self._bus is None:
+            raise RuntimeError("Cannot receive message when not connected to a bus")
+        # Make sure to check for messages form other threads first
+        self._bus.check()
+
     def count(self, message_type: type) -> int:
         """
         Get the number of pending messages of the given type.
         """
-
+        self._check_bus()
         return len(self._messages_by_type[message_type])
 
     def empty(self) -> bool:
         """
         Return True if no messages are pending, and false otherwise.
         """
-
+        self._check_bus()
         return all(len(v) == 0 for v in self._messages_by_type.values())
 
     # This next function returns things of the type that was passed in as a
@@ -410,6 +528,8 @@ class MessageInbox:
         Messages sent while this function is running will not be yielded by the
         current call.
         """
+
+        self._check_bus()
 
         # Grab the message buffer for this kind of message.
         message_list = self._messages_by_type[message_type]
@@ -446,7 +566,7 @@ class MessageInbox:
             message_list.reverse()
             self._messages_by_type[message_type] = message_list + self._messages_by_type[message_type]
 
-class MessageOutbox:
+class MessageOutbox(MessageBusClient):
     """
     A connection to a message bus that lets us publish messages.
     """
@@ -456,15 +576,6 @@ class MessageOutbox:
         Make a disconnected outbox.
         """
         super().__init__()
-        self._bus: Optional[MessageBus] = None
-
-    def _set_bus(self, bus: MessageBus) -> None:
-        """
-        Connect to the given bus.
-
-        Should only ever be called once on a given instance.
-        """
-        self._bus = bus
 
     def publish(self, message: Any) -> None:
         """
@@ -487,19 +598,6 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         Make a MessageBusConnection that is not connected yet.
         """
         super().__init__()
-
-
-    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
-        """
-        Connect to the given bus and collect the given message types.
-
-        We must not have connected to anything yet.
-        """
-
-        # We need to call the two inherited connection methods
-        super()._set_bus_and_message_types(bus, wanted_types)
-        self._set_bus(bus)
-
 
 
 

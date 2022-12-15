@@ -109,7 +109,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import Job, Promise
+from toil.job import Job, Promise, AcceleratorRequirement
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
@@ -329,12 +329,12 @@ class ResolveSource:
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
                 cast(
-                    CWLObjectType, [v[1][v[0]] for v in self.promise_tuples]  # type: ignore[index]
+                    CWLObjectType, [rv[name] for name, rv in self.promise_tuples]  # type: ignore[index]
                 )
             )
         else:
-            value = self.promise_tuples
-            result = cast(Dict[str, Any], value[1]).get(value[0])
+            name, rv = self.promise_tuples
+            result = cast(Dict[str, Any], rv).get(name)
 
         result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
@@ -379,6 +379,9 @@ class ResolveSource:
 
         if pick_value_type is None:
             return values
+
+        if isinstance(values, SkipNull):
+            return None
 
         if not isinstance(values, list):
             logger.warning("pickValue used but input %s is not a list." % self.name)
@@ -1798,6 +1801,7 @@ class CWLNamedJob(Job):
         cores: Union[float, None] = 1,
         memory: Union[int, str, None] = "1GiB",
         disk: Union[int, str, None] = "1MiB",
+        accelerators: Optional[List[AcceleratorRequirement]] = None,
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
@@ -1840,6 +1844,7 @@ class CWLNamedJob(Job):
             cores=cores,
             memory=memory,
             disk=disk,
+            accelerators=accelerators,
             unitName=unit_name,
             displayName=display_name,
         )
@@ -2104,6 +2109,18 @@ class CWLJob(CWLNamedJob):
 
         req = tool.evalResources(self.builder, runtime_context)
 
+        accelerators: Optional[List[AcceleratorRequirement]] = None
+        if req.get("cudaDeviceCount", 0) > 0:
+            # There's a CUDARequirement
+            # TODO: How is cwltool deciding what value to use between min and max?
+            accelerators = [
+                {
+                    "kind": "gpu",
+                    "api": "cuda",
+                    "count": cast(int, req["cudaDeviceCount"]),
+                }
+            ]
+
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
@@ -2111,6 +2128,7 @@ class CWLJob(CWLNamedJob):
                 (cast(int, req["tmpdirSize"]) * (2**20))
                 + (cast(int, req["outdirSize"]) * (2**20))
             ),
+            accelerators=accelerators,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
         )
@@ -2357,29 +2375,29 @@ def makeJob(
         wfjob.addFollowOn(followOn)
         return wfjob, followOn
     else:
-        resourceReq, _ = tool.get_requirement("ResourceRequirement")
-        if resourceReq:
-            for req in (
-                "coresMin",
-                "coresMax",
-                "ramMin",
-                "ramMax",
-                "tmpdirMin",
-                "tmpdirMax",
-                "outdirMin",
-                "outdirMax",
-            ):
-                r = resourceReq.get(req)
-                if isinstance(r, str) and ("$(" in r or "${" in r):
-                    # Found a dynamic resource requirement so use a job wrapper
-                    job_wrapper = CWLJobWrapper(
-                        cast(ToilCommandLineTool, tool),
-                        jobobj,
-                        runtime_context,
-                        parent_name=parent_name,
-                        conditional=conditional,
-                    )
-                    return job_wrapper, job_wrapper
+        # Decied if we have any requirements we care about that are dynamic
+        REQUIREMENT_TYPES = [
+            "ResourceRequirement",
+            "http://commonwl.org/cwltool#CUDARequirement",
+        ]
+        for requirement_type in REQUIREMENT_TYPES:
+            req, _ = tool.get_requirement(requirement_type)
+            if req:
+                for r in req.values():
+                    if isinstance(r, str) and ("$(" in r or "${" in r):
+                        # One of the keys in this requirement has a text substitution in it.
+                        # TODO: This is not a real lex!
+
+                        # Found a dynamic resource requirement so use a job wrapper
+                        job_wrapper = CWLJobWrapper(
+                            cast(ToilCommandLineTool, tool),
+                            jobobj,
+                            runtime_context,
+                            parent_name=parent_name,
+                            conditional=conditional,
+                        )
+                        return job_wrapper, job_wrapper
+        # Otherwise, all requirements are known now.
         job = CWLJob(
             tool,
             jobobj,
@@ -3158,7 +3176,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "--singularity",
         action="store_true",
         default=False,
-        help="[experimental] Use Singularity runtime for running containers. "
+        help="Use Singularity runtime for running containers. "
         "Requires Singularity v2.6.1+ and Linux with kernel version v3.18+ or "
         "with overlayfs support backported.",
     )
@@ -3166,7 +3184,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "--podman",
         action="store_true",
         default=False,
-        help="[experimental] Use Podman runtime for running containers. ",
+        help="Use Podman runtime for running containers. ",
     )
     dockergroup.add_argument(
         "--no-container",
@@ -3278,6 +3296,15 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         "default of 1 gigabyte to Docker's --memory option.",
     )
     parser.add_argument(
+        "--strict-cpu-limit",
+        action="store_true",
+        help="When running with "
+        "software containers and the Docker engine, pass either the "
+        "calculated cpu allocation from ResourceRequirements or the "
+        "default of 1 core to Docker's --cpu option. "
+        "Requires docker version >= v1.13.",
+    )
+    parser.add_argument(
         "--relax-path-checks",
         action="store_true",
         default=False,
@@ -3290,6 +3317,35 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Specify a default docker container that will be "
         "used if the workflow fails to specify one.",
     )
+    parser.add_argument(
+        "--disable-validate",
+        dest="do_validate",
+        action="store_false",
+        default=True,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--fast-parser",
+        dest="fast_parser",
+        action="store_true",
+        default=False,
+        help=argparse.SUPPRESS,
+    )
+    checkgroup = parser.add_mutually_exclusive_group()
+    checkgroup.add_argument(
+        "--compute-checksum",
+        action="store_true",
+        default=True,
+        help="Compute checksum of contents while collecting outputs",
+        dest="compute_checksum",
+    )
+    checkgroup.add_argument(
+        "--no-compute-checksum",
+        action="store_false",
+        help="Do not compute checksum of contents while collecting outputs",
+        dest="compute_checksum",
+    )
+
     parser.add_argument(
         "--eval-timeout",
         help="Time to wait for a Javascript expression to evaluate before giving "
@@ -3788,7 +3844,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
             runtime_context.research_obj.close(options.provenance)
 
-        if not options.destBucket:
+        if not options.destBucket and options.compute_checksum:
             visit_class(
                 outobj,
                 ("File",),

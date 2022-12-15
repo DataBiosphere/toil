@@ -39,6 +39,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
+from toil.batchSystems.options import OptionSetter
 from toil.job import JobDescription
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
@@ -180,17 +181,13 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         if localID:
             return localID
 
+        self.check_resource_request(jobNode)
         mesos_resources = {
             "memory": jobNode.memory,
             "cores": jobNode.cores,
             "disk": jobNode.disk,
             "preemptable": jobNode.preemptable
         }
-        self.checkResourceRequest(
-            memory=mesos_resources["memory"],
-            cores=mesos_resources["cores"],
-            disk=mesos_resources["disk"]
-        )
 
         jobID = self.getNextJobID()
         environment = self.environment.copy()
@@ -844,6 +841,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
 
     @classmethod
-    def setOptions(cls, setOption):
+    def setOptions(cls, setOption: OptionSetter):
         setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
 

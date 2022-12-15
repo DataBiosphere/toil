@@ -366,7 +366,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         if localID:
             return localID
         else:
-            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
+            self.check_resource_request(jobDesc)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
             self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
