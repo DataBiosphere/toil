@@ -1127,6 +1127,25 @@ def test_filename_conflict_resolution(tmp_path: Path):
 
 @needs_cwl
 @pytest.mark.cwl_small
+def test_pick_value_with_one_null_value(caplog):
+    """
+    Make sure toil-cwl-runner does not false log a warning when pickValue is
+    used but outputSource only contains one null value. See: #3991.
+    """
+    from toil.cwl import cwltoil
+
+    cwl_file = os.path.join(os.path.dirname(__file__), "conditional_wf.cwl")
+    job_file = os.path.join(os.path.dirname(__file__), "conditional_wf.yaml")
+    args = [cwl_file, job_file]
+
+    with caplog.at_level(logging.WARNING, logger="toil.cwl.cwltoil"):
+        cwltoil.main(args)
+        for line in caplog.messages:
+            assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
+
+
+@needs_cwl
+@pytest.mark.cwl_small
 def test_usage_message():
     """
     This is purely to ensure a (more) helpful error message is printed if a user does
