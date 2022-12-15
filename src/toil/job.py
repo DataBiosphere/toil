@@ -1284,7 +1284,7 @@ class Job:
         unitName: Optional[str] = "",
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
-        descriptionClass: Optional[str] = None,
+        descriptionClass: Optional[type] = None,
     ) -> None:
         """
         Job initializer.
