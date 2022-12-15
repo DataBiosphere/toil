@@ -15,6 +15,7 @@
 import argparse
 import collections
 import copy
+import itertools
 import json
 import logging
 import os
@@ -54,20 +55,28 @@ def log_bindings(all_bindings: List[Union[WDLBindings, Promise]]) -> None:
         if isinstance(bindings, WDL.Env.Bindings):
             for binding in bindings:
                 logger.info("%s = %s", binding.name, binding.value)
-        elif isinstance(bindings, UnfulfilledPromiseSentinel):
+        elif isinstance(bindings, Promise):
             logger.info("<Unfulfilled promise for bindings>")
 
 def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode]:
     """
-    Recursively iterate over all WDL workflow nodes in the given node.
+    Iterate over all WDL workflow nodes in the given node.
+    
+    Only goes into one level of section-ing: will show conditional and scatter
+    nodes, but not their contents.
     """
     
     logger.debug('WorkflowNode: %s: %s %s', type(root), root, root.workflow_node_id)
     yield root
     for child_node in root.children:
+        logger.debug('Child %s of %s', child_node, root)
         if isinstance(child_node, WDL.Tree.WorkflowNode):
-            for result in for_each_node(child_node):
-                yield result
+            if isinstance(child_node, WDL.Tree.WorkflowSection):
+                # Stop at section boundaries
+                yield child_node
+            else:
+                for result in for_each_node(child_node):
+                    yield result
         else:
             if hasattr(child_node, 'workflow_node_id'):
                 logger.debug('Non-WorkflowNode: %s: %s %s', type(child_node), child_node, workflow_node_id)
@@ -106,21 +115,55 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         super().__init__(file_store)
 
 
+def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
+    """
+    Evaluate an expression when we know the name of it.
+    """
+    
+    if expression is None:
+        if expected_type and expected_type.optional:
+            # We can just leave the value as null
+            value = WDL.Value.Null()
+        else:
+            raise WDL.Error.EvalError(context, "Cannot evaluate no expression for " + name)
+    else:
+        logger.debug("Evaluate expression for %s: %s", name, expression)
+        logger.debug("In environment:")
+        log_bindings(environment)
+        
+        value = expression.eval(environment, stdlib)
+    return value
+
 def evaluate_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
     """
     Evaluate the expression of a declaration node, or raise an error.
     """
     
-    if node.expr is None:
-        if node.type.optional:
-            # We can just leave the value as null
-            value = WDL.Value.Null()
-        else:
-            raise WDL.Error.EvalError(node, "Cannot evaluate no expression for " + node.name)
+    return evaluate_named_expression(node, node.name, node.type, node.expr, environment, stdlib)
+    
+def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], expressions: Dict[str, WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
+    """
+    Evaluate a bunch of expressions with names, and make them into a fresh set of bindings.
+    """
+    
+    new_bindings = WDL.Env.Bindings()
+    for k, v in expressions.items():
+        # Add each binding in turn
+        new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, None, v, environment, stdlib))
+    return new_bindings
+    
+def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
+    """
+    If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
+    """
+    
+    if node.name in environment:
+        logger.debug('Name %s is already defined, not using default', node.name)
+        return environment[node.name]
     else:
-        value = node.expr.eval(environment, stdlib)
-    return value
-
+        logger.info('Defaulting %s to %s', node.name, node.expr)
+        return evaluate_decl(node, environment, stdlib)
+    
 class WDLInputJob(Job):
     """
     Job that evaluates a WDL input, or sources it from the workflow inputs.
@@ -136,20 +179,66 @@ class WDLInputJob(Job):
         
         # Combine the bindings we get from previous jobs
         incoming_bindings = combine_bindings(self._prev_node_results)
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
         
-        if self._node.name in incoming_bindings:
-            # This input is user-specified and we don't need to do anything
-            logger.debug('Name %s is already defined, not using default', self._node.name)
-            return incoming_bindings
-        else:
-            # We need to evaluate our expression
-            # Set up the WDL standard library
-            standard_library = ToilWDLStdLibBase(file_store)
-            logger.info('Defaulting %s to %s', self._node.name, self._node.expr)
-            value = evaluate_decl(self._node, incoming_bindings, standard_library)
-            return incoming_bindings.bind(self._node.name, value)
+        return incoming_bindings.bind(self._node.name, evaluate_defaultable_decl(self._node, incoming_bindings, standard_library))
+            
+class WDLTaskJob(Job):
+    """
+    Job that runs a WDL task.
+    
+    Responsible for evaluating the input declarations for unspecified inputs,
+    evaluating the runtime section, re-scheduling if resources are not
+    available, running any command, and evaluating the outputs. 
+    
+    All bindings are in terms of task-internal names.
+    """
+    
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: List[WDLBindings], **kwargs) -> None:
+        super().__init__(unitName=task.name, displayName=task.name, **kwargs)
         
-
+        self._task = task
+        self._prev_node_results = prev_node_results
+        
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+        logger.info("Running task %s", self._task.name)
+        
+        # Combine the bindings we get from previous jobs.
+        # For a task we only see the insode-the-task namespace.
+        bindings = combine_bindings(self._prev_node_results)
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+        
+        if self._task.inputs:
+            for input_decl in self._task.inputs:
+                # Evaluate all the inputs that aren't pre-set
+                bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+        for post_input_decl in self._task.post_inputs:
+            # Evaluate all the post-input decls
+            bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+        
+        # Evaluate the runtime section
+        runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
+        
+        # TODO: Re-schedule if we need more resources
+        
+        if self._task.command:
+            # Work out the command string
+            command_string = evaluate_named_expression(self._task, "command", None, self._task.command, bindings, standard_library)
+            # And run it
+            subprocess.check_call(command_string, shell=True)
+            # TODO: Capture output and error somehow.
+            # TODO: Accept nonzero exit codes when requested.
+            
+        # Evaluate all the outputs in their special library context
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store)
+        output_bindings = WDL.Env.Bindings()
+        for output_decl in outputs:
+            output_bindings = output_bindings.bind(output_decl.name, bindings, outputs_library)
+        
+        return output_bindings
+        
 class WDLWorkflowNodeJob(Job):
     """
     Job that evaluates a WDL workflow node.
@@ -174,78 +263,110 @@ class WDLWorkflowNodeJob(Job):
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
             value = evaluate_decl(self._node, incoming_bindings, standard_library)    
             return incoming_bindings.bind(self._node.name, value)
+        elif isinstance(self._node, WDL.Tree.Call):
+            # This is a call of a task or workflow
+            
+            # Fetch all the inputs we are passing and bind them.
+            # The call is only allowed to use these.
+            logger.info("Evaluate step inputs")
+            input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
+            
+            # Bindings may also be added in from the enclosing workflow inputs
+            # TODO: this is letting us also inject them from the workflow body.
+            passed_down_bindings = incoming_bindings.enter_namespace(self._node.name)
+            
+            if isinstance(self._node.callee, WDL.Tree.Workflow):
+                # This is a call of a workflow
+                subjob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings])
+                self.addChild(subworkflow_job)
+            elif isinstance(self._node.callee, WDL.Tree.Task):
+                # This is a call of a task
+                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings])
+                self.addChild(subtask_job)
+            else:
+                raise WDL.Error.InvalidType(node, "Cannot call a " + str(type(self._node.callee)))
+                
+            # We need to agregate outputs namespaced with our node name, and existing bindings
+            namespace_job = WDLNamespaceBindingsJob(self._node.name, [subjob.rv()])
+            subjob.addFollowOn(namespace_job)
+            self.addChild(namespace_job)
+            
+            combine_job = WDLCombineBindingsJob([namespace_job.rv(), incoming_bindings])
+            namespace_job.addFoillowOn(combine_job)
+            self.addChild(combine_job)
+            
+            return combine_job.rv()
+        elif isinstance(self._node, WDL.Tree.Scatter):
+            subjob = WDLScatterJob(self._node, [incoming_bindings])
+            self.addChild(subjob)
+            # Scatters don't really make a namespace, just kind of a scope?
+            # TODO: Let stuff leave scope!
+            return subjob.rv()
         else:
             raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
         
-class WDLSinkJob(Job):
+class WDLCombineBindingsJob(Job):
     """
-    Job that collects the results from all the WDL workflow nodes that don't
-    send results anywhere.
-    
-    TODO: How to make these be the workflow's result when the workflow source
-    node can't claim to return our return value? Move WDL to Toil translation
-    into the root job???
+    Job that collects the results from WDL workflow nodes and combines their
+    environment changes.
     """
     
     def __init__(self, prev_node_results: List[WDLBindings], **kwargs) -> None:
         """
-        Make a new sink job to sink the results of all the jobs with no successors themselves.
+        Make a new job to combine the results of previous jobs.
         """
         super().__init__(**kwargs)
         
         self._prev_node_results = prev_node_results
        
-    def run(self, fileStore: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Aggregate incoming results.
         """
         return combine_bindings(self._prev_node_results)
         
-class WDLWorkflowJob(Job):
+class WDLNamespaceBindingsJob(Job):
     """
-    Job that evaluates an entire WDL workflow.
+    Job that puts a set of bindings into a namespace.
     """
     
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: List[WDLBindings], **kwargs) -> None:
+    def __init__(self, namespace: str, prev_node_results: List[WDLBindings], **kwargs) -> None:
         """
-        Create a subtree that will run a WDL workflow. The job returns the
-        return value of the workflow.
+        Make a new job to namespace results.
         """
         super().__init__(**kwargs)
         
-        # Because we need to return the return value of the workflow, we need
-        # to return a Toil promise for the last/sink job in the workflow's
-        # graph. But we can't save either a job that takes promises, or a
-        # promise, in ourselves, because of the way that Toil resolves promises
-        # at deserialization. So we need to do the actual building-out of the
-        # workflow in run().
-        
-        logger.info("Preparing to run workflow %s with inputs:", workflow.name)
-        log_bindings(prev_node_results)
-        
-        self._workflow = workflow
+        self._namespace = namespace
         self._prev_node_results = prev_node_results
-        
-    def run(self, fileStore: AbstractFileStore) -> Any:
+       
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
-        Run the workflow. Return the result of the workflow.
+        Apply the namespace
         """
+        return combine_bindings(self._prev_node_results).wrap_namespace(self._namespace)
         
-        # Make the incoming bindings environment
-        incoming_bindings = combine_bindings(self._prev_node_results)
+class WDLSectionJob(Job):
+    """
+    Job that can create more graph for a section of the wrokflow.
+    """
+    
+    def create_subgraph(self, nodes: List[WDL.Tree.WorkflowNode], environment: WDLBindings) -> Job:
+        """
+        Make a Toil job to evaluate a subgraph inside a workflow or workflow section.
+        
+        Returns a child Job that will return the aggregated environment after
+        running all the things in the list.
+        """
         
         # What nodes actually participate in dependencies?
-        # TODO: The workflow has this already!
-        wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for n in (self._workflow.inputs + self._workflow.body) for node in for_each_node(n) if isinstance(n, WDL.Tree.WorkflowNode)}
-        # What nodes are actually inputs and might not need evaluating?
-        wdl_input_ids: Set[str] = {node.workflow_node_id for node in self._workflow.inputs}
+        wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if isinstance(node, WDL.Tree.WorkflowNode)}
         
         # To make Toil jobs, we need all the jobs they depend on made so we can
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
         
-        # What are the dependencies of all the nodes?
-        wdl_id_to_dependency_ids = {node_id: node.workflow_node_dependencies for node_id, node in wdl_id_to_wdl_node.items()}
+        # What are the dependencies of all the body nodes on things other than workflow inputs?
+        wdl_id_to_dependency_ids = {node_id: [dep for dep in node.workflow_node_dependencies if dep in wdl_id_to_wdl_node] for node_id, node in wdl_id_to_wdl_node.items()}
         
         # Which of those are outstanding?
         wdl_id_to_outstanding_dependency_ids = copy.deepcopy(wdl_id_to_dependency_ids)
@@ -281,19 +402,11 @@ class WDLWorkflowJob(Job):
             # Collect the return values from previous jobs
             prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in wdl_id_to_dependency_ids[node_id]]
             rvs = [prev_job.rv() for prev_job in prev_jobs]
-            if len(rvs) == 0:
-                # We also need the initial set of bindings, since they aren't
-                # available through a previous job.
-                rvs.append(incoming_bindings)
+            # We also need access to section-level bindings like inputs
+            rvs.append(environment)
             
             # Use them to make a new job
-            if node_id in wdl_input_ids:
-                # This is an input.
-                assert isinstance(wdl_id_to_wdl_node[node_id], WDL.Tree.Decl)
-                # It might be specified, or it might need to be evaluated.
-                job = WDLInputJob(wdl_id_to_wdl_node[node_id], rvs)
-            else:
-                job = WDLWorkflowNodeJob(wdl_id_to_wdl_node[node_id], rvs)
+            job = WDLWorkflowNodeJob(wdl_id_to_wdl_node[node_id], rvs)
             for prev_job in prev_jobs:
                 # Connect up the happens-after relationships to make sure the
                 # return values are available.
@@ -322,12 +435,120 @@ class WDLWorkflowJob(Job):
                         logger.debug('Dependent %s is now ready', dependent_id)
                         
         # Make the sink job
-        sink = WDLSinkJob([wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids])
+        leaf_rvs = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
+        # Make sure to also send the section-level bindings
+        leaf_rvs.append(environment)
+        sink = WDLCombineBindingsJob(leaf_rvs)
         # It runs inside us
         self.addChild(sink)
         for node_id in leaf_ids:
             # And after all the leaf jobs.
             wdl_id_to_toil_job[node_id].addFollowOn(sink)
+            
+        return sink
+            
+class WDLScatterJob(WDLSectionJob):
+    """
+    Job that evaluates a scatter in a WDL workflow.
+    """
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: List[WDLBindings], **kwargs) -> None:
+        """
+        Create a subtree that will run a WDL scatter.
+        """
+        super().__init__(**kwargs)
+        
+        # Because we need to return the return value of the workflow, we need
+        # to return a Toil promise for the last/sink job in the workflow's
+        # graph. But we can't save either a job that takes promises, or a
+        # promise, in ourselves, because of the way that Toil resolves promises
+        # at deserialization. So we need to do the actual building-out of the
+        # workflow in run().
+        
+        logger.info("Preparing to run scatter on %s with inputs:", scatter.variable)
+        log_bindings(prev_node_results)
+        
+        self._scatter = scatter
+        self._prev_node_results = prev_node_results
+    
+    def run(self, file_store: AbstractFileStore) -> Any:
+        """
+        Run the scatter.
+        """
+        
+        logger.info("Running scatter on %s", self._scatter.variable)
+        
+        # Combine the bindings we get from previous jobs.
+        # For a task we only see the insode-the-task namespace.
+        bindings = combine_bindings(self._prev_node_results)
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+        
+        # Get what to scatter over
+        scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
+        
+        assert isinstance(scatter_value, WDL.Value.Array)
+        
+        scatter_jobs = []
+        for item in scatter_value.value:
+            # Make an instantiation of our subgraph for each possible value of the variable
+            child_bindings = bindings.bind(self._scatter.variable, item)
+            scatter_jobs.append(self.create_subgraph(self._scatter.body, child_bindings))
+            
+        # Make a job at the end to aggregate
+        gather_job = WDLCombineBindingsJob([j.rv() for j in scatter_jobs])
+        self.addChild(gather_job)
+        for j in scatter_jobs:
+            j.addFollowOn(gather_job)
+        return gather_job.rv()
+        
+        
+class WDLWorkflowJob(WDLSectionJob):
+    """
+    Job that evaluates an entire WDL workflow.
+    """
+    
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: List[WDLBindings], **kwargs) -> None:
+        """
+        Create a subtree that will run a WDL workflow. The job returns the
+        return value of the workflow.
+        """
+        super().__init__(**kwargs)
+        
+        # Because we need to return the return value of the workflow, we need
+        # to return a Toil promise for the last/sink job in the workflow's
+        # graph. But we can't save either a job that takes promises, or a
+        # promise, in ourselves, because of the way that Toil resolves promises
+        # at deserialization. So we need to do the actual building-out of the
+        # workflow in run().
+        
+        logger.info("Preparing to run workflow %s with inputs:", workflow.name)
+        log_bindings(prev_node_results)
+        
+        self._workflow = workflow
+        self._prev_node_results = prev_node_results
+        
+    def run(self, file_store: AbstractFileStore) -> Any:
+        """
+        Run the workflow. Return the result of the workflow.
+        """
+        
+        logger.info("Running workflow %s", self._workflow.name)
+        
+        # Combine the bindings we get from previous jobs.
+        # For a task we only see the insode-the-task namespace.
+        bindings = combine_bindings(self._prev_node_results)
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+        
+        if self._workflow.inputs:
+            for input_decl in self._workflow.inputs:
+                # Evaluate all the inputs that aren't pre-set
+                bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+           
+        # Make jobs to run all the parts of the workflow
+        sink = self.create_subgraph(self._workflow.body, bindings)
+            
+        # TODO: Add evaluating the outputs after the sink!
             
         # Return the sink job's return value.
         return sink.rv()
