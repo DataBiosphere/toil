@@ -492,6 +492,7 @@ class FileJobStore(AbstractJobStore):
                 # It worked!
                 return
             except OSError as e:
+                # For the list of the possible errno codes, see: https://linux.die.net/man/2/symlink
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
                     os.unlink(local_path)
@@ -500,7 +501,12 @@ class FileJobStore(AbstractJobStore):
                     os.symlink(jobStoreFilePath, local_path)
                     # Now we succeeded and don't need to copy
                     return
+                elif e.errno == errno.EPERM:
+                    # On some filesystems, the creation of symbolic links is not possible.
+                    # In this case, we try to make a hard link.
+                    pass
                 else:
+                    logger.error(f"Unexpected OSError when reading file '{jobStoreFilePath}' from job store")
                     raise
 
         # If we get here, symlinking isn't an option.
@@ -518,6 +524,7 @@ class FileJobStore(AbstractJobStore):
                 # It worked!
                 return
             except OSError as e:
+                # For the list of the possible errno codes, see: https://linux.die.net/man/2/link
                 if e.errno == errno.EEXIST:
                     # Overwrite existing file, emulating shutil.copyfile().
                     os.unlink(local_path)
@@ -530,10 +537,20 @@ class FileJobStore(AbstractJobStore):
                     # It's a cross-device link even though it didn't appear to be.
                     # Just keep going and hit the file copy case.
                     pass
+                elif e.errno == errno.EPERM:
+                    # On some filesystems, hardlinking could be disallowed by permissions.
+                    # In this case, we also fall back to making a complete copy.
+                    pass
+                elif e.errno == errno.ELOOP:
+                    # Too many symbolic links were encountered. Just keep going and hit the
+                    # file copy case.
+                    pass
+                elif e.errno == errno.EMLINK:
+                    # The maximum number of links to file is reached. Just keep going and
+                    # hit the file copy case.
+                    pass
                 else:
-                    logger.critical('Unexpected OSError when reading file from job store')
-                    logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                    logger.critical('localFilePath: ' + local_path + ' ' + str(os.path.exists(local_path)))
+                    logger.error(f"Unexpected OSError when reading file '{jobStoreFilePath}' from job store")
                     raise
 
         # If we get here, neither a symlink nor a hardlink will work.
