@@ -329,12 +329,12 @@ class ResolveSource:
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
                 cast(
-                    CWLObjectType, [v[1][v[0]] for v in self.promise_tuples]  # type: ignore[index]
+                    CWLObjectType, [rv[name] for name, rv in self.promise_tuples]  # type: ignore[index]
                 )
             )
         else:
-            value = self.promise_tuples
-            result = cast(Dict[str, Any], value[1]).get(value[0])
+            name, rv = self.promise_tuples
+            result = cast(Dict[str, Any], rv).get(name)
 
         result = self.pick_value(result)
         result = filter_skip_null(self.name, result)
@@ -379,6 +379,9 @@ class ResolveSource:
 
         if pick_value_type is None:
             return values
+
+        if isinstance(values, SkipNull):
+            return None
 
         if not isinstance(values, list):
             logger.warning("pickValue used but input %s is not a list." % self.name)
