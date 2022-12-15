@@ -125,7 +125,7 @@ def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
             return True
     return False
 
-def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActionCollection:
+def get_actions_from_policy_document(policy_doc: str) -> AllowedActionCollection:
     '''
     Given a policy document, go through each statement and create an AllowedActionCollection representing the
     permissions granted in the policy document.
