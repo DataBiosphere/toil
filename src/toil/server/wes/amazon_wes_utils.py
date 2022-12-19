@@ -33,6 +33,7 @@ else:
 
 from urllib.parse import ParseResult, urlparse
 
+from toil.bus import JobStatus
 from toil.server.wes.abstract_backend import \
     MalformedRequestException as InvalidRequestError
 from toil.server.wes.abstract_backend import TaskLog
@@ -243,23 +244,21 @@ def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = 
     return relpath
 
 # This one is all UCSC code
-def task_filter(task: TaskLog, annotations: Dict[str, str]) -> Optional[TaskLog]:
+def task_filter(task: TaskLog, job_status: JobStatus) -> Optional[TaskLog]:
     """
     AGC requires task names to be annotated with an AWS Batch job ID that they
     were run under. If it encounters an un-annotated task name, it will crash.
     See <https://github.com/aws/amazon-genomics-cli/issues/494>.
 
     This encodes the AWSBatchJobID annotation, from the AmazonBatchBatchSystem,
-    into the task name of the givwn task, and returns the modified task. If no
+    into the task name of the given task, and returns the modified task. If no
     such annotation is available, the task is censored and None is returned.
     """
 
-    try:
-        # Get the Batch ID for the task
-        batch_id = annotations["AWSBatchJobID"]
-    except KeyError:
-        # We can't add a Batch ID to this task, so hide it
-        logger.warning("Omitting task due to missing annotation: %s", task)
+    # Get the Batch ID for the task
+    batch_id = job_status.external_batch_id
+
+    if batch_id is None:
         return None
 
     modified_task = dict(task)
