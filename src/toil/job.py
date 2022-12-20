@@ -1158,6 +1158,23 @@ class JobDescription(Requirer):
         self._job_version += 1
         logger.debug("New job version: %s", self)
 
+    def get_job_kind(self) -> str:
+        """
+        Returns an identifier of the job for use with the message bus.
+        Either the unit name, job name, or display name, which identifies
+        the kind of job it is to toil.
+
+        Otherwise returns Unknown Job in case no identifier is available
+        """
+        if self.unitName:
+            return self.unitName
+        elif self.jobName:
+            return self.jobName
+        elif self.displayName:
+            return self.displayName
+        else:
+            return "Unknown Job"
+
 
 class ServiceJobDescription(JobDescription):
     """
