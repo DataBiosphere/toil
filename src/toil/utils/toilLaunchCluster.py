@@ -65,7 +65,7 @@ def main() -> None:
                              " }. ")
 
     parser.add_argument("--network",
-                        help="cloud network to use. default: 'default'")
+                        help="GCE cloud network to use. default: 'default'")
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster leader in. Uses default subnet "
                         "if not specified. This subnet needs to have auto assign IPs turned on.")

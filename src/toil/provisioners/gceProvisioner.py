@@ -136,9 +136,9 @@ class GCEProvisioner(AbstractProvisioner):
         self._keyName = kwargs['keyName']
         if 'botoPath' in kwargs:
             self._botoPath = kwargs['botoPath']
-        self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
-        self._network = kwargs['network'] if 'network' in kwargs else None
-        self._use_private_ip = kwargs['use_private_ip'] if 'use_private_ip' in kwargs else None
+        self._vpcSubnet = kwargs.get('vpcSubnet', None)
+        self._network = kwargs.get('network', None)
+        self._use_private_ip = kwargs.get('use_private_ip', None)
 
         # Throws an error if cluster exists
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)

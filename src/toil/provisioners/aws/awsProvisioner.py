@@ -311,7 +311,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         if 'network' in kwargs:
-            logger.warning('AWS provisioner does not support a network parameter. Ignoring!')
+            logger.warning('AWS provisioner does not support a network parameter. Ignoring %s!', kwargs["network"])
 
         # First, pre-flight-check our permissions before making anything.
         if not policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS):
