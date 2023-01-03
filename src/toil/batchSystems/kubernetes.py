@@ -59,6 +59,7 @@ else:
 # TODO: When this gets into the standard library, get it from there and drop
 import urllib3
 import yaml
+# The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
 from kubernetes.client import (BatchV1Api,
                                CoreV1Api,
                                CustomObjectsApi,
@@ -86,7 +87,6 @@ from kubernetes.client import (BatchV1Api,
                                V1VolumeMount)
 from kubernetes.client.api_client import ApiClient
 from kubernetes.client.exceptions import ApiException
-# The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
 from kubernetes.config.config_exception import ConfigException
 from kubernetes.config.incluster_config import load_incluster_config
 from kubernetes.config.kube_config import (list_kube_config_contexts,

@@ -52,7 +52,7 @@ def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
         stream.write(b"This is a test of the Toil file caching system. "
-                      b"Had this been an actual file, its contents would have been more interesting.")
+                     b"Had this been an actual file, its contents would have been more interesting.")
 
     child_rvs = []
     for i in range(100):
