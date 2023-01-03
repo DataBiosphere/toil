@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Union
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
+from toil.bus import ExternalBatchIdMessage
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
+                if self.boss._outbox is not None:
+                    #JobID corresponds to the toil version of the jobID, dif from jobstore idea of the id, batchjobid is what we get from slurm
+                    self.boss._outbox.publish(ExternalBatchIdMessage(jobID, batchJobID, self.boss.__class__.__name__))
+
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID

@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tool for reporting on job status."""
+from collections import defaultdict
 import logging
 import os
 import sys
 from functools import reduce
+import json
 from typing import Any, Dict, List, Optional, Set
 
+from toil.bus import replay_message_bus
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import JobDescription, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
@@ -41,6 +44,7 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
+        self.message_bus_path = self.jobStore.config.write_messages
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
@@ -159,7 +163,7 @@ class ToilStatus:
     @staticmethod
     def getPIDStatus(jobStoreName: str) -> str:
         """
-        Determine the status of a process with a particular pid.
+        Determine the status of a process with a particular local pid.
 
         Checks to see if a process exists or not.
 
@@ -218,6 +222,23 @@ class ToilStatus:
             except NoSuchFileException:
                 pass
         return 'RUNNING'
+
+    def print_bus_messages(self) -> None:
+        """
+        Goes through bus messages, returns a list of tuples which have correspondence between
+        PID on assigned batch system and
+
+        Prints a list of the currently running jobs
+        """
+
+        print("\nMessage bus path: ", self.message_bus_path)
+
+        replayed_messages = replay_message_bus(self.message_bus_path)
+        for key in replayed_messages:
+            if replayed_messages[key].exit_code != 0:
+                print(replayed_messages[key])
+
+        return None
 
     def fetchRootJob(self) -> JobDescription:
         """
@@ -329,6 +350,8 @@ def main() -> None:
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
+    parser.add_argument("--printStatus", action="store_true",
+                        help="Determine which jobs are currently running and the associated batch system ID")
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -377,7 +400,8 @@ def main() -> None:
               'and %i jobs with log files currently in %s.' %
               (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
                len(hasServices), len(services), len(hasLogFile), status.jobStore))
-
+    if options.printStatus:
+        status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)

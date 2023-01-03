@@ -61,10 +61,14 @@ MessageBus.connect_output_file() and MessageBus.scan_bus_messages().
 """
 
 import collections
+from dataclasses import dataclass
 import inspect
 import logging
+
+import os
 import queue
-import sys
+import json
+import tempfile
 import threading
 from typing import (IO,
                     Any,
@@ -97,6 +101,8 @@ class JobIssuedMessage(NamedTuple):
     job_type: str
     # The job store ID of the job
     job_id: str
+    # The toil batch ID of the job
+    toil_batch_id: int
 
 class JobUpdatedMessage(NamedTuple):
     """
@@ -116,6 +122,8 @@ class JobCompletedMessage(NamedTuple):
     job_type: str
     # The job store ID of the job
     job_id: str
+    # Exit code for job_id
+    exit_code: int
 
 class JobFailedMessage(NamedTuple):
     """
@@ -144,6 +152,18 @@ class JobAnnotationMessage(NamedTuple):
     annotation_name: str
     # The annotation data
     annotation_value: str
+
+class ExternalBatchIdMessage(NamedTuple):
+    """
+    Produced when using a batch system, links toil assigned batch ID to
+    Batch system ID (Whatever's returned by local implementation, PID, batch ID, etc)
+    """
+    #Assigned toil batch job id
+    toil_batch_id: int
+    #Batch system scheduler identity
+    external_batch_id: str
+    #Batch system name
+    batch_system: str
 
 class QueueSizeMessage(NamedTuple):
     """
@@ -184,7 +204,7 @@ def message_to_bytes(message: NamedTuple) -> bytes:
     parts = []
     for item in message:
         item_type = type(item)
-        if item_type in [int, float, bool]:
+        if item_type in [int, float, bool] or item is None:
             parts.append(str(item).encode('utf-8'))
         elif item_type == str:
             parts.append(item.encode('unicode_escape'))
@@ -365,6 +385,7 @@ class MessageBus:
         somewhere or delete it.
         """
 
+
         stream = open(file_path, 'wb')
 
         # Type of the ** is the value type of the dictionary; key type is always string.
@@ -382,6 +403,7 @@ class MessageBus:
             stream.write(b'\t')
             stream.write(message_to_bytes(message))
             stream.write(b'\n')
+            stream.flush()
 
         listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
 
@@ -599,5 +621,95 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         """
         super().__init__()
 
+    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
+        """
+        Connect to the given bus and collect the given message types.
+
+        We must not have connected to anything yet.
+        """
+
+        # We need to call the two inherited connection methods
+        super()._set_bus_and_message_types(bus, wanted_types)
+        self._set_bus(bus)
 
 
+@dataclass
+class JobStatus:
+    """
+    Records the status of a job.
+    """
+
+    job_store_id: str
+    name: str
+    exit_code: int
+    annotations: Dict[str, str]
+    toil_batch_id: int
+    external_batch_id: str
+    batch_system: str
+
+    def __repr__(self) -> str:
+        return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+def replay_message_bus(path: str) -> Dict[str, JobStatus]:
+    """
+    Replay all the messages and work out what they mean for jobs.
+
+    We track the state and name of jobs here, by ID.
+    We would use a list of two items but MyPy can't understand a list
+    of items of multiple types, so we need to define a new class.
+
+    Returns a dictionary from the job_id to a dataclass, JobStatus.
+    A JobStatus contains information about a job which we have gathered
+    from the message bus, including the job store id, name of the job
+    the exit code, any associated annotations, the toil batch id
+    the external batch id, and the batch system on which the job
+    is running.
+    """
+
+    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
+    batch_to_job_id = {}
+    try:
+        with open(path, 'rb') as log_stream:
+            # Read all the full, properly-terminated messages about job updates
+            for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
+                                                                   JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
+                # And for each of them
+                logger.info('Got message from workflow: %s', event)
+
+                if isinstance(event, JobUpdatedMessage):
+                    # Apply the latest return code from the job with this ID.
+                    job_statuses[event.job_id].exit_code = event.result_status
+                elif isinstance(event, JobIssuedMessage):
+                    job_statuses[event.job_id].job_store_id = event.job_id
+                    job_statuses[event.job_id].name = event.job_type
+                    job_statuses[event.job_id].toil_batch_id = event.toil_batch_id
+                    job_statuses[event.job_id].exit_code = -1
+                    batch_to_job_id[event.toil_batch_id] = event.job_id
+                elif isinstance(event, JobCompletedMessage):
+                    job_statuses[event.job_id].name = event.job_type
+                    job_statuses[event.job_id].exit_code = event.exit_code
+                elif isinstance(event, JobFailedMessage):
+                    job_statuses[event.job_id].name = event.job_type
+                    if job_statuses[event.job_id].exit_code == 0:
+                        # Record the failure if we never got a failed exit code.
+                        job_statuses[event.job_id].exit_code = 1
+                elif isinstance(event, JobAnnotationMessage):
+                    # Remember the last value of any annotation that is set
+                    job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
+                elif isinstance(event, ExternalBatchIdMessage):
+                    if event.toil_batch_id in batch_to_job_id:
+                        job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
+                        job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
+    except FileNotFoundError:
+        logger.warning("We were unable to access the file")
+
+    return job_statuses
+
+def gen_message_bus_path() -> str:
+    """
+    Return a file path in tmp to store the message bus at.
+    Calling function is responsible for cleaning the generated file.
+    """
+    fd, path = tempfile.mkstemp()
+    os.close(fd)
+    return path
+    #TODO Might want to clean up the tmpfile at some point after running the workflow
