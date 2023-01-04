@@ -105,7 +105,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Keep the file store around so we can access files.
         self._file_store = file_store
         
-    # We need to implement file access functions using Toil's file store.
+    # Both the WDL code itself **and** the commands that it runs will deal in
+    # "virtualized" filenames, so those virtualized filenames/URLs need to be
+    # passable to shell commands.
         
     def _devirtualize_filename(self, filename: str) -> str:
         """
@@ -121,7 +123,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Deserialize the FileID
             file_id = FileID.unpack(filename[len("toilfile:") :])
             # And get a local path to the file
-            return self._file_store.readGlobalFile(file_id)
+            result = self._file_store.readGlobalFile(file_id)
         elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:'):
             # This is a URL that we think Toil knows how to read.
             # Import into the job store from here and then download to the node.
@@ -129,10 +131,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             imported = self._file_store.import_file(filename)
             assert imported is not None
             # And get a local path to the file
-            return self._file_store.readGlobalFile(imported)
+            result = self._file_store.readGlobalFile(imported)
         else:
             # This is a local file
-            return filename
+            result = filename
+        
+        logger.info('Devirtualized %s as openable file %s', filename, result)
+        return result
         
     def _virtualize_filename(self, filename: str) -> str:
         """
@@ -140,15 +145,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         File value
         """
         
-        # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
+        # TODO: This isn't quite where to upload to the filestore, so where should we upload to the filestore???
         
-        if filename.startswith('toilfile:'):
-            # This is already a reference to the Toil filestore.
-            return filename
-        else:
-            # This is a local file.
-            # Upload it, serialize the file ID, and wrap it as a URI.
-            return 'toilfile:' + self._file_store.writeGlobalFile(filename).pack()
+        result = filename 
+        logger.info('Virtualized %s as WDL file %s', filename, result)
+        return result
     
 class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     """
@@ -221,7 +222,8 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quotes string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
         # This will handle everything except newlines in the filenames.
         # TODO: Newlines in the filenames?
-        lines = subprocess.check_output(['bash', '-c', 'compgen -G ' + shlex.quote(pattern_string)).decode('utf-8')
+        # Since compgen will return 1 if nothing matches, we need to allow a failing exit code here.
+        lines = subprocess.run(['bash', '-c', 'compgen -G ' + shlex.quote(pattern_string)], stdout=subprocess.PIPE).stdout.decode('utf-8')
         
         # Get each name that is a file
         results = []
@@ -231,6 +233,11 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
             if not os.path.isfile(line):
                 continue
             results.append(line)
+            
+        for filename in os.listdir('.'):
+            logger.info('I see file: %s', filename)
+            
+        assert len(results) > 0
         
         # Just turn them all into WDL File objects.
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results]) 
@@ -251,7 +258,17 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
         logger.debug("In environment:")
         log_bindings([environment])
         
+        if expected_type:
+            # Make sure the types are allowed
+            expression.typecheck(expected_type)
+        
+        # Do the actual evaluation
         value = expression.eval(environment, stdlib)
+    
+    if expected_type:
+        # Coerce to the type it should be.
+        value = value.coerce(expected_type)
+    
     return value
 
 def evaluate_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -350,9 +367,14 @@ class WDLTaskJob(Job):
         if self._task.command:
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library).coerce(WDL.Type.String()).value
+            
             # And run it, capturing output to files
+            logger.info('Executing command: %s', command_string)
             subprocess.check_call(command_string, shell=True, stdout=open(stdout_path, 'wb'), stderr=open(stderr_path, 'wb'))
             # TODO: Accept nonzero exit codes when requested.
+            
+            logger.info('Standard output: %s', open(stdout_path).read())
+            logger.info('Standard error: %s', open(stderr_path).read())
             
         # Evaluate all the outputs in their special library context
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, stdout_path, stderr_path)
@@ -423,6 +445,12 @@ class WDLWorkflowNodeJob(Job):
             subjob = WDLScatterJob(self._node, [incoming_bindings])
             self.addChild(subjob)
             # Scatters don't really make a namespace, just kind of a scope?
+            # TODO: Let stuff leave scope!
+            return subjob.rv()
+        elif isinstance(self._node, WDL.Tree.Conditional):
+            subjob = WDLConditionalJob(self._node, [incoming_bindings])
+            self.addChild(subjob)
+            # Conditionals don't really make a namespace, just kind of a scope?
             # TODO: Let stuff leave scope!
             return subjob.rv()
         else:
@@ -624,6 +652,51 @@ class WDLScatterJob(WDLSectionJob):
             j.addFollowOn(gather_job)
         return gather_job.rv()
         
+class WDLConditionalJob(WDLSectionJob):
+    """
+    Job that evaluates a conditional in a WDL workflow.
+    """
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+        """
+        Create a subtree that will run a WDL conditional.
+        """
+        super().__init__(**kwargs)
+        
+        # Once again we need to ship the whole body template to be instantiated
+        # into Toil jobs only if it will actually run.
+        
+        logger.info("Preparing to run conditional on %s with inputs:", conditional.expr)
+        log_bindings(prev_node_results)
+        
+        self._conditional = conditional
+        self._prev_node_results = prev_node_results
+    
+    def run(self, file_store: AbstractFileStore) -> Any:
+        """
+        Run the scatter.
+        """
+        
+        logger.info("Checking condition %s", self._conditional.expr)
+        
+        # Combine the bindings we get from previous jobs.
+        # For a task we only see the insode-the-task namespace.
+        bindings = combine_bindings(self._prev_node_results)
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+        
+        # Get the expression value. Fake a name.
+        expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
+        
+        if expr_value.value:
+            # Evaluated to true!
+            logger.info('Condition is true')
+            # Run the body and return its effects
+            body_job = self.create_subgraph(self._conditional.body, bindings)
+            return body_job.rv()
+        else:
+            logger.info('Condition is false')
+            # Return the unmodified (but combined) input bindings
+            return bindings
         
 class WDLWorkflowJob(WDLSectionJob):
     """
