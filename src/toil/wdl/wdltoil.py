@@ -20,6 +20,7 @@ import itertools
 import json
 import logging
 import os
+import shlex
 import subprocess
 import sys
 
@@ -213,9 +214,14 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # you want as "bash" and we have to run it and then filter out the
         # directories.
         
+        # Problem: `echo <the pattern>` just dumps space-delimited filenames which may themselves contain spaces, so we can't actually correctly recover them, if we need to allow for `echo <the pattern>` being able to do arbitrary things in the container's Bash other than interpreting the pattern
+        # So we send a little Bash script that can delimit the files with something, and assume the Bash really is a Bash.
+        
         # TODO: get this to run in the right container if there is one
-        lines = subprocess.check_output(['bash', '-c', 'echo ' + pattern_string]).decode('utf-8')
-        # TODO: what if there are newlines in the file names?
+        # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quotes string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
+        # This will handle everything except newlines in the filenames.
+        # TODO: Newlines in the filenames?
+        lines = subprocess.check_output(['bash', '-c', 'compgen -G ' + shlex.quote(pattern_string)).decode('utf-8')
         
         # Get each name that is a file
         results = []
