@@ -2254,7 +2254,33 @@ class Job:
                 if jobStore.file_exists(promiseFileStoreID):
                     logger.debug("Resolve promise %s from %s with a %s", promiseFileStoreID, self, type(promisedValue))
                     with jobStore.update_file_stream(promiseFileStoreID) as fileHandle:
-                        pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
+                        try:
+                            pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
+                        except AttributeError:
+                            logger.exception("Could not pickle promise result %s", promisedValue)
+                            
+                            def log_structure(s: Any) -> None:
+                                if hasattr(s, 'name'):
+                                    logger.error('Name: %s', s.name)
+                                if hasattr(s, 'value'):
+                                    logger.error('Value: %s', s.value)
+                                    log_structure(s.value)
+                                if not isinstance(s, str):
+                                    try:
+                                        for k in s:
+                                            try:
+                                                v = s[k]
+                                                logger.error('Contains %s = %s', k, v)
+                                                log_structure(v)
+                                            except:
+                                                logger.error('Contains %s', k)
+                                                log_structure(k)
+                                    except:
+                                        pass
+                            
+                            log_structure(promisedValue)
+                            
+                            raise
                 else:
                     logger.debug("Do not resolve promise %s from %s because it is no longer needed", promiseFileStoreID, self)
 

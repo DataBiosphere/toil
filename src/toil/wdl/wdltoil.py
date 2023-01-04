@@ -15,6 +15,7 @@
 import argparse
 import collections
 import copy
+import glob
 import itertools
 import json
 import logging
@@ -154,16 +155,80 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     functions only allowed in task output sections.
     """
     
-    def __init__(self, file_store: AbstractFileStore):
+    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str):
         """
-        Set up the standard library for a task output section.
+        Set up the standard library for a task output section. Needs to know
+        where standard output and error from the task have been stored.
         """
         
         # Just set up as ToilWDLStdLibBase, but it will call into
         # WDL.StdLib.TaskOutputs next.
         super().__init__(file_store)
-
-
+        
+        # Remember task putput files
+        self._stdout_path = stdout_path
+        self._stderr_path = stderr_path
+        
+        # We need to attach implementations for WDL's stdout(), stderr(), and glob().
+        # TODO: Can we use the fancy decorators instead of this wizardry?
+        setattr(
+            self,
+            "stdout",
+            WDL.StdLib.StaticFunction("stdout", [], WDL.Type.File(), self._stdout),
+        )
+        setattr(
+            self,
+            "stderr",
+            WDL.StdLib.StaticFunction("stderr", [], WDL.Type.File(), self._stderr),
+        )
+        setattr(
+            self,
+            "glob",
+            WDL.StdLib.StaticFunction("glob", [WDL.Type.String()], WDL.Type.Array(WDL.Type.File()), self._glob),
+        )
+    
+    def _stdout(self) -> WDL.Value.File:
+        """
+        Get the standard output of the command that ran, as a WDL File.
+        """
+        return WDL.Value.File(self._stdout_path)
+    
+    def _stderr(self) -> WDL.Value.File:
+        """
+        Get the standard error of the command that ran, as a WDL File.
+        """
+        return WDL.Value.File(self._stderr_path)
+    
+    def _glob(self, pattern: WDL.Value.String) -> WDL.Value.Array:
+        """
+        Get a WDL Array of WDL Files left behind by the job that ran, matching the given glob pattern.
+        """
+        
+        # Unwrap the pattern
+        pattern_string = pattern.coerce(WDL.Type.String()).value
+       
+        # The spec says we really are supposed to invoke `bash` and pass it
+        # `echo <the pattern>`, and that `bash` is allowed to be
+        # "non-standard", so if you use a Docker image you could ship any code
+        # you want as "bash" and we have to run it and then filter out the
+        # directories.
+        
+        # TODO: get this to run in the right container if there is one
+        lines = subprocess.check_output(['bash', '-c', 'echo ' + pattern_string]).decode('utf-8')
+        # TODO: what if there are newlines in the file names?
+        
+        # Get each name that is a file
+        results = []
+        for line in lines.split('\n'):
+            if not line:
+                continue
+            if not os.path.isfile(line):
+                continue
+            results.append(line)
+        
+        # Just turn them all into WDL File objects.
+        return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results]) 
+            
 def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
     """
     Evaluate an expression when we know the name of it.
@@ -272,20 +337,22 @@ class WDLTaskJob(Job):
         
         # TODO: Re-schedule if we need more resources
         
+        # Make standard output and error files
+        stdout_path = file_store.getLocalTempFile(prefix='stdout', suffix='.txt')
+        stderr_path = file_store.getLocalTempFile(prefix='stderr', suffix='.txt')
+        
         if self._task.command:
-            # Work out the command string
-            command_string = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library)
-            assert isinstance(command_string, WDL.Value.String)
-            # And run it
-            subprocess.check_call(command_string.value, shell=True)
-            # TODO: Capture output and error somehow.
+            # Work out the command string, and unwrap it
+            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library).coerce(WDL.Type.String()).value
+            # And run it, capturing output to files
+            subprocess.check_call(command_string, shell=True, stdout=open(stdout_path, 'wb'), stderr=open(stderr_path, 'wb'))
             # TODO: Accept nonzero exit codes when requested.
             
         # Evaluate all the outputs in their special library context
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store)
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, stdout_path, stderr_path)
         output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
-            output_bindings = output_bindings.bind(output_decl.name, bindings, outputs_library)
+            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
         
         return output_bindings
         
