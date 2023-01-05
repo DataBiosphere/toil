@@ -24,7 +24,7 @@ import shlex
 import subprocess
 import sys
 
-from typing import Any, Union, Dict, List, Optional, Set, Sequence, Iterator
+from typing import Any, Callable, Union, Dict, List, Optional, Set, Sequence, TypeVar, Iterator
 
 import WDL
 
@@ -106,8 +106,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self._file_store = file_store
         
     # Both the WDL code itself **and** the commands that it runs will deal in
-    # "virtualized" filenames, so those virtualized filenames/URLs need to be
-    # passable to shell commands.
+    # "virtualized" filenames by default, so when making commands we need to
+    # make sure to devirtualize filenames.
+    # We have to guarantee that "When a WDL author uses a File input in their
+    # Command Section, the fully qualified, localized path to the file is
+    # substituted when that declaration is referenced in the command template."
         
     def _devirtualize_filename(self, filename: str) -> str:
         """
@@ -145,9 +148,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         File value
         """
         
-        # TODO: This isn't quite where to upload to the filestore, so where should we upload to the filestore???
+        VIRTUAL_SCHEMES = ['http:', 'https:', 's3:', 'gs:', 'toilfile:']
+        for scheme in VIRTUAL_SCHEMES:
+            if filename.startswith(scheme):
+                # Already virtual
+                logger.info('Virtualized %s as WDL file %s', filename, filename)
+                return filename
         
-        result = filename 
+        # Otherwise this is a local file and we want to fake it as a Toil file store file
+        file_id = self._file_store.writeGlobalFile(filename)
+        result = 'toilfile:' + file_id.pack() 
         logger.info('Virtualized %s as WDL file %s', filename, result)
         return result
     
@@ -237,9 +247,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         for filename in os.listdir('.'):
             logger.info('I see file: %s', filename)
             
-        assert len(results) > 0
-        
-        # Just turn them all into WDL File objects.
+        # Just turn them all into WDL File objects with virtualized names.
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results]) 
             
 def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -300,6 +308,92 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     else:
         logger.info('Defaulting %s to %s', node.name, node.expr)
         return evaluate_decl(node, environment, stdlib)
+
+# TODO: make these stdlib methods???
+def devirtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
+    """
+    Make sure all the File values embedded in the given bindings point to files
+    that are actually available to command line commands.
+    """
+    
+    return map_over_files_in_bindings(environment, stdlib._devirtualize_filename)
+    
+def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
+    """
+    Make sure all the File values embedded in the given bindings point to files
+    that are usable from other machines.
+    """
+    
+    return map_over_files_in_bindings(environment, stdlib._virtualize_filename)
+    
+def drop_missing_files(environment: WDLBindings) -> WDLBindings:
+    """
+    Make sure all the File values embedded in the given bindings point to files
+    that exist, or are null.
+    
+    Files must not be virtualized.
+    """
+    
+    # TODO: Howe do we know all the missing files are actually `File?`?
+    
+    def drop_if_missing(filename: str) -> Optional[str]:
+        """
+        Return None if a file doesn't exist, or its path if it does.
+        """
+        if os.path.exists(filename):
+            return filename
+        return None
+    
+    return map_over_files_in_bindings(environment, drop_if_missing)
+    
+def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[str], Optional[str]]) -> WDLBindings:
+    """
+    Run all File values embedded in the given bindings through the given
+    transformation function.
+    """
+    
+    return environment.map(lambda b: map_over_files_in_binding(b, transform))
+    
+T = TypeVar('T')
+def map_over_files_in_binding(binding: WDL.Env.Binding[T], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[T]:
+    """
+    Run all File values embedded in the given binding's value through the given
+    transformation function.
+    """
+    
+    return WDL.Env.Binding(binding.name, map_over_files_in_value(binding.value, transform), binding.info)
+
+ValueT = TypeVar('ValueT', bound=WDL.Value.Base)
+def map_over_files_in_value(value: ValueT, transform: Callable[[str], Optional[str]]) -> Union[ValueT, WDL.Value.Null]:
+    """
+    Run all File values embedded in the given value through the given
+    transformation function.
+    
+    If the transform returns None, the file value is changed to Null.
+    """
+    
+    if isinstance(value, WDL.Value.File):
+        # This is a file so we need to process it
+        new_path = transform(value.value)
+        if new_path is None:
+            return WDL.Value.Null()
+        else:
+            return WDL.Value.File(new_path, value.expr)
+    elif isinstance(value, WDL.Value.Array):
+        # This is an array, so recurse on the items
+        return WDL.Value.Array(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr)
+    elif isinstance(value, WDL.Value.Map):
+        # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
+        return WDL.Value.Map(value.type.item_type, [tuple((map_over_files_in_value(v, transform) for v in pair)) for pair in value.value], value.expr)
+    elif isinstance(value, WDL.Value.Pair):
+        # This is a pair, so recurse on the left and right items
+        return WDL.Value.Pair(value.type.left_type, value.type.right_type, tuple((map_over_files_in_value(v, transform) for v in value.value)), value.expr)
+    elif isinstance(value, WDL.Value.Struct):
+        # This is a struct, so recurse on the values in the backing dict
+        return WDL.Value.Struct(value.type, {k: map_over_files_in_value(v, transform) for k, v in value.value.iteritems()}, value.expr)
+    else:
+        # All other kinds of value can be passed through unmodified.
+        return value
     
 class WDLInputJob(Job):
     """
@@ -320,7 +414,7 @@ class WDLInputJob(Job):
         standard_library = ToilWDLStdLibBase(file_store)
         
         return incoming_bindings.bind(self._node.name, evaluate_defaultable_decl(self._node, incoming_bindings, standard_library))
-            
+        
 class WDLTaskJob(Job):
     """
     Job that runs a WDL task.
@@ -342,7 +436,7 @@ class WDLTaskJob(Job):
         logger.info("Running task %s", self._task.name)
         
         # Combine the bindings we get from previous jobs.
-        # For a task we only see the insode-the-task namespace.
+        # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(self._prev_node_results)
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
@@ -365,6 +459,12 @@ class WDLTaskJob(Job):
         stderr_path = file_store.getLocalTempFile(prefix='stderr', suffix='.txt')
         
         if self._task.command:
+            # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
+            # TODO: Figure out whan the command template actually uses File values and lazily download them.
+            # For now we just grab all the File values in the inside-the-task environment, since any of them *might* be used.
+            # TODO: MiniWDL can parallelize the fetch
+            bindings = devirtualize_files(bindings, standard_library)
+            
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library).coerce(WDL.Type.String()).value
             
@@ -381,6 +481,12 @@ class WDLTaskJob(Job):
         output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
+            
+        # Drop any files from the output which don't actually exist
+        output_bindings = drop_missing_files(output_bindings)
+            
+        # Upload any files in the outputs if not uploaded already
+        output_bindings = virtualize_files(output_bindings, outputs_library)
         
         return output_bindings
         
