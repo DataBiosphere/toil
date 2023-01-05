@@ -483,6 +483,7 @@ class WDLTaskJob(Job):
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
             
         # Drop any files from the output which don't actually exist
+        # TODO: Check if the type allows the file not to exist!
         output_bindings = drop_missing_files(output_bindings)
             
         # Upload any files in the outputs if not uploaded already
@@ -752,6 +753,7 @@ class WDLScatterJob(WDLSectionJob):
             scatter_jobs.append(self.create_subgraph(self._scatter.body, child_bindings))
             
         # Make a job at the end to aggregate
+        # TODO: Needs to turn all the bindings created inside the scatter bodies into arrays of optional values!
         gather_job = WDLCombineBindingsJob([j.rv() for j in scatter_jobs])
         self.addChild(gather_job)
         for j in scatter_jobs:
@@ -850,8 +852,8 @@ class WDLWorkflowJob(WDLSectionJob):
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, bindings)
             
-        # TODO: Add evaluating the outputs after the sink!
-            
+        # TODO: Add evaluating the outputs after the sink! Need a new job to do it!
+        
         # Return the sink job's return value.
         return sink.rv()
 
@@ -872,7 +874,7 @@ def main() -> None:
     
     with Toil(options) as toil:
         if options.restart:
-            toil.restart()
+            output_bindings = toil.restart()
         else:
             # Load the WDL document
             document: WDL.Tree.Document = WDL.load(options.wdl_uri)
@@ -891,7 +893,11 @@ def main() -> None:
                 input_bindings = WDL.values_from_json(inputs, document.workflow.available_inputs, document.workflow.required_inputs, document.workflow.name)
             
             root_job = WDLWorkflowJob(document.workflow, [input_bindings])
-            toil.start(root_job)
+            output_bindings = toil.start(root_job)
+        assert isinstance(output_bindings, WDL.Env.Bindings)
+        
+        # Report the result
+        print(json.dumps(WDL.values_to_json(output_bindings)))
     
     
     
