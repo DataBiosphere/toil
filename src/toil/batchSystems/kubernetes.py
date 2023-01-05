@@ -21,12 +21,10 @@ cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
 import datetime
-import functools
 import logging
 import math
 import os
 import string
-import subprocess
 import sys
 import tempfile
 import time
@@ -38,9 +36,7 @@ from typing import (Any,
                     Iterator,
                     List,
                     Literal,
-                    NamedTuple,
                     Optional,
-                    Sequence,
                     Tuple,
                     Type,
                     TypeVar,
@@ -110,7 +106,6 @@ from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
-from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors: List[Union[Type[Exception], ErrorCondition]] = [
@@ -1508,7 +1503,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Anything other than a 404 is weird here.
                 logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
 
-            # aggregate all pods and check if any pod has failed to cleanup or is orphaned.
+            # If batch delete fails, try to delete all remaining jobs individually.
+            logger.debug('Deleting Kubernetes jobs individually for toil_run=%s', self.run_id)
+            for jobID in self._getIssuedNonLocalBatchJobIDs():
+                jobName = f'{self.job_prefix}{jobID}'
+                logger.debug(f'Deleting Kubernetes job {jobName}')
+                self._api('batch', errors=[]).delete_namespaced_job(
+                    jobName,
+                    self.namespace,
+                    propagation_policy='Background'
+                )
+
+            # Aggregate all pods and check if any pod has failed to cleanup or is orphaned.
             ourPods = self._ourPodObject()
 
             for pod in ourPods:
