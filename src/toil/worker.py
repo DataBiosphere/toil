@@ -108,7 +108,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
         logger.debug("We need more disk for the next job, so finishing")
         return None
     if successor.preemptible != predecessor.preemptible:
-        logger.debug("Preemptability is different for the next job, returning to the leader")
+        logger.debug("Preemptibility is different for the next job, returning to the leader")
         return None
     if successor.predecessorNumber > 1:
         logger.debug("The next job has multiple predecessors; we must return to the leader.")
