@@ -620,7 +620,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     autoscaling_options.add_argument("--scaleInterval", dest="scaleInterval", default=None,
                                      help=f"The interval (seconds) between assessing if the scale of "
                                           f"the cluster needs to change. default={config.scaleInterval}")
-    autoscaling_options.add_argument("--preemptibleCompensation", dest="preemptibleCompensation", default=None,
+    autoscaling_options.add_argument("--preemptibleCompensation", "--preemptableCompensation", dest="preemptibleCompensation", default=None,
                                      help=f"The preference of the autoscaler to replace preemptible nodes with "
                                           f"non-preemptible nodes, when preemptible nodes cannot be started for some "
                                           f"reason. Defaults to {config.preemptibleCompensation}. This value must be "
@@ -695,7 +695,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
     resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None, metavar='ACCELERATOR[,ACCELERATOR...]',
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
-    resource_options.add_argument('--defaultPreemptible', dest='defaultPreemptible', metavar='BOOL',
+    resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible', metavar='BOOL',
                                   type=bool, nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptible (spot) nodes by default.')
     resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
@@ -713,7 +713,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     job_options.add_argument("--retryCount", dest="retryCount", default=None,
                              help=f"Number of times to retry a failing job before giving up and "
                                   f"labeling job failed. default={config.retryCount}")
-    job_options.add_argument("--enableUnlimitedPreemptibleRetries", dest="enableUnlimitedPreemptibleRetries",
+    job_options.add_argument("--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptibleRetries",
                              action='store_true', default=False,
                              help="If set, preemptible failures (or any failure due to an instance getting "
                                   "unexpectedly terminated) will not count towards job failures and --retryCount.")

@@ -627,7 +627,7 @@ class Requirer:
 
     @accelerators.setter
     def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
-        self._requirementOverrides["preemptible"] = Requirer._parseResource(
+        self._requirementOverrides["accelerators"] = Requirer._parseResource(
             "accelerators", val
         )
 
