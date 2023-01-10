@@ -20,11 +20,13 @@ from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from threading import Condition
 import time
-from typing import (Set, cast,
+from typing import (cast,
                     Any,
                     ContextManager,
                     Dict,
                     List,
+                    Set,
+                    Iterator,
                     NamedTuple,
                     Optional,
                     Union)
@@ -587,7 +589,7 @@ class InsufficientSystemResources(Exception):
 
 class AcquisitionTimeoutException(Exception):
     """To be raised when a resource request times out."""
-    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]):
+    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]) -> None:
         """
         Creates an instance of this exception that indicates which resource is insufficient for
         current demands, as well as the resources requested and actually available.
@@ -612,7 +614,7 @@ class ResourcePool:
     Provides a context manager to do something with an amount of resource
     acquired.
     """
-    def __init__(self, initial_value: int, resource_type: str, timeout=5):
+    def __init__(self, initial_value: int, resource_type: str, timeout: float = 5) -> None:
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
@@ -622,7 +624,7 @@ class ResourcePool:
         self.resource_type = resource_type
         self.timeout = timeout
 
-    def acquireNow(self, amount):
+    def acquireNow(self, amount: int) -> bool:
         """
         Reserve the given amount of the given resource.
 
@@ -636,7 +638,7 @@ class ResourcePool:
             self.__validate()
             return True
 
-    def acquire(self, amount):
+    def acquire(self, amount: int) -> None:
         """
         Reserve the given amount of the given resource.
 
@@ -659,23 +661,23 @@ class ResourcePool:
             self.value -= amount
             self.__validate()
 
-    def release(self, amount):
+    def release(self, amount: int) -> None:
         with self.condition:
             self.value += amount
             self.__validate()
             self.condition.notify_all()
 
-    def __validate(self):
+    def __validate(self) -> None:
         assert 0 <= self.value
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.value)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "ResourcePool(%i)" % self.value
 
     @contextmanager
-    def acquisitionOf(self, amount):
+    def acquisitionOf(self, amount: int) -> Iterator[None]:
         self.acquire(amount)
         try:
             yield
@@ -692,7 +694,7 @@ class ResourceSet:
     Provides a context manager to do something with a set of of resources
     acquired.
     """
-    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5):
+    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5) -> None:
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
@@ -702,7 +704,7 @@ class ResourceSet:
         self.resource_type = resource_type
         self.timeout = timeout
 
-    def acquireNow(self, subset: Set[int]):
+    def acquireNow(self, subset: Set[int]) -> bool:
         """
         Reserve the given amount of the given resource.
 
@@ -715,7 +717,7 @@ class ResourceSet:
             self.value -= subset
             return True
 
-    def acquire(self, subset: Set[int]):
+    def acquire(self, subset: Set[int]) -> None:
         """
         Reserve the given amount of the given resource.
 
@@ -737,7 +739,7 @@ class ResourceSet:
                 self.condition.wait(timeout=self.timeout)
             self.value -= subset
 
-    def release(self, subset: Set[int]):
+    def release(self, subset: Set[int]) -> None:
         with self.condition:
             self.value |= subset
             self.condition.notify_all()
@@ -750,14 +752,14 @@ class ResourceSet:
         """
         return set(self.value)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.value)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "ResourceSet(%s)" % self.value
 
     @contextmanager
-    def acquisitionOf(self, subset: Set[int]):
+    def acquisitionOf(self, subset: Set[int]) -> Iterator[None]:
         self.acquire(subset)
         try:
             yield
