@@ -327,7 +327,7 @@ For more information on other autoscaling (and other) options have a look at :re
 Preemptibility
 ^^^^^^^^^^^^^^
 
-Toil can run on a heterogeneous cluster of both preemptible and non-preemptible nodes. Being preemptible node simply
+Toil can run on a heterogeneous cluster of both preemptible and non-preemptible nodes. Being a preemptible node simply
 means that the node may be shut down at any time, while jobs are running. These jobs can then be restarted later
 somewhere else.
 
@@ -337,7 +337,14 @@ the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preem
 Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
 resource requirement, if this is not specified, the job will not run on preemptible nodes even if preemptible nodes
 are available unless specified with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
-jobs without a ``preemptible`` requirement to run on preemptible machines.
+jobs without a ``preemptible`` requirement to run on preemptible machines. For example::
+
+    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+          --provisioner aws \
+          --nodeTypes c3.4xlarge:2.00 \
+          --maxNodes 2 \
+          --batchSystem mesos \
+          --defaultPreemptible
 
 .. admonition:: Specify Preemptibility Carefully
 
