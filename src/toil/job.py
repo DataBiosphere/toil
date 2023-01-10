@@ -323,10 +323,10 @@ class RequirementsDict(TypedDict):
     memory: NotRequired[int]
     disk: NotRequired[int]
     accelerators: NotRequired[List[AcceleratorRequirement]]
-    preemptable: NotRequired[bool]
+    preemptible: NotRequired[bool]
 
 # These must be all the key names in RequirementsDict
-REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptable"]
+REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
 
 # This is the supertype of all value types in RequirementsDict
 ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
@@ -355,7 +355,7 @@ class Requirer:
 
         :param dict requirements: Dict from string to value
             describing a set of resource requirments. 'cores', 'memory',
-            'disk', 'preemptable', and 'accelerators' fields, if set, are
+            'disk', 'preemptible', and 'accelerators' fields, if set, are
             parsed and broken out into properties. If unset, the relevant
             property will be unspecified, and will be pulled from the assigned
             Config object if queried (see
@@ -517,7 +517,7 @@ class Requirer:
                 return value
             else:
                 raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
-        elif name == 'preemptable':
+        elif name == 'preemptible':
             if isinstance(value, str):
                 if value.lower() == "true":
                     return True
@@ -610,14 +610,14 @@ class Requirer:
         self._requirementOverrides["cores"] = Requirer._parseResource("cores", val)
 
     @property
-    def preemptable(self) -> bool:
-        """Whether a preemptable node is permitted, or a nonpreemptable one is required."""
-        return cast(bool, self._fetchRequirement("preemptable"))
+    def preemptible(self) -> bool:
+        """Whether a preemptible node is permitted, or a nonpreemptible one is required."""
+        return cast(bool, self._fetchRequirement("preemptible"))
 
-    @preemptable.setter
-    def preemptable(self, val: ParseableFlag) -> None:
-        self._requirementOverrides["preemptable"] = Requirer._parseResource(
-            "preemptable", val
+    @preemptible.setter
+    def preemptible(self, val: ParseableFlag) -> None:
+        self._requirementOverrides["preemptible"] = Requirer._parseResource(
+            "preemptible", val
         )
 
     @property
@@ -627,7 +627,7 @@ class Requirer:
 
     @accelerators.setter
     def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
-        self._requirementOverrides["preemptable"] = Requirer._parseResource(
+        self._requirementOverrides["preemptible"] = Requirer._parseResource(
             "accelerators", val
         )
 
@@ -702,7 +702,7 @@ class JobDescription(Requirer):
 
         :param requirements: Dict from string to number, string, or bool
             describing the resource requirements of the job. 'cores', 'memory',
-            'disk', and 'preemptable' fields, if set, are parsed and broken out
+            'disk', and 'preemptible' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
             queried (see :meth:`toil.job.Requirer.assignConfig`).
@@ -1062,7 +1062,7 @@ class JobDescription(Requirer):
         # Make sure we have an assigned config.
         assert self._config is not None
 
-        if self._config.enableUnlimitedPreemptableRetries and exit_reason == BatchJobExitReason.LOST:
+        if self._config.enableUnlimitedPreemptibleRetries and exit_reason == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
                         self.remainingTryCount, self, self.jobStoreID)
         else:
@@ -1297,7 +1297,7 @@ class Job:
         cores: Optional[ParseableDivisibleResource] = None,
         disk: Optional[ParseableIndivisibleResource] = None,
         accelerators: Optional[ParseableAcceleratorRequirement] = None,
-        preemptable: Optional[ParseableFlag] = None,
+        preemptible: Optional[ParseableFlag] = None,
         unitName: Optional[str] = "",
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
@@ -1312,7 +1312,7 @@ class Job:
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
-        :param preemptable: if the job can be run on a preemptable node.
+        :param preemptible: if the job can be run on a preemptible node.
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
@@ -1325,7 +1325,7 @@ class Job:
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
         :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by AcceleratorRequirement.parse.
-        :type preemptable: bool, int in {0, 1}, or string in {'false', 'true'} in any case
+        :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'} in any case
         :type unitName: str
         :type checkpoint: bool
         :type displayName: str
@@ -1338,7 +1338,7 @@ class Job:
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'accelerators': accelerators,
-                        'preemptable': preemptable}
+                        'preemptible': preemptible}
         if descriptionClass is None:
             if checkpoint:
                 # Actually describe as a checkpoint job
@@ -1463,16 +1463,16 @@ class Job:
          self.description.accelerators = val
 
     @property
-    def preemptable(self):
+    def preemptible(self):
         """
-        Whether the job can be run on a preemptable node.
+        Whether the job can be run on a preemptible node.
 
         :rtype: bool
         """
-        return self.description.preemptable
-    @preemptable.setter
-    def preemptable(self, val):
-         self.description.preemptable = val
+        return self.description.preemptible
+    @preemptible.setter
+    def preemptible(self, val):
+         self.description.preemptible = val
 
     @property
     def checkpoint(self):
@@ -2125,7 +2125,7 @@ class Job:
         Is not executed as a job; runs within a ServiceHostJob.
         """
 
-        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptable=None, unitName=None):
+        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptible=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -2137,7 +2137,7 @@ class Job:
                 'cores': cores,
                 'disk': disk,
                 'accelerators': accelerators,
-                'preemptable': preemptable
+                'preemptible': preemptible
             })
 
             # And the unit name
@@ -2773,7 +2773,7 @@ class FunctionWrappingJob(Job):
                ``**kwargs`` as arguments.
 
         The keywords ``memory``, ``cores``, ``disk``, ``accelerators`,
-        ``preemptable`` and ``checkpoint`` are reserved keyword arguments that
+        ``preemptible`` and ``checkpoint`` are reserved keyword arguments that
         if specified will be used to determine the resources required for the
         job, as :func:`toil.job.Job.__init__`. If they are keyword arguments to
         the function they will be extracted from the function definition, but
@@ -2808,7 +2808,7 @@ class FunctionWrappingJob(Job):
                          cores=resolve('cores', dehumanize=True),
                          disk=resolve('disk', dehumanize=True),
                          accelerators=resolve('accelerators'),
-                         preemptable=resolve('preemptable'),
+                         preemptible=resolve('preemptible'),
                          checkpoint=resolve('checkpoint', default=False),
                          unitName=resolve('name', default=None))
 
@@ -2858,7 +2858,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - preemptible
 
     Note that the *argument* is named "preemptible" but internally the
-    *requirement* is "preemptable".
+    *requirement* is "preemptible".
 
     For example to wrap a function into a job we would call::
 

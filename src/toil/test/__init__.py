@@ -1140,7 +1140,7 @@ class ApplianceTestSupport(ToilTest):
             return ['--work_dir=/var/lib/mesos',
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
-                    '--attributes=preemptable:False',
+                    '--attributes=preemptible:False',
                     '--resources=cpus(*):%i' % self.numCores,
                     '--no-hostname_lookup',
                     '--no-systemd_enable_support']

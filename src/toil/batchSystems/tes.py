@@ -208,7 +208,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                                            ram_gb=job_desc.memory / (1024**3),
                                            disk_gb=job_desc.disk / (1024**3),
                                            # TODO: py-tes spells this differently than Toil
-                                           preemptible=job_desc.preemptable)
+                                           preemptible=job_desc.preemptible)
 
             # Package into a TES Task
             task = tes.Task(name=job_name,

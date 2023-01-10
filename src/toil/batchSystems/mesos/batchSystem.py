@@ -139,16 +139,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self.agentsByID = {}
 
         # A set of Mesos agent IDs, one for each agent running on a
-        # non-preemptable node. Only an approximation of the truth. Recently
+        # non-preemptible node. Only an approximation of the truth. Recently
         # launched nodes may be absent from this set for a while and a node's
         # absence from this set does not imply its preemptability. But it is
-        # generally safer to assume a node is preemptable since
+        # generally safer to assume a node is preemptible since
         # non-preemptability is a stronger requirement. If we tracked the set
-        # of preemptable nodes instead, we'd have to use absence as an
+        # of preemptible nodes instead, we'd have to use absence as an
         # indicator of non-preemptability and could therefore be misled into
-        # believing that a recently launched preemptable node was
-        # non-preemptable.
-        self.nonPreemptableNodes = set()
+        # believing that a recently launched preemptible node was
+        # non-preemptible.
+        self.nonPreemptibleNodes = set()
 
         self.executor = self._buildExecutor()
 
@@ -186,7 +186,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             "memory": jobNode.memory,
             "cores": jobNode.cores,
             "disk": jobNode.disk,
-            "preemptable": jobNode.preemptable
+            "preemptible": jobNode.preemptible
         }
 
         jobID = self.getNextJobID()
@@ -375,14 +375,14 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         cores = 0
         memory = 0
         disk = 0
-        preemptable = None
+        preemptible = None
         for attribute in offer.attributes:
-            if attribute.name == 'preemptable':
-                assert preemptable is None, "Attribute 'preemptable' occurs more than once."
-                preemptable = strict_bool(attribute.text.value)
-        if preemptable is None:
-            log.debug('Agent not marked as either preemptable or not. Assuming non-preemptable.')
-            preemptable = False
+            if attribute.name == 'preemptible':
+                assert preemptible is None, "Attribute 'preemptible' occurs more than once."
+                preemptible = strict_bool(attribute.text.value)
+        if preemptible is None:
+            log.debug('Agent not marked as either preemptible or not. Assuming non-preemptible.')
+            preemptible = False
         for resource in offer.resources:
             if resource.name == "cpus":
                 cores += resource.scalar.value
@@ -390,7 +390,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 memory += resource.scalar.value
             elif resource.name == "disk":
                 disk += resource.scalar.value
-        return cores, memory, disk, preemptable
+        return cores, memory, disk, preemptible
 
     def _prepareToRun(self, jobType, offer):
         # Get the first element to ensure FIFO
@@ -438,9 +438,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 continue
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
-            offerCores, offerMemory, offerDisk, offerPreemptable = self._parseOffer(offer)
-            log.debug('Got offer %s for a %spreemptable agent with %.2f MiB memory, %.2f core(s) '
-                      'and %.2f MiB of disk.', offer.id.value, '' if offerPreemptable else 'non-',
+            offerCores, offerMemory, offerDisk, offerPreemptible = self._parseOffer(offer)
+            log.debug('Got offer %s for a %spreemptible agent with %.2f MiB memory, %.2f core(s) '
+                      'and %.2f MiB of disk.', offer.id.value, '' if offerPreemptible else 'non-',
                       offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
             remainingMemory = offerMemory
@@ -454,9 +454,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 nextToLaunchIndex = 0
                 # Toil specifies disk and memory in bytes but Mesos uses MiB
                 while ( not self.jobQueues.typeEmpty(jobType)
-                       # On a non-preemptable node we can run any job, on a preemptable node we
-                       # can only run preemptable jobs:
-                       and (not offerPreemptable or jobType.preemptable)
+                       # On a non-preemptible node we can run any job, on a preemptible node we
+                       # can only run preemptible jobs:
+                       and (not offerPreemptible or jobType.preemptible)
                        and remainingCores >= jobType.cores
                        and remainingDisk >= b_to_mib(jobType.disk)
                        and remainingMemory >= b_to_mib(jobType.memory)):
@@ -475,10 +475,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     # report that remaining jobs cannot be run with the current resourcesq:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
                               '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
-                              'and %(disk)s of disk on a %(non)spreemptable agent.',
+                              'and %(disk)s of disk on a %(non)spreemptible agent.',
                               dict(offer=offer.id.value,
                                    requirements=jobType.__dict__,
-                                   non='' if offerPreemptable else 'non-',
+                                   non='' if offerPreemptible else 'non-',
                                    memory=mib_to_b(offerMemory),
                                    cores=offerCores,
                                    disk=mib_to_b(offerDisk)))
@@ -510,17 +510,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 log.debug("Failed to resolve hostname %s" % offer.hostname)
                 raise
             self._registerNode(nodeAddress, offer.agent_id.value)
-            preemptable = False
+            preemptible = False
             for attribute in offer.attributes:
-                if attribute.name == 'preemptable':
-                    preemptable = strict_bool(attribute.text.value)
-            if preemptable:
+                if attribute.name == 'preemptible':
+                    preemptible = strict_bool(attribute.text.value)
+            if preemptible:
                 try:
-                    self.nonPreemptableNodes.remove(offer.agent_id.value)
+                    self.nonPreemptibleNodes.remove(offer.agent_id.value)
                 except KeyError:
                     pass
             else:
-                self.nonPreemptableNodes.add(offer.agent_id.value)
+                self.nonPreemptibleNodes.add(offer.agent_id.value)
 
     def _filterOfferedNodes(self, offers):
         if not self.nodeFilter:
@@ -706,16 +706,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return executor
 
     def getNodes(self,
-                 preemptable: Optional[bool] = None,
+                 preemptible: Optional[bool] = None,
                  timeout: Optional[int] = None) -> Dict[str, NodeInfo]:
         """
         Return all nodes that match:
-         - preemptable status (None includes all)
+         - preemptible status (None includes all)
          - timeout period (seen within the last # seconds, or None for all)
         """
         nodes = dict()
         for node_ip, executor in self.executors.items():
-            if preemptable is None or (preemptable == (executor.agentId not in self.nonPreemptableNodes)):
+            if preemptible is None or (preemptible == (executor.agentId not in self.nonPreemptibleNodes)):
                 if timeout is None or (time.time() - executor.lastSeen < timeout):
                     nodes[node_ip] = executor.nodeInfo
         return nodes

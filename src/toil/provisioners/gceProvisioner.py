@@ -181,7 +181,7 @@ class GCEProvisioner(AbstractProvisioner):
         # Wait for the appliance to start and inject credentials.
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                           name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=self._tags)
+                          preemptible=False, tags=self._tags)
         leaderNode.waitForNode('toil_leader', keyName=self._keyName)
         leaderNode.copySshKeys(self._keyName)
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
@@ -192,7 +192,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.debug('Launched leader')
 
-    def getNodeShape(self, instance_type: str, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptible=False):
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
         sizes = [x for x in sizes if x.name == instance_type]
@@ -213,7 +213,7 @@ class GCEProvisioner(AbstractProvisioner):
                      memory=memory,
                      cores=instanceType.extra['guestCpus'],
                      disk=disk,
-                     preemptable=preemptable)
+                     preemptible=preemptible)
 
     @staticmethod
     def retryPredicate(e):
@@ -243,7 +243,7 @@ class GCEProvisioner(AbstractProvisioner):
             instancesToKill = [i for i in instances if i.name in nodeNames]
             self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible, spotBid=None) -> int:
         assert self._leaderPrivateIP
 
         # We don't support any balancing here so just pick one of the
@@ -262,13 +262,13 @@ class GCEProvisioner(AbstractProvisioner):
         elif self._sseKey:
             keyPath = self._sseKey
 
-        if not preemptable:
-            logger.debug('Launching %s non-preemptable nodes', numNodes)
+        if not preemptible:
+            logger.debug('Launching %s non-preemptible nodes', numNodes)
         else:
-            logger.debug('Launching %s preemptable nodes', numNodes)
+            logger.debug('Launching %s preemptible nodes', numNodes)
 
         # kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptible)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
@@ -297,7 +297,7 @@ class GCEProvisioner(AbstractProvisioner):
                                     ex_metadata=metadata,
                                     ex_disks_gce_struct=[disk],
                                     description=self._tags,
-                                    ex_preemptible=preemptable
+                                    ex_preemptible=preemptible
                                     )
             failedWorkers = []
             for instance in instancesLaunched:
@@ -308,7 +308,7 @@ class GCEProvisioner(AbstractProvisioner):
 
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self._tags)  # FIXME: what should tags be set to?
+                            preemptible=False, tags=self._tags)  # FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     logger.debug("Created worker %s" % node.publicIP)
@@ -327,16 +327,16 @@ class GCEProvisioner(AbstractProvisioner):
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
 
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None):
         assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
-            if preemptable is not None:
+            if preemptible is not None:
                 scheduling = instance.extra.get('scheduling')
-                # If this field is not found in the extra meta-data, assume the node is not preemptable.
-                if scheduling and scheduling.get('preemptible', False) != preemptable:
+                # If this field is not found in the extra meta-data, assume the node is not preemptible.
+                if scheduling and scheduling.get('preemptible', False) != preemptible:
                     continue
             isWorker = True
             for ip in instance.private_ips:
@@ -349,7 +349,7 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
+                     preemptible=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
                 for i in workerInstances]
 
     def getLeader(self):
@@ -361,7 +361,7 @@ class GCEProvisioner(AbstractProvisioner):
             raise NoSuchClusterException(self.clusterName)
         return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                     name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                    preemptable=False, tags=None)
+                    preemptible=False, tags=None)
 
     def _injectWorkerFiles(self, node, botoExists):
         """
@@ -422,7 +422,7 @@ class GCEProvisioner(AbstractProvisioner):
         """
          Monkey patch to gce.py in libcloud to allow disk and images to be specified.
          Also changed name to a uuid below.
-         The prefix 'wp' identifies preemptable nodes and 'wn' non-preemptable nodes.
+         The prefix 'wp' identifies preemptible nodes and 'wn' non-preemptible nodes.
         """
         # if image and ex_disks_gce_struct:
         #    raise ValueError("Cannot specify both 'image' and "

@@ -284,7 +284,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
   --scaleInterval SCALEINTERVAL
                         The interval (seconds) between assessing if the scale of
                         the cluster needs to change. (Default: 60)
-  --preemptableCompensation PREEMPTABLECOMPENSATION
+  --preemptableCompensation PREEMPTIBLECOMPENSATION
                         The preference of the autoscaler to replace
                         preemptable nodes with non-preemptable nodes, when
                         preemptable nodes cannot be started for some reason.
@@ -318,7 +318,7 @@ keeping this limited we can avoid nodes occupied with services causing deadlocks
                         The maximum number of service jobs that can be run
                         concurrently, excluding service jobs running on
                         preemptable nodes. default=9223372036854775807
-  --maxPreemptableServiceJobs MAXPREEMPTABLESERVICEJOBS
+  --maxPreemptableServiceJobs MAXPREEMPTIBLESERVICEJOBS
                         The maximum number of service jobs that can run
                         concurrently on preemptable nodes.
                         default=9223372036854775807

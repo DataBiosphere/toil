@@ -32,7 +32,7 @@ class WorkerTests(ToilTest):
 
     def testNextChainable(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
-        def createTestJobDesc(memory, cores, disk, preemptable, checkpoint):
+        def createTestJobDesc(memory, cores, disk, preemptible, checkpoint):
             """
             Create a JobDescription with no command (representing a Job that
             has already run) and return the JobDescription.
@@ -41,7 +41,7 @@ class WorkerTests(ToilTest):
             self.jobNumber += 1
 
             descClass = CheckpointJobDescription if checkpoint else JobDescription
-            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, jobName=name)
+            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptible': preemptible}, jobName=name)
 
             # Assign an ID
             self.jobStore.assign_job_id(jobDesc)
@@ -79,7 +79,7 @@ class WorkerTests(ToilTest):
             self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # If there is an increase in resource requirements we should get nothing to chain.
-            reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
+            reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptible': True, 'checkpoint': False}
             for increased_attribute in ('memory', 'cores', 'disk'):
                 jobDesc1 = createTestJobDesc(**reqs)
                 reqs[increased_attribute] += 1

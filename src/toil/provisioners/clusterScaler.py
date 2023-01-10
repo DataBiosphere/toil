@@ -65,7 +65,7 @@ class BinPackedFit:
     that's added.
 
     :param list nodeShapes: The properties of an atomic node allocation, in terms of wall-time,
-                            memory, cores, disk, and whether it is preemptable or not.
+                            memory, cores, disk, and whether it is preemptible or not.
     :param targetTime: The time before which all jobs should at least be started.
 
     :returns: The minimum number of minimal node allocations estimated to be required to run all
@@ -196,12 +196,12 @@ class NodeReservation:
                 self.shape.memory,
                 self.shape.cores,
                 self.shape.disk,
-                self.shape.preemptable,
+                self.shape.preemptible,
                 self.nReservation.shape.wallTime if self.nReservation is not None else str(None),
                 self.nReservation.shape.memory if self.nReservation is not None else str(None),
                 self.nReservation.shape.cores if self.nReservation is not None else str(None),
                 self.nReservation.shape.disk if self.nReservation is not None else str(None),
-                self.nReservation.shape.preemptable if self.nReservation is not None else str(None),
+                self.nReservation.shape.preemptible if self.nReservation is not None else str(None),
                 str(len(self.shapes())))
 
     def get_failed_constraints(self, job_shape: Shape) -> List[FailedConstraint]:
@@ -223,8 +223,8 @@ class NodeReservation:
             failures.append(("cores", self.shape.cores))
         if job_shape.disk > self.shape.disk:
             failures.append(("disk", self.shape.disk))
-        if not job_shape.preemptable and self.shape.preemptable:
-            failures.append(("preemptable", self.shape.preemptable))
+        if not job_shape.preemptible and self.shape.preemptible:
+            failures.append(("preemptible", self.shape.preemptible))
         return failures
     
     def fits(self, jobShape: Shape) -> bool:
@@ -232,7 +232,7 @@ class NodeReservation:
         return jobShape.memory <= self.shape.memory and \
                jobShape.cores <= self.shape.cores and \
                jobShape.disk <= self.shape.disk and \
-               (jobShape.preemptable or not self.shape.preemptable)
+               (jobShape.preemptible or not self.shape.preemptible)
 
     def shapes(self) -> List[Shape]:
         """Get all time-slice shapes, in order, from this reservation on."""
@@ -249,7 +249,7 @@ class NodeReservation:
                            self.shape.memory - jobShape.memory,
                            self.shape.cores - jobShape.cores,
                            self.shape.disk - jobShape.disk,
-                           self.shape.preemptable)
+                           self.shape.preemptible)
 
     def attemptToAddJob(
         self, jobShape: Shape, nodeShape: Shape, targetTime: float
@@ -270,7 +270,7 @@ class NodeReservation:
         startingReservationTime: float = 0
 
         while True:
-            # True == can run the job (resources & preemptable only; NO time)
+            # True == can run the job (resources & preemptible only; NO time)
             if endingReservation.fits(jobShape):
                 # add the time left available on the reservation
                 availableTime += endingReservation.shape.wallTime
@@ -344,12 +344,12 @@ def split(
                   nodeShape.memory - jobShape.memory,
                   nodeShape.cores - jobShape.cores,
                   nodeShape.disk - jobShape.disk,
-                  nodeShape.preemptable),
+                  nodeShape.preemptible),
             NodeReservation(Shape(nodeShape.wallTime - wallTime,
                                   nodeShape.memory,
                                   nodeShape.cores,
                                   nodeShape.disk,
-                                  nodeShape.preemptable)))
+                                  nodeShape.preemptible)))
 
 
 def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
@@ -408,16 +408,16 @@ class ClusterScaler:
 
         self.ignoredNodes: Set[str] = set()
 
-        # A *deficit* exists when we have more jobs that can run on preemptable
-        # nodes than we have preemptable nodes. In order to not block these jobs,
-        # we want to increase the number of non-preemptable nodes that we have and
-        # need for just non-preemptable jobs. However, we may still
-        # prefer waiting for preemptable instances to come available.
+        # A *deficit* exists when we have more jobs that can run on preemptible
+        # nodes than we have preemptible nodes. In order to not block these jobs,
+        # we want to increase the number of non-preemptible nodes that we have and
+        # need for just non-preemptible jobs. However, we may still
+        # prefer waiting for preemptible instances to come available.
         # To accommodate this, we set the delta to the difference between the number
-        # of provisioned preemptable nodes and the number of nodes that were requested.
-        # Then, when provisioning non-preemptable nodes of the same type, we attempt to
+        # of provisioned preemptible nodes and the number of nodes that were requested.
+        # Then, when provisioning non-preemptible nodes of the same type, we attempt to
         # make up the deficit.
-        self.preemptableNodeDeficit = {instance_type: 0 for instance_type in self.instance_types}
+        self.preemptibleNodeDeficit = {instance_type: 0 for instance_type in self.instance_types}
 
         # Keeps track of the last raw (i.e. float, not limited by
         # max/min nodes) estimates of the number of nodes needed for
@@ -427,7 +427,7 @@ class ClusterScaler:
 
         assert len(self.nodeShapes) > 0
 
-        # Minimum/maximum number of either preemptable or non-preemptable nodes in the cluster
+        # Minimum/maximum number of either preemptible or non-preemptible nodes in the cluster
         minNodes = config.minNodes
         if minNodes is None:
             minNodes = [0 for node in self.instance_types]
@@ -451,15 +451,15 @@ class ClusterScaler:
         #Node shape to number of currently provisioned nodes
         totalNodes: Dict[Shape, int] = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem) and leader.provisioner:
-            for preemptable in (True, False):
+            for preemptible in (True, False):
                 nodes: List["Node"] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
-                                                                              preemptable=preemptable)
+                                                                              preemptible=preemptible)
                     totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
 
-                self.setStaticNodes(nodes, preemptable)
+                self.setStaticNodes(nodes, preemptible)
 
         logger.debug('Starting with the following nodes in the cluster: %s' % totalNodes)
 
@@ -623,7 +623,7 @@ class ClusterScaler:
         self.totalAvgRuntime = float(self.totalAvgRuntime * (self.totalJobsCompleted - 1) + \
                                      wallTime)/self.totalJobsCompleted
 
-    def setStaticNodes(self, nodes: List["Node"], preemptable: bool) -> None:
+    def setStaticNodes(self, nodes: List["Node"], preemptible: bool) -> None:
         """
         Used to track statically provisioned nodes. This method must be called
         before any auto-scaled nodes are provisioned.
@@ -633,19 +633,19 @@ class ClusterScaler:
 
         :param nodes: list of Node objects
         """
-        prefix = 'non-' if not preemptable else ''
-        logger.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
+        prefix = 'non-' if not preemptible else ''
+        logger.debug("Adding %s to %spreemptible static nodes", nodes, prefix)
         if nodes is not None:
-            self.static[preemptable] = {node.privateIP : node for node in nodes}
+            self.static[preemptible] = {node.privateIP : node for node in nodes}
 
-    def getStaticNodes(self, preemptable: bool) -> Dict[str, "Node"]:
+    def getStaticNodes(self, preemptible: bool) -> Dict[str, "Node"]:
         """
         Returns nodes set in setStaticNodes().
 
-        :param preemptable:
+        :param preemptible:
         :return: Statically provisioned nodes.
         """
-        return self.static[preemptable]
+        return self.static[preemptible]
 
     def smoothEstimate(self, nodeShape: Shape, estimatedNodeCount: int) -> int:
         """
@@ -693,20 +693,20 @@ class ClusterScaler:
             # weighted moving average.
             estimatedNodeCount = self.smoothEstimate(nodeShape, estimatedNodeCount)
 
-            # If we're scaling a non-preemptable node type, we need to see if we have a
-            # deficit of preemptable nodes of this type that we should compensate for.
-            if not nodeShape.preemptable:
-                compensation = self.config.preemptableCompensation
+            # If we're scaling a non-preemptible node type, we need to see if we have a
+            # deficit of preemptible nodes of this type that we should compensate for.
+            if not nodeShape.preemptible:
+                compensation = self.config.preemptibleCompensation
                 assert 0.0 <= compensation <= 1.0
-                # The number of nodes we provision as compensation for missing preemptable
-                # nodes is the product of the deficit (the number of preemptable nodes we did
+                # The number of nodes we provision as compensation for missing preemptible
+                # nodes is the product of the deficit (the number of preemptible nodes we did
                 # _not_ allocate) and configuration preference.
-                compensationNodes = self._round(self.preemptableNodeDeficit[instance_type] * compensation)
+                compensationNodes = self._round(self.preemptibleNodeDeficit[instance_type] * compensation)
                 if compensationNodes > 0:
-                    logger.debug('Adding %d non-preemptable nodes of type %s to compensate for a '
-                                'deficit of %d preemptable ones.', compensationNodes,
+                    logger.debug('Adding %d non-preemptible nodes of type %s to compensate for a '
+                                'deficit of %d preemptible ones.', compensationNodes,
                                 instance_type,
-                                self.preemptableNodeDeficit[instance_type])
+                                self.preemptibleNodeDeficit[instance_type])
                 estimatedNodeCount += compensationNodes
 
             # Tell everyone how big the cluster is
@@ -743,17 +743,17 @@ class ClusterScaler:
         for nodeShape, estimatedNodeCount in estimatedNodeCounts.items():
             instance_type = self.nodeShapeToType[nodeShape]
 
-            newNodeCount = self.setNodeCount(instance_type, estimatedNodeCount, preemptable=nodeShape.preemptable)
-            # If we were scaling up a preemptable node type and failed to meet
+            newNodeCount = self.setNodeCount(instance_type, estimatedNodeCount, preemptible=nodeShape.preemptible)
+            # If we were scaling up a preemptible node type and failed to meet
             # our target, we will attempt to compensate for the deficit while scaling
-            # non-preemptable nodes of this type.
-            if nodeShape.preemptable:
+            # non-preemptible nodes of this type.
+            if nodeShape.preemptible:
                 if newNodeCount < estimatedNodeCount:
                     deficit = estimatedNodeCount - newNodeCount
-                    logger.debug('Preemptable scaler detected deficit of %d nodes of type %s.' % (deficit, instance_type))
-                    self.preemptableNodeDeficit[instance_type] = deficit
+                    logger.debug('Preemptible scaler detected deficit of %d nodes of type %s.' % (deficit, instance_type))
+                    self.preemptibleNodeDeficit[instance_type] = deficit
                 else:
-                    self.preemptableNodeDeficit[instance_type] = 0
+                    self.preemptibleNodeDeficit[instance_type] = 0
             newNodeCounts[nodeShape] = newNodeCount
 
         #Attempt to terminate any nodes that we previously designated for
@@ -765,20 +765,20 @@ class ClusterScaler:
         self,
         instance_type: str,
         numNodes: int,
-        preemptable: bool = False,
+        preemptible: bool = False,
         force: bool = False,
     ) -> int:
         """
-        Attempt to grow or shrink the number of preemptable or non-preemptable worker nodes in
+        Attempt to grow or shrink the number of preemptible or non-preemptible worker nodes in
         the cluster to the given value, or as close a value as possible, and, after performing
         the necessary additions or removals of worker nodes, return the resulting number of
-        preemptable or non-preemptable nodes currently in the cluster.
+        preemptible or non-preemptible nodes currently in the cluster.
 
         :param instance_type: The instance type to add or remove.
 
         :param numNodes: Desired size of the cluster
 
-        :param preemptable: whether the added nodes will be preemptable, i.e. whether they
+        :param preemptible: whether the added nodes will be preemptible, i.e. whether they
                may be removed spontaneously by the underlying platform at any time.
 
         :param force: If False, the provisioner is allowed to deviate from the given number
@@ -794,7 +794,7 @@ class ClusterScaler:
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
         for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
-                nodes = self.getNodes(preemptable)
+                nodes = self.getNodes(preemptible)
                 logger.debug("Cluster contains %i instances" % len(nodes))
 
                 nodes = {node: nodes[node] for node in nodes if node.nodeType == instance_type}
@@ -819,16 +819,16 @@ class ClusterScaler:
                 if delta > 0:
                     logger.info('Adding %i %s nodes to get to desired cluster size of %i.',
                                 delta,
-                                'preemptable' if preemptable else 'non-preemptable',
+                                'preemptible' if preemptible else 'non-preemptible',
                                 numNodes)
                     numNodes = numCurrentNodes + self._addNodes(instance_type, numNodes=delta,
-                                                                preemptable=preemptable)
+                                                                preemptible=preemptible)
                 elif delta < 0:
-                    logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
+                    logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptible' if preemptible else 'non-preemptible', numNodes)
                     numNodes = numCurrentNodes - self._removeNodes(nodes,
                                                                    instance_type=instance_type,
                                                                    num_nodes=-delta,
-                                                                   preemptable=preemptable,
+                                                                   preemptible=preemptible,
                                                                    force=force)
                 elif force:
                     logger.debug('Cluster already at desired size of %i. Nothing to do.', numNodes)
@@ -836,15 +836,15 @@ class ClusterScaler:
                     logger.debug('Cluster (minus ignored nodes) already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
-    def _addNodes(self, instance_type: str, numNodes: int, preemptable: bool) -> int:
-        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptable=preemptable)
+    def _addNodes(self, instance_type: str, numNodes: int, preemptible: bool) -> int:
+        return self.provisioner.addNodes(nodeTypes={instance_type}, numNodes=numNodes, preemptible=preemptible)
 
     def _removeNodes(
         self,
         nodes: Dict["Node", NodeInfo],
         instance_type: str,
         num_nodes: int,
-        preemptable: bool = False,
+        preemptible: bool = False,
         force: bool = False,
     ) -> int:
         # If the batch system is scalable, we can use the number of currently running workers on
@@ -855,13 +855,13 @@ class ClusterScaler:
             # terminated already. There can also be instances that the batch system doesn't have
             # nodes for yet. We'll ignore those, too, unless forced.
             # TODO: This ignores/overrides the input arg, do we really want to do that???
-            nodes = self.getNodes(preemptable)
+            nodes = self.getNodes(preemptible)
             # Filter down to nodes of the correct node type
 
             nodes = {node: nodes[node] for node in nodes if
                      node.nodeType == instance_type}
 
-            filtered_nodes = self.filter_out_static_nodes(nodes, preemptable)
+            filtered_nodes = self.filter_out_static_nodes(nodes, preemptible)
             filtered_nodes = filtered_nodes[:num_nodes]
 
             # Join nodes and instances on private IP address.
@@ -931,41 +931,41 @@ class ClusterScaler:
     def filter_out_static_nodes(
             self,
             nodes: Dict["Node", NodeInfo],
-            preemptable: bool = False) -> List[Tuple["Node", NodeInfo]]:
+            preemptible: bool = False) -> List[Tuple["Node", NodeInfo]]:
         filtered_nodes = []
         for node, nodeInfo in nodes.items():
             if node:
-                non = 'non-' if not preemptable else ''
-                if node.privateIP in self.getStaticNodes(preemptable):
+                non = 'non-' if not preemptible else ''
+                if node.privateIP in self.getStaticNodes(preemptible):
                     # we don't want to automatically terminate any statically provisioned nodes
-                    logger.debug(f'Found {node.privateIP} in {non}preemptable static nodes')
+                    logger.debug(f'Found {node.privateIP} in {non}preemptible static nodes')
                 else:
-                    logger.debug(f'Did not find {node.privateIP} in {non}preemptable static nodes')
+                    logger.debug(f'Did not find {node.privateIP} in {non}preemptible static nodes')
                     filtered_nodes.append((node, nodeInfo))
         # Sort nodes by number of workers and time left in billing cycle
         filtered_nodes.sort(key=lambda node_nodeInfo: (
             node_nodeInfo[1].workers if node_nodeInfo[1] else 1, node_nodeInfo[0].remainingBillingInterval()))
         return filtered_nodes
 
-    def getNodes(self, preemptable: Optional[bool] = None) -> Dict["Node", NodeInfo]:
+    def getNodes(self, preemptible: Optional[bool] = None) -> Dict["Node", NodeInfo]:
         """
-        Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
+        Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
 
         This method is the definitive source on nodes in cluster, & is responsible for consolidating
         cluster state between the provisioner & batch system.
 
-        :param bool preemptable: If True (False) only (non-)preemptable nodes will be returned.
+        :param bool preemptible: If True (False) only (non-)preemptible nodes will be returned.
                If None, all nodes will be returned.
         """
         if not isinstance(self.leader.batchSystem, AbstractScalableBatchSystem):
             raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
         # nodes seen within the last 600 seconds (10 minutes)
-        recent_nodes = self.leader.batchSystem.getNodes(preemptable, timeout=600)
+        recent_nodes = self.leader.batchSystem.getNodes(preemptible, timeout=600)
         # all available nodes
-        all_nodes = self.leader.batchSystem.getNodes(preemptable)
+        all_nodes = self.leader.batchSystem.getNodes(preemptible)
         # nodes that are supposedly doing something
-        provisioned_nodes = self.provisioner.getProvisionedWorkers(preemptable=preemptable)
+        provisioned_nodes = self.provisioner.getProvisionedWorkers(preemptible=preemptible)
 
         if len(recent_nodes) != len(provisioned_nodes):
             logger.debug("Consolidating state between mesos and provisioner")
@@ -1013,9 +1013,9 @@ class ClusterScaler:
     def shutDown(self) -> None:
         logger.debug('Forcing provisioner to reduce cluster size to zero.')
         for nodeShape in self.nodeShapes:
-            preemptable = nodeShape.preemptable
+            preemptible = nodeShape.preemptible
             instance_type = self.nodeShapeToType[nodeShape]
-            self.setNodeCount(instance_type=instance_type, numNodes=0, preemptable=preemptable, force=True)
+            self.setNodeCount(instance_type=instance_type, numNodes=0, preemptible=preemptible, force=True)
 
 class JobTooBigError(Exception):
     """
@@ -1055,7 +1055,7 @@ class JobTooBigError(Exception):
 
 class ScalerThread(ExceptionalThread):
     """
-    A thread that automatically scales the number of either preemptable or non-preemptable worker
+    A thread that automatically scales the number of either preemptible or non-preemptible worker
     nodes according to the resource requirements of the queued jobs.
 
     The scaling calculation is essentially as follows: start with 0 estimated worker nodes. For
@@ -1084,8 +1084,8 @@ class ScalerThread(ExceptionalThread):
             self.stats = ClusterStats(leader.config.clusterStats,
                                       leader.batchSystem,
                                       provisioner.clusterName)
-            for preemptable in [True, False]:
-                self.stats.startStats(preemptable=preemptable)
+            for preemptible in [True, False]:
+                self.stats.startStats(preemptible=preemptible)
             logger.debug("...Cluster stats started.")
             
     def check(self) -> None:
@@ -1125,14 +1125,14 @@ class ScalerThread(ExceptionalThread):
                             memory=job.memory,
                             cores=job.cores,
                             disk=job.disk,
-                            preemptable=job.preemptable) for job in queuedJobs]
+                            preemptible=job.preemptible) for job in queuedJobs]
                     currentNodeCounts = {}
                     for nodeShape in self.scaler.nodeShapes:
                         instance_type = self.scaler.nodeShapeToType[nodeShape]
                         currentNodeCounts[nodeShape] = len(
                             self.scaler.leader.provisioner.getProvisionedWorkers(
                                 instance_type=instance_type,
-                                preemptable=nodeShape.preemptable,
+                                preemptible=nodeShape.preemptible,
                             )
                         )
                     estimatedNodeCounts, could_not_fit = self.scaler.getEstimatedNodeCounts(
@@ -1203,8 +1203,8 @@ class ClusterStats:
             with open(fileName, 'w') as f:
                 json.dump(self.stats, f)
 
-    def startStats(self, preemptable: bool) -> None:
-        thread = ExceptionalThread(target=self._gatherStats, args=[preemptable])
+    def startStats(self, preemptible: bool) -> None:
+        thread = ExceptionalThread(target=self._gatherStats, args=[preemptible])
         thread.start()
         self.statsThreads.append(thread)
 
@@ -1213,7 +1213,7 @@ class ClusterStats:
             # propagate any errors raised in the threads execution
             thread.join(timeout=0)
 
-    def _gatherStats(self, preemptable: bool) -> None:
+    def _gatherStats(self, preemptible: bool) -> None:
         def toDict(nodeInfo: NodeInfo) -> Dict[str, Any]:
             # convert NodeInfo object to dict to improve JSON output
             return dict(memory=nodeInfo.memoryUsed,
@@ -1232,7 +1232,7 @@ class ClusterStats:
                 raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
             try:
                 while not self.stop:
-                    nodeInfo = self.batchSystem.getNodes(preemptable)
+                    nodeInfo = self.batchSystem.getNodes(preemptible)
                     for nodeIP in list(nodeInfo.keys()):
                         nodeStats = nodeInfo[nodeIP]
                         if nodeStats is not None:
@@ -1246,6 +1246,6 @@ class ClusterStats:
                                 stats[nodeIP] = [nodeStatsDict]
                     time.sleep(60)
             finally:
-                threadName = 'Preemptable' if preemptable else 'Non-preemptable'
+                threadName = 'Preemptible' if preemptible else 'Non-preemptible'
                 logger.debug('%s provisioner stats thread shut down successfully.', threadName)
                 self.stats[threadName] = stats
