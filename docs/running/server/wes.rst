@@ -51,37 +51,46 @@ There are many other command line options. Help information can be found by usin
 Below is a detailed summary of all server-specific options:
 
 
---debug
-            Enable debug mode.
+--debug     Enable debug mode.
+--bypass_celery
+            Skip sending workflows to Celery and just run them under the server.
+            For testing.
 --host HOST
-            The host interface that the Toil server binds on. (default: "127.0.0.1").
+            The host interface that the Toil server binds on. (default:
+            "127.0.0.1").
 --port PORT
             The port that the Toil server listens on. (default: 8080).
 --swagger_ui
-            Enable the swagger UI on the ``ga4gh/wes/v1/ui`` endpoint. (default: False).
+            If True, the swagger UI will be enabled and hosted on the
+            `{api_base_path}/ui` endpoint. (default: False)
 --cors
-            Enable Cross Origin Resource Sharing (CORS). This should only be turned on if the server is intended to be
-            used by a website or domain. (default: False).
---cors_origins ORIGIN
-            Ignored if ``--cors`` is False. This sets the allowed origins for CORS. For details about CORS and its
-            security risks, see the `GA4GH docs on CORS`_. (default: "*").
---workers WORKERS
-            Ignored if debug mode is on. The number of worker processes launched by the production WSGI server.
-            (default: 2).
---work_dir WORKDIR
-            The directory where workflows should be stored. This directory should be empty or only contain previous
-            workflows. (default: './workflows').
---opt ENGINE_OPTION
-            Specify the default parameters to be sent to the workflow engine for each run.  Accepts multiple values.
-
-            Example: ``toil server --opt=--logLevel=CRITICAL --opt=--workDir=/tmp``.
---dest_bucket_base DEST_BUCKET_BASE
-            Direct CWL workflows to save output files to dynamically generated unique paths under the given URL.
-            Supports AWS S3.
+            Enable Cross Origin Resource Sharing (CORS). This should only be
+            turned on if the server is intended to be used by a website or
+            domain. (default: False).
+--cors_origins CORS_ORIGIN
+            Ignored if -//-cors is False. This sets the allowed origins for
+            CORS. For details about CORS and its security risks, see the
+            `GA4GH docs on CORS`_. (default: "*").
+--workers WORKERS, -w WORKERS
+            Ignored if -\\-debug is True. The number of worker processes
+            launched by the WSGI server. (default: 2).
+--work_dir WORK_DIR
+            The directory where workflows should be stored. This directory
+            should be empty or only contain previous workflows. (default:
+            './workflows').
 --state_store STATE_STORE
-            The local path or S3 URL where workflow state metadata should be stored. (default: in --work_dir)
---wes_dialect {standard,agc}
-            Restrict WES responses to a dialect compatible with clients that do not fully implement the WES standard. (default: 'standard')
+            The local path or S3 URL where workflow state metadata should be
+            stored. (default: in -\\-work_dir)
+--opt OPT, -o OPT
+            Specify the default parameters to be sent to the workflow engine for
+            each run.  Options taking arguments must use = syntax. Accepts
+            multiple values. Example: -\\-opt=-\\-logLevel=CRITICAL -\\-opt=-\\-workDir=/tmp.
+--dest_bucket_base DEST_BUCKET_BASE
+            Direct CWL workflows to save output files to dynamically generated
+            unique paths under the given URL. Supports AWS S3.
+--wes_dialect DIALECT
+            Restrict WES responses to a dialect compatible with clients that do
+            not fully implement the WES standard. (default: 'standard')
 
 .. _GA4GH docs on CORS: https://w3id.org/ga4gh/product-approval-support/cors
 

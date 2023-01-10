@@ -46,7 +46,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.bus import JobAnnotationMessage, MessageBus, MessageOutbox
+from toil.bus import ExternalBatchIdMessage, MessageBus, MessageOutbox
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.aws import get_current_aws_region, zone_to_region
@@ -141,25 +141,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # We need to track if jobs were killed so they don't come out as updated
         self.killed_job_aws_ids: Set[str] = set()
 
-        # We may need to annotate jobs with their AWS Batch IDs, in case
-        # somebody (like the WES server trying to talk to AGC) needs those.
-        self._outbox: Optional[MessageOutbox] = None
-
     def setUserScript(self, user_script: Resource) -> None:
         logger.debug('Setting user script for deployment: {}'.format(user_script))
         self.user_script = user_script
-
-    def set_message_bus(self, message_bus: MessageBus) -> None:
-        """
-        Give the batch system an opportunity to connect directly to the message
-        bus, so that it can send informational messages about the jobs it is
-        running to other Toil components.
-
-        Currently the only message a batch system may send is
-        JobAnnotationMessage.
-        """
-        # We do in fact send messages to the message bus.
-        self._outbox = message_bus.outbox()
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
@@ -245,9 +229,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             self.aws_id_to_bs_id[aws_id] = bs_id
 
             if self._outbox is not None:
-                # Annotate the job with the AWS Batch job ID it got.
-                self._outbox.publish(JobAnnotationMessage(str(job_desc.jobStoreID), "AWSBatchJobID", aws_id))
-
+                # Specify relationship between toil batch ID and aws ID in message bus
+                self._outbox.publish(ExternalBatchIdMessage(bs_id, aws_id, self.__class__.__name__))
             logger.debug('Launched job: %s', job_name)
 
             return bs_id

@@ -26,6 +26,7 @@ from argparse import (ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
                       _ArgumentGroup)
+from distutils.util import strtobool
 from functools import lru_cache
 from types import TracebackType
 from typing import (IO,
@@ -63,7 +64,8 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage)
+                      QueueSizeMessage,
+                      gen_message_bus_path)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
@@ -188,7 +190,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.write_messages: Optional[str] = None
+        self.write_messages: str = ""
 
         # Misc
         self.environment: Dict[str, str] = {}
@@ -394,7 +396,10 @@ class Config:
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
-        set_option("write_messages")
+
+        set_option("write_messages", os.path.abspath)
+        if not self.write_messages:
+            self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
@@ -563,7 +568,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     caching = file_store_options.add_mutually_exclusive_group()
     caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
     caching.add_argument('--disableCaching', dest='caching', action='store_false', help=caching_help)
-    caching.add_argument('--caching', dest='caching', type=bool, help=caching_help)
+    caching.add_argument('--caching', dest='caching', type=lambda val: bool(strtobool(val)), help=caching_help)
     caching.set_defaults(caching=None)
 
     # Auto scaling options
@@ -1141,7 +1146,7 @@ class Toil(ContextManager["Toil"]):
         if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
                                'does not support cleaning up a worker after the last job finishes. Set '
-                               '--caching=FALSE')
+                               '--caching=false')
 
         logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
