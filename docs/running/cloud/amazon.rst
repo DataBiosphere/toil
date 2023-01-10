@@ -324,32 +324,33 @@ For more information on other autoscaling (and other) options have a look at :re
     Some important caveats about starting a toil run through an ssh session are
     explained in the :ref:`sshCluster` section.
 
-Preemptability
+Preemptibility
 ^^^^^^^^^^^^^^
 
-Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes. Being preemptable node simply
+Toil can run on a heterogeneous cluster of both preemptible and non-preemptible nodes. Being preemptible node simply
 means that the node may be shut down at any time, while jobs are running. These jobs can then be restarted later
 somewhere else.
 
-A node type can be specified as preemptable by adding a `spot bid`_ to its entry in the list of node types provided with
-the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptable node whill be shut down.
+A node type can be specified as preemptible by adding a `spot bid`_ to its entry in the list of node types provided with
+the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptible node whill be shut down.
 
-While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
-via the boolean ``preemptable`` resource requirement, the ``--defaultPreemptable`` flag will allow jobs without a
-``preemptable`` requirement to run on preemptable machines.
+Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
+resource requirement, if this is not specified, the job will not run on preemptible nodes even if preemptible nodes
+are available unless specified with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
+jobs without a ``preemptible`` requirement to run on preemptible machines.
 
-.. admonition:: Specify Preemptability Carefully
+.. admonition:: Specify Preemptibility Carefully
 
     Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
     sense for your workflow and won't cause it to hang. You should make sure the
     provisioner is able to create nodes large enough to run the largest job
-    in the workflow, and that non-preemptable node types are allowed if there are
-    non-preemptable jobs in the workflow.
+    in the workflow, and that non-preemptible node types are allowed if there are
+    non-preemptible jobs in the workflow.
 
-Finally, the ``--preemptableCompensation`` flag can be used to handle cases where preemptable nodes may not be
+Finally, the ``--preemptibleCompensation`` flag can be used to handle cases where preemptible nodes may not be
 available but are required for your workflow. With this flag enabled, the autoscaler will attempt to compensate
-for a shortage of preemptable nodes of a certain type by creating non-preemptable nodes of that type, if
-non-preemptable nodes of that type were specified in ``--nodeTypes``.
+for a shortage of preemptible nodes of a certain type by creating non-preemptible nodes of that type, if
+non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
 
