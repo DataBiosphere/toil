@@ -2857,9 +2857,6 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
         - accelerators
         - preemptible
 
-    Note that the *argument* is named "preemptible" but internally the
-    *requirement* is "preemptible".
-
     For example to wrap a function into a job we would call::
 
         Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1)
