@@ -23,6 +23,8 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
+import uuid
 
 from typing import Any, Callable, Union, Dict, List, Optional, Set, Sequence, TypeVar, Iterator
 
@@ -554,6 +556,8 @@ class WDLWorkflowNodeJob(Job):
             
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
+            # TODO: Can this result in picking up non-namespaced values that
+            # aren't meant to be inputs, by not changing their names?
             passed_down_bindings = incoming_bindings.enter_namespace(self._node.name)
             
             if isinstance(self._node.callee, WDL.Tree.Workflow):
@@ -987,9 +991,38 @@ class WDLOutputsJob(Job):
         
         return output_bindings
         
-
+class WDLRootJob(WDLSectionJob):
+    """
+    Job that evaluates an entire WDL workflow, and returns the workflow outputs
+    namespaced with the workflow name. Inputs may or may not be namespaced with
+    the workflow name; both forms are accepted.
+    """
     
-
+    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, **kwargs) -> None:
+        """
+        Create a subtree to run the workflow and namespace the outputs.
+        """
+        super().__init__(**kwargs)
+        
+        self._workflow = workflow
+        self._inputs = inputs
+        
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+        """
+        Actually build the subgraph.
+        """
+        
+        # Run the workflow. We rely in this to handle entering the input
+        # namespace if needed, or handling free-floating inputs.
+        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs])
+        self.addChild(workflow_job)
+        
+        # And namespace its outputs
+        namespace_job = WDLNamespaceBindingsJob(self._workflow.name, [workflow_job.rv()])
+        workflow_job.addFollowOn(namespace_job)
+        
+        return namespace_job.rv()
+        
 def main() -> None:
     """
     A Toil workflow to interpret WDL input files.
@@ -1000,8 +1033,22 @@ def main() -> None:
     
     parser.add_argument("wdl_uri", type=str, help="WDL document URI")
     parser.add_argument("inputs_uri", type=str, help="WDL input JSON URI")
+    parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell', choices=['cromwell', 'miniwdl'],
+                        help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
+                              "values as JSON, while 'miniwld' nests that under an 'outputs' key, and "
+                              "includes a 'dir' key where files are written."))
+    parser.add_argument("--outputDirectory", dest="output_directory", type=str, default=None,
+                        help=("Directory in which to save output files."))
     
     options = parser.parse_args(sys.argv[1:])
+    
+    output_directory: Optional[str] = options.output_directory
+    if output_directory is None:
+        # Make a temp directory to write output files to
+        output_directory = tempfile.mkdtemp()
+    if not os.path.isdir(output_directory):
+        # Make sure it exists
+        os.mkdir(output_directory)
     
     with Toil(options) as toil:
         if options.restart:
@@ -1023,12 +1070,49 @@ def main() -> None:
                 # JSON ought to start with the workflow's name and then a .
                 input_bindings = WDL.values_from_json(inputs, document.workflow.available_inputs, document.workflow.required_inputs, document.workflow.name)
             
-            root_job = WDLWorkflowJob(document.workflow, [input_bindings])
+            # Run the workflow and get its outputs namespaced with the workflow name.
+            root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
         assert isinstance(output_bindings, WDL.Env.Bindings)
         
-        # Report the result
-        print(json.dumps(WDL.values_to_json(output_bindings)))
+        # Fetch all the output files
+        # TODO: deduplicate with _devirtualize_filename
+        def devirtualize_output(filename: str) -> str:
+            """
+            'devirtualize' a file using the "toil" object instead of a filestore.
+            Returns its local path.
+            """
+            if filename.startswith('toilfile:'):
+                # This is a reference to the Toil filestore.
+                # Deserialize the FileID
+                file_id = FileID.unpack(filename[len("toilfile:") :])
+                # Figure out where it should go.
+                # TODO: make the toilfile URI somehow encode the right file name
+                dest_name = os.path.join(output_directory, str(uuid.uuid4()))
+                # Export the file
+                toil.exportFile(file_id, dest_name)
+                # And return where we put it
+                return dest_name
+            elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:'):
+                # This is a URL that we think Toil knows how to read.
+                imported = toil.import_file(filename)
+                assert imported is not None
+                # Do the same as we do for files we actually made.
+                dest_name = os.path.join(output_directory, str(uuid.uuid4()))
+                toil.exportFile(file_id, dest_name)
+                return dest_name
+            else:
+                # Not a fancy file
+                return filename
+                
+        # Make all the files local files
+        output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
+        
+        # Report the result in the right format
+        outputs = WDL.values_to_json(output_bindings)
+        if options.output_dialect == 'miniwdl':
+            outputs = {'dir': output_directory, 'outputs': outputs}
+        print(json.dumps(outputs))
     
     
     
