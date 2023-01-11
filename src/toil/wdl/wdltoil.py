@@ -598,19 +598,26 @@ class WDLCombineBindingsJob(Job):
     environment changes.
     """
     
-    def __init__(self, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, prev_node_results: Sequence[WDLBindings], remove: Optional[WDLBindings] = None, **kwargs) -> None:
         """
         Make a new job to combine the results of previous jobs.
+        
+        If remove is set, bindings there will be subtracted out of the result.
         """
         super().__init__(**kwargs)
         
         self._prev_node_results = prev_node_results
+        self._remove = remove
        
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Aggregate incoming results.
         """
-        return combine_bindings(self._prev_node_results)
+        combined = combine_bindings(self._prev_node_results)
+        if self._remove is not None:
+            # We need to take stuff out of scope
+            combined = combined.subtract(self._remove)
+        return combined
         
 class WDLNamespaceBindingsJob(Job):
     """
@@ -637,13 +644,20 @@ class WDLSectionJob(Job):
     Job that can create more graph for a section of the wrokflow.
     """
     
-    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], environment: WDLBindings) -> Job:
+    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
         """
         Make a Toil job to evaluate a subgraph inside a workflow or workflow section.
         
         Returns a child Job that will return the aggregated environment after
-        running all the things in the list.
+        running all the things in the section.
+        
+        Bindings in environment will be passed through, but bindings in
+        local_environment will go out of scope at the end of the section.
         """
+        
+        if local_environment is not None:
+            # Bring local environment into scope
+            environment = combine_bindings([environment, local_environment])
         
         # What nodes actually participate in dependencies?
         wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if isinstance(node, WDL.Tree.WorkflowNode)}
@@ -725,7 +739,8 @@ class WDLSectionJob(Job):
         leaf_rvs = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
         # Make sure to also send the section-level bindings
         leaf_rvs.append(environment)
-        sink = WDLCombineBindingsJob(leaf_rvs)
+        # And to filter out stuff that should leave scope
+        sink = WDLCombineBindingsJob(leaf_rvs, remove=local_environment)
         # It runs inside us
         self.addChild(sink)
         for node_id in leaf_ids:
@@ -780,9 +795,11 @@ class WDLScatterJob(WDLSectionJob):
         
         scatter_jobs = []
         for item in scatter_value.value:
-            # Make an instantiation of our subgraph for each possible value of the variable
-            child_bindings = bindings.bind(self._scatter.variable, item)
-            scatter_jobs.append(self.create_subgraph(self._scatter.body, child_bindings))
+            # Make an instantiation of our subgraph for each possible value of
+            # the variable. Make sure the variable is bound only for the
+            # duration of the body.
+            local_bindings = WDL.Env.Bindings().bind(self._scatter.variable, item)
+            scatter_jobs.append(self.create_subgraph(self._scatter.body, bindings, local_bindings))
             
         # Make a job at the end to aggregate
         # Turn all the bindings created inside the scatter bodies into arrays of maybe-optional values
@@ -934,10 +951,42 @@ class WDLWorkflowJob(WDLSectionJob):
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, bindings)
             
-        # TODO: Add evaluating the outputs after the sink! Need a new job to do it!
+        # Add evaluating the outputs after the sink
+        outputs_job = WDLOutputsJob(self._workflow.outputs, sink.rv())
+        sink.addFollowOn(outputs_job)
         
-        # Return the sink job's return value.
-        return sink.rv()
+        # Caller takes care of namespacing the result 
+        return outputs_job.rv()
+        
+class WDLOutputsJob(Job):
+    """
+    Job which evaluates an outputs section (such as for a workflow).
+    
+    Returns an environment with just the outputs bound, in no namespace.
+    """
+    
+    def __init__(self, outputs: List[WDL.Tree.Decl], bindings: WDLBindings, **kwargs):
+        """
+        Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
+        """
+        super().__init__(**kwargs)
+        
+        self._outputs = outputs
+        self._bindings = bindings
+        
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+        """
+        Make bindings for the outputs.
+        """
+        
+        # Evaluate all the outputs in the noirmal, non-task-outputs library context
+        standard_library = ToilWDLStdLibBase(file_store)
+        output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+        for output_decl in self._outputs:
+            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, self._bindings, standard_library))
+        
+        return output_bindings
+        
 
     
 
