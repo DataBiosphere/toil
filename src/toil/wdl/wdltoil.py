@@ -61,7 +61,7 @@ def log_bindings(all_bindings: Sequence[Union[WDLBindings, Promise]]) -> None:
         elif isinstance(bindings, Promise):
             logger.info("<Unfulfilled promise for bindings>")
             
-def get_supertype(types: Set[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
+def get_supertype(types: Sequence[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
     """
     Get the supertype that can hold values of all the given types.
     """
@@ -86,7 +86,7 @@ def get_supertype(types: Set[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
             # Only one type
             return types[0]
         else:
-            # Multiple types. Assume Any
+            # Multiple types (or none). Assume Any
             return WDL.Type.Any()
             
 
@@ -823,19 +823,24 @@ class WDLArrayBindingsJob(Job):
         # outputs of these tasks is now an array", with no hint on what to do
         # if some tasks output nothing, some tasks output things of
         # incompatible types, etc.
-        new_names = {b.name for for env in new_bindings for b in env}
+        new_names = {b.name for env in new_bindings for b in env}
         
         result = self._base_bindings
         for name in new_names:
             # Determine the set of all types bound to the name, or None if a result is null.
-            observed_types = {env.resolve(name).type if env.has_binding(name) else None for env in new_bindings}
+            # Problem: the WDL type types are not hashable, so we need to do bad N^2 deduplication
+            observed_types = []
+            for env in new_bindings:
+                binding_type = env.resolve(name).type if env.has_binding(name) else None
+                if binding_type not in observed_types:
+                    observed_types.append(binding_type)
             # Get the supertype of those types
             supertype: WDL.Type.Base = get_supertype(observed_types)
             # Bind an array of the values
             result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
        
-       # Base bindings are already included so return the result
-       return result
+        # Base bindings are already included so return the result
+        return result
         
 class WDLConditionalJob(WDLSectionJob):
     """
