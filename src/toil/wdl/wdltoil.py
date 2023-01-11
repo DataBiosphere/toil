@@ -26,7 +26,7 @@ import sys
 import tempfile
 import uuid
 
-from typing import Any, Callable, Union, Dict, List, Optional, Set, Sequence, TypeVar, Iterator
+from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, TypeVar, Iterator
 
 import WDL
 
@@ -52,7 +52,7 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     # Merge them up
     return WDL.Env.merge(*all_bindings)
     
-def log_bindings(all_bindings: Sequence[Union[WDLBindings, Promise]]) -> None:
+def log_bindings(all_bindings: Sequence[Union[Promise, WDLBindings]]) -> None:
     """
     Log bindings to the console, even if some are still promises.
     """
@@ -85,8 +85,10 @@ def get_supertype(types: Sequence[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
             return WDL.Type.Any(optional=True)
     else:
         if len(types) == 1:
-            # Only one type
-            return types[0]
+            # Only one type. It isn't None.
+            the_type = types[0]
+            assert the_type is not None
+            return the_type
         else:
             # Multiple types (or none). Assume Any
             return WDL.Type.Any()
@@ -322,7 +324,7 @@ def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePo
     Evaluate a bunch of expressions with names, and make them into a fresh set of bindings.
     """
     
-    new_bindings = WDL.Env.Bindings()
+    new_bindings: WDLBindings = WDL.Env.Bindings()
     for k, v in expressions.items():
         # Add each binding in turn
         new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, None, v, environment, stdlib))
@@ -385,8 +387,10 @@ def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[st
     
     return environment.map(lambda b: map_over_files_in_binding(b, transform))
     
-T = TypeVar('T')
-def map_over_files_in_binding(binding: WDL.Env.Binding[T], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[T]:
+
+ValueT = TypeVar('ValueT', bound=WDL.Value.Base)
+
+def map_over_files_in_binding(binding: WDL.Env.Binding[ValueT], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[Union[ValueT, WDL.Value.Null]]:
     """
     Run all File values embedded in the given binding's value through the given
     transformation function.
@@ -394,7 +398,13 @@ def map_over_files_in_binding(binding: WDL.Env.Binding[T], transform: Callable[[
     
     return WDL.Env.Binding(binding.name, map_over_files_in_value(binding.value, transform), binding.info)
 
-ValueT = TypeVar('ValueT', bound=WDL.Value.Base)
+# TODO: We want to type this to say, for anything descended from a WDL type, we
+# return something descended from the same WDL type or a null. But I can't
+# quite do that with generics, since you could pass in some extended WDL value
+# type we've never heard of and expect to get one of those out.
+#
+# For now we assume that any types extending the WDL value types will implement
+# compatible constructors.
 def map_over_files_in_value(value: ValueT, transform: Callable[[str], Optional[str]]) -> Union[ValueT, WDL.Value.Null]:
     """
     Run all File values embedded in the given value through the given
@@ -409,19 +419,22 @@ def map_over_files_in_value(value: ValueT, transform: Callable[[str], Optional[s
         if new_path is None:
             return WDL.Value.Null()
         else:
-            return WDL.Value.File(new_path, value.expr)
+            # Make whatever the value is around the new path.
+            # TODO: why does this need casting?
+            return cast(ValueT, type(value)(new_path, value.expr))
     elif isinstance(value, WDL.Value.Array):
         # This is an array, so recurse on the items
-        return WDL.Value.Array(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr)
+        return cast(ValueT, type(value)(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr))
     elif isinstance(value, WDL.Value.Map):
         # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
-        return WDL.Value.Map(value.type.item_type, [tuple((map_over_files_in_value(v, transform) for v in pair)) for pair in value.value], value.expr)
+        # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
+        return cast(ValueT, type(value)(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr))
     elif isinstance(value, WDL.Value.Pair):
         # This is a pair, so recurse on the left and right items
-        return WDL.Value.Pair(value.type.left_type, value.type.right_type, tuple((map_over_files_in_value(v, transform) for v in value.value)), value.expr)
+        return cast(ValueT, type(value)(value.type.left_type, value.type.right_type, tuple((map_over_files_in_value(v, transform) for v in value.value)), value.expr))
     elif isinstance(value, WDL.Value.Struct):
         # This is a struct, so recurse on the values in the backing dict
-        return WDL.Value.Struct(value.type, {k: map_over_files_in_value(v, transform) for k, v in value.value.iteritems()}, value.expr)
+        return cast(ValueT, type(value)(value.type, {k: map_over_files_in_value(v, transform) for k, v in value.value.iteritems()}, value.expr))
     else:
         # All other kinds of value can be passed through unmodified.
         return value
@@ -430,7 +443,7 @@ class WDLInputJob(Job):
     """
     Job that evaluates a WDL input, or sources it from the workflow inputs.
     """
-    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[WDLBindings], **kwargs: Dict[str, Any]) -> None:
+    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Dict[str, Any]) -> None:
         super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
         
         self._node = node
@@ -457,7 +470,7 @@ class WDLTaskJob(Job):
     All bindings are in terms of task-internal names.
     """
     
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[WDLBindings], **kwargs: Dict[str, Any]) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Dict[str, Any]) -> None:
         super().__init__(unitName=task.name, displayName=task.name, **kwargs)
         
         self._task = task
@@ -527,13 +540,13 @@ class WDLWorkflowNodeJob(Job):
     Job that evaluates a WDL workflow node.
     """
     
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
         super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
         
         self._node = node
         self._prev_node_results = prev_node_results
         
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Union[Promise, WDLBindings]:
         logger.info("Running node %s", self._node.workflow_node_id)
         
         # Combine the bindings we get from previous jobs
@@ -602,7 +615,7 @@ class WDLCombineBindingsJob(Job):
     environment changes.
     """
     
-    def __init__(self, prev_node_results: Sequence[WDLBindings], remove: Optional[WDLBindings] = None, **kwargs) -> None:
+    def __init__(self, prev_node_results: Sequence[Union[Promise, WDLBindings]], remove: Optional[Union[Promise, WDLBindings]] = None, **kwargs) -> None:
         """
         Make a new job to combine the results of previous jobs.
         
@@ -628,7 +641,7 @@ class WDLNamespaceBindingsJob(Job):
     Job that puts a set of bindings into a namespace.
     """
     
-    def __init__(self, namespace: str, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, namespace: str, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
         """
         Make a new job to namespace results.
         """
@@ -760,7 +773,7 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
         """
         Create a subtree that will run a WDL scatter.
         """
@@ -779,7 +792,7 @@ class WDLScatterJob(WDLSectionJob):
         self._scatter = scatter
         self._prev_node_results = prev_node_results
     
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Union[Promise, WDLBindings]:
         """
         Run the scatter.
         """
@@ -867,7 +880,7 @@ class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
         """
         Create a subtree that will run a WDL conditional.
         """
@@ -882,7 +895,7 @@ class WDLConditionalJob(WDLSectionJob):
         self._conditional = conditional
         self._prev_node_results = prev_node_results
     
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Union[Promise, WDLBindings]:
         """
         Run the scatter.
         """
@@ -914,7 +927,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
     
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -934,7 +947,7 @@ class WDLWorkflowJob(WDLSectionJob):
         self._workflow = workflow
         self._prev_node_results = prev_node_results
         
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Union[Promise, WDLBindings]:
         """
         Run the workflow. Return the result of the workflow.
         """
@@ -969,7 +982,7 @@ class WDLOutputsJob(Job):
     Returns an environment with just the outputs bound, in no namespace.
     """
     
-    def __init__(self, outputs: List[WDL.Tree.Decl], bindings: WDLBindings, **kwargs):
+    def __init__(self, outputs: List[WDL.Tree.Decl], bindings: Union[Promise, WDLBindings], **kwargs):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
         """
@@ -1007,7 +1020,7 @@ class WDLRootJob(WDLSectionJob):
         self._workflow = workflow
         self._inputs = inputs
         
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Union[Promise, WDLBindings]:
         """
         Actually build the subgraph.
         """
@@ -1046,9 +1059,11 @@ def main() -> None:
     if output_directory is None:
         # Make a temp directory to write output files to
         output_directory = tempfile.mkdtemp()
+    assert output_directory is not None
     if not os.path.isdir(output_directory):
         # Make sure it exists
         os.mkdir(output_directory)
+    
     
     with Toil(options) as toil:
         if options.restart:
@@ -1058,7 +1073,7 @@ def main() -> None:
             document: WDL.Tree.Document = WDL.load(options.wdl_uri)
             
             if document.workflow is None:
-                logger.crical("No workflow in document!")
+                logger.critical("No workflow in document!")
                 sys.exit(1)
                 
             if document.workflow.inputs:
@@ -1068,7 +1083,13 @@ def main() -> None:
                 inputs = json.load(open(options.inputs_uri)) if options.inputs_uri else {}
                 # Parse out the available and required inputs. Each key in the
                 # JSON ought to start with the workflow's name and then a .
-                input_bindings = WDL.values_from_json(inputs, document.workflow.available_inputs, document.workflow.required_inputs, document.workflow.name)
+                # TODO: WDL's Bindings[] isn't variant in the right way, so we have to cast form more specific to less specific ones here.
+                input_bindings = WDL.values_from_json(
+                    inputs,
+                    cast(Bindings[Union[Decl, Base]], document.workflow.available_inputs),
+                    cast(Optional[Bindings[Union[Decl, Base]]], document.workflow.required_inputs), 
+                    document.workflow.name
+                )
             
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)

@@ -1767,7 +1767,7 @@ class Job:
     # job run functions
     ####################################################
 
-    def rv(self, *path) -> Any:
+    def rv(self, *path) -> Promise:
         """
         Create a *promise* (:class:`toil.job.Promise`).
 
