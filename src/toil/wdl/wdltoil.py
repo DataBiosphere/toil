@@ -60,6 +60,35 @@ def log_bindings(all_bindings: Sequence[Union[WDLBindings, Promise]]) -> None:
                 logger.info("%s = %s", binding.name, binding.value)
         elif isinstance(bindings, Promise):
             logger.info("<Unfulfilled promise for bindings>")
+            
+def get_supertype(types: Set[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
+    """
+    Get the supertype that can hold values of all the given types.
+    """
+    
+    if None in types:
+        # Need to allow optional values
+        if len(types) == 1:
+            # Only None is here
+            return WDL.Type.Any(optional=True)
+        if len(types) == 2:
+            # None and something else
+            for item in types:
+                if item is not None:
+                    # Return the type that's actually there, but make optional if not already.
+                    return item.copy(optional=True)
+            raise RuntimeError("Expected non-None in types could not be found")
+        else:
+            # Multiple types, and some nulls, so we need an optional Any.
+            return WDL.Type.Any(optional=True)
+    else:
+        if len(types) == 1:
+            # Only one type
+            return types[0]
+        else:
+            # Multiple types. Assume Any
+            return WDL.Type.Any()
+            
 
 def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode]:
     """
@@ -707,7 +736,10 @@ class WDLSectionJob(Job):
             
 class WDLScatterJob(WDLSectionJob):
     """
-    Job that evaluates a scatter in a WDL workflow.
+    Job that evaluates a scatter in a WDL workflow. Runs the body for each
+    value in an array, and makes arrays of the new bindings created in each
+    instance of the body. If an instance of the body doesn't create a binding,
+    it gets a null value in the corresponding array.
     """
     def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[WDLBindings], **kwargs) -> None:
         """
@@ -728,7 +760,7 @@ class WDLScatterJob(WDLSectionJob):
         self._scatter = scatter
         self._prev_node_results = prev_node_results
     
-    def run(self, file_store: AbstractFileStore) -> Any:
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Run the scatter.
         """
@@ -753,12 +785,57 @@ class WDLScatterJob(WDLSectionJob):
             scatter_jobs.append(self.create_subgraph(self._scatter.body, child_bindings))
             
         # Make a job at the end to aggregate
-        # TODO: Needs to turn all the bindings created inside the scatter bodies into arrays of optional values!
-        gather_job = WDLCombineBindingsJob([j.rv() for j in scatter_jobs])
+        # Turn all the bindings created inside the scatter bodies into arrays of maybe-optional values
+        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings)
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
         return gather_job.rv()
+        
+class WDLArrayBindingsJob(Job):
+    """
+    Job that takes all new bindings created in an array of input environments, relative to a base environment, and produces bindings where each new binding name is bound to an array of the values in all the input environments.
+    
+    Useful for producing the results of a scatter.
+    """
+    
+    def __init__(self, input_bindings: Sequence[WDLBindings], base_bindings: WDLBindings, **kwargs) -> None:
+        """
+        Make a new job to array-ify the given input bindings against the given base bindings.
+        """
+        super().__init__(**kwargs)
+        
+        # Everything might still be promises so just save it.
+        # TODO: Allow promises in type signature???
+        
+        self._input_bindings = input_bindings
+        self._base_bindings = base_bindings
+        
+    def run(self, file_sore: AbstractFileStore) -> WDLBindings:
+        """
+        Actually produce the array-ified bindings now that promised values are available.
+        """
+        
+        # Subtract base bindings to get just the new bindings created in each input
+        new_bindings = [env.subtract(self._base_bindings) for env in self._input_bindings]
+        # Make a set of all the new names.
+        # TODO: They ought to maybe have types? Spec just says "any scalar
+        # outputs of these tasks is now an array", with no hint on what to do
+        # if some tasks output nothing, some tasks output things of
+        # incompatible types, etc.
+        new_names = {b.name for for env in new_bindings for b in env}
+        
+        result = self._base_bindings
+        for name in new_names:
+            # Determine the set of all types bound to the name, or None if a result is null.
+            observed_types = {env.resolve(name).type if env.has_binding(name) else None for env in new_bindings}
+            # Get the supertype of those types
+            supertype: WDL.Type.Base = get_supertype(observed_types)
+            # Bind an array of the values
+            result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
+       
+       # Base bindings are already included so return the result
+       return result
         
 class WDLConditionalJob(WDLSectionJob):
     """
@@ -779,7 +856,7 @@ class WDLConditionalJob(WDLSectionJob):
         self._conditional = conditional
         self._prev_node_results = prev_node_results
     
-    def run(self, file_store: AbstractFileStore) -> Any:
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Run the scatter.
         """
@@ -831,7 +908,7 @@ class WDLWorkflowJob(WDLSectionJob):
         self._workflow = workflow
         self._prev_node_results = prev_node_results
         
-    def run(self, file_store: AbstractFileStore) -> Any:
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Run the workflow. Return the result of the workflow.
         """
