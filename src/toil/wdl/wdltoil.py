@@ -388,9 +388,7 @@ def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[st
     return environment.map(lambda b: map_over_files_in_binding(b, transform))
     
 
-ValueT = TypeVar('ValueT', bound=WDL.Value.Base)
-
-def map_over_files_in_binding(binding: WDL.Env.Binding[ValueT], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[Union[ValueT, WDL.Value.Null]]:
+def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
     """
     Run all File values embedded in the given binding's value through the given
     transformation function.
@@ -405,7 +403,7 @@ def map_over_files_in_binding(binding: WDL.Env.Binding[ValueT], transform: Calla
 #
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
-def map_over_files_in_value(value: ValueT, transform: Callable[[str], Optional[str]]) -> Union[ValueT, WDL.Value.Null]:
+def map_over_files_in_value(value: WDL.Value.Base, transform: Callable[[str], Optional[str]]) -> WDL.Value.Base:
     """
     Run all File values embedded in the given value through the given
     transformation function.
@@ -421,20 +419,20 @@ def map_over_files_in_value(value: ValueT, transform: Callable[[str], Optional[s
         else:
             # Make whatever the value is around the new path.
             # TODO: why does this need casting?
-            return cast(ValueT, type(value)(new_path, value.expr))
+            return WDL.Value.File(new_path, value.expr)
     elif isinstance(value, WDL.Value.Array):
         # This is an array, so recurse on the items
-        return cast(ValueT, type(value)(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr))
+        return WDL.Value.Array(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr)
     elif isinstance(value, WDL.Value.Map):
         # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
         # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
-        return cast(ValueT, type(value)(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr))
+        return WDL.Value.Map(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr)
     elif isinstance(value, WDL.Value.Pair):
         # This is a pair, so recurse on the left and right items
-        return cast(ValueT, type(value)(value.type.left_type, value.type.right_type, tuple((map_over_files_in_value(v, transform) for v in value.value)), value.expr))
+        return WDL.Value.Pair(value.type.left_type, value.type.right_type, cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in value.value))), value.expr)
     elif isinstance(value, WDL.Value.Struct):
         # This is a struct, so recurse on the values in the backing dict
-        return cast(ValueT, type(value)(value.type, {k: map_over_files_in_value(v, transform) for k, v in value.value.iteritems()}, value.expr))
+        return WDL.Value.Struct(cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type), {k: map_over_files_in_value(v, transform) for k, v in value.value.items()}, value.expr)
     else:
         # All other kinds of value can be passed through unmodified.
         return value
@@ -443,7 +441,7 @@ class WDLInputJob(Job):
     """
     Job that evaluates a WDL input, or sources it from the workflow inputs.
     """
-    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Dict[str, Any]) -> None:
+    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
         
         self._node = node
@@ -453,7 +451,7 @@ class WDLInputJob(Job):
         logger.info("Running node %s", self._node.workflow_node_id)
         
         # Combine the bindings we get from previous jobs
-        incoming_bindings = combine_bindings(self._prev_node_results)
+        incoming_bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -470,7 +468,7 @@ class WDLTaskJob(Job):
     All bindings are in terms of task-internal names.
     """
     
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Dict[str, Any]) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         super().__init__(unitName=task.name, displayName=task.name, **kwargs)
         
         self._task = task
@@ -481,7 +479,7 @@ class WDLTaskJob(Job):
         
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
-        bindings = combine_bindings(self._prev_node_results)
+        bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -540,7 +538,7 @@ class WDLWorkflowNodeJob(Job):
     Job that evaluates a WDL workflow node.
     """
     
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
         
         self._node = node
@@ -550,7 +548,7 @@ class WDLWorkflowNodeJob(Job):
         logger.info("Running node %s", self._node.workflow_node_id)
         
         # Combine the bindings we get from previous jobs
-        incoming_bindings = combine_bindings(self._prev_node_results)
+        incoming_bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -575,14 +573,14 @@ class WDLWorkflowNodeJob(Job):
             
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
-                subjob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings])
+                subjob: Job = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings])
                 self.addChild(subjob)
             elif isinstance(self._node.callee, WDL.Tree.Task):
                 # This is a call of a task
                 subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings])
                 self.addChild(subjob)
             else:
-                raise WDL.Error.InvalidType(node, "Cannot call a " + str(type(self._node.callee)))
+                raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
                 
             # We need to agregate outputs namespaced with our node name, and existing bindings
             namespace_job = WDLNamespaceBindingsJob(self._node.name, [subjob.rv()])
@@ -615,7 +613,7 @@ class WDLCombineBindingsJob(Job):
     environment changes.
     """
     
-    def __init__(self, prev_node_results: Sequence[Union[Promise, WDLBindings]], remove: Optional[Union[Promise, WDLBindings]] = None, **kwargs) -> None:
+    def __init__(self, prev_node_results: Sequence[Union[Promise, WDLBindings]], remove: Optional[Union[Promise, WDLBindings]] = None, **kwargs: Any) -> None:
         """
         Make a new job to combine the results of previous jobs.
         
@@ -630,10 +628,10 @@ class WDLCombineBindingsJob(Job):
         """
         Aggregate incoming results.
         """
-        combined = combine_bindings(self._prev_node_results)
+        combined = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         if self._remove is not None:
             # We need to take stuff out of scope
-            combined = combined.subtract(self._remove)
+            combined = combined.subtract(cast(WDLBindings, self._remove))
         return combined
         
 class WDLNamespaceBindingsJob(Job):
@@ -641,7 +639,7 @@ class WDLNamespaceBindingsJob(Job):
     Job that puts a set of bindings into a namespace.
     """
     
-    def __init__(self, namespace: str, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
+    def __init__(self, namespace: str, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         """
         Make a new job to namespace results.
         """
@@ -654,7 +652,7 @@ class WDLNamespaceBindingsJob(Job):
         """
         Apply the namespace
         """
-        return combine_bindings(self._prev_node_results).wrap_namespace(self._namespace)
+        return combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results)).wrap_namespace(self._namespace)
         
 class WDLSectionJob(Job):
     """
@@ -719,7 +717,7 @@ class WDLSectionJob(Job):
             
             # Collect the return values from previous jobs
             prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in wdl_id_to_dependency_ids[node_id]]
-            rvs = [prev_job.rv() for prev_job in prev_jobs]
+            rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
             
@@ -753,7 +751,7 @@ class WDLSectionJob(Job):
                         logger.debug('Dependent %s is now ready', dependent_id)
                         
         # Make the sink job
-        leaf_rvs = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
+        leaf_rvs: List[Union[WDLBindings, Promise]] = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
         # Make sure to also send the section-level bindings
         leaf_rvs.append(environment)
         # And to filter out stuff that should leave scope
@@ -773,7 +771,7 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL scatter.
         """
@@ -801,7 +799,7 @@ class WDLScatterJob(WDLSectionJob):
         
         # Combine the bindings we get from previous jobs.
         # For a task we only see the insode-the-task namespace.
-        bindings = combine_bindings(self._prev_node_results)
+        bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -815,7 +813,7 @@ class WDLScatterJob(WDLSectionJob):
             # Make an instantiation of our subgraph for each possible value of
             # the variable. Make sure the variable is bound only for the
             # duration of the body.
-            local_bindings = WDL.Env.Bindings().bind(self._scatter.variable, item)
+            local_bindings: WDLBindings = WDL.Env.Bindings().bind(self._scatter.variable, item)
             scatter_jobs.append(self.create_subgraph(self._scatter.body, bindings, local_bindings))
             
         # Make a job at the end to aggregate
@@ -833,7 +831,7 @@ class WDLArrayBindingsJob(Job):
     Useful for producing the results of a scatter.
     """
     
-    def __init__(self, input_bindings: Sequence[WDLBindings], base_bindings: WDLBindings, **kwargs) -> None:
+    def __init__(self, input_bindings: Sequence[WDLBindings], base_bindings: WDLBindings, **kwargs: Any) -> None:
         """
         Make a new job to array-ify the given input bindings against the given base bindings.
         """
@@ -880,7 +878,7 @@ class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL conditional.
         """
@@ -904,7 +902,7 @@ class WDLConditionalJob(WDLSectionJob):
         
         # Combine the bindings we get from previous jobs.
         # For a task we only see the insode-the-task namespace.
-        bindings = combine_bindings(self._prev_node_results)
+        bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -927,7 +925,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
     
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Union[Promise, WDLBindings]], **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -956,7 +954,7 @@ class WDLWorkflowJob(WDLSectionJob):
         
         # Combine the bindings we get from previous jobs.
         # For a task we only see the insode-the-task namespace.
-        bindings = combine_bindings(self._prev_node_results)
+        bindings = combine_bindings(cast(Sequence[WDLBindings], self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
         
@@ -982,7 +980,7 @@ class WDLOutputsJob(Job):
     Returns an environment with just the outputs bound, in no namespace.
     """
     
-    def __init__(self, outputs: List[WDL.Tree.Decl], bindings: Union[Promise, WDLBindings], **kwargs):
+    def __init__(self, outputs: List[WDL.Tree.Decl], bindings: Union[Promise, WDLBindings], **kwargs: Any):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
         """
@@ -1011,7 +1009,7 @@ class WDLRootJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
     
-    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, **kwargs) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
@@ -1141,5 +1139,6 @@ if __name__ == "__main__":
     main()
      
     
-    
+
+
 
