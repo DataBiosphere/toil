@@ -52,7 +52,7 @@ class DockerTest(ToilTest):
         self.dockerTestLogLevel = 'INFO'
 
     def testDockerClean(self,
-                        disableCaching=True,
+                        caching=False,
                         detached=True,
                         rm=True,
                         deferParam=None):
@@ -86,7 +86,7 @@ class DockerTest(ToilTest):
         options.workDir = working_dir
         options.clean = 'always'
         options.retryCount = 0  # we're expecting the job to fail so don't retry!
-        options.disableCaching = disableCaching
+        options.caching = caching
 
         # No base64 logic since it might create a name starting with a `-`.
         container_name = uuid.uuid4().hex
@@ -131,123 +131,123 @@ class DockerTest(ToilTest):
                 pass
 
     def testDockerClean_CRx_FORGO(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=True,
+        self.testDockerClean(caching=False, detached=False, rm=True,
                              deferParam=FORGO)
 
     def testDockerClean_CRx_STOP(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=True,
+        self.testDockerClean(caching=False, detached=False, rm=True,
                              deferParam=STOP)
 
     def testDockerClean_CRx_RM(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=True,
+        self.testDockerClean(caching=False, detached=False, rm=True,
                              deferParam=RM)
 
     @slow
     def testDockerClean_CRx_None(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=True,
+        self.testDockerClean(caching=False, detached=False, rm=True,
                              deferParam=None)
 
     @slow
     def testDockerClean_CxD_FORGO(self):
-        self.testDockerClean(disableCaching=True, detached=True, rm=False,
+        self.testDockerClean(caching=False, detached=True, rm=False,
                              deferParam=FORGO)
 
     @slow
     def testDockerClean_CxD_STOP(self):
-        self.testDockerClean(disableCaching=True, detached=True, rm=False,
+        self.testDockerClean(caching=False, detached=True, rm=False,
                              deferParam=STOP)
 
     @slow
     def testDockerClean_CxD_RM(self):
-        self.testDockerClean(disableCaching=True, detached=True, rm=False,
+        self.testDockerClean(caching=False, detached=True, rm=False,
                              deferParam=RM)
 
     @slow
     def testDockerClean_CxD_None(self):
-        self.testDockerClean(disableCaching=True, detached=True, rm=False,
+        self.testDockerClean(caching=False, detached=True, rm=False,
                              deferParam=None)
 
     @slow
     def testDockerClean_Cxx_FORGO(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=False,
+        self.testDockerClean(caching=False, detached=False, rm=False,
                              deferParam=FORGO)
 
     @slow
     def testDockerClean_Cxx_STOP(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=False,
+        self.testDockerClean(caching=False, detached=False, rm=False,
                              deferParam=STOP)
 
     @slow
     def testDockerClean_Cxx_RM(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=False,
+        self.testDockerClean(caching=False, detached=False, rm=False,
                              deferParam=RM)
 
     @slow
     def testDockerClean_Cxx_None(self):
-        self.testDockerClean(disableCaching=True, detached=False, rm=False,
+        self.testDockerClean(caching=False, detached=False, rm=False,
                              deferParam=None)
 
     @slow
     def testDockerClean_xRx_FORGO(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=True,
+        self.testDockerClean(caching=True, detached=False, rm=True,
                              deferParam=FORGO)
 
     @slow
     def testDockerClean_xRx_STOP(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=True,
+        self.testDockerClean(caching=True, detached=False, rm=True,
                              deferParam=STOP)
 
     @slow
     def testDockerClean_xRx_RM(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=True,
+        self.testDockerClean(caching=True, detached=False, rm=True,
                              deferParam=RM)
 
     @slow
     def testDockerClean_xRx_None(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=True,
+        self.testDockerClean(caching=True, detached=False, rm=True,
                              deferParam=None)
 
     @slow
     def testDockerClean_xxD_FORGO(self):
-        self.testDockerClean(disableCaching=False, detached=True, rm=False,
+        self.testDockerClean(caching=True, detached=True, rm=False,
                              deferParam=FORGO)
 
     @slow
     def testDockerClean_xxD_STOP(self):
-        self.testDockerClean(disableCaching=False, detached=True, rm=False,
+        self.testDockerClean(caching=True, detached=True, rm=False,
                              deferParam=STOP)
 
     @slow
     def testDockerClean_xxD_RM(self):
-        self.testDockerClean(disableCaching=False, detached=True, rm=False,
+        self.testDockerClean(caching=True, detached=True, rm=False,
                              deferParam=RM)
 
     @slow
     def testDockerClean_xxD_None(self):
-        self.testDockerClean(disableCaching=False, detached=True, rm=False,
+        self.testDockerClean(caching=True, detached=True, rm=False,
                              deferParam=None)
 
     @slow
     def testDockerClean_xxx_FORGO(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=False,
+        self.testDockerClean(caching=True, detached=False, rm=False,
                              deferParam=FORGO)
 
     @slow
     def testDockerClean_xxx_STOP(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=False,
+        self.testDockerClean(caching=True, detached=False, rm=False,
                              deferParam=STOP)
 
     @slow
     def testDockerClean_xxx_RM(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=False,
+        self.testDockerClean(caching=True, detached=False, rm=False,
                              deferParam=RM)
 
     @slow
     def testDockerClean_xxx_None(self):
-        self.testDockerClean(disableCaching=False, detached=False, rm=False,
+        self.testDockerClean(caching=True, detached=False, rm=False,
                              deferParam=None)
 
-    def testDockerPipeChain(self, disableCaching=True):
+    def testDockerPipeChain(self, caching=False):
         """
         Test for piping API for dockerCall().  Using this API (activated when
         list of argument lists is given as parameters), commands a piped
@@ -259,14 +259,14 @@ class DockerTest(ToilTest):
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
-        options.caching = disableCaching
+        options.caching = caching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         logger.info('Container pipeline result: %s', repr(rv))
         rv = rv.decode('utf-8')
         assert rv.strip() == '2'
 
-    def testDockerPipeChainErrorDetection(self, disableCaching=True):
+    def testDockerPipeChainErrorDetection(self, caching=False):
         """
         By default, executing cmd1 | cmd2 | ... | cmdN, will only return an
         error if cmdN fails.  This can lead to all manor of errors being
@@ -277,16 +277,16 @@ class DockerTest(ToilTest):
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
-        options.caching = disableCaching
+        options.caching = caching
         A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
         rv = Job.Runner.startToil(A, options)
         assert rv is True
 
     def testNonCachingDockerChain(self):
-        self.testDockerPipeChain(disableCaching=False)
+        self.testDockerPipeChain(caching=True)
 
     def testNonCachingDockerChainErrorDetection(self):
-        self.testDockerPipeChainErrorDetection(disableCaching=False)
+        self.testDockerPipeChainErrorDetection(caching=True)
 
     def testDockerLogs(self, stream=False, demux=False):
         """Test for the different log outputs when deatch=False."""

@@ -230,6 +230,10 @@ Allows configuring Toil's data storage.
   --disableCaching      Disables caching in the file store. This flag must be
                         set to use a batch system that does not support
                         cleanup, such as Parasol.
+  --caching BOOL        Set caching options. This must be set to "false"
+                        to use a batch system that does not support
+                        cleanup, such as Parasol. Set to "true" if caching
+                        is desired.
 
 **Autoscaling Options**
 Allows the specification of the minimum and maximum number of nodes in an
