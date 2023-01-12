@@ -39,7 +39,7 @@ class JobFileStoreTest(ToilTest):
 
     def testNonCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.disableCaching = True
+        options.caching = False
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 

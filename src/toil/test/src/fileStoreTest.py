@@ -256,11 +256,11 @@ class hidden:
             maintains its executability after being read.
             """
             for executable in True, False:
-                for disable_caching in True, False:
+                for caching in True, False:
                     with self.subTest(f'Testing readwrite file permissions\n'
                                       f'[executable: {executable}]\n'
-                                      f'[disable_caching: {disable_caching}]\n'):
-                        self.options.disableCaching = disable_caching
+                                      f'[caching: {caching}]\n'):
+                        self.options.caching = caching
                         read_write_job = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
                         Job.Runner.startToil(read_write_job, self.options)
 
@@ -384,7 +384,7 @@ class hidden:
 
         def setUp(self):
             super().setUp()
-            self.options.disableCaching = True
+            self.options.caching = False
 
     class AbstractCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
@@ -394,7 +394,7 @@ class hidden:
 
         def setUp(self):
             super().setUp()
-            self.options.disableCaching = False
+            self.options.caching = True
 
         @slow
         def testExtremeCacheSetup(self):

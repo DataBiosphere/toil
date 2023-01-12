@@ -137,9 +137,9 @@ def run_conformance_tests(
             "--statusWait=10",
             "--retryCount=2",
         ]
-        if not caching:
-            # Turn off caching for the run
-            args_passed_directly_to_runner.append("--disableCaching")
+
+        args_passed_directly_to_runner.append(f"--caching={caching}")
+
         if extra_args:
             args_passed_directly_to_runner += extra_args
 
