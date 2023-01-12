@@ -71,7 +71,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
+    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
 
 quick_test_offline:
   stage: basic_tests
@@ -273,9 +273,11 @@ wdl:
     - pwd
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - make test tests=src/toil/test/wdl/wdltoil_test.py
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
     - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
     - make test tests=src/toil/test/wdl/builtinTest.py
+    
 
 jobstore_and_provisioning:
   stage: main_tests

@@ -21,93 +21,28 @@ from toil.wdl.wdl_functions import (basename,
                                     size)
 
 
-class ToilWdlIntegrationTest(ToilTest):
-    """A set of test cases for toilwdl.py"""
-
-    gatk_data: str
-    gatk_data_dir: str
-    encode_data: str
-    encode_data_dir: str
-    wdl_data: str
-    wdl_data_dir: str
-
+class BaseToilWdlTest(ToilTest):
+    """Base test class for WDL tests"""
+    
     def setUp(self) -> None:
         """Runs anew before each test to create farm fresh temp dirs."""
         self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
         os.makedirs(self.output_dir)
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Runs once for all tests."""
-        cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
-
-        cls.test_directory = os.path.abspath("src/toil/test/wdl/")
-
-        cls.encode_data = os.path.join(cls.test_directory, "ENCODE_data.zip")
-        cls.encode_data_dir = os.path.join(cls.test_directory, "ENCODE_data")
-
-        cls.wdl_data = os.path.join(cls.test_directory, "wdl_templates.zip")
-        cls.wdl_data_dir = os.path.join(cls.test_directory, "wdl_templates")
-
-        cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
-        cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
-
-        cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
-                                    data=cls.encode_data,
-                                    data_dir=cls.encode_data_dir)
-
-        cls.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
-                                    data=cls.wdl_data,
-                                    data_dir=cls.wdl_data_dir)
-
-        cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
-                                    data=cls.gatk_data,
-                                    data_dir=cls.gatk_data_dir)
-
+        
     def tearDown(self) -> None:
         if os.path.exists(self.output_dir):
             shutil.rmtree(self.output_dir)
-
+    
     @classmethod
-    def tearDownClass(cls) -> None:
-        """We generate a lot of cruft."""
-        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
-        data_dirs = [cls.gatk_data_dir, cls.wdl_data_dir, cls.encode_data_dir]
-        data_zips = [cls.gatk_data, cls.wdl_data, cls.encode_data]
-        encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
-                          'ENCFF000VOL_chr21.raw.srt.bam',
-                          'ENCFF000VOL_chr21.raw.srt.bam.flagstat.qc',
-                          'ENCFF000VOL_chr21.raw.srt.dup.qc',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam.bai',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.plot.pdf',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.qc',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.flagstat.qc',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.pbc.qc',
-                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.SE.tagAlign.gz',
-                          'ENCFF000VOL_chr21.sai',
-                          'test.txt',
-                          'filter_qc.json',
-                          'filter_qc.log',
-                          'GRCh38_chr21_bwa.tar.gz',
-                          'mapping.json',
-                          'mapping.log',
-                          'post_mapping.json',
-                          'post_mapping.log',
-                          'wdl-stats.log',
-                          'xcor.json',
-                          'xcor.log',
-                          'toilwdl_compiled.pyc',
-                          'toilwdl_compiled.py',
-                          'post_processing.log',
-                          'md5.log']
-        for cleanup in jobstores + data_dirs + data_zips + encode_outputs:
-            if os.path.isdir(cleanup):
-                shutil.rmtree(cleanup)
-            elif os.path.exists(cleanup):
-                os.remove(cleanup)
+    def setUpClass(cls) -> None:
+        """Runs once for all tests."""
+        cls.base_command = [exactPython, os.path.abspath("src/toil/wdl/toilwdl.py")]
 
+class ToilWdlTest(BaseToilWdlTest):
+    """
+    General tests for Toil WDL
+    """
+    
     @needs_docker
     def testMD5sum(self):
         """Test if toilwdl produces the same outputs as known good outputs for WDL's
@@ -116,10 +51,15 @@ class ToilWdlIntegrationTest(ToilTest):
         inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
         json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
         md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
         assert os.path.exists(md5sum_output)
         os.unlink(md5sum_output)
+
+class ToilWDLLibraryTest(BaseToilWdlTest):
+    """
+    Test class for WDL standard functions.
+    """
 
     # estimated run time <1 sec
     def testFn_SelectFirst(self):
@@ -142,12 +82,7 @@ class ToilWdlIntegrationTest(ToilTest):
         with Toil(options) as toil:
             small = process_infile(WDLFile(file_path=os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')), toil)
             small_file = size(small)
-            large = process_infile(WDLFile(file_path=self.encode_data), toil)
-            larger_file = size(large)
-            larger_file_in_mb = size(large, 'mb')
             assert small_file >= 1800, small_file
-            assert larger_file >= 70000000, larger_file
-            assert larger_file_in_mb >= 70, larger_file_in_mb
 
     # estimated run time <1 sec
     def testFn_Basename(self):
@@ -259,6 +194,100 @@ class ToilWdlIntegrationTest(ToilTest):
                 assert var_type == 'String', var_type
         assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
                                       'bool2', 'int2', 'float2', 'file2', 'string2']
+                                      
+    # estimated run time <1 sec
+    def testCSV(self):
+        default_csv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
+                              ['7', '8', '9']]
+        csv_array = read_csv(os.path.abspath('src/toil/test/wdl/test.csv'))
+        assert csv_array == default_csv_output
+
+    # estimated run time <1 sec
+    def testTSV(self):
+        default_tsv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
+                              ['7', '8', '9']]
+        tsv_array = read_tsv(os.path.abspath('src/toil/test/wdl/test.tsv'))
+        assert tsv_array == default_tsv_output
+
+class ToilWdlIntegrationTest(BaseToilWdlTest):
+    """Test class for WDL tests that need extra workflows and data downloaded"""
+
+    gatk_data: str
+    gatk_data_dir: str
+    encode_data: str
+    encode_data_dir: str
+    wdl_data: str
+    wdl_data_dir: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Runs once for all tests."""
+        super().setUpClass() 
+
+        cls.test_directory = os.path.abspath("src/toil/test/wdl/")
+
+        cls.encode_data = os.path.join(cls.test_directory, "ENCODE_data.zip")
+        cls.encode_data_dir = os.path.join(cls.test_directory, "ENCODE_data")
+
+        cls.wdl_data = os.path.join(cls.test_directory, "wdl_templates.zip")
+        cls.wdl_data_dir = os.path.join(cls.test_directory, "wdl_templates")
+
+        cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
+        cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
+
+        cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
+                                    data=cls.encode_data,
+                                    data_dir=cls.encode_data_dir)
+
+        cls.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
+                                    data=cls.wdl_data,
+                                    data_dir=cls.wdl_data_dir)
+
+        cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                    data=cls.gatk_data,
+                                    data_dir=cls.gatk_data_dir)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        """We generate a lot of cruft."""
+        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        data_dirs = [cls.gatk_data_dir, cls.wdl_data_dir, cls.encode_data_dir]
+        data_zips = [cls.gatk_data, cls.wdl_data, cls.encode_data]
+        encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
+                          'ENCFF000VOL_chr21.raw.srt.bam',
+                          'ENCFF000VOL_chr21.raw.srt.bam.flagstat.qc',
+                          'ENCFF000VOL_chr21.raw.srt.dup.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam.bai',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.plot.pdf',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.flagstat.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.pbc.qc',
+                          'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.SE.tagAlign.gz',
+                          'ENCFF000VOL_chr21.sai',
+                          'test.txt',
+                          'filter_qc.json',
+                          'filter_qc.log',
+                          'GRCh38_chr21_bwa.tar.gz',
+                          'mapping.json',
+                          'mapping.log',
+                          'post_mapping.json',
+                          'post_mapping.log',
+                          'wdl-stats.log',
+                          'xcor.json',
+                          'xcor.log',
+                          'toilwdl_compiled.pyc',
+                          'toilwdl_compiled.py',
+                          'post_processing.log',
+                          'md5.log']
+        for cleanup in jobstores + data_dirs + data_zips + encode_outputs:
+            if os.path.isdir(cleanup):
+                shutil.rmtree(cleanup)
+            elif os.path.exists(cleanup):
+                os.remove(cleanup)
 
     # estimated run time 27 sec
     @slow
@@ -270,7 +299,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
 
-        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -284,7 +313,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
 
-        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -298,7 +327,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
 
-        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -313,7 +342,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
 
-        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -331,7 +360,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testENCODE/output/")
 
         subprocess.check_call(
-            [exactPython, self.program, wdl, json, '--docker_user=None', '--out_dir', self.output_dir])
+            self.base_command + [wdl, json, '--docker_user=None', '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -346,25 +375,9 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testPipe/output/")
 
         subprocess.check_call(
-            [exactPython, self.program, wdl, json, '--out_dir', self.output_dir])
+            self.base_command + [wdl, json, '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
-
-    # estimated run time <1 sec
-    def testCSV(self):
-        default_csv_output = [['1', '2', '3'],
-                              ['4', '5', '6'],
-                              ['7', '8', '9']]
-        csv_array = read_csv(os.path.abspath('src/toil/test/wdl/test.csv'))
-        assert csv_array == default_csv_output
-
-    # estimated run time <1 sec
-    def testTSV(self):
-        default_tsv_output = [['1', '2', '3'],
-                              ['4', '5', '6'],
-                              ['7', '8', '9']]
-        tsv_array = read_tsv(os.path.abspath('src/toil/test/wdl/test.tsv'))
-        assert tsv_array == default_tsv_output
 
     # estimated run time <1 sec
     def testJSON(self):
@@ -381,6 +394,22 @@ class ToilWdlIntegrationTest(ToilTest):
         json_dict = dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         assert json_dict == default_json_dict_output, (
                 str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
+
+    # estimated run time <1 sec
+    def test_size_large(self) -> None:
+        """Test the wdl built-in functional equivalent of 'size()',
+        which returns a file's size based on the path, on a large file."""
+        from toil.common import Toil
+        from toil.job import Job
+        from toil.wdl.wdl_types import WDLFile
+        options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
+        options.clean = 'always'
+        with Toil(options) as toil:
+            large = process_infile(WDLFile(file_path=self.encode_data), toil)
+            larger_file = size(large)
+            larger_file_in_mb = size(large, 'mb')
+            assert larger_file >= 70000000, larger_file
+            assert larger_file_in_mb >= 70, larger_file_in_mb
 
     @classmethod
     def fetch_and_unzip_from_s3(cls, filename, data, data_dir):

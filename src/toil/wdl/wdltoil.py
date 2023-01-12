@@ -1044,7 +1044,7 @@ def main() -> None:
     """
 
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
-    addOptions(parser)
+    addOptions(parser, jobstore_as_flag=True)
 
     parser.add_argument("wdl_uri", type=str, help="WDL document URI")
     parser.add_argument("inputs_uri", type=str, help="WDL input JSON URI")
@@ -1052,10 +1052,15 @@ def main() -> None:
                         help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
                               "values as JSON, while 'miniwld' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
-    parser.add_argument("--outputDirectory", dest="output_directory", type=str, default=None,
+    parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
                         help=("Directory in which to save output files."))
 
     options = parser.parse_args(sys.argv[1:])
+
+    # Make sure we have a jobStore
+    if options.jobStore is None:
+        # TODO: Move cwltoil's generate_default_job_store where we can use it
+        options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree') 
 
     # Make sure we have an output directory and we don't need to ever worry
     # about a None, and MyPy knows it.
@@ -1076,24 +1081,23 @@ def main() -> None:
                 logger.critical("No workflow in document!")
                 sys.exit(1)
 
-            if document.workflow.inputs:
-                # Load the inputs.
-                # TODO: Implement URLs
-                # TODO: Report good errors
-                inputs = json.load(open(options.inputs_uri)) if options.inputs_uri else {}
-                # Parse out the available and required inputs. Each key in the
-                # JSON ought to start with the workflow's name and then a .
-                # TODO: WDL's Bindings[] isn't variant in the right way, so we
-                # have to cast from more specific to less specific ones here.
-                # The miniwld values_from_json function can evaluate
-                # expressions in the inputs or something.
-                WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
-                input_bindings = WDL.values_from_json(
-                    inputs,
-                    cast(WDLTypeDeclBindings, document.workflow.available_inputs),
-                    cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
-                    document.workflow.name
-                )
+            # Load the inputs.
+            # TODO: Implement URLs
+            # TODO: Report good errors
+            inputs = json.load(open(options.inputs_uri)) if options.inputs_uri else {}
+            # Parse out the available and required inputs. Each key in the
+            # JSON ought to start with the workflow's name and then a .
+            # TODO: WDL's Bindings[] isn't variant in the right way, so we
+            # have to cast from more specific to less specific ones here.
+            # The miniwld values_from_json function can evaluate
+            # expressions in the inputs or something.
+            WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
+            input_bindings = WDL.values_from_json(
+                inputs,
+                cast(WDLTypeDeclBindings, document.workflow.available_inputs),
+                cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
+                document.workflow.name
+            )
 
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)

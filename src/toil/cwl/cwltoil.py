@@ -3136,13 +3136,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     config.disableChaining = True
     config.cwl = True
     parser = argparse.ArgumentParser()
-    addOptions(parser, config)
+    addOptions(parser, config, jobstore_as_flag=True)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
-    # Will override the "jobStore" positional argument, enables
-    # user to select jobStore or get a default from logic one below.
-    parser.add_argument("--jobStore", "--jobstore", dest="jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3443,45 +3440,34 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
     )
-    # Problem: we want to keep our job store somewhere auto-generated based on
-    # our options, unless overridden by... an option. So we will need to parse
-    # options twice, because we need to feed the parser a job store.
-
-    # Propose a local workdir, probably under /tmp.
-    # mkdtemp actually creates the directory, but
-    # toil requires that the directory not exist,
-    # since it might become our jobstore,
-    # so make it and delete it and allow
-    # toil to create it again (!)
-    workdir = tempfile.mkdtemp()
-    os.rmdir(workdir)
-
-    # we use the workdir as the default jobStore for the first parsing pass:
-    options = parser.parse_args([workdir] + args)
+    
+    # Parse all the options once.
+    options = parser.parse_args(args)
+    
+    # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-
-    # Determine if our default will actually be in use
-    using_default_job_store = options.jobStore == workdir
-
-    # if tmpdir_prefix is not the default value, set workDir if unset, and move
-    # workdir and the job store under it
-    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
-        workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
-        os.rmdir(workdir)
-
-    if using_default_job_store:
+    
+    if options.jobStore is None:
+        # Find an available local directory name. Since Toil will insist on
+        # creating it we shouldn't need to worry about known directory name
+        # attacks.
+        if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
+            # if tmpdir_prefix is not the default value, move
+            # workdir and the job store under it
+            workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
+            # Make sure it doesn't exist so it can possibly be a job store
+            os.rmdir(workdir)
+        else:
+            # Use a directory in the default tmpdir
+            workdir = tempfile.mkdtemp()
+            os.rmdir(workdir)
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
-        chosen_job_store = generate_default_job_store(
+        options.jobStore = generate_default_job_store(
             options.batchSystem, options.provisioner, workdir
         )
-    else:
-        # Since the default won't be used, just pass through the user's choice
-        chosen_job_store = options.jobStore
 
-    # Re-parse arguments with the new selected jobstore.
-    options = parser.parse_args([chosen_job_store] + args)
     options.doc_cache = True
     options.disable_js_validation = False
     options.do_validate = True
@@ -3508,9 +3494,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
 
-    logger.debug(
-        f"Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}"
-    )
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
     outdir = os.path.abspath(options.outdir)

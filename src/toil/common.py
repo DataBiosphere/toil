@@ -465,7 +465,15 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
+def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False) -> None:
+    """
+    Add Toil command line options to a parser.
+
+    :param config: If specified, take defaults from the given Config.
+
+    :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+    """
+
     if config is None:
         config = Config()
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
@@ -480,7 +488,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         description="Options to specify the location of the Toil workflow and "
                     "turn on stats collation about the performance of jobs."
     )
-    core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+    if jobstore_as_flag:
+        core_options.add_argument('--jobStore', '--jobstore', dest='jobStore', type=str, default=None, help=JOBSTORE_HELP)
+    else:
+        core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
     core_options.add_argument("--workDir", dest="workDir", default=None,
                               help="Absolute path to directory where temporary files generated during the Toil "
                                    "run should be placed. Standard output and error from batch system jobs "
@@ -1719,12 +1730,12 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
-    
+
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
     """
     Parse a string description of one or more accelerator requirements.
     """
-    
+
     if specs is None or len(specs) == 0:
         # Not specified, so the default default is to not need any.
         return []
