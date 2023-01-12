@@ -109,7 +109,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import Job, Promise, AcceleratorRequirement
+from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
@@ -1855,14 +1855,14 @@ class ResolveIndirect(CWLNamedJob):
     of actual values.
     """
 
-    def __init__(self, cwljob: CWLObjectType, parent_name: Optional[str] = None):
+    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
         """Store the dictionary of promises for later resolution."""
         super().__init__(parent_name=parent_name, subjob_name="_resolve")
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
         """Evaluate the promises and return their values."""
-        return resolve_dict_w_promises(self.cwljob)
+        return resolve_dict_w_promises(unwrap(self.cwljob))
 
 
 def toilStageFiles(
@@ -2432,7 +2432,7 @@ class CWLScatter(Job):
         self,
         joborder: CWLObjectType,
         scatter_keys: List[str],
-        outputs: List[CWLObjectType],
+        outputs: List[Promised[CWLObjectType]],
         postScatterEval: Callable[[CWLObjectType], CWLObjectType],
     ) -> None:
         """Cartesian product of the inputs, then flattened."""
@@ -2463,10 +2463,10 @@ class CWLScatter(Job):
         joborder: CWLObjectType,
         scatter_keys: List[str],
         postScatterEval: Callable[[CWLObjectType], CWLObjectType],
-    ) -> List[CWLObjectType]:
+    ) -> List[Promised[CWLObjectType]]:
         """Cartesian product of the inputs."""
         scatter_key = shortname(scatter_keys[0])
-        outputs: List[CWLObjectType] = []
+        outputs: List[Promised[CWLObjectType]] = []
         for n in range(0, len(cast(List[CWLObjectType], joborder[scatter_key]))):
             updated_joborder = copy.copy(joborder)
             updated_joborder[scatter_key] = cast(
@@ -2491,7 +2491,7 @@ class CWLScatter(Job):
                 )
         return outputs
 
-    def run(self, file_store: AbstractFileStore) -> List[CWLObjectType]:
+    def run(self, file_store: AbstractFileStore) -> List[Promised[CWLObjectType]]:
         """Generate the follow on scatter jobs."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -2503,7 +2503,7 @@ class CWLScatter(Job):
         scatterMethod = self.step.tool.get("scatterMethod", None)
         if len(scatter) == 1:
             scatterMethod = "dotproduct"
-        outputs = []
+        outputs: List[Promised[CWLObjectType]] = []
 
         valueFrom = {
             shortname(i["id"]): i["valueFrom"]
@@ -2578,7 +2578,7 @@ class CWLGather(Job):
     def __init__(
         self,
         step: cwltool.workflow.WorkflowStep,
-        outputs: Union[CWLObjectType, List[CWLObjectType]],
+        outputs: Promised[Union[CWLObjectType, List[CWLObjectType]]],
     ):
         """Collect our context for later gathering."""
         super().__init__(cores=1, memory="1GiB", disk="1MiB")
@@ -2613,9 +2613,11 @@ class CWLGather(Job):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
-
+        
+        # TODO: MyPy can't understand that this is the type we should get by unwrapping the promise
+        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs))
         for k in [sn(i) for i in self.step.tool["out"]]:
-            outobj[k] = self.extract(self.outputs, k)
+            outobj[k] = self.extract(outputs, k)
 
         return outobj
 

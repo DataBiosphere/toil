@@ -520,7 +520,7 @@ class WDLTaskJob(Job):
             
         # Evaluate all the outputs in their special library context
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, stdout_path, stderr_path)
-        output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+        output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
             
@@ -813,7 +813,8 @@ class WDLScatterJob(WDLSectionJob):
             # Make an instantiation of our subgraph for each possible value of
             # the variable. Make sure the variable is bound only for the
             # duration of the body.
-            local_bindings: WDLBindings = WDL.Env.Bindings().bind(self._scatter.variable, item)
+            local_bindings: WDLBindings = WDL.Env.Bindings()
+            local_bindings = local_bindings.bind(self._scatter.variable, item)
             scatter_jobs.append(self.create_subgraph(self._scatter.body, bindings, local_bindings))
             
         # Make a job at the end to aggregate
@@ -831,7 +832,7 @@ class WDLArrayBindingsJob(Job):
     Useful for producing the results of a scatter.
     """
     
-    def __init__(self, input_bindings: Sequence[WDLBindings], base_bindings: WDLBindings, **kwargs: Any) -> None:
+    def __init__(self, input_bindings: Sequence[Union[Promise, WDLBindings]], base_bindings: WDLBindings, **kwargs: Any) -> None:
         """
         Make a new job to array-ify the given input bindings against the given base bindings.
         """
@@ -849,7 +850,7 @@ class WDLArrayBindingsJob(Job):
         """
         
         # Subtract base bindings to get just the new bindings created in each input
-        new_bindings = [env.subtract(self._base_bindings) for env in self._input_bindings]
+        new_bindings = [env.subtract(self._base_bindings) for env in cast(Sequence[WDLBindings], self._input_bindings)]
         # Make a set of all the new names.
         # TODO: They ought to maybe have types? Spec just says "any scalar
         # outputs of these tasks is now an array", with no hint on what to do
@@ -965,13 +966,16 @@ class WDLWorkflowJob(WDLSectionJob):
            
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, bindings)
-            
-        # Add evaluating the outputs after the sink
-        outputs_job = WDLOutputsJob(self._workflow.outputs, sink.rv())
-        sink.addFollowOn(outputs_job)
         
-        # Caller takes care of namespacing the result 
-        return outputs_job.rv()
+        if self._workflow.outputs:
+            # Add evaluating the outputs after the sink
+            outputs_job = WDLOutputsJob(self._workflow.outputs, sink.rv())
+            sink.addFollowOn(outputs_job)
+            # Caller takes care of namespacing the result 
+            return outputs_job.rv()
+        else:
+            # No outputs from this workflow.
+            return WDL.Env.Bindings()
         
 class WDLOutputsJob(Job):
     """
@@ -998,7 +1002,7 @@ class WDLOutputsJob(Job):
         standard_library = ToilWDLStdLibBase(file_store)
         output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
         for output_decl in self._outputs:
-            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, self._bindings, standard_library))
+            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, cast(WDLBindings, self._bindings), standard_library))
         
         return output_bindings
         
@@ -1053,11 +1057,9 @@ def main() -> None:
     
     options = parser.parse_args(sys.argv[1:])
     
-    output_directory: Optional[str] = options.output_directory
-    if output_directory is None:
-        # Make a temp directory to write output files to
-        output_directory = tempfile.mkdtemp()
-    assert output_directory is not None
+    # Make sure we have an output directory and we don't need to ever worry
+    # about a None, and MyPy knows it.
+    output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp()
     if not os.path.isdir(output_directory):
         # Make sure it exists
         os.mkdir(output_directory)
@@ -1081,11 +1083,15 @@ def main() -> None:
                 inputs = json.load(open(options.inputs_uri)) if options.inputs_uri else {}
                 # Parse out the available and required inputs. Each key in the
                 # JSON ought to start with the workflow's name and then a .
-                # TODO: WDL's Bindings[] isn't variant in the right way, so we have to cast form more specific to less specific ones here.
+                # TODO: WDL's Bindings[] isn't variant in the right way, so we
+                # have to cast from more specific to less specific ones here.
+                # The miniwld values_from_json function can evaluate
+                # expressions in the inputs or something.
+                WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
                 input_bindings = WDL.values_from_json(
                     inputs,
-                    cast(Bindings[Union[Decl, Base]], document.workflow.available_inputs),
-                    cast(Optional[Bindings[Union[Decl, Base]]], document.workflow.required_inputs), 
+                    cast(WDLTypeDeclBindings, document.workflow.available_inputs),
+                    cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs), 
                     document.workflow.name
                 )
             

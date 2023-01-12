@@ -38,6 +38,7 @@ from typing import (TYPE_CHECKING,
                     Set,
                     Sequence,
                     Tuple,
+                    TypeVar,
                     Union,
                     cast,
                     overload)
@@ -3236,7 +3237,28 @@ class Promise:
             # corrupted
             value = safeUnpickleFromStream(fileHandle)
             return value
+            
+T = TypeVar('T')
+# We have type shorthand for a promised value.
+# Uses a generic type alias, so you can have a Promised[T]. See <https://github.com/python/mypy/pull/2378>.
+Promised = Union[Promise, T]
 
+def unwrap(p: Promised[T]) -> T:
+    """
+    Function for ensuring you actually have a promised value, and not just a promise.
+    Mostly useful for satisfying type-checking.
+    """
+    assert not isinstance(p, Promise)
+    return p
+    
+def unwrap_all(p: Sequence[Promised[T]]) -> Sequence[T]:
+    """
+    Function for ensuring you actually have a collection of promised values,
+    and not any remaining promises. Mostly useful for satisfying type-checking.
+    """
+    for item in p:
+        assert not isinstance(item, Promise)
+    return p
 
 class PromisedRequirement:
     """
