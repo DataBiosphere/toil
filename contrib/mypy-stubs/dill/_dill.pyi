@@ -2,7 +2,7 @@ import sys
 from typing import IO, Any, Callable, Iterable, Protocol, Union
 
 from _typeshed import ReadableBuffer
-from typing_extensions import final, TypeAlias
+from typing_extensions import TypeAlias, final
 
 class _ReadableFileobj(Protocol):
     def read(self, __n: int) -> bytes: ...

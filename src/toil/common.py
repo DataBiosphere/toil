@@ -84,7 +84,10 @@ from toil.version import dockerRegistry, dockerTag, version
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
     from toil.batchSystems.options import OptionSetter
-    from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
+    from toil.job import (AcceleratorRequirement,
+                          Job,
+                          JobDescription,
+                          TemporaryID)
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
     from toil.resource import ModuleDescriptor
@@ -1303,7 +1306,7 @@ class Toil(ContextManager["Toil"]):
         """Download all jobs in the current job store into self.jobCache."""
         logger.debug('Caching all jobs in job store')
         self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
-        logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
+        logger.debug(f'{len(self._jobCache)} jobs downloaded.')
 
     def _cacheJob(self, job: "JobDescription") -> None:
         """
@@ -1743,6 +1746,7 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
         return []
     # Otherwise parse each requirement.
     from toil.job import AcceleratorRequirement
+
     # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
     parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
     return [parser(r) for r in specs.split(',')]

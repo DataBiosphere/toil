@@ -15,12 +15,12 @@
 """Accelerator (i.e. GPU) utilities for Toil"""
 
 import subprocess
-
 from typing import Dict, List, Optional, Set
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
 from toil.lib.memoize import memoize
+
 
 @memoize
 def have_working_nvidia_smi() -> bool:
@@ -94,6 +94,6 @@ def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set
 
     # Since we only know about nvidia GPUs right now, we can just say our
     # accelerator numbering space is the same as nvidia's GPU numbering space.
-    return {'CUDA_VISIBLE_DEVICES': ','.join((str(i) for i in accelerator_numbers))}
+    return {'CUDA_VISIBLE_DEVICES': ','.join(str(i) for i in accelerator_numbers)}
 
 

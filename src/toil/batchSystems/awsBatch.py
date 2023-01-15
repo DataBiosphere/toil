@@ -142,7 +142,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.killed_job_aws_ids: Set[str] = set()
 
     def setUserScript(self, user_script: Resource) -> None:
-        logger.debug('Setting user script for deployment: {}'.format(user_script))
+        logger.debug(f'Setting user script for deployment: {user_script}')
         self.user_script = user_script
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
@@ -431,7 +431,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # system is happiest this way
             volumes: List[Dict[str, Union[str, Dict[str, str]]]] = []
             mount_points: List[Dict[str, str]] = []
-            for i, shared_path in enumerate(set([
+            for i, shared_path in enumerate({
                 '/var/lib/toil',
                 '/var/lib/docker',
                 '/var/lib/cwl',
@@ -439,7 +439,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 '/var/run/user',
                 '/tmp',
                 self.worker_work_dir
-            ])):
+            }):
                 # For every path we want to be the same on the host and the
                 # container, choose a name
                 vol_name = f'mnt{i}'

@@ -211,7 +211,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         """
         for param in code_attr:
             if param == 'sep':
-                code_expr = "{sep}.join(str(x) for x in {expr})".format(sep=code_attr[param], expr=code_expr)
+                code_expr = f"{code_attr[param]}.join(str(x) for x in {code_expr})"
             elif param == 'default':
                 code_expr = "{expr} if {expr} else {default}".format(default=code_attr[param], expr=code_expr)
             else:

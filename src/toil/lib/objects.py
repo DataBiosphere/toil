@@ -134,7 +134,7 @@ class InnerClass:
             outer = _outer
 
             def __repr__(self):
-                return "{} bound to {}".format(super().__repr__(), repr(_outer))
+                return f"{super().__repr__()} bound to {repr(_outer)}"
 
         BoundInner.__name__ = self.inner_class.__name__
         BoundInner.__module__ = self.inner_class.__module__

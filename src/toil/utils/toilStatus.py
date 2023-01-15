@@ -104,7 +104,7 @@ class ToilStatus:
         for job in self.jobsToReport:
 
             def lf(x: str) -> str:
-                return "{}:{}".format(x, str(x in properties))
+                return f"{x}:{str(x in properties)}"
             print("\t".join(("JOB:%s" % job,
                              "LOG_FILE:%s" % job.logJobStoreFileID,
                              "TRYS_REMAINING:%i" % job.remainingTryCount,

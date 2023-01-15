@@ -15,7 +15,7 @@ import logging
 import math
 import os
 from argparse import ArgumentParser, _ArgumentGroup
-from pipes import quote
+from shlex import quote
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
@@ -165,7 +165,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if len(job_id_parts) > 1:
                     continue
                 job_id = int(job_id_parts[0])
-                status, signal = [int(n) for n in exitcode.split(':')]
+                status, signal = (int(n) for n in exitcode.split(':'))
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
@@ -238,7 +238,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 try:
                     exitcode = job['ExitCode']
                     if exitcode is not None:
-                        status, signal = [int(n) for n in exitcode.split(':')]
+                        status, signal = (int(n) for n in exitcode.split(':'))
                         if signal > 0:
                             # A non-zero signal may indicate e.g. an out-of-memory killed job
                             status = 128 + signal

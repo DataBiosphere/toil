@@ -660,8 +660,7 @@ class FileJobStore(AbstractJobStore):
         else:
             with open(
                 self._get_file_path_from_id(file_id),
-                "rt",
-                1,
+                buffering=1,  # line buffering
                 encoding=encoding,
                 errors=errors,
             ) as ft:

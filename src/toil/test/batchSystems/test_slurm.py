@@ -156,7 +156,7 @@ def call_sacct_raises(*_):
                                       "Connection timed out")
 
 
-class FakeBatchSystem(object):
+class FakeBatchSystem:
     """
     Class that implements a minimal Batch System, needed to create a Worker (see below).
     """
@@ -204,33 +204,33 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {785023: ("FAILED", 127)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromSacct_one_not_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {1234: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromSacct_many_all_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {754725: ("TIMEOUT", 0), 789456: ("FAILED", 1), 789724: ("RUNNING", 0),
                            789868: ("PENDING", 0), 789869: ("COMPLETED", 0)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromSacct_many_some_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {609663: ("FAILED", 130), 767925: ("FAILED", 2), 1234: (None, None),
                            1235: (None, None), 765096: ("FAILED", 137)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromSacct_many_none_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     ####
     #### tests for _getJobDetailsFromScontrol()
@@ -240,7 +240,7 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {789724: ("RUNNING", 0)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromScontrol_one_not_exists(self):
         """
@@ -260,19 +260,19 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {787204: ("COMPLETED", 0), 789724: ("RUNNING", 0), 789728: ("PENDING", 0)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromScontrol_many_some_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {787204: ("COMPLETED", 0), 789724: ("RUNNING", 0), 1234: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobDetailsFromScontrol_many_none_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromScontrol(list(expected_result))
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     ###
     ### tests for getJobExitCode
@@ -283,14 +283,14 @@ class SlurmTest(ToilTest):
         job_id = '785023'  # FAILED
         expected_result = 127
         result = self.worker.getJobExitCode(job_id)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobExitCode_job_not_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         job_id = '1234'  # Non-existent
         expected_result = None
         result = self.worker.getJobExitCode(job_id)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobExitCode_sacct_raises_job_exists(self):
         """
@@ -302,7 +302,7 @@ class SlurmTest(ToilTest):
         job_id = '787204'  # COMPLETED
         expected_result = 0
         result = self.worker.getJobExitCode(job_id)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_getJobExitCode_sacct_raises_job_not_exists(self):
         """
@@ -328,14 +328,14 @@ class SlurmTest(ToilTest):
         job_ids = ['785023']  # FAILED
         expected_result = [127]
         result = self.worker.coalesce_job_exit_codes(job_ids)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_one_not_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         job_ids = ['1234']  # Non-existent
         expected_result = [None]
         result = self.worker.coalesce_job_exit_codes(job_ids)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_many_all_exist(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
@@ -346,7 +346,7 @@ class SlurmTest(ToilTest):
                    '789869']  # COMPLETED
         expected_result = [0, 1, None, None, 0]  # RUNNING and PENDING jobs should return None
         result = self.worker.coalesce_job_exit_codes(job_ids)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_some_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
@@ -357,7 +357,7 @@ class SlurmTest(ToilTest):
                    '789869']  # COMPLETED
         expected_result = [130, 2, None, None, 0]    # RUNNING job should return None
         result = self.worker.coalesce_job_exit_codes(job_ids)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_sacct_raises_job_exists(self):
         """
@@ -369,7 +369,7 @@ class SlurmTest(ToilTest):
         job_ids = ['787204']  # COMPLETED
         expected_result = [0]
         result = self.worker.coalesce_job_exit_codes(job_ids)
-        assert result == expected_result, "{} != {}".format(result, expected_result)
+        assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_sacct_raises_job_not_exists(self):
         """

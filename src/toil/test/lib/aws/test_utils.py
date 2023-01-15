@@ -15,11 +15,11 @@ import logging
 import os
 import uuid
 from typing import Optional
+
 import pytest
 
 from toil.lib.aws.utils import build_tag_dict_from_env
 from toil.test import ToilTest
-
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
