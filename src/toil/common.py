@@ -296,8 +296,12 @@ class Config:
         # TODO: LOG LEVEL STRING
         set_option("workDir")
         if self.workDir is not None:
+            # TODO: Check if we're on a batch system. If we are, we don't need work dir to be on this machine
+            # TODO: But it would still need to exist sooooo check that somehow?
             self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
+                #Can just check batchsystem and raise a warning instead
+                if
                 raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
             if len(self.workDir) > 80:
