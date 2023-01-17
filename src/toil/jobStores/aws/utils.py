@@ -181,7 +181,7 @@ class SDBHelper:
             elif compressed[0] == b'U'[0]:
                 binary = compressed[1:]
             else:
-                raise RuntimeError('Unexpected prefix {}'.format(compressed[0]))
+                raise RuntimeError(f'Unexpected prefix {compressed[0]}')
         else:
             binary = None
         return binary, numChunks

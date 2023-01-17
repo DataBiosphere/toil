@@ -115,7 +115,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         proto, host = endpoint.split("://")
         super().__init__({
             # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
-            "auth": {"Authorization": "Basic " + b64encode(f"{auth[0]}:{auth[1]}".encode("utf-8")).decode("utf-8")} if auth else {},
+            "auth": {"Authorization": "Basic " + b64encode(f"{auth[0]}:{auth[1]}".encode()).decode("utf-8")} if auth else {},
             "proto": proto,
             "host": host
         })

@@ -601,7 +601,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                self._setSchedulingStatusMessage('Not enough %s to run job %s' % (source.resource_type, jobID))
+                self._setSchedulingStatusMessage('Not enough {} to run job {}'.format(source.resource_type, jobID))
                 self._release_acquired_resources(acquired)
                 return None
 

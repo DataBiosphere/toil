@@ -117,7 +117,7 @@ class ToilWorkflow:
         workflow's scratch directory, or None if it isn't there.
         """
         if os.path.exists(os.path.join(self.scratch_dir, filename)):
-            with open(os.path.join(self.scratch_dir, filename), "r") as f:
+            with open(os.path.join(self.scratch_dir, filename)) as f:
                 yield f
         else:
             yield None
@@ -286,7 +286,7 @@ class ToilBackend(WESBackend):
                 # We don't allow a value to be set across multiple arguments
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
-        super(ToilBackend, self).__init__(options)
+        super().__init__(options)
 
         # How should we generate run IDs? We apply a prefix so that we can tell
         # what things in our work directory suggest that runs exist and what

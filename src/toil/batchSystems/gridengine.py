@@ -16,7 +16,7 @@ import math
 import os
 import shlex
 import time
-from pipes import quote
+from shlex import quote
 from typing import Dict, List, Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \

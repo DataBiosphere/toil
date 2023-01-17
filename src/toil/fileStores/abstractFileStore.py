@@ -134,7 +134,7 @@ class AbstractFileStore(ABC):
         jobDesc: JobDescription,
         file_store_dir: str,
         waitForPreviousCommit: Callable[[], Any],
-        caching: bool,
+        caching: Optional[bool],
     ) -> Union["NonCachingFileStore", "CachingFileStore"]:
         """Create a concreate FileStore."""
         # Defer these imports until runtime, since these classes depend on us

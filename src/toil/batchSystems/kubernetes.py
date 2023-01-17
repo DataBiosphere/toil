@@ -21,90 +21,82 @@ cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
 import datetime
-import functools
 import logging
 import math
 import os
 import string
-import subprocess
 import sys
 import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import (
-    cast,
-    overload,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Literal,
-    NamedTuple,
-    Optional,
-    Sequence,
-    Tuple,
-    Type,
-    TypeVar,
-    Union
-)
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Iterator,
+                    List,
+                    Literal,
+                    Optional,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast,
+                    overload)
+
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
 else:
     from typing import ParamSpec
 if sys.version_info >= (3, 8):
-    from typing import TypedDict, Protocol, runtime_checkable
+    from typing import Protocol, TypedDict, runtime_checkable
 else:
-    from typing_extensions import TypedDict, Protocol, runtime_checkable
+    from typing_extensions import Protocol, TypedDict, runtime_checkable
 # TODO: When this gets into the standard library, get it from there and drop
-# typing-extensions dependency on Pythons that are new enough.
-from typing_extensions import NotRequired
-
-# The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
-from kubernetes.config.config_exception import ConfigException
-from kubernetes.config.kube_config import load_kube_config, list_kube_config_contexts
-from kubernetes.config.incluster_config import load_incluster_config
-from kubernetes.client.api_client import ApiClient
-from kubernetes.client.exceptions import ApiException
-from kubernetes.client import (
-    V1ObjectMeta,
-    V1Pod,
-    V1PodSpec,
-    V1PodTemplateSpec,
-    V1JobCondition,
-    V1JobSpec,
-    V1Job,
-    V1ResourceRequirements,
-    V1HostPathVolumeSource,
-    V1EmptyDirVolumeSource,
-    V1SecretVolumeSource,
-    V1Volume,
-    V1VolumeMount,
-    V1Container,
-    V1ContainerStatus,
-    V1NodeSelectorRequirement,
-    V1NodeSelectorTerm,
-    V1NodeSelector,
-    V1PreferredSchedulingTerm,
-    V1NodeAffinity,
-    V1Affinity,
-    V1Toleration,
-    BatchV1Api,
-    CoreV1Api,
-    CustomObjectsApi
-)
-# TODO: Watch API is not typed yet
-from kubernetes.watch import Watch # type: ignore
-
 import urllib3
 import yaml
+# The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
+from kubernetes.client import (BatchV1Api,
+                               CoreV1Api,
+                               CustomObjectsApi,
+                               V1Affinity,
+                               V1Container,
+                               V1ContainerStatus,
+                               V1EmptyDirVolumeSource,
+                               V1HostPathVolumeSource,
+                               V1Job,
+                               V1JobCondition,
+                               V1JobSpec,
+                               V1NodeAffinity,
+                               V1NodeSelector,
+                               V1NodeSelectorRequirement,
+                               V1NodeSelectorTerm,
+                               V1ObjectMeta,
+                               V1Pod,
+                               V1PodSpec,
+                               V1PodTemplateSpec,
+                               V1PreferredSchedulingTerm,
+                               V1ResourceRequirements,
+                               V1SecretVolumeSource,
+                               V1Toleration,
+                               V1Volume,
+                               V1VolumeMount)
+from kubernetes.client.api_client import ApiClient
+from kubernetes.client.exceptions import ApiException
+from kubernetes.config.config_exception import ConfigException
+from kubernetes.config.incluster_config import load_incluster_config
+from kubernetes.config.kube_config import (list_kube_config_contexts,
+                                           load_kube_config)
+# TODO: Watch API is not typed yet
+from kubernetes.watch import Watch  # type: ignore
+# typing-extensions dependency on Pythons that are new enough.
+from typing_extensions import NotRequired
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
+                                                   InsufficientSystemResources,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
@@ -114,7 +106,6 @@ from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
-from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 retryable_kubernetes_errors: List[Union[Type[Exception], ErrorCondition]] = [
@@ -1512,7 +1503,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Anything other than a 404 is weird here.
                 logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
 
-            # aggregate all pods and check if any pod has failed to cleanup or is orphaned.
+            # If batch delete fails, try to delete all remaining jobs individually.
+            logger.debug('Deleting Kubernetes jobs individually for toil_run=%s', self.run_id)
+            for jobID in self._getIssuedNonLocalBatchJobIDs():
+                jobName = f'{self.job_prefix}{jobID}'
+                logger.debug(f'Deleting Kubernetes job {jobName}')
+                self._api('batch', errors=[]).delete_namespaced_job(
+                    jobName,
+                    self.namespace,
+                    propagation_policy='Background'
+                )
+
+            # Aggregate all pods and check if any pod has failed to cleanup or is orphaned.
             ourPods = self._ourPodObject()
 
             for pod in ourPods:

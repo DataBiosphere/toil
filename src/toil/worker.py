@@ -383,7 +383,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
                 # Create a fileStore object for the job
                 fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
-                                                              caching=not config.disableCaching)
+                                                              caching=config.caching)
                 with job._executor(stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
                     with deferredFunctionManager.open() as defer:
@@ -468,7 +468,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # Build a fileStore to update the job and commit the replacement.
             # TODO: can we have a commit operation without an entire FileStore???
             fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
-                                                          caching=not config.disableCaching)
+                                                          caching=config.caching)
 
             # Update blockFn to wait for that commit operation.
             blockFn = fileStore.waitForCommit

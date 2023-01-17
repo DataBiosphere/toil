@@ -51,8 +51,8 @@ def main():
 def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
-        stream.write(("This is a test of the Toil file caching system. "
-                      "Had this been an actual file, its contents would have been more interesting.").encode('utf-8'))
+        stream.write(b"This is a test of the Toil file caching system. "
+                     b"Had this been an actual file, its contents would have been more interesting.")
 
     child_rvs = []
     for i in range(100):
@@ -94,7 +94,7 @@ def report(job, views):
     for v in views:
         counts[v] += 1
 
-    report = ['{} distinct views, most frequent:'.format(len(counts))]
+    report = [f'{len(counts)} distinct views, most frequent:']
 
     for view, count in counts.most_common(10):
         report.append(f'{view}: {count}')
