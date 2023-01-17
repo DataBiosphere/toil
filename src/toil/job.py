@@ -1297,6 +1297,7 @@ class Job:
         disk: Optional[ParseableIndivisibleResource] = None,
         accelerators: Optional[ParseableAcceleratorRequirement] = None,
         preemptible: Optional[ParseableFlag] = None,
+        preemptable: Optional[ParseableFlag] = None,
         unitName: Optional[str] = "",
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
@@ -1312,6 +1313,7 @@ class Job:
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param accelerators: the computational accelerators required by the job. If a string, can be a string of a number, or a string specifying a model, brand, or API (with optional colon-delimited count).
         :param preemptible: if the job can be run on a preemptible node.
+        :param preemptable: legacy preemptible parameter, for backwards compatibility with workflows not using the preemptible keyword
         :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
@@ -1334,6 +1336,9 @@ class Job:
         jobName = self.__class__.__name__
         displayName = displayName if displayName else jobName
 
+        #Some workflows use preemptable instead of preemptible
+        if preemptable and not preemptible:
+            preemptible = preemptable
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'accelerators': accelerators,
@@ -2881,7 +2886,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     def __init__(self, userFunction, *args, **kwargs):
         self._promisedKwargs = kwargs.copy()
         # Replace resource requirements in intermediate job with small values.
-        kwargs.update(dict(disk='1M', memory='32M', cores=0.1, accelerators=[], preemptible=True))
+        kwargs.update(dict(disk='1M', memory='32M', cores=0.1, accelerators=[], preemptible=True, preemptable=True))
         super().__init__(userFunction, *args, **kwargs)
 
     @classmethod

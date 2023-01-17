@@ -248,9 +248,9 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
   --nodeTypes NODETYPES
                         Specifies a list of comma-separated node types, each of which is
                         composed of slash-separated instance types, and an optional spot
-                        bid set off by a colon, making the node type preemptable. Instance
+                        bid set off by a colon, making the node type preemptible. Instance
                         types may appear in multiple node types, and the same node type
-                        may appear as both preemptable and non-preemptable.
+                        may appear as both preemptible and non-preemptible.
                         
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
@@ -288,16 +288,16 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
   --scaleInterval SCALEINTERVAL
                         The interval (seconds) between assessing if the scale of
                         the cluster needs to change. (Default: 60)
-  --preemptableCompensation PREEMPTIBLECOMPENSATION
+  --preemptibleCompensation PREEMPTIBLECOMPENSATION
                         The preference of the autoscaler to replace
-                        preemptable nodes with non-preemptable nodes, when
-                        preemptable nodes cannot be started for some reason.
+                        preemptible nodes with non-preemptible nodes, when
+                        preemptible nodes cannot be started for some reason.
                         Defaults to 0.0. This value must be between 0.0 and
                         1.0, inclusive. A value of 0.0 disables such
                         compensation, a value of 0.5 compensates two missing
-                        preemptable nodes with a non-preemptable one. A value
+                        preemptible nodes with a non-preemptible one. A value
                         of 1.0 replaces every missing pre-emptable node with a
-                        non-preemptable one.
+                        non-preemptible one.
   --nodeStorage NODESTORAGE
                         Specify the size of the root volume of worker nodes
                         when they are launched in gigabytes. You may want to
@@ -321,10 +321,10 @@ keeping this limited we can avoid nodes occupied with services causing deadlocks
   --maxServiceJobs MAXSERVICEJOBS
                         The maximum number of service jobs that can be run
                         concurrently, excluding service jobs running on
-                        preemptable nodes. default=9223372036854775807
-  --maxPreemptableServiceJobs MAXPREEMPTIBLESERVICEJOBS
+                        preemptible nodes. default=9223372036854775807
+  --maxPreemptibleServiceJobs MAXPREEMPTIBLESERVICEJOBS
                         The maximum number of service jobs that can run
-                        concurrently on preemptable nodes.
+                        concurrently on preemptible nodes.
                         default=9223372036854775807
   --deadlockWait DEADLOCKWAIT
                         Time, in seconds, to tolerate the workflow running only
@@ -371,8 +371,8 @@ from the batch system.
                         type and a count are used, they must be separated by a
                         colon. If multiple types of accelerators are used, the
                         specifications are separated by commas. Default is [].
-  --defaultPreemptable BOOL
-                        Make all jobs able to run on preemptable (spot) nodes
+  --defaultPreemptible BOOL
+                        Make all jobs able to run on preemptible (spot) nodes
                         by default.
   --maxCores INT        The maximum number of CPU cores to request from the
                         batch system at any one time. Standard suffixes like
@@ -391,8 +391,8 @@ systems have issues!).
   --retryCount RETRYCOUNT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
-  --enableUnlimitedPreemptableRetries
-                        If set, preemptable failures (or any failure due to an
+  --enableUnlimitedPreemptibleRetries
+                        If set, preemptible failures (or any failure due to an
                         instance getting unexpectedly terminated) will not count
                         towards job failures and -\\-retryCount.
   --doubleMem           If set, batch jobs which die due to reaching memory
@@ -514,8 +514,8 @@ to run both simultaneously. To cope with this situation Toil attempts to
 schedule services and accessors intelligently, however to avoid a deadlock
 with workflows running service jobs it is advisable to use the following parameters:
 
-* ``--maxServiceJobs``: The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes.
-* ``--maxPreemptableServiceJobs``: The maximum number of service jobs that can run concurrently on preemptable nodes.
+* ``--maxServiceJobs``: The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptible nodes.
+* ``--maxPreemptibleServiceJobs``: The maximum number of service jobs that can run concurrently on preemptible nodes.
 
 Specifying these parameters so that at a maximum cluster size there will be
 sufficient resources to run accessors in addition to services will ensure that
