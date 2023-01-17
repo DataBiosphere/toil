@@ -272,6 +272,23 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if job_environment:
                 environment.update(job_environment)
 
+            # "Native extensions" for SLURM (see DRMAA or SAGA)
+            nativeConfig = os.getenv('TOIL_SLURM_ARGS')
+
+            # --export=[ALL,]<environment_toil_variables>
+            set_exports = "--export=ALL"
+
+            if nativeConfig is not None:
+                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
+
+                for arg in nativeConfig.split():
+                    if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
+                        raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
+                    # repleace default behaviour by the one stated at TOIL_SLURM_ARGS
+                    if arg.startswith("--export"):
+                        set_exports = arg
+                sbatch_line.extend(nativeConfig.split())
+
             if environment:
                 argList = []
 
@@ -279,7 +296,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append(f'{k}={quoted_value}')
 
-                sbatch_line.append('--export=' + ','.join(argList))
+                set_exports += ',' + ','.join(argList)
+
+            # add --export to the sbatch
+            sbatch_line.append(set_exports)
 
             parallel_env = os.getenv('TOIL_SLURM_PE')
             if cpu and cpu > 1 and parallel_env:
@@ -294,23 +314,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'out')
             stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
-
-            # "Native extensions" for SLURM (see DRMAA or SAGA)
-            nativeConfig = os.getenv('TOIL_SLURM_ARGS')
-
-            set_exports = False
-            if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
-
-                for arg in nativeConfig.split():
-                    if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
-                        raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
-                    if arg.startswith("--export"):
-                        set_exports = True
-                sbatch_line.extend(nativeConfig.split())
-
-            if not set_exports:
-                sbatch_line.append(["--export=ALL"])
 
             return sbatch_line
 
