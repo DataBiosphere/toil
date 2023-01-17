@@ -823,7 +823,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     # AbstractProvisioner methods
     def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
-        self.node_shapes_for_testing = sorted([it for t in node_types for it in t[0]])
+        self.node_shapes_for_testing = sorted(it for t in node_types for it in t[0])
         super().setAutoscaledNodeTypes(node_types)
 
     def getProvisionedWorkers(self, instance_type=None, preemptible=None):

@@ -164,18 +164,18 @@ class hidden:
 
         @classmethod
         def setUpClass(cls):
-            super(hidden.AbstractBatchSystemTest, cls).setUpClass()
+            super().setUpClass()
             logging.basicConfig(level=logging.DEBUG)
 
         def setUp(self):
-            super(hidden.AbstractBatchSystemTest, self).setUp()
+            super().setUp()
             self.config = self._createConfig()
             self.batchSystem = self.createBatchSystem()
             self.tempDir = self._createTempDir('testFiles')
 
         def tearDown(self):
             self.batchSystem.shutdown()
-            super(hidden.AbstractBatchSystemTest, self).tearDown()
+            super().tearDown()
 
         def get_max_startup_seconds(self) -> int:
             """
@@ -395,10 +395,10 @@ class hidden:
 
         def setUp(self):
             self.batchSystemName = self.getBatchSystemName()
-            super(hidden.AbstractBatchSystemJobTest, self).setUp()
+            super().setUp()
 
         def tearDown(self):
-            super(hidden.AbstractBatchSystemJobTest, self).tearDown()
+            super().tearDown()
 
         @slow
         def testJobConcurrency(self):
@@ -452,7 +452,7 @@ class hidden:
         """
 
         def _createConfig(self):
-            config = super(hidden.AbstractGridEngineBatchSystemTest, self)._createConfig()
+            config = super()._createConfig()
             config.statePollingWait = 0.5  # Reduce polling wait so tests run faster
             # can't use _getTestJobStorePath since that method removes the directory
             config.jobStore = 'file:' + self._createTempDir('jobStore')
@@ -547,6 +547,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.maxDiff = 10000
 
         from kubernetes.client import V1PodSpec
+
         from toil.batchSystems.kubernetes import KubernetesBatchSystem
 
         spec = V1PodSpec(containers=[])
@@ -837,7 +838,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         if value > maxValue: maxValue = value
                         os.lseek(fd, 0, 0)
                         os.ftruncate(fd, 0)
-                        os.write(fd, f'{value},{maxValue}'.encode('utf-8'))
+                        os.write(fd, f'{value},{maxValue}'.encode())
                     finally:
                         fcntl.flock(fd, fcntl.LOCK_UN)
                 finally:
@@ -906,9 +907,9 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                             bs.shutdown()
                         concurrentTasks, maxConcurrentTasks = getCounters(self.counterPath)
                         self.assertEqual(concurrentTasks, 0)
-                        logger.info('maxCores: {maxCores}, '
-                                 'coresPerJob: {coresPerJob}, '
-                                 'load: {load}'.format(**locals()))
+                        logger.info(f'maxCores: {maxCores}, '
+                                 f'coresPerJob: {coresPerJob}, '
+                                 f'load: {load}')
                         # This is the key assertion:
                         expectedMaxConcurrentTasks = min(maxCores // coresPerJob, jobs)
                         self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
@@ -1252,7 +1253,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
             outString = oFH.read()
         # The ordering of b, fJ and sJ is non-deterministic since they are scheduled at the same
         # time. We look for all possible permutations.
-        possibleStarts = tuple([''.join(x) for x in itertools.permutations(['b', 'fJ', 'sJ'])])
+        possibleStarts = tuple(''.join(x) for x in itertools.permutations(['b', 'fJ', 'sJ']))
         assert outString.startswith(possibleStarts)
         assert outString.endswith('sJCsJGCfJC')
 
@@ -1319,12 +1320,12 @@ def count(delta, file_path):
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             s = os.read(fd, 10)
-            value, maxValue = [int(i) for i in s.decode('utf-8').split(',')]
+            value, maxValue = (int(i) for i in s.decode('utf-8').split(','))
             value += delta
             if value > maxValue: maxValue = value
             os.lseek(fd, 0, 0)
             os.ftruncate(fd, 0)
-            os.write(fd, f'{value},{maxValue}'.encode('utf-8'))
+            os.write(fd, f'{value},{maxValue}'.encode())
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
@@ -1334,7 +1335,7 @@ def count(delta, file_path):
 
 def getCounters(path):
     with open(path, 'r+') as f:
-        concurrentTasks, maxConcurrentTasks = [int(i) for i in f.read().split(',')]
+        concurrentTasks, maxConcurrentTasks = (int(i) for i in f.read().split(','))
     return concurrentTasks, maxConcurrentTasks
 
 

@@ -1,4 +1,3 @@
-
 import fnmatch
 import json
 import logging

@@ -81,7 +81,7 @@ class ParasolTestSupport:
     class ParasolLeaderThread(ParasolThread):
 
         def __init__(self):
-            super(ParasolTestSupport.ParasolLeaderThread, self).__init__()
+            super().__init__()
             self.machineList = None
 
         def run(self):
@@ -99,7 +99,7 @@ class ParasolTestSupport:
                     tempDir=tempfile.gettempdir(),
                     ramSize=self.outer.memory / 1024 / 1024))
                 f.flush()
-                super(ParasolTestSupport.ParasolLeaderThread, self).run()
+                super().run()
 
         def parasolCommand(self):
             return ['paraHub',

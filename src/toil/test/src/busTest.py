@@ -13,10 +13,9 @@
 # limitations under the License.
 
 import logging
-
 from threading import Thread, current_thread
 
-from toil.bus import MessageBus, JobIssuedMessage
+from toil.bus import JobIssuedMessage, MessageBus
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)

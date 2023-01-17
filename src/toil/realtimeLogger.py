@@ -65,7 +65,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
                 record.args = tuple(record.args)
         except:
             # Complain someone is sending us bad logging data
-            logging.error("Malformed log message from {}".format(self.client_address[0]))
+            logging.error(f"Malformed log message from {self.client_address[0]}")
         else:
             # Log level filtering should have been done on the remote end. The handle() method
             # skips it on this end.

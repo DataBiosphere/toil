@@ -144,5 +144,5 @@ class RestartingJob(Job):
             with file_store.readGlobalFileStream(self.msg_portion_file_id, encoding='utf-8') as readable:
                 # combine readable.read() (the original message 1) with message 2
                 # this will be the final output of the workflow
-                writable.write(f'{readable.read()}{self.message_portion_2}'.encode('utf-8'))
+                writable.write(f'{readable.read()}{self.message_portion_2}'.encode())
                 return output_file_id

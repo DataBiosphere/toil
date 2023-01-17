@@ -81,7 +81,7 @@ class AbstractJobStoreTest:
     class Test(ToilTest, metaclass=ABCMeta):
         @classmethod
         def setUpClass(cls):
-            super(AbstractJobStoreTest.Test, cls).setUpClass()
+            super().setUpClass()
             logging.basicConfig(level=logging.DEBUG)
             logging.getLogger('boto').setLevel(logging.CRITICAL)
             logging.getLogger('boto').setLevel(logging.WARNING)
@@ -99,7 +99,7 @@ class AbstractJobStoreTest:
         @classmethod
         @memoize
         def __new__(cls, *args):
-            return super(AbstractJobStoreTest.Test, cls).__new__(cls)
+            return super().__new__(cls)
 
         def _createConfig(self):
             return Config()
@@ -112,7 +112,7 @@ class AbstractJobStoreTest:
             raise NotImplementedError()
 
         def setUp(self):
-            super(AbstractJobStoreTest.Test, self).setUp()
+            super().setUp()
             self.namePrefix = 'jobstore-test-' + str(uuid.uuid4())
             self.config = self._createConfig()
 
@@ -140,7 +140,7 @@ class AbstractJobStoreTest:
         def tearDown(self):
             self.jobstore_initialized.destroy()
             self.jobstore_resumed_noconfig.destroy()
-            super(AbstractJobStoreTest.Test, self).tearDown()
+            super().tearDown()
 
         def testInitialState(self):
             """Ensure proper handling of nonexistant files."""
@@ -1073,14 +1073,14 @@ class AbstractEncryptedJobStoreTest:
         def setUp(self):
             # noinspection PyAttributeOutsideInit
             self.sseKeyDir = tempfile.mkdtemp()
-            super(AbstractEncryptedJobStoreTest.Test, self).setUp()
+            super().setUp()
 
         def tearDown(self):
-            super(AbstractEncryptedJobStoreTest.Test, self).tearDown()
+            super().tearDown()
             shutil.rmtree(self.sseKeyDir)
 
         def _createConfig(self):
-            config = super(AbstractEncryptedJobStoreTest.Test, self)._createConfig()
+            config = super()._createConfig()
             sseKeyFile = os.path.join(self.sseKeyDir, 'keyFile')
             with open(sseKeyFile, 'w') as f:
                 f.write('01234567890123456789012345678901')

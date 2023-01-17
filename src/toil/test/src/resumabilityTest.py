@@ -78,4 +78,4 @@ def badChild(job):
     except NoSuchFileException as ex:
         with job.fileStore.jobStore.write_shared_file_stream("alreadyRun", encrypted=False) as fileHandle:
             fileHandle.write(b"failed once\n")
-        raise RuntimeError("this is an expected error: {}".format(str(ex)))
+        raise RuntimeError(f"this is an expected error: {str(ex)}")

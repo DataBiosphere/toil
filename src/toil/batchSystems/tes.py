@@ -36,9 +36,9 @@ from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
-from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
+from toil.batchSystems.options import OptionSetter
 from toil.common import Config, Toil
 from toil.job import JobDescription
 from toil.lib.misc import get_public_ip, slow_down, utc_now
@@ -146,7 +146,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                                          type="DIRECTORY" if os.path.isdir(local_path) else "FILE"))
 
     def setUserScript(self, user_script: Resource) -> None:
-        logger.debug('Setting user script for deployment: {}'.format(user_script))
+        logger.debug(f'Setting user script for deployment: {user_script}')
         self.user_script = user_script
 
     # setEnv is provided by BatchSystemSupport, updates self.environment

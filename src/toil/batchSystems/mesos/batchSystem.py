@@ -72,7 +72,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     class ExecutorInfo:
         def __init__(self, nodeAddress, agentId, nodeInfo, lastSeen):
-            super(MesosBatchSystem.ExecutorInfo, self).__init__()
+            super().__init__()
             self.nodeAddress = nodeAddress
             self.agentId = agentId
             self.nodeInfo = nodeInfo

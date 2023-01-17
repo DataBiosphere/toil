@@ -62,15 +62,15 @@ class hidden:
             if self.jobStoreType == 'file':
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
-                return 'aws:{}:cache-tests-{}'.format(self.awsRegion(), str(uuid4()))
+                return f'aws:{self.awsRegion()}:cache-tests-{str(uuid4())}'
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-                return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
+                return f'google:{projectID}:cache-tests-{str(uuid4())}'
             else:
                 raise RuntimeError('Illegal job store type.')
 
         def setUp(self):
-            super(hidden.AbstractFileStoreTest, self).setUp()
+            super().setUp()
             self.work_dir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
@@ -256,11 +256,11 @@ class hidden:
             maintains its executability after being read.
             """
             for executable in True, False:
-                for disable_caching in True, False:
+                for caching in True, False:
                     with self.subTest(f'Testing readwrite file permissions\n'
                                       f'[executable: {executable}]\n'
-                                      f'[disable_caching: {disable_caching}]\n'):
-                        self.options.disableCaching = disable_caching
+                                      f'[caching: {caching}]\n'):
+                        self.options.caching = caching
                         read_write_job = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
                         Job.Runner.startToil(read_write_job, self.options)
 
@@ -383,8 +383,8 @@ class hidden:
         """
 
         def setUp(self):
-            super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
-            self.options.disableCaching = True
+            super().setUp()
+            self.options.caching = False
 
     class AbstractCachingFileStoreTest(AbstractFileStoreTest, metaclass=ABCMeta):
         """
@@ -393,8 +393,8 @@ class hidden:
         """
 
         def setUp(self):
-            super(hidden.AbstractCachingFileStoreTest, self).setUp()
-            self.options.disableCaching = False
+            super().setUp()
+            self.options.caching = True
 
         @slow
         def testExtremeCacheSetup(self):

@@ -84,7 +84,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             submit_parameters = {
                 'executable': '/bin/sh',
                 'transfer_executable': 'False',
-                'arguments': f'''"-c '{command}'"'''.encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
+                'arguments': f'''"-c '{command}'"'''.encode(),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(),
                 'getenv': 'True',
                 'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile

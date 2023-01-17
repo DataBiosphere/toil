@@ -18,7 +18,15 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import (TYPE_CHECKING,
+                    Any,
+                    Callable,
+                    Dict,
+                    List,
+                    Optional,
+                    Set,
+                    Tuple,
+                    Union)
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
@@ -26,7 +34,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 from toil.bus import ClusterDesiredSizeMessage, ClusterSizeMessage
 from toil.common import Config, defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
-from toil.lib.conversions import human2bytes, bytes2human
+from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
 from toil.lib.throttle import LocalThrottle, throttle
@@ -683,7 +691,7 @@ class ClusterScaler:
         for nodeShape in self.nodeShapes:
             instance_type = self.nodeShapeToType[nodeShape]
 
-            logger.debug("Nodes of type %s to run queued jobs: %s" % (instance_type, nodesToRunQueuedJobs[nodeShape]))
+            logger.debug(f"Nodes of type {instance_type} to run queued jobs: {nodesToRunQueuedJobs[nodeShape]}")
             # Actual calculation of the estimated number of nodes required
             estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 \
                 else max(1, self._round(nodesToRunQueuedJobs[nodeShape]))
