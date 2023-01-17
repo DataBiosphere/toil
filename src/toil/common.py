@@ -295,14 +295,15 @@ class Config:
         set_option("jobStore", parsing_function=parse_jobstore)
         # TODO: LOG LEVEL STRING
         set_option("workDir")
+        local_workDir = True
         if self.workDir is not None:
             # TODO: Check if we're on a batch system. If we are, we don't need work dir to be on this machine
             # TODO: But it would still need to exist sooooo check that somehow?
             self.workDir = os.path.abspath(self.workDir)
             if not os.path.exists(self.workDir):
-                #Can just check batchsystem and raise a warning instead
-                if
-                raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
+                local_workDir = False
+                logger.warning(f"The path provided to --workDir ({self.workDir}) is not visible to the leader")
+
 
             if len(self.workDir) > 80:
                 logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
@@ -333,6 +334,10 @@ class Config:
         # Batch system options
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
+        #Check batch system in case work dir not required on local system
+
+        if self.batchSystem == "single_machine" and not local_workDir:
+            raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
         # File store options
         set_option("linkImports", bool, default=True)
