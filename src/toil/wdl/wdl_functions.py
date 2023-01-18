@@ -226,7 +226,7 @@ def process_infile(f: Any, fileStore: AbstractFileStore):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
+        raise WDLRuntimeError(f'Error processing file: {str(f)}')
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -303,7 +303,7 @@ def process_outfile(f, fileStore, workDir, outDir):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
+        raise WDLRuntimeError(f'Error processing file: {str(f)}')
 
 
 def abspath_single_file(f: WDLFile, cwd: str) -> WDLFile:
@@ -339,7 +339,7 @@ def abspath_file(f: Any, cwd: str):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: ({}) of type: ({}).'.format(str(f), str(type(f))))
+        raise WDLRuntimeError(f'Error processing file: ({str(f)}) of type: ({str(type(f))}).')
 
 
 def read_single_file(f: WDLFile, tempDir, fileStore, docker=False) -> str:
@@ -367,7 +367,7 @@ def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool =
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError('Error processing file: {}'.format(str(f)))
+        raise WDLRuntimeError(f'Error processing file: {str(f)}')
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
@@ -527,7 +527,7 @@ def select_first(values):
     for var in values:
         if var:
             return var
-    raise ValueError('No defined variables found for select_first array: {}'.format(str(values)))
+    raise ValueError(f'No defined variables found for select_first array: {str(values)}')
 
 
 def combine_dicts(dict1, dict2):

@@ -84,7 +84,7 @@ class MiscTests(ToilTest):
                 files[fileName] = 'Link to %s' % linkSrc
 
         computedDirectorySize = getDirSizeRecursively(self.testDir)
-        totalExpectedSize = sum([x for x in list(files.values()) if isinstance(x, int)])
+        totalExpectedSize = sum(x for x in list(files.values()) if isinstance(x, int))
         self.assertGreaterEqual(computedDirectorySize, totalExpectedSize)
 
     @staticmethod

@@ -813,7 +813,7 @@ class SynthesizeWDL:
         #         fn_section += '({}), '.format(output[2])
         if fn_section.endswith(', '):
             fn_section = fn_section[:-2]
-        fn_section += "], cmd=cmd, job_name='{}')\n\n".format(str(job))
+        fn_section += f"], cmd=cmd, job_name='{str(job)}')\n\n"
 
         return fn_section
 

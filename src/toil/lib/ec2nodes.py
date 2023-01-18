@@ -200,7 +200,7 @@ def fetchEC2InstanceDict(awsBillingJson: Dict[str, Any], region: str) -> Dict[st
 
                 # Determines whether the instance type is from an ARM or AMD family
                 # ARM instance names include a digit followed by a 'g' before the instance size
-                architecture = 'arm64' if re.search(".*\dg.*\..*", i["instanceType"]) else 'amd64'
+                architecture = 'arm64' if re.search(r".*\dg.*\..*", i["instanceType"]) else 'amd64'
 
                 instance = InstanceType(name=i["instanceType"],
                                         cores=i["vcpu"],
@@ -305,7 +305,7 @@ def updateStaticEC2Instances() -> None:
         f.write(genString)
 
     # append key for fetching at the end
-    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in regionDict.items())\n'
+    regionKey = '\nec2InstancesByRegion = {region: [E2Instances[i] for i in instances] for region, instances in regionDict.items()}\n'
 
     with open(genFile, 'a+') as f:
         f.write(regionKey)

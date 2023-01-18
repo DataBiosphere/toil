@@ -349,7 +349,7 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
     for category in ["time", "clock", "wait", "memory"]:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
-                t = getattr(tag, "{}_{}".format(longforms[field], category))
+                t = getattr(tag, f"{longforms[field]}_{category}")
                 if category in ["time", "clock", "wait"]:
                     s = reportTime(t, options,
                                    field=cw.getWidth(category, field)).strip()

@@ -104,7 +104,7 @@ def safe_read_file(file: str) -> Optional[str]:
     from writing to it while reading.
     """
     try:
-        file_obj = open(file, "r")
+        file_obj = open(file)
     except FileNotFoundError:
         return None
 

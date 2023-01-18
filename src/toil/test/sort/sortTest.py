@@ -81,7 +81,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def _toilSort(self, jobStoreLocator, batchSystem,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
-                  retryCount=2, badWorker=0.5, downCheckpoints=False, disableCaching=False):
+                  retryCount=2, badWorker=0.5, downCheckpoints=False, caching=True):
         """
         Generate a file consisting of the given number of random lines, each line of the given
         length. Sort the file with Toil by splitting the file recursively until each part is less
@@ -110,7 +110,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.clean = "never"
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
-                options.disableCaching = disableCaching
+                options.caching = caching
                 # This is required because mesos_endpoint now defaults to the IP of the machine
                 # that is starting the workflow while the mesos *tests* run locally.
                 if batchSystem == 'mesos':
@@ -215,7 +215,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def testFileSingleNonCaching(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
-                       disableCaching=True)
+                       caching=False)
 
     def testFileSingleCheckpoints(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',

@@ -109,7 +109,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import Job, Promise, AcceleratorRequirement
+from toil.job import AcceleratorRequirement, Job, Promise
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
