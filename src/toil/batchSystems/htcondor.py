@@ -45,7 +45,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
                 # Prepare the htcondor.Submit object
-                submitObj: htcondor.Submit = self.prepareHTSubmission(cpu, memory, disk, jobID, jobName, command)
+                submitObj: htcondor.Submit = self.prepareSubmission(cpu, memory, disk, jobID, jobName, command)
                 logger.debug("Submitting %r", submitObj)
 
                 # Submit job and get batch system ID (i.e. the ClusterId)
@@ -63,7 +63,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return activity
 
-        def prepareHTSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str) -> htcondor.Submit:
+        def prepareSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str) -> htcondor.Submit:
 
             # Convert resource requests
             cpu = int(math.ceil(cpu)) # integer CPUs
