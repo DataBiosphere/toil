@@ -10,7 +10,7 @@ GIT_COMMIT=$(git rev-parse HEAD)
 docker exec slurm-test_slurmmaster_1 sudo apt install python3-pip -y
 docker exec slurm-test_slurmmaster_1 pip3 install "git+https://github.com/DataBiosphere/toil.git@${GIT_COMMIT}"
 docker exec slurm-test_slurmmaster_1 sinfo -N -l
-docker exec export PATH="$PATH:/home/admin/.local/bin"
+docker exec slurm-test_slurmmaster_1 export PATH="$PATH:/home/admin/.local/bin"
 # Test 1: A really basic workflow to check Slurm is working correctly
 docker exec slurm-test_slurmmaster_1 python3 /home/admin/toil_workflow.py file:my-job-store --batchSystem slurm --disableCaching --retryCount 0
 docker cp slurm-test_slurmmaster_1:/home/admin/output.txt output_Docker.txt
