@@ -13,10 +13,9 @@
 # limitations under the License.
 
 import logging
-
 from threading import Thread, current_thread
 
-from toil.bus import MessageBus, JobIssuedMessage
+from toil.bus import JobIssuedMessage, MessageBus
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
@@ -46,13 +45,13 @@ class MessageBusTest(ToilTest):
         # And we will collect them in an inbox
         box = bus.connect([JobIssuedMessage])
 
-        bus.publish(JobIssuedMessage("FromMainThread", ""))
+        bus.publish(JobIssuedMessage("FromMainThread", "", 0))
 
         def send_thread_message() -> None:
             """
             Publish a message from some other thread.
             """
-            bus.publish(JobIssuedMessage("FromOtherThread", ""))
+            bus.publish(JobIssuedMessage("FromOtherThread", "", 1))
 
         other_threads = []
         for _ in range(10):

@@ -30,7 +30,7 @@ class VersionNotImplementedException(Exception):
         else:
             message = f"workflow_type '{wf_type}' is not supported."
 
-        super(VersionNotImplementedException, self).__init__(message)
+        super().__init__(message)
 
 
 class MalformedRequestException(Exception):
@@ -38,7 +38,7 @@ class MalformedRequestException(Exception):
     Raised when the request is malformed.
     """
     def __init__(self, message: str) -> None:
-        super(MalformedRequestException, self).__init__(message)
+        super().__init__(message)
 
 
 class WorkflowNotFoundException(Exception):
@@ -46,7 +46,7 @@ class WorkflowNotFoundException(Exception):
     Raised when the requested run ID is not found.
     """
     def __init__(self) -> None:
-        super(WorkflowNotFoundException, self).__init__("The requested workflow run wasn't found.")
+        super().__init__("The requested workflow run wasn't found.")
 
 
 class WorkflowConflictException(Exception):
@@ -54,7 +54,7 @@ class WorkflowConflictException(Exception):
     Raised when the requested workflow is not in the expected state.
     """
     def __init__(self, run_id: str):
-        super(WorkflowConflictException, self).__init__(f"Workflow {run_id} exists when it shouldn't.")
+        super().__init__(f"Workflow {run_id} exists when it shouldn't.")
 
 
 class OperationForbidden(Exception):
@@ -62,7 +62,7 @@ class OperationForbidden(Exception):
     Raised when the request is forbidden.
     """
     def __init__(self, message: str) -> None:
-        super(OperationForbidden, self).__init__(message)
+        super().__init__(message)
 
 
 class WorkflowExecutionException(Exception):
@@ -70,7 +70,7 @@ class WorkflowExecutionException(Exception):
     Raised when an internal error occurred during the execution of the workflow.
     """
     def __init__(self, message: str) -> None:
-        super(WorkflowExecutionException, self).__init__(message)
+        super().__init__(message)
 
 
 def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:

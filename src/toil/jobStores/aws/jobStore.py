@@ -398,7 +398,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = list(self.filesDomain.select(
                     consistent_read=True,
-                    query="select version from `{}` where ownerID='{}'".format(self.filesDomain.name, job_id)))
+                    query=f"select version from `{self.filesDomain.name}` where ownerID='{job_id}'"))
         assert items is not None
         if items:
             logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
@@ -883,7 +883,7 @@ class AWSJobStore(AbstractJobStore):
 
             inlined content. Note that an inlined empty string still occupies one chunk.
             """
-            super(AWSJobStore.FileInfo, self).__init__()
+            super().__init__()
             self._fileID = fileID
             self._ownerID = ownerID
             self.encrypted = encrypted
@@ -1049,7 +1049,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def _reservedAttributes(cls):
-            return 3 + super(AWSJobStore.FileInfo, cls)._reservedAttributes()
+            return 3 + super()._reservedAttributes()
 
         @staticmethod
         def maxInlinedSize():

@@ -26,6 +26,7 @@ from argparse import (ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
                       _ArgumentGroup)
+from distutils.util import strtobool
 from functools import lru_cache
 from types import TracebackType
 from typing import (IO,
@@ -63,7 +64,8 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage)
+                      QueueSizeMessage,
+                      gen_message_bus_path)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
@@ -82,7 +84,10 @@ from toil.version import dockerRegistry, dockerTag, version
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
     from toil.batchSystems.options import OptionSetter
-    from toil.job import Job, JobDescription, TemporaryID, AcceleratorRequirement
+    from toil.job import (AcceleratorRequirement,
+                          Job,
+                          JobDescription,
+                          TemporaryID)
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
     from toil.resource import ModuleDescriptor
@@ -139,7 +144,7 @@ class Config:
         set_batchsystem_config_defaults(self)
 
         # File store options
-        self.disableCaching: bool = False
+        self.caching: Optional[bool] = None
         self.linkImports: bool = True
         self.moveExports: bool = False
 
@@ -188,7 +193,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.write_messages: Optional[str] = None
+        self.write_messages: str = ""
 
         # Misc
         self.environment: Dict[str, str] = {}
@@ -332,7 +337,7 @@ class Config:
         # File store options
         set_option("linkImports", bool, default=True)
         set_option("moveExports", bool, default=False)
-        set_option("disableCaching", bool, default=False)
+        set_option("caching", bool, default=None)
 
         # Autoscaling options
         set_option("provisioner")
@@ -394,7 +399,10 @@ class Config:
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
-        set_option("write_messages")
+
+        set_option("write_messages", os.path.abspath)
+        if not self.write_messages:
+            self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
@@ -570,10 +578,12 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
     move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
     move_exports.set_defaults(moveExports=False)
-    file_store_options.add_argument('--disableCaching', dest='disableCaching', action='store_true',
-                                    default=False,
-                                    help='Disables caching in the file store. This flag must be set to use '
-                                         'a batch system that does not support cleanup, such as Parasol.')
+
+    caching = file_store_options.add_mutually_exclusive_group()
+    caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
+    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=caching_help)
+    caching.add_argument('--caching', dest='caching', type=lambda val: bool(strtobool(val)), help=caching_help)
+    caching.set_defaults(caching=None)
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -926,6 +936,11 @@ class Toil(ContextManager["Toil"]):
         config = Config()
         config.setOptions(self.options)
         jobStore = self.getJobStore(config.jobStore)
+        if config.caching is None:
+            config.caching = jobStore.default_caching()
+            #Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
+            self.options.caching = config.caching
+
         if not config.restart:
             config.workflowAttemptNumber = 0
             jobStore.initialize(config)
@@ -1142,10 +1157,11 @@ class Toil(ContextManager["Toil"]):
             raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
                                f'(choose from: {BATCH_SYSTEM_FACTORY_REGISTRY.keys()})')
 
-        if not config.disableCaching and not batch_system.supportsWorkerCleanup():
+        if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
-                               'does not support cleaning up a worker after the last job finishes. Set the '
-                               '--disableCaching flag if you want to use this batch system.')
+                               'does not support cleaning up a worker after the last job finishes. Set '
+                               '--caching=false')
+
         logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
 
         return batch_system(**kwargs)
@@ -1301,7 +1317,7 @@ class Toil(ContextManager["Toil"]):
         """Download all jobs in the current job store into self.jobCache."""
         logger.debug('Caching all jobs in job store')
         self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
-        logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
+        logger.debug(f'{len(self._jobCache)} jobs downloaded.')
 
     def _cacheJob(self, job: "JobDescription") -> None:
         """
@@ -1741,6 +1757,7 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
         return []
     # Otherwise parse each requirement.
     from toil.job import AcceleratorRequirement
+
     # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
     parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
     return [parser(r) for r in specs.split(',')]

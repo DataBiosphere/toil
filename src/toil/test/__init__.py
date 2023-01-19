@@ -54,7 +54,8 @@ else:
     from typing_extensions import Literal
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
-from toil.lib.accelerators import have_working_nvidia_smi, have_working_nvidia_docker_runtime
+from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
+                                   have_working_nvidia_smi)
 from toil.lib.aws import running_on_ec2
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
@@ -247,7 +248,7 @@ class ToilTest(unittest.TestCase):
         dirty_set.difference_update(excluded)
         assert (
             not dirty_set
-        ), "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (
+        ), "Run 'make clean_sdist sdist'. Files newer than {}: {!r}".format(
             sdistPath,
             list(dirty_set),
         )
@@ -982,7 +983,7 @@ class ApplianceTestSupport(ToilTest):
             assert all(
                 " " not in v for v in mounts.values()
             ), "No spaces allowed in mounts"
-            super(ApplianceTestSupport.Appliance, self).__init__()
+            super().__init__()
             self.outer = outer
             self.mounts = mounts
             self.cleanMounts = cleanMounts
@@ -1128,7 +1129,7 @@ class ApplianceTestSupport(ToilTest):
             self, outer: "ApplianceTestSupport", mounts: Dict[str, str], numCores: int
         ) -> None:
             self.numCores = numCores
-            super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
+            super().__init__(outer, mounts)
 
         def _entryPoint(self) -> str:
             return 'mesos-agent'

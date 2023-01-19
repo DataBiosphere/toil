@@ -30,9 +30,10 @@ logger = logging.getLogger(__name__)
 def parser_with_server_options() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Toil server mode.")
 
-    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument("--debug", action="store_true", default=False,
+                        help="Enable debug mode.")
     parser.add_argument("--bypass_celery", action="store_true", default=False,
-                        help="Skip sending workflows to Celery and just run them under the"
+                        help="Skip sending workflows to Celery and just run them under the "
                              "server. For testing.")
     parser.add_argument("--host", type=str, default="127.0.0.1",
                         help="The host interface that the Toil server binds on. (default: '127.0.0.1').")
