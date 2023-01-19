@@ -131,7 +131,7 @@ class DeferredFunctionManager:
             fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock deferred function state file {}: {}".format(self.stateFileName, str(e)))
+            raise RuntimeError(f"Could not lock deferred function state file {self.stateFileName}: {str(e)}")
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])

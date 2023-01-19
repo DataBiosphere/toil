@@ -255,7 +255,7 @@ class Node:
             commandTokens.extend(sshOptions)
         # specify host
         user = kwargs.pop('user', 'core')  # CHANGED: Is this needed?
-        commandTokens.append('{}@{}'.format(user, str(self.effectiveIP)))
+        commandTokens.append(f'{user}@{str(self.effectiveIP)}')
 
         inputString = kwargs.pop('input', None)
         if inputString is not None:

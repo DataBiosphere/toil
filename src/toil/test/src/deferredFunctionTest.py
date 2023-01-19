@@ -40,7 +40,7 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
             return f'aws:{self.awsRegion()}:cache-tests-{uuid4()}'
         elif self.jobStoreType == 'google':
             projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-            return 'google:{}:cache-tests-{}'.format(projectID, str(uuid4()))
+            return f'google:{projectID}:cache-tests-{str(uuid4())}'
         else:
             raise RuntimeError('Illegal job store type.')
 

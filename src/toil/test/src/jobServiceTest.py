@@ -311,7 +311,7 @@ class ToyService(Job.Service):
 
                 # Write out the resulting read integer and the message
                 with jobStore.update_file_stream(outJobStoreID) as f:
-                    f.write((f"{inputInt} {messageInt}\n").encode('utf-8'))
+                    f.write((f"{inputInt} {messageInt}\n").encode())
         except:
             logger.debug("Error in service worker: %s", traceback.format_exc())
             error.set()
@@ -348,7 +348,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         key2, message = tokens
 
         if int(key2) == key:
-            logger.debug("Matched key's: {}, writing message: {} with randInt: {}".format(key, int(message) - randInt, randInt))
+            logger.debug(f"Matched key's: {key}, writing message: {int(message) - randInt} with randInt: {randInt}")
             with open(outFile, 'a') as fH:
                 fH.write("%s\n" % (int(message) - randInt))
             return

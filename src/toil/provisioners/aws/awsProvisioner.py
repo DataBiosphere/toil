@@ -1060,7 +1060,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Disk count is weirdly a float in our instance database, so make it an int here.
         for disk in range(1, int(type_info.disks) + 1):
             bdm[bdtKeys[disk]] = Boto2BlockDeviceType(
-                ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
+                ephemeral_name=f'ephemeral{disk - 1}')  # ephemeral counts start at 0
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
@@ -1091,7 +1091,7 @@ class AWSProvisioner(AbstractProvisioner):
             # virtual block device in the VM
             bdms.append({
                 'DeviceName': bdtKeys[disk],
-                'VirtualName': 'ephemeral{}'.format(disk - 1)  # ephemeral counts start at 0
+                'VirtualName': f'ephemeral{disk - 1}'  # ephemeral counts start at 0
             })
         logger.debug('Device mapping: %s', bdms)
         return bdms

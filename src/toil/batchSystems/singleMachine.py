@@ -27,11 +27,11 @@ from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   BatchSystemSupport,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
+from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo, InsufficientSystemResources
+
+from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
+
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
 from toil.job import JobDescription, AcceleratorRequirement, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
@@ -221,9 +221,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                             # cores/memory/disk individually)?
                             self.inputQueue.put(args)
                             break
+                        elif result is not False:
+                            #Result is a PID
 
-                        # Otherwise it's a PID if it succeeded, or False if it couldn't
-                        # start. But we don't care either way here.
+                            if self._outbox is not None:
+                                # Annotate the job with the PID generated.
+                                self._outbox.publish(
+                                   ExternalBatchIdMessage(jobID, str(result), self.__class__.__name__))
+
+                        # Otherwise False
 
                     except Empty:
                         # Nothing to run. Stop looking in the queue.
@@ -595,7 +601,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                self._setSchedulingStatusMessage('Not enough %s to run job %s' % (source.resource_type, jobID))
+                self._setSchedulingStatusMessage('Not enough {} to run job {}'.format(source.resource_type, jobID))
                 self._release_acquired_resources(acquired)
                 return None
 
