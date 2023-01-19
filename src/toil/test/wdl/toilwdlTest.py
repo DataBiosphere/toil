@@ -104,9 +104,9 @@ class ToilWDLLibraryTest(BaseToilWdlTest):
                                  os.path.abspath('src/toil/wdl/wdl_functions.py')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
-            assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
+            assert location in wdl_locations, f'{str(location)} not in {str(wdl_locations)}!'
         # make sure the same number of files were found as expected
-        assert len(wdl_that_should_exist) == len(wdl_locations), '{} != {}'.format(str(len(wdl_locations)), str(len(wdl_that_should_exist)))
+        assert len(wdl_that_should_exist) == len(wdl_locations), f'{str(len(wdl_locations))} != {str(len(wdl_that_should_exist))}'
 
     # estimated run time <1 sec
     def testFn_ParseMemory(self):

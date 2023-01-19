@@ -1739,7 +1739,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Make sure nobody else has references to it
         for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
-            raise RuntimeError('Deleted file ID {} which is still in use by job {}'.format(fileStoreID, row[0]))
+            raise RuntimeError(f'Deleted file ID {fileStoreID} which is still in use by job {row[0]}')
         # TODO: should we just let other jobs and the cache keep the file until
         # it gets evicted, and only delete at the back end?
 

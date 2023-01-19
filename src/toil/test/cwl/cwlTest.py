@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import partial
 import json
 import logging
 import os
@@ -23,6 +22,7 @@ import sys
 import unittest
 import uuid
 import zipfile
+from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import Dict, List, MutableMapping, Optional, Union
@@ -34,38 +34,35 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.cwl.utils import (
-    download_structure,
-    visit_cwl_class_and_reduce,
-    visit_top_cwl_class,
-)
+from toil.cwl.utils import (download_structure,
+                            visit_cwl_class_and_reduce,
+                            visit_top_cwl_class)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.aws import zone_to_region
 from toil.lib.threading import cpu_count
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
-from toil.test import (
-    ToilTest,
-    needs_aws_ec2,
-    needs_aws_s3,
-    needs_cwl,
-    needs_docker,
-    needs_docker_cuda,
-    needs_env_var,
-    needs_fetchable_appliance,
-    needs_gridengine,
-    needs_kubernetes,
-    needs_local_cuda,
-    needs_lsf,
-    needs_mesos,
-    needs_parasol,
-    needs_slurm,
-    needs_torque,
-    needs_wes_server,
-    slow,
-)
-from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_aws_s3,
+                       needs_cwl,
+                       needs_docker,
+                       needs_docker_cuda,
+                       needs_env_var,
+                       needs_fetchable_appliance,
+                       needs_gridengine,
+                       needs_kubernetes,
+                       needs_local_cuda,
+                       needs_lsf,
+                       needs_mesos,
+                       needs_parasol,
+                       needs_slurm,
+                       needs_torque,
+                       needs_wes_server,
+                       slow)
+from toil.test.provisioners.aws.awsProvisionerTest import \
+    AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
 log = logging.getLogger(__name__)
@@ -140,9 +137,9 @@ def run_conformance_tests(
             "--statusWait=10",
             "--retryCount=2",
         ]
-        if not caching:
-            # Turn off caching for the run
-            args_passed_directly_to_runner.append("--disableCaching")
+
+        args_passed_directly_to_runner.append(f"--caching={caching}")
+
         if extra_args:
             args_passed_directly_to_runner += extra_args
 
@@ -1123,6 +1120,25 @@ def test_filename_conflict_resolution(tmp_path: Path):
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
+
+
+@needs_cwl
+@pytest.mark.cwl_small
+def test_pick_value_with_one_null_value(caplog):
+    """
+    Make sure toil-cwl-runner does not false log a warning when pickValue is
+    used but outputSource only contains one null value. See: #3991.
+    """
+    from toil.cwl import cwltoil
+
+    cwl_file = os.path.join(os.path.dirname(__file__), "conditional_wf.cwl")
+    job_file = os.path.join(os.path.dirname(__file__), "conditional_wf.yaml")
+    args = [cwl_file, job_file]
+
+    with caplog.at_level(logging.WARNING, logger="toil.cwl.cwltoil"):
+        cwltoil.main(args)
+        for line in caplog.messages:
+            assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
 
 
 @needs_cwl

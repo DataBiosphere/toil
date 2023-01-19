@@ -139,7 +139,7 @@ def cpu_count() -> int:
             logger.debug('CPU quota and period available from cgroups v2')
             with open(CGROUP2_COMBINED_FILE) as stream:
                 # Read the quota and the period together
-                quota, period = [int(part) for part in stream.read().split(' ')]
+                quota, period = (int(part) for part in stream.read().split(' '))
         else:
             logger.debug('CPU quota/period not available from cgroups v1 or cgroups v2')
 
@@ -272,7 +272,7 @@ def get_process_name(base_dir: str) -> str:
             fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock process name file {}: {}".format(nameFileName, str(e)))
+            raise RuntimeError(f"Could not lock process name file {nameFileName}: {str(e)}")
 
         # Save the basename
         current_process_name_for[base_dir] = os.path.basename(nameFileName)

@@ -18,8 +18,7 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (cast,
-                    Any,
+from typing import (Any,
                     Callable,
                     ContextManager,
                     Dict,
@@ -28,14 +27,15 @@ from typing import (cast,
                     NamedTuple,
                     Optional,
                     TypeVar,
-                    Union)
+                    Union,
+                    cast)
 
 from toil.batchSystems.options import OptionSetter
-from toil.bus import MessageBus
+from toil.bus import MessageBus, MessageOutbox
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import JobDescription, Requirer, ParsedRequirement
+from toil.job import JobDescription, ParsedRequirement, Requirer
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -126,11 +126,7 @@ class AbstractBatchSystem(ABC):
         Give the batch system an opportunity to connect directly to the message
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
-
-        Currently the only message a batch system may send is
-        JobAnnotationMessage.
         """
-        # By default, do nothing.
         pass
 
     @abstractmethod
@@ -308,6 +304,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                 workflow_id=config.workflowID,
                 clean_work_dir=config.cleanWorkDir,
             )
+        self._outbox: Optional[MessageOutbox] = None
 
     def check_resource_request(self, requirer: Requirer) -> None:
         """
@@ -376,6 +373,15 @@ class BatchSystemSupport(AbstractBatchSystem):
             except KeyError:
                 raise RuntimeError(f"{name} does not exist in current environment")
         self.environment[name] = value
+
+    def set_message_bus(self, message_bus: MessageBus) -> None:
+        """
+        Give the batch system an opportunity to connect directly to the message
+        bus, so that it can send informational messages about the jobs it is
+        running to other Toil components.
+        """
+        # We do in fact send messages to the message bus.
+        self._outbox = message_bus.outbox()
 
     def formatStdOutErrPath(self, toil_job_id: int, cluster_job_id: str, std: str) -> str:
         """

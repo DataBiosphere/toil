@@ -18,7 +18,6 @@ import shutil
 import uuid
 from collections import Counter, defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
 from tempfile import NamedTemporaryFile
 from typing import (Any,
                     Callable,
@@ -43,7 +42,8 @@ from toil.bus import (JobAnnotationMessage,
                       JobFailedMessage,
                       JobIssuedMessage,
                       JobUpdatedMessage,
-                      MessageBus)
+                      MessageBus,
+                      replay_message_bus, JobStatus)
 from toil.lib.io import AtomicFileCreate
 from toil.lib.threading import global_mutex
 from toil.server.utils import (WorkflowStateMachine,
@@ -63,15 +63,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 class ToilWorkflow:
-    def __init__(self, base_scratch_dir: str, state_store_url: str, run_id: str):
+    def __init__(self, base_work_dir: str, state_store_url: str, run_id: str):
         """
         Class to represent a Toil workflow. This class is responsible for
         launching workflow runs via Celery and retrieving data generated from
         them.
 
-        :param base_scratch_dir: The directory where workflows keep their
+        :param base_work_dir: The directory where workflows keep their
                                  output/scratch directories under their run
-                                 IDs.
+                                 IDs. Includes the MessageBus which requires
+                                 a reliable location.
 
         :param state_store_url: URL or file path at which we communicate with
                                 running workflows.
@@ -80,7 +81,7 @@ class ToilWorkflow:
                        all of the files containing this particular workflow
                        instance's information.
         """
-        self.base_scratch_dir = base_scratch_dir
+        self.base_scratch_dir = base_work_dir
         self.state_store_url = state_store_url
         self.run_id = run_id
 
@@ -116,7 +117,7 @@ class ToilWorkflow:
         workflow's scratch directory, or None if it isn't there.
         """
         if os.path.exists(os.path.join(self.scratch_dir, filename)):
-            with open(os.path.join(self.scratch_dir, filename), "r") as f:
+            with open(os.path.join(self.scratch_dir, filename)) as f:
                 yield f
         else:
             yield None
@@ -208,7 +209,7 @@ class ToilWorkflow:
         """
         return self._get_scratch_file_path('bus_messages')
 
-    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, Dict[str, str]], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, JobStatus], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
 
@@ -230,43 +231,8 @@ class ToilWorkflow:
             return []
         else:
             # Replay all the messages and work out what they mean for jobs.
-
-            # We track the state and name of jobs here, by ID.
-            # We would use a list of two items but MyPy can't understand a lits
-            # of items of multiple types, so we need to define a new class.
-            @dataclass
-            class JobStatus:
-                """
-                Records the status of a job.
-                """
-                name: str
-                exit_code: int
-                annotations: Dict[str, str]
-
-            job_statuses: Dict[str, JobStatus] = defaultdict(lambda: JobStatus('', -1, {}))
-
-            with open(os.path.join(self.scratch_dir, path), 'rb') as log_stream:
-                # Read all the full, properly-terminated messages about job updates
-                for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage, JobFailedMessage, JobAnnotationMessage]):
-                    # And for each of them
-                    logger.info('Got message from workflow: %s', event)
-
-                    if isinstance(event, JobUpdatedMessage):
-                        # Apply the latest return code from the job with this ID.
-                        job_statuses[event.job_id].exit_code = event.result_status
-                    elif isinstance(event, JobIssuedMessage):
-                        job_statuses[event.job_id].name = event.job_type
-                    elif isinstance(event, JobCompletedMessage):
-                        job_statuses[event.job_id].name = event.job_type
-                    elif isinstance(event, JobFailedMessage):
-                        job_statuses[event.job_id].name = event.job_type
-                        if job_statuses[event.job_id].exit_code == 0:
-                            # Record the failure if we never got a failed exit code.
-                            job_statuses[event.job_id].exit_code = 1
-                    elif isinstance(event, JobAnnotationMessage):
-                        # Remember the last value of any annotation that is set
-                        job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
-
+            abs_path = os.path.join(self.scratch_dir, path)
+            job_statuses = replay_message_bus(abs_path)
             # Compose log objects from recovered job info.
             logs: List[TaskLog] = []
             for job_status in job_statuses.values():
@@ -275,7 +241,7 @@ class ToilWorkflow:
                     # Convince MyPy the task is set
                     assert task is not None
                     # Give the filter function hook a chance to modify or omit the task
-                    task = filter_function(task, job_status.annotations)
+                    task = filter_function(task, job_status)
                 if task is not None:
                     logs.append(task)
             logger.info('Recovered task logs: %s', logs)
@@ -320,7 +286,7 @@ class ToilBackend(WESBackend):
                 # We don't allow a value to be set across multiple arguments
                 # that would need to remain in the same order.
                 raise ValueError(f'Option {opt} does not begin with -')
-        super(ToilBackend, self).__init__(options)
+        super().__init__(options)
 
         # How should we generate run IDs? We apply a prefix so that we can tell
         # what things in our work directory suggest that runs exist and what
