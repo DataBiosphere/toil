@@ -123,7 +123,7 @@ class Config:
         self.workflowAttemptNumber: int = 0
         self.jobStore: Optional[str] = None  # type: ignore
         self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir: Optional[str] = None
+        self.workDirs: Optional[List[str]] = None
         self.coordination_dir: Optional[str] = None
         self.noStdOutErr: bool = False
         self.stats: bool = False
@@ -294,21 +294,23 @@ class Config:
         # Core options
         set_option("jobStore", parsing_function=parse_jobstore)
         # TODO: LOG LEVEL STRING
-        set_option("workDir")
-        local_workDir = True
-        if self.workDir is not None:
-            # TODO: Check if we're on a batch system. If we are, we don't need work dir to be on this machine
-            # TODO: But it would still need to exist sooooo check that somehow?
-            self.workDir = os.path.abspath(self.workDir)
-            if not os.path.exists(self.workDir):
-                local_workDir = False
-                logger.warning(f"The path provided to --workDir ({self.workDir}) is not visible to the leader")
+        set_option("workDirs")
 
+        if self.workDirs is not None:
+            local_workDir = False
+            self.workDirs = [os.path.abspath(x) for x in self.workDirs]
+            for workDir in self.workDirs:
+                if len(workDir) > 80:
+                    logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
+                                   f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
+                                   f'like "/tmp" to avoid overly long paths.')
+                if os.path.exists(workDir):
+                    local_workDir = True
+                    break
 
-            if len(self.workDir) > 80:
-                logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
-                               f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
-                               f'like "/tmp" to avoid overly long paths.')
+            if not local_workDir:
+                raise RuntimeError(f"The paths provided to --workDir ({self.workDirs}) are not visible to the leader, please specify one that is.")
+
         set_option("coordination_dir")
         if self.coordination_dir is not None:
             self.coordination_dir = os.path.abspath(self.coordination_dir)
@@ -334,10 +336,6 @@ class Config:
         # Batch system options
         set_option("batchSystem")
         set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
-        #Check batch system in case work dir not required on local system
-
-        if self.batchSystem == "single_machine" and not local_workDir:
-            raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
 
         # File store options
         set_option("linkImports", bool, default=True)
@@ -494,7 +492,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                     "turn on stats collation about the performance of jobs."
     )
     core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
-    core_options.add_argument("--workDir", dest="workDir", default=None,
+    core_options.add_argument("--workDir", dest="workDirs", action='append', default=[],
                               help="Absolute path to directory where temporary files generated during the Toil "
                                    "run should be placed. Standard output and error from batch system jobs "
                                    "(unless --noStdOutErr) will be placed in this directory. A cache directory "
@@ -1314,7 +1312,7 @@ class Toil(ContextManager["Toil"]):
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getToilWorkDir(configWorkDir: Optional[str] = None) -> str:
+    def getToilWorkDir(configWorkDirs: Optional[List[str]] = None) -> str:
         """
         Return a path to a writable directory under which per-workflow directories exist.
 
@@ -1325,9 +1323,14 @@ class Toil(ContextManager["Toil"]):
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil work directory, constant across all machines
         """
-        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
+        for workDir in configWorkDirs:
+            if os.path.exists(workDir):
+                break
+
+        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or workDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
+
         return workDir
 
     @classmethod
@@ -1388,16 +1391,16 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def getLocalWorkflowDir(
-        cls, workflowID: str, configWorkDir: Optional[str] = None
+        cls, workflowID: str, configWorkDirs: Optional[List[str]] = None
     ) -> str:
         """
         Return the directory where worker directories and the cache will be located for this workflow on this machine.
 
-        :param configWorkDir: Value passed to the program using the --workDir flag
+        :param configWorkDirs: Value passed to the program using the --workDir flag
         :return: Path to the local workflow directory on this machine
         """
         # Get the global Toil work directory. This ensures that it exists.
-        base = cls.getToilWorkDir(configWorkDir=configWorkDir)
+        base = cls.getToilWorkDir(configWorkDirs=configWorkDirs)
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
