@@ -42,6 +42,8 @@ from typing import (TYPE_CHECKING,
                     cast,
                     overload)
 
+from toil.lib.compatibility import deprecated
+
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
@@ -619,6 +621,11 @@ class Requirer:
             "preemptible", val
         )
 
+    @deprecated(new_function_name="preemptible")
+    def preemptable(self, val: ParseableFlag) -> None:
+        self._requirementOverrides["preemptible"] = Requirer._parseResource(
+            "preemptible", val
+        )
     @property
     def accelerators(self) -> List[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
@@ -1338,6 +1345,7 @@ class Job:
 
         #Some workflows use preemptable instead of preemptible
         if preemptable and not preemptible:
+            logger.warning("Preemptable as a keyword has been deprecated, please use preemptible.")
             preemptible = preemptable
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
@@ -1473,6 +1481,10 @@ class Job:
 
         :rtype: bool
         """
+        return self.description.preemptible
+
+    @deprecated(new_function_name="preemptible")
+    def preemptable(self):
         return self.description.preemptible
     @preemptible.setter
     def preemptible(self, val):
