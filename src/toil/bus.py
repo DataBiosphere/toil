@@ -203,7 +203,7 @@ def message_to_bytes(message: NamedTuple) -> bytes:
     """
     parts = []
     for item in message:
-        if isinstance(item, int, float, bool)) or item is None:
+        if isinstance(item, (int, float, bool)) or item is None:
             # This also handles e.g. values from an IntEnum, where the type extends int.
             # They might replace __str__() but we hope they use a compatible __format__()
             parts.append(f"{item}".encode('utf-8'))
