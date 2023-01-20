@@ -15,13 +15,33 @@
 import logging
 from threading import Thread, current_thread
 
-from toil.bus import JobIssuedMessage, MessageBus
-from toil.test import ToilTest
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.bus import JobCompletedMessage, JobIssuedMessage, MessageBus, replay_message_bus
+from toil.test import ToilTest, get_temp_file
 
 logger = logging.getLogger(__name__)
 
 class MessageBusTest(ToilTest):
-    def test_cross_thread_messaging(self):
+    
+    def test_enum_ints_in_file(self) -> None:
+        """
+        Make sure writing bus messages to files works with enums.
+        """
+        bus_file = get_temp_file()
+
+        bus = MessageBus()
+        bus.connect_output_file(bus_file)
+        bus.publish(JobCompletedMessage("blah", "blah", BatchJobExitReason.MEMLIMIT))
+        # Make sure the file closes
+        del bus
+
+        replay = replay_message_bus(bus_file)
+        assert len(replay) > 0
+
+    def test_cross_thread_messaging(self) -> None:
+        """
+        Make sure message bus works across threads.
+        """
 
         main_thread = current_thread()
 
