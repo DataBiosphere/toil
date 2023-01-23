@@ -361,7 +361,8 @@ cactus_integration:
     - git fetch origin
     - git checkout f5adf4013326322ae58ef1eccb8409b71d761583
     - git submodule update --init --recursive
-    - pip install --upgrade setuptools pip
+    # We can't use setuptools 66 on Ubuntu due to https://github.com/pypa/setuptools/issues/3772
+    - pip install --upgrade 'setuptools<66' pip
     - pip install --upgrade .
     - pip install --upgrade numpy psutil # Cactus installs an old psutil that Toil isn't compatible with. TODO: Do we really need Numpy?
     - toil clean aws:us-west-2:${BUCKET_NAME}
