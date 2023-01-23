@@ -1,1 +1,0 @@
-../../src/toil/test/sort/sort.py
