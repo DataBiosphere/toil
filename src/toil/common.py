@@ -1544,9 +1544,10 @@ class ToilMetrics:
 
         # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
         # On AWS this is handled by the EC2 init script
+        self.nodeExporterProc: Optional[subprocess.Popen[bytes]] = None
         if not provisioner:
             try:
-                self.nodeExporterProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
+                self.nodeExporterProc = subprocess.Popen(
                     ["docker", "run",
                      "--rm",
                      "--net=host",
@@ -1561,9 +1562,9 @@ class ToilMetrics:
                      "^/(sys|proc|dev|host|etc)($|/)"])
             except subprocess.CalledProcessError:
                 logger.warning("Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
-                self.nodeExporterProc = None
             except KeyboardInterrupt:
-                self.nodeExporterProc.terminate()  # type: ignore[union-attr]
+                if self.nodeExporterProc is not None:
+                    self.nodeExporterProc.terminate()
 
         # When messages come in on the message bus, call our methods.
         # TODO: Just annotate the methods with some kind of @listener and get
