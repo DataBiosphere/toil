@@ -203,14 +203,15 @@ def message_to_bytes(message: NamedTuple) -> bytes:
     """
     parts = []
     for item in message:
-        item_type = type(item)
-        if item_type in [int, float, bool] or item is None:
-            parts.append(str(item).encode('utf-8'))
-        elif item_type == str:
+        if isinstance(item, (int, float, bool)) or item is None:
+            # This also handles e.g. values from an IntEnum, where the type extends int.
+            # They might replace __str__() but we hope they use a compatible __format__()
+            parts.append(f"{item}".encode('utf-8'))
+        elif isinstance(item, str):
             parts.append(item.encode('unicode_escape'))
         else:
             # We haven't implemented this type yet.
-            raise RuntimeError(f"Cannot store message argument of type {item_type}: {item}")
+            raise RuntimeError(f"Cannot store message argument of type {type(item)}: {item}")
     return b'\t'.join(parts)
 
 
