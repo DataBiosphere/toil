@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import shutil
 import sys
@@ -24,6 +25,8 @@ from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
 from toil.jobStores.utils import generate_locator
 from toil.test import ToilTest, needs_aws_s3, needs_cwl
+
+logger = logging.getLogger(__name__)
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -58,10 +61,12 @@ class ToilKillTest(ToilTest):
         kill_cmd = ['toil', 'kill', self.job_store]
 
         # run the sleep workflow
+        logger.info('Running workflow: %s', ' '.join(run_cmd))
         cwl_process = subprocess.Popen(run_cmd)
 
         # wait until workflow starts running
         while True:
+            assert cwl_process.poll() is None, "toil-cwl-runner finished too soon"
             try:
                 job_store = Toil.resumeJobStore(self.job_store)
                 job_store.read_leader_pid()
@@ -69,7 +74,10 @@ class ToilKillTest(ToilTest):
                 if not job_store.read_kill_flag():
                     # kill flag exists to be deleted to kill the leader
                     break
+                else:
+                    logger.info('Waiting for kill flag...')
             except (NoSuchJobStoreException, NoSuchFileException):
+                logger.info('Waiting for job store to be openable...')
                 pass
             time.sleep(2)
 

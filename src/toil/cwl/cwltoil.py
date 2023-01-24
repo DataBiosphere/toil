@@ -3450,20 +3450,18 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
     
+    # We need a workdir for the CWL runtime contexts.
+    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
+        # if tmpdir_prefix is not the default value, move
+        # workdir and the default job store under it
+        workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
+    else:
+        # Use a directory in the default tmpdir
+        workdir = tempfile.mkdtemp()
+    # Make sure workdir doesn't exist so it can be a job store
+    os.rmdir(workdir) 
+    
     if options.jobStore is None:
-        # Find an available local directory name. Since Toil will insist on
-        # creating it we shouldn't need to worry about known directory name
-        # attacks.
-        if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
-            # if tmpdir_prefix is not the default value, move
-            # workdir and the job store under it
-            workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
-            # Make sure it doesn't exist so it can possibly be a job store
-            os.rmdir(workdir)
-        else:
-            # Use a directory in the default tmpdir
-            workdir = tempfile.mkdtemp()
-            os.rmdir(workdir)
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
