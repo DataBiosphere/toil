@@ -62,9 +62,14 @@ def main() -> None:
                              "      \"Name\": clusterName,\n"
                              "      \"Owner\": IAM username\n"
                              " }. ")
+
+    parser.add_argument("--network",
+                        help="GCE cloud network to use. default: 'default'")
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster leader in. Uses default subnet "
                         "if not specified. This subnet needs to have auto assign IPs turned on.")
+    parser.add_argument("--use_private_ip", dest="use_private_ip", action='store_true', default=False,
+                        help="if specified, ignore the public ip of the nodes")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
                         help="Specifies a list of comma-separated node types, each of which is "
                              "composed of slash-separated instance types, and an optional spot "
@@ -169,6 +174,7 @@ def main() -> None:
                           keyName=options.keyPairName,
                           botoPath=options.botoPath,
                           userTags=tags,
+                          network=options.network,
                           vpcSubnet=options.vpcSubnet,
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
