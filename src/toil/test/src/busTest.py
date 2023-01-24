@@ -30,10 +30,16 @@ class MessageBusTest(ToilTest):
         bus_file = get_temp_file()
 
         bus = MessageBus()
-        bus.connect_output_file(bus_file)
+        # Connect the handler and hold the result to protect it from GC
+        handler_to_keep_alive = bus.connect_output_file(bus_file)
+        logger.debug("Connected bus to file %s", bus_file)
         bus.publish(JobCompletedMessage("blah", "blah", BatchJobExitReason.MEMLIMIT))
-        # Make sure the file closes
+        # Make sure stuff goes away in the right order
+        del handler_to_keep_alive
         del bus
+        
+        for line in open(bus_file):
+            logger.debug("Bus line: %s", line)
 
         replay = replay_message_bus(bus_file)
         assert len(replay) > 0
