@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
-class BatchJobExitReason(enum.Enum):
+class BatchJobExitReason(enum.IntEnum):
     FINISHED: int = 1  # Successfully finished.
     FAILED: int = 2  # Job finished, but failed.
     LOST: int = 3  # Preemptible failure (job's executing host went away).
