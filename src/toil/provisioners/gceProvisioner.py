@@ -26,6 +26,7 @@ from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.lib.conversions import human2bytes
+from toil.lib.util.compatibility import compat_bytes_recursive
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -33,14 +34,13 @@ from toil.provisioners.node import Node
 logger = logging.getLogger(__name__)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
-
 class GCEProvisioner(AbstractProvisioner):
     """
     Implements a Google Compute Engine Provisioner using libcloud.
     """
 
     NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
-    SOURCE_IMAGE = b'projects/flatcar-cloud/global/images/family/flatcar-stable'
+    SOURCE_IMAGE = b'projects/kinvolk-public/global/images/family/flatcar-stable'
 
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'gce'
@@ -127,14 +127,18 @@ class GCEProvisioner(AbstractProvisioner):
         the Google launchCluster takes the following parameters:
         keyName: The key used to communicate with instances
         botoPath: Boto credentials for reading an AWS jobStore (optional).
+        network: a network (optional)
         vpcSubnet: A subnet (optional).
+        use_private_ip: even though a public ip exists, ignore it (optional)
         """
         if 'keyName' not in kwargs:
             raise RuntimeError("A keyPairName is required for the GCE provisioner.")
         self._keyName = kwargs['keyName']
         if 'botoPath' in kwargs:
             self._botoPath = kwargs['botoPath']
-        self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
+        self._vpcSubnet = kwargs.get('vpcSubnet', None)
+        self._network = kwargs.get('network', None)
+        self._use_private_ip = kwargs.get('use_private_ip', None)
 
         # Throws an error if cluster exists
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
@@ -167,9 +171,10 @@ class GCEProvisioner(AbstractProvisioner):
             imageType,
             location=self._zone,
             ex_service_accounts=sa_scopes,
-            ex_metadata=metadata,
+            ex_metadata=compat_bytes_recursive(metadata),
+            ex_network=self._network,
             ex_subnetwork=self._vpcSubnet,
-            ex_disks_gce_struct = [disk],
+            ex_disks_gce_struct = [ compat_bytes_recursive(disk) ],
             description=self._tags,
             ex_preemptible=False
         )
@@ -181,7 +186,7 @@ class GCEProvisioner(AbstractProvisioner):
         # Wait for the appliance to start and inject credentials.
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                           name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=self._tags)
+                          preemptable=False, tags=self._tags, use_private_ip=self._use_private_ip)
         leaderNode.waitForNode('toil_leader', keyName=self._keyName)
         leaderNode.copySshKeys(self._keyName)
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
@@ -308,7 +313,7 @@ class GCEProvisioner(AbstractProvisioner):
 
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self._tags)  # FIXME: what should tags be set to?
+                            preemptable=False, tags=self._tags, use_private_ip=self._use_private_ip)  # FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     logger.debug("Created worker %s" % node.publicIP)
@@ -349,7 +354,8 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False), tags=None)
+                     preemptable=i.extra.get('scheduling', {}).get('preemptible', False),
+                     tags=None, use_private_ip=self._use_private_ip)
                 for i in workerInstances]
 
     def getLeader(self):
@@ -361,7 +367,7 @@ class GCEProvisioner(AbstractProvisioner):
             raise NoSuchClusterException(self.clusterName)
         return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                     name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                    preemptable=False, tags=None)
+                    preemptable=False, tags=None, use_private_ip=self._use_private_ip)
 
     def _injectWorkerFiles(self, node, botoExists):
         """
