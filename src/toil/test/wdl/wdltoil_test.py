@@ -59,8 +59,8 @@ class WdlToilTest(ToilWdlTest):
             assert isinstance(item, str)
             assert item.startswith(out_dir)
 
-        assert 'hello_caller.messages' in output
-        assert output['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
+        assert 'hello_caller.messages' in outputs
+        assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
 
 if __name__ == "__main__":
     unittest.main()  # run all tests
