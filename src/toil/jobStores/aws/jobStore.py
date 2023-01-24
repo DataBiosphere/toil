@@ -35,6 +35,7 @@ from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
+from toil.common import build_tag_dict_from_env
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
@@ -56,8 +57,7 @@ from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import (build_tag_dict_from_env,
-                                create_s3_bucket,
+from toil.lib.aws.utils import (create_s3_bucket,
                                 flatten_tags,
                                 get_bucket_region,
                                 get_object_for_url,

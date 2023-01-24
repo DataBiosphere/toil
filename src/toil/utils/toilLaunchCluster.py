@@ -18,8 +18,7 @@ import os
 from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
-from toil.common import parser_with_common_options
-from toil.lib.aws.utils import build_tag_dict_from_env
+from toil.common import parser_with_common_options, build_tag_dict_from_env
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
                                parse_node_types)
