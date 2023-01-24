@@ -293,7 +293,8 @@ class AWSProvisioner(AbstractProvisioner):
                       userTags: Optional[dict],
                       vpcSubnet: Optional[str],
                       awsEc2ProfileArn: Optional[str],
-                      awsEc2ExtraSecurityGroupIds: Optional[list]):
+                      awsEc2ExtraSecurityGroupIds: Optional[list],
+                      **kwargs):
         """
         Starts a single leader node and populates this class with the leader's metadata.
 
@@ -308,6 +309,9 @@ class AWSProvisioner(AbstractProvisioner):
         :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
         :return: None
         """
+
+        if 'network' in kwargs:
+            logger.warning('AWS provisioner does not support a network parameter. Ignoring %s!', kwargs["network"])
 
         # First, pre-flight-check our permissions before making anything.
         if not policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS):
