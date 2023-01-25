@@ -1674,10 +1674,14 @@ class ToilMetrics:
         self.log("completed_job %s" % m.job_type)
 
     def shutdown(self) -> None:
-        if self.mtailProc:
+        if self.mtailProc is not None:
+            logger.debug('Stopping mtail')
             self.mtailProc.kill()
-        if self.nodeExporterProc:
+            logger.debug('Stopped mtail')
+        if self.nodeExporterProc is not None:
+            logger.debug('Stopping node exporter')
             self.nodeExporterProc.kill()
+            logger.debug('Stopped node exporter')
         self._listeners = []
 
 
