@@ -7,7 +7,8 @@ services:
                 - shared-vol:/home/admin
                 - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
 
-
+        environment:
+                - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/admin/.local/bin
         ports:
                 - 6817:6817
                 - 6818:6818
