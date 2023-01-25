@@ -4,9 +4,21 @@
 Running on Kubernetes
 =====================
 
-`Kubernetes <https://kubernetes.io/>`_ is a very popular container orchestration tool that has become a *de facto* cross-cloud-provider API for accessing cloud resources. Major cloud providers like `Amazon <https://aws.amazon.com/kubernetes/>`_, `Microsoft <https://azure.microsoft.com/en-us/overview/kubernetes-getting-started/>`_, Kubernetes owner `Google <https://cloud.google.com/kubernetes-engine/>`_, and `DigitalOcean <https://www.digitalocean.com/products/kubernetes/>`_ have invested heavily in making Kubernetes work well on their platforms, by writing their own deployment documentation and developing provider-managed Kubernetes-based products. Using `minikube <https://github.com/kubernetes/minikube>`_, Kubernetes can even be run on a single machine.
+`Kubernetes <https://kubernetes.io/>`_ is a very popular container
+orchestration tool that has become a *de facto* cross-cloud-provider API for
+accessing cloud resources. Major cloud providers like `Amazon
+<https://aws.amazon.com/kubernetes/>`_, `Microsoft
+<https://azure.microsoft.com/en-us/overview/kubernetes-getting-started/>`_,
+Kubernetes owner `Google <https://cloud.google.com/kubernetes-engine/>`_, and
+`DigitalOcean <https://www.digitalocean.com/products/kubernetes/>`_ have
+invested heavily in making Kubernetes work well on their platforms, by writing
+their own deployment documentation and developing provider-managed
+Kubernetes-based products. Using `minikube
+<https://github.com/kubernetes/minikube>`_, Kubernetes can even be run on a
+single machine.
 
-Toil supports running Toil workflows against a Kubernetes cluster, either in the cloud or deployed on user-owned hardware.
+Toil supports running Toil workflows against a Kubernetes cluster, either in
+the cloud or deployed on user-owned hardware.
 
 .. _prepareKubernetes:
 
@@ -15,9 +27,17 @@ Preparing your Kubernetes environment
 
 #. **Get a Kubernetes cluster**
 
-   To run Toil workflows on Kubernetes, you need to have a Kubernetes cluster set up. This will not be covered here, but there are many options available, and which one you choose will depend on which cloud ecosystem if any you use already, and on pricing. If you are just following along with the documentation, use ``minikube`` on your local machine.
+   To run Toil workflows on Kubernetes, you need to have a Kubernetes cluster
+   set up. This will not be covered here, but there are many options available,
+   and which one you choose will depend on which cloud ecosystem if any you use
+   already, and on pricing. If you are just following along with the
+   documentation, use ``minikube`` on your local machine.
 
-   **Note that currently the only way to run a Toil workflow on Kubernetes is to use the AWS Job Store, so your Kubernetes workflow will currently have to store its data in Amazon's cloud regardless of where you run it. This can result in significant egress charges from Amazon if you run it outside of Amazon.**
+   **Note that currently the only way to run a Toil workflow on Kubernetes is
+   to use the AWS Job Store, so your Kubernetes workflow will currently have to
+   store its data in Amazon's cloud regardless of where you run it. This can
+   result in significant egress charges from Amazon if you run it outside of
+   Amazon.**
 
    Kubernetes Cluster Providers:
 
@@ -30,29 +50,67 @@ Preparing your Kubernetes environment
 
 #. **Get a Kubernetes context on your local machine**
 
-   There are two main ways to run Toil workflows on Kubernetes. You can either run the Toil leader on a machine outside the cluster, with jobs submitted to and run on the cluster, or you can submit the Toil leader itself as a job and have it run inside the cluster. Either way, you will need to configure your own machine to be able to submit jobs to the Kubernetes cluster. Generally, this involves creating and populating a file named ``.kube/config`` in your user's home directory, and specifying the cluster to connect to, the certificate and token information needed for mutual authentication, and the Kubernetes namespace within which to work. However, Kubernetes configuration can also be picked up from other files in the ``.kube`` directory, environment variables, and the enclosing host when running inside a Kubernetes-managed container.
+   There are two main ways to run Toil workflows on Kubernetes. You can either
+   run the Toil leader on a machine outside the cluster, with jobs submitted to
+   and run on the cluster, or you can submit the Toil leader itself as a job
+   and have it run inside the cluster. Either way, you will need to configure
+   your own machine to be able to submit jobs to the Kubernetes cluster.
+   Generally, this involves creating and populating a file named
+   ``.kube/config`` in your user's home directory, and specifying the cluster
+   to connect to, the certificate and token information needed for mutual
+   authentication, and the Kubernetes namespace within which to work. However,
+   Kubernetes configuration can also be picked up from other files in the
+   ``.kube`` directory, environment variables, and the enclosing host when
+   running inside a Kubernetes-managed container.
 
-   You will have to do different things here depending on where you got your Kubernetes cluster:
+   You will have to do different things here depending on where you got your
+   Kubernetes cluster:
 
-   * `Configuring for Amazon EKS <https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html>`_
-   * `Configuring for Microsoft Azure AKS <https://docs.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest#az-aks-get-credentials>`_
-   * `Configuring for Google GKE <https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl>`_
-   * `Configuring for DigitalOcean Kubernetes Clusters <https://www.digitalocean.com/docs/kubernetes/how-to/connect-to-cluster/>`_
-   * `Configuring for minikube <https://kubernetes.io/docs/setup/learning-environment/minikube/#kubectl>`_
+   * `Configuring for Amazon EKS
+   <https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html>`_
+   * `Configuring for Microsoft Azure AKS
+   <https://docs.microsoft.com/en-us/cli/azure/aks?view=azure-cli-latest#az-aks-get-credentials>`_
+   * `Configuring for Google GKE
+   <https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl>`_
+   * `Configuring for DigitalOcean Kubernetes Clusters
+   <https://www.digitalocean.com/docs/kubernetes/how-to/connect-to-cluster/>`_
+   * `Configuring for minikube
+   <https://kubernetes.io/docs/setup/learning-environment/minikube/#kubectl>`_
 
-   Toil's internal Kubernetes configuration logic mirrors that of the ``kubectl`` command. Toil workflows will use the current ``kubectl`` context to launch their Kubernetes jobs.
+   Toil's internal Kubernetes configuration logic mirrors that of the
+   ``kubectl`` command. Toil workflows will use the current ``kubectl`` context
+   to launch their Kubernetes jobs.
 
 #. **If running the Toil leader in the cluster, get a service account**
 
-   If you are going to run your workflow's leader within the Kubernetes cluster (see :ref:`kubernetesLeaderInside`), you will need a service account in your chosen Kubernetes namespace. Most namespaces should have a service account named ``default`` which should work fine. If your cluster requires you to use a different service account, you will need to obtain its name and use it when launching the Kubernetes job containing the Toil leader.
+   If you are going to run your workflow's leader within the Kubernetes cluster
+   (see :ref:`kubernetesLeaderInside`), you will need a service account in your
+   chosen Kubernetes namespace. Most namespaces should have a service account
+   named ``default`` which should work fine. If your cluster requires you to
+   use a different service account, you will need to obtain its name and use it
+   when launching the Kubernetes job containing the Toil leader.
 
 #. **Set up appropriate permissions**
 
-   Your local Kubernetes context and/or the service account you are using to run the leader in the cluster will need to have certain permissions in order to run the workflow. Toil needs to be able to interact with jobs and pods in the cluster, and to retrieve pod logs. You as a user may need permission to set up an AWS credentials secret, if one is not already available. Additionally, it is very useful for you as a user to have permission to interact with nodes, and to shell into pods.
+   Your local Kubernetes context and/or the service account you are using to
+   run the leader in the cluster will need to have certain permissions in order
+   to run the workflow. Toil needs to be able to interact with jobs and pods in
+   the cluster, and to retrieve pod logs. You as a user may need permission to
+   set up an AWS credentials secret, if one is not already available.
+   Additionally, it is very useful for you as a user to have permission to
+   interact with nodes, and to shell into pods.
 
-   The appropriate permissions may already be available to you and your service account by default, especially in managed or ease-of-use-optimized setups such as EKS or minikube.
+   The appropriate permissions may already be available to you and your service
+   account by default, especially in managed or ease-of-use-optimized setups
+   such as EKS or minikube.
 
-   However, if the appropriate permissions are not already available, you or your cluster administrator will have to grant them manually. The following ``Role`` (``toil-user``) and ``ClusterRole`` (``node-reader``), to be applied with ``kubectl apply -f filename.yaml``, should grant sufficient permissions to run Toil workflows when bound to your account and the service account used by Toil workflows. Be sure to replace ``YOUR_NAMESPACE_HERE`` with the namespace you are running your workflows in ::
+   However, if the appropriate permissions are not already available, you or
+   your cluster administrator will have to grant them manually. The following
+   ``Role`` (``toil-user``) and ``ClusterRole`` (``node-reader``), to be
+   applied with ``kubectl apply -f filename.yaml``, should grant sufficient
+   permissions to run Toil workflows when bound to your account and the service
+   account used by Toil workflows. Be sure to replace ``YOUR_NAMESPACE_HERE``
+   with the namespace you are running your workflows in ::
 
       apiVersion: rbac.authorization.k8s.io/v1
       kind: Role
@@ -93,7 +151,11 @@ Preparing your Kubernetes environment
         resources: ["*"]
         verbs: ["*"]
 
-   To bind a user or service account to the ``Role`` or ``ClusterRole`` and actually grant the permissions, you will need a ``RoleBinding`` and a ``ClusterRoleBinding``, respectively. Make sure to fill in the namespace, username, and service account name, and add more user stanzas if your cluster is to support multiple Toil users.
+   To bind a user or service account to the ``Role`` or ``ClusterRole`` and
+   actually grant the permissions, you will need a ``RoleBinding`` and a
+   ``ClusterRoleBinding``, respectively. Make sure to fill in the namespace,
+   username, and service account name, and add more user stanzas if your
+   cluster is to support multiple Toil users.
 
    ::
 
@@ -137,29 +199,49 @@ Preparing your Kubernetes environment
 AWS Job Store for Kubernetes
 ----------------------------
 
-Currently, the only job store, which is what Toil uses to exchange data between jobs, that works with jobs running on Kubernetes is the AWS Job Store. This requires that the Toil leader and Kubernetes jobs be able to connect to and use Amazon S3 and Amazon SimpleDB. It also requires that you have an Amazon Web Services account.
+Currently, the only job store, which is what Toil uses to exchange data between
+jobs, that works with jobs running on Kubernetes is the AWS Job Store. This
+requires that the Toil leader and Kubernetes jobs be able to connect to and use
+Amazon S3 and Amazon SimpleDB. It also requires that you have an Amazon Web
+Services account.
 
 #. **Get access to AWS S3 and SimpleDB**
 
-   In your AWS account, you need to create an AWS access key. First go to the IAM dashboard; for "us-west1", the link would be: ::
+   In your AWS account, you need to create an AWS access key. First go to the
+   IAM dashboard; for "us-west1", the link would be: ::
 
     https://console.aws.amazon.com/iam/home?region=us-west-1#/home
 
-   Then create an access key, and save the Access Key ID and the Secret Key. As documented in `the AWS documentation <https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html>`_:
+   Then create an access key, and save the Access Key ID and the Secret Key. As
+   documented in `the AWS documentation
+   <https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html>`_:
 
-   1. On the IAM Dashboard page, choose your account name in the navigation bar, and then choose My Security Credentials.
+   1. On the IAM Dashboard page, choose your account name in the navigation
+      bar, and then choose My Security Credentials.
+   
    2. Expand the Access keys (access key ID and secret access key) section.
-   3. Choose Create New Access Key. Then choose Download Key File to save the access key ID and secret access key to a file on your computer. After you close the dialog box, you can't retrieve this secret access key again.
+   
+   3. Choose Create New Access Key. Then choose Download Key File to save the
+      access key ID and secret access key to a file on your computer. After you
+      close the dialog box, you can't retrieve this secret access key again.
 
-   Make sure that, if your AWS infrastructure requires your user to authenticate with a multi-factor authentication (MFA) token, you obtain a second secret key and access key that don't have this requirement. The secret key and access key used to populate the Kubernetes secret that allows the jobs to contact the job store need to be usable without human intervention.
+   Make sure that, if your AWS infrastructure requires your user to
+   authenticate with a multi-factor authentication (MFA) token, you obtain a
+   second secret key and access key that don't have this requirement. The
+   secret key and access key used to populate the Kubernetes secret that allows
+   the jobs to contact the job store need to be usable without human
+   intervention.
 
 #. **Configure AWS access from the local machine**
 
-   This only really needs to happen if you run the leader on the local machine. But we need the files in place to fill in the secret in the next step. Run: ::
+   This only really needs to happen if you run the leader on the local machine.
+   But we need the files in place to fill in the secret in the next step. Run:
+   ::
 
       $ aws configure
 
-   Then when prompted, enter your secret key and access key. This should create a file ``~/.aws/credentials`` that looks like this: ::
+   Then when prompted, enter your secret key and access key. This should create
+   a file ``~/.aws/credentials`` that looks like this: ::
 
       [default]
       aws_access_key_id =  BLAH
@@ -178,29 +260,69 @@ Currently, the only job store, which is what Toil uses to exchange data between 
 Configuring Toil for your Kubernetes environment
 ------------------------------------------------
 
-To configure your workflow to run on Kubernetes, you will have to configure several environment variables, in addition to passing the ``--batchSystem kubernetes`` option. Doing the research to figure out what values to give these variables may require talking to your cluster provider.
+To configure your workflow to run on Kubernetes, you will have to configure
+several environment variables, in addition to passing the ``--batchSystem
+kubernetes`` option. Doing the research to figure out what values to give these
+variables may require talking to your cluster provider.
 
-#. ``TOIL_AWS_SECRET_NAME`` is the most important, and **must** be set to the secret that contains your AWS ``credentials`` file, **if** your cluster nodes don't otherwise have access to S3 and SimpleDB (such as through IAM roles). This is required for the AWS job store to work, which is currently the only job store that can be used on Kubernetes. In this example we are using ``aws-credentials``.
+#. ``TOIL_AWS_SECRET_NAME`` is the most important, and **must** be set to the
+secret that contains your AWS ``credentials`` file, **if** your cluster nodes
+don't otherwise have access to S3 and SimpleDB (such as through IAM roles).
+This is required for the AWS job store to work, which is currently the only job
+store that can be used on Kubernetes. In this example we are using
+``aws-credentials``.
 
-#. ``TOIL_KUBERNETES_HOST_PATH`` **can** be set to allow Toil jobs on the same physical host to share a cache. It should be set to a path on the host where the shared cache should be stored. It will be mounted as ``/var/lib/toil``, or at ``TOIL_WORKDIR`` if specified, inside the container. This path must already exist on the host, and must have as much free space as your Kubernetes node offers to jobs. In this example, we are using ``/data/scratch``. To actually make use of caching, make sure not to use ``--disableCaching``.
+#. ``TOIL_KUBERNETES_HOST_PATH`` **can** be set to allow Toil jobs on the same
+physical host to share a cache. It should be set to a path on the host where
+the shared cache should be stored. It will be mounted as ``/var/lib/toil``, or
+at ``TOIL_WORKDIR`` if specified, inside the container. This path must already
+exist on the host, and must have as much free space as your Kubernetes node
+offers to jobs. In this example, we are using ``/data/scratch``. To actually
+make use of caching, make sure not to use ``--disableCaching``.
 
-#. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
+#. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user
+running the Toil workflow. The jobs that Toil creates will include this
+username, so they can be more easily recognized, and cleaned up by the user if
+anything happens to the Toil leader. In this example we are using
+``demo-user``.
 
-Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity in its user-namespace mode, are able to run containers from within containers. If using Singularity to run containerized tools, and you want downloaded container images to persist between Toil jobs, you will also want to set ``TOIL_KUBERNETES_HOST_PATH`` and make sure that Singularity is downloading its containers under the Toil work directory (``/var/lib/toil`` buy default) by setting ``SINGULARITY_CACHEDIR``. However, you will need to make sure that no two jobs try to download the same container at the same time; Singularity has no synchronization or locking around its cache, but the cache is also not safe for simultaneous access by multiple Singularity invocations. Some Toil workflows use their own custom workaround logic for this problem; this work is likely to be made part of Toil in a future release.
+Note that Docker containers cannot be run inside of unprivileged Kubernetes
+pods (which are themselves containers). The Docker daemon does not (yet)
+support this. Other tools, such as Singularity in its user-namespace mode, are
+able to run containers from within containers. If using Singularity to run
+containerized tools, and you want downloaded container images to persist
+between Toil jobs, you will also want to set ``TOIL_KUBERNETES_HOST_PATH`` and
+make sure that Singularity is downloading its containers under the Toil work
+directory (``/var/lib/toil`` buy default) by setting ``SINGULARITY_CACHEDIR``.
+However, you will need to make sure that no two jobs try to download the same
+container at the same time; Singularity has no synchronization or locking
+around its cache, but the cache is also not safe for simultaneous access by
+multiple Singularity invocations. Some Toil workflows use their own custom
+workaround logic for this problem; this work is likely to be made part of Toil
+in a future release.
 
 Running workflows
 -----------------
 
-To run the workflow, you will need to run the Toil leader process somewhere. It can either be run inside Kubernetes as a Kubernetes job, or outside Kubernetes as a normal command.
+To run the workflow, you will need to run the Toil leader process somewhere. It
+can either be run inside Kubernetes as a Kubernetes job, or outside Kubernetes
+as a normal command.
 
 .. _kubernetesLeaderInside:
 
 Option 1: Running the Leader Inside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML so that they can be used from the leader as well.
+Once you have determined a set of environment variable values for your workflow
+run, write a YAML file that defines a Kubernetes job to run your workflow with
+that configuration. Some configuration items (such as your username, and the
+name of your AWS credentials secret) need to be written into the YAML so that
+they can be used from the leader as well.
 
-Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
+Note that the leader pod will need your workflow script, its other
+dependencies, and Toil all installed. An easy way to get Toil installed is to
+start with the Toil appliance image for the version of Toil you want to use. In
+this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
 
 Here's an example YAML file to run a test workflow: ::
 
@@ -289,71 +411,118 @@ Here's an example YAML file to run a test workflow: ::
                 --realTimeLogging \
                 --logInfo
 
-You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes installation with: ::
+You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes
+installation with: ::
 
    $ kubectl apply -f leader.yaml
 
-To monitor the progress of the leader job, you will want to read its logs. If you are using a Kubernetes dashboard such as `k9s <https://github.com/derailed/k9s>`_, you can simply find the pod created for the job in the dashboard, and view its logs there. If not, you will need to locate the pod by hand.
+To monitor the progress of the leader job, you will want to read its logs. If
+you are using a Kubernetes dashboard such as `k9s
+<https://github.com/derailed/k9s>`_, you can simply find the pod created for
+the job in the dashboard, and view its logs there. If not, you will need to
+locate the pod by hand.
 
 .. _debugKubeJob:
 
 Monitoring and Debugging Kubernetes Jobs and Pods
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The following techniques are most useful for looking at the pod which holds the Toil leader, but they can also be applied to individual Toil jobs on Kubernetes, even when the leader is outside the cluster.
+The following techniques are most useful for looking at the pod which holds the
+Toil leader, but they can also be applied to individual Toil jobs on
+Kubernetes, even when the leader is outside the cluster.
 
-Kubernetes names pods for jobs by appending a short random string to the name of the job. You can find the name of the pod for your job by doing: ::
+Kubernetes names pods for jobs by appending a short random string to the name
+of the job. You can find the name of the pod for your job by doing: ::
 
    $ kubectl get pods | grep demo-user-toil-test
    demo-user-toil-test-g5496                                         1/1     Running     0          2m
 
-Assuming you have set ``TOIL_KUBERNETES_OWNER`` correctly, you should be able to find all of your workflow's pods by searching for your username: ::
+Assuming you have set ``TOIL_KUBERNETES_OWNER`` correctly, you should be able
+to find all of your workflow's pods by searching for your username: ::
 
    $ kubectl get pods | grep demo-user
 
-If the status of a pod is anything other than ``Pending``, you will be able to view its logs with: ::
+If the status of a pod is anything other than ``Pending``, you will be able to
+view its logs with: ::
 
    $ kubectl logs demo-user-toil-test-g5496
 
-This will dump the pod's logs from the beginning to now and terminate. To follow along with the logs from a running pod, add the ``-f`` option: ::
+This will dump the pod's logs from the beginning to now and terminate. To
+follow along with the logs from a running pod, add the ``-f`` option: ::
 
    $ kubectl logs -f demo-user-toil-test-g5496
 
-A status of ``ImagePullBackoff`` suggests that you have requested to use an image that is not available. Check the ``image`` section of your YAML if you are looking at a leader, or the value of ``TOIL_APPLIANCE_SELF`` if you are delaying with a worker job. You also might want to check your Kubernetes node's Internet connectivity and DNS function; in Kubernetes, DNS depends on system-level pods which can be terminated or evicted in cases of resource oversubscription, just like user workloads.
+A status of ``ImagePullBackoff`` suggests that you have requested to use an
+image that is not available. Check the ``image`` section of your YAML if you
+are looking at a leader, or the value of ``TOIL_APPLIANCE_SELF`` if you are
+delaying with a worker job. You also might want to check your Kubernetes node's
+Internet connectivity and DNS function; in Kubernetes, DNS depends on
+system-level pods which can be terminated or evicted in cases of resource
+oversubscription, just like user workloads.
 
-If your pod seems to be stuck ``Pending``, ``ContainerCreating``, you can get information on what is wrong with it by using ``kubectl describe pod``: ::
+If your pod seems to be stuck ``Pending``, ``ContainerCreating``, you can get
+information on what is wrong with it by using ``kubectl describe pod``: ::
 
    $ kubectl describe pod demo-user-toil-test-g5496
 
-Pay particular attention to the ``Events:`` section at the end of the output. An indication that a job is too big for the available nodes on your cluster, or that your cluster is too busy for your jobs, is ``FailedScheduling`` events: ::
+Pay particular attention to the ``Events:`` section at the end of the output.
+An indication that a job is too big for the available nodes on your cluster, or
+that your cluster is too busy for your jobs, is ``FailedScheduling`` events: ::
 
   Type     Reason            Age                  From               Message
   ----     ------            ----                 ----               -------
   Warning  FailedScheduling  13s (x79 over 100m)  default-scheduler  0/4 nodes are available: 1 Insufficient cpu, 1 Insufficient ephemeral-storage, 4 Insufficient memory.
 
-If a pod is running but seems to be behaving erratically, or seems stuck, you can shell into it and look around: ::
+If a pod is running but seems to be behaving erratically, or seems stuck, you
+can shell into it and look around: ::
 
    $ kubectl exec -ti demo-user-toil-test-g5496 /bin/bash
 
-One common cause of stuck pods is attempting to use more memory than allowed by Kubernetes (or by the Toil job's memory resource requirement), but in a way that does not trigger the Linux OOM killer to terminate the pod's processes. In these cases, the pod can remain stuck at nearly 100% memory usage more or less indefinitely, and attempting to shell into the pod (which needs to start a process within the pod, using some of its memory) will fail. In these cases, the recommended solution is to kill the offending pod and increase its (or its Toil job's) memory requirement, or reduce its memory needs by adapting user code.
+One common cause of stuck pods is attempting to use more memory than allowed by
+Kubernetes (or by the Toil job's memory resource requirement), but in a way
+that does not trigger the Linux OOM killer to terminate the pod's processes. In
+these cases, the pod can remain stuck at nearly 100% memory usage more or less
+indefinitely, and attempting to shell into the pod (which needs to start a
+process within the pod, using some of its memory) will fail. In these cases,
+the recommended solution is to kill the offending pod and increase its (or its
+Toil job's) memory requirement, or reduce its memory needs by adapting user
+code.
 
 When Things Go Wrong
 ^^^^^^^^^^^^^^^^^^^^
 
-The Toil Kubernetes batch system includes cleanup code to terminate worker jobs when the leader shuts down. However, if the leader pod is removed by Kubernetes, is forcibly killed or otherwise suffers a sudden existence failure, it can go away while its worker jobs live on. It is not recommended to restart a workflow in this state, as jobs from the previous invocation will remain running and will be trying to modify the job store concurrently with jobs from the new invocation.
+The Toil Kubernetes batch system includes cleanup code to terminate worker jobs
+when the leader shuts down. However, if the leader pod is removed by
+Kubernetes, is forcibly killed or otherwise suffers a sudden existence failure,
+it can go away while its worker jobs live on. It is not recommended to restart
+a workflow in this state, as jobs from the previous invocation will remain
+running and will be trying to modify the job store concurrently with jobs from
+the new invocation.
 
 To clean up dangling jobs, you can use the following snippet: ::
 
    $ kubectl get jobs | grep demo-user | cut -f1 -d' ' | xargs -n10 kubectl delete job
 
-This will delete all jobs with ``demo-user``'s username in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pertaining to that workflow invocation.
+This will delete all jobs with ``demo-user``'s username in their names, in
+batches of 10. You can also use the UUID that Toil assigns to a particular
+workflow invocation in the filter, to clean up only the jobs pertaining to that
+workflow invocation.
 
 Option 2: Running the Leader Outside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you don't want to run your Toil leader inside Kubernetes, you can run it locally instead. This can be useful when developing a workflow; files can be hot-deployed from your local machine directly to Kubernetes. However, your local machine will have to have (ideally role-assumption- and MFA-free) access to AWS, and access to Kubernetes. Real time logging will not work unless your local machine is able to listen for incoming UDP packets on arbitrary ports on the address it uses to contact the IPv4 Internet; Toil does no NAT traversal or detection.
+If you don't want to run your Toil leader inside Kubernetes, you can run it
+locally instead. This can be useful when developing a workflow; files can be
+hot-deployed from your local machine directly to Kubernetes. However, your
+local machine will have to have (ideally role-assumption- and MFA-free) access
+to AWS, and access to Kubernetes. Real time logging will not work unless your
+local machine is able to listen for incoming UDP packets on arbitrary ports on
+the address it uses to contact the IPv4 Internet; Toil does no NAT traversal or
+detection.
 
-Note that if you set ``TOIL_WORKDIR`` when running your workflow like this, it will need to be a directory that exists both on the host and in the Toil appliance.
+Note that if you set ``TOIL_WORKDIR`` when running your workflow like this, it
+will need to be a directory that exists both on the host and in the Toil
+appliance.
 
 Here is an example of running our test workflow leader locally, outside of Kubernetes: ::
 
@@ -372,9 +541,18 @@ Here is an example of running our test workflow leader locally, outside of Kuber
 Running CWL Workflows
 ^^^^^^^^^^^^^^^^^^^^^
 
-Running CWL workflows on Kubernetes can be challenging, because executing CWL can require ``toil-cwl-runner`` to orchestrate containers of its own, within a Kubernetes job running in the Toil appliance container.
+Running CWL workflows on Kubernetes can be challenging, because executing CWL
+can require ``toil-cwl-runner`` to orchestrate containers of its own, within a
+Kubernetes job running in the Toil appliance container.
 
-Normally, running a CWL workflow should Just Work, as long as the workflow's Docker containers are able to be executed with Singularity, your Kubernetes cluster does not impose extra capability-based confinement (i.e. SELinux, AppArmor) that interferes with Singularity's use of user-mode namespaces, and you make sure to configure Toil so that its workers know where to store their data within the Kubernetes pods (which would be done for you if using a Toil-managed cluster). For example, you should be able to run a CWL workflow like this::
+Normally, running a CWL workflow should Just Work, as long as the workflow's
+Docker containers are able to be executed with Singularity, your Kubernetes
+cluster does not impose extra capability-based confinement (i.e. SELinux,
+AppArmor) that interferes with Singularity's use of user-mode namespaces, and
+you make sure to configure Toil so that its workers know where to store their
+data within the Kubernetes pods (which would be done for you if using a
+Toil-managed cluster). For example, you should be able to run a CWL workflow
+like this::
 
    $ export TOIL_KUBERNETES_OWNER=demo-user  # This defaults to your local username if not set
    $ export TOIL_AWS_SECRET_NAME=aws-credentials
@@ -391,15 +569,41 @@ Normally, running a CWL workflow should Just Work, as long as the workflow's Doc
         path/to/cwl/workflow \
         path/to/cwl/input/object
         
-Additional ``cwltool`` options that your workflow might require, such as ``--no-match-user``, can be passed to ``toil-cwl-runner``, which inherits most ``cwltool`` options.
+Additional ``cwltool`` options that your workflow might require, such as
+``--no-match-user``, can be passed to ``toil-cwl-runner``, which inherits most
+``cwltool`` options.
 
 AppArmor and Singularity
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-Kubernetes clusters based on Ubuntu hosts often will have AppArmor enabled on the host. AppArmor is a capability-based security enhancement system that integrates with the Linux kernel to enforce lists of things which programs may or may not do, called **profiles**. For example, an AppArmor profile could be applied to a web server process to stop it from using the ``mount()`` system call to manipulate the filesystem, because it has no business doing that under normal circumstances but might attempt to do it if compromised by hackers.
+Kubernetes clusters based on Ubuntu hosts often will have AppArmor enabled on
+the host. AppArmor is a capability-based security enhancement system that
+integrates with the Linux kernel to enforce lists of things which programs may
+or may not do, called **profiles**. For example, an AppArmor profile could be
+applied to a web server process to stop it from using the ``mount()`` system
+call to manipulate the filesystem, because it has no business doing that under
+normal circumstances but might attempt to do it if compromised by hackers.
 
-Kubernetes clusters also often use Docker as the backing container runtime, to run pod containers. When AppArmor is enabled, Docker will load an AppArmor profile and apply it to all of its containers by default, with the ability for the profile to be overridden on a per-container basis. This profile unfortunately prevents some of the `mount()` system calls that Singularity uses to set up user-mode containers from working inside the pod, even though these calls would be allowed for an unprivileged user under normal circumstances.
+Kubernetes clusters also often use Docker as the backing container runtime, to
+run pod containers. When AppArmor is enabled, Docker will load an AppArmor
+profile and apply it to all of its containers by default, with the ability for
+the profile to be overridden on a per-container basis. This profile
+unfortunately prevents some of the `mount()` system calls that Singularity uses
+to set up user-mode containers from working inside the pod, even though these
+calls would be allowed for an unprivileged user under normal circumstances.
 
-On the UCSC Kubernetes cluster, `we configure our Ubuntu hosts with an alternative default AppArmor profile for Docker containers <https://github.com/adamnovak/gi-kubernetes-autoscaling-config/blob/e1350ac9ad17d94b5073b20db3c75620957926e3/kubenode.ubuntu.cloud-config.yaml#L27-L67>`_ which allows these calls. Other solutions include turning off AppArmor on the host, configuring Kubernetes with a container runtime other than Docker, or `using Kubernetes's AppArmor integration <https://kubernetes.io/docs/tutorials/security/apparmor/>`_ to apply a more permissive profile or the ``unconfined`` profile to pods that Toil launches.
+On the UCSC Kubernetes cluster, `we configure our Ubuntu hosts with an
+alternative default AppArmor profile for Docker containers
+<https://github.com/adamnovak/gi-kubernetes-autoscaling-config/blob/e1350ac9ad17d94b5073b20db3c75620957926e3/kubenode.ubuntu.cloud-config.yaml#L27-L67>`_
+which allows these calls. Other solutions include turning off AppArmor on the
+host, configuring Kubernetes with a container runtime other than Docker, or
+`using Kubernetes's AppArmor integration
+<https://kubernetes.io/docs/tutorials/security/apparmor/>`_ to apply a more
+permissive profile or the ``unconfined`` profile to pods that Toil launches.
 
-Toil does not yet have a way to apply a ``container.apparmor.security.beta.kubernetes.io/runner-container: unconfined`` annotation to its pods, `as described in the Kubernetes AppArmor documentation <https://kubernetes.io/docs/tutorials/security/apparmor/#securing-a-pod>`_. This feature is tracked in `issue #4331 <https://github.com/DataBiosphere/toil/issues/4331>`_.
+Toil does not yet have a way to apply a
+``container.apparmor.security.beta.kubernetes.io/runner-container: unconfined``
+annotation to its pods, `as described in the Kubernetes AppArmor documentation
+<https://kubernetes.io/docs/tutorials/security/apparmor/#securing-a-pod>`_.
+This feature is tracked in `issue #4331
+<https://github.com/DataBiosphere/toil/issues/4331>`_.
