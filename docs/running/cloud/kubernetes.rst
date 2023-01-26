@@ -369,9 +369,37 @@ Here is an example of running our test workflow leader locally, outside of Kuber
          --realTimeLogging \
          --logInfo
 
+Running CWL Workflows
+^^^^^^^^^^^^^^^^^^^^^
 
+Running CWL workflows on Kubernetes can be challenging, because executing CWL can require ``toil-cwl-runner`` to orchestrate containers of its own, within a Kubernetes job running in the Toil appliance container.
 
+Normally, running a CWL workflow should Just Work, as long as the workflow's Docker containers are able to be executed with Singularity, your Kubernetes cluster does not impose extra capability-based confinement (i.e. SELinux, AppArmor) that interferes with Singularity's use of user-mode namespaces, and you make sure to configure Toil so that its workers know where to store their data within the Kubernetes pods (which would be done for you if using a Toil-managed cluster). For example, you should be able to run a CWL workflow like this::
 
+   $ export TOIL_KUBERNETES_OWNER=demo-user  # This defaults to your local username if not set
+   $ export TOIL_AWS_SECRET_NAME=aws-credentials
+   $ export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+   $ virtualenv --python python3 --system-site-packages venv
+   $ . venv/bin/activate
+   $ pip install toil[kubernetes,cwl]==5.8.0
+   $ toil-cwl-runner  \
+        --jobStore  aws:us-west-2:demouser-toil-test-jobstore \
+        --batchSystem kubernetes \
+        --realTimeLogging \
+        --logInfo \
+        --disableCaching \
+        path/to/cwl/workflow \
+        path/to/cwl/input/object
+        
+Additional ``cwltool`` options that your workflow might require, such as ``--no-match-user``, can be passed to ``toil-cwl-runner``, which inherits most ``cwltool`` options.
 
+AppArmor and Singularity
+^^^^^^^^^^^^^^^^^^^^^^^^
 
+Kubernetes clusters based on Ubuntu hosts often will have AppArmor enabled on the host. AppArmor is a capability-based security enhancement system that integrates with the Linux kernel to enforce lists of things which programs may or may not do, called **profiles**. For example, an AppArmor profile could be applied to a web server process to stop it from using the ``mount()`` system call to manipulate the filesystem, because it has no business doing that under normal circumstances but might attempt to do it if compromised by hackers.
 
+Kubernetes clusters also often use Docker as the backing container runtime, to run pod containers. When AppArmor is enabled, Docker will load an AppArmor profile and apply it to all of its containers by default, with the ability for the profile to be overridden on a per-container basis. This profile unfortunately prevents some of the `mount()` system calls that Singularity uses to set up user-mode containers from working inside the pod, even though these calls would be allowed for an unprivileged user under normal circumstances.
+
+On the UCSC Kubernetes cluster, `we configure our Ubuntu hosts with an alternative default AppArmor profile for Docker containers <https://github.com/adamnovak/gi-kubernetes-autoscaling-config/blob/e1350ac9ad17d94b5073b20db3c75620957926e3/kubenode.ubuntu.cloud-config.yaml#L27-L67>`_ which allows these calls. Other solutions include turning off AppArmor on the host, configuring Kubernetes with a container runtime other than Docker, or `using Kubernetes's AppArmor integration <https://kubernetes.io/docs/tutorials/security/apparmor/>`_ to apply a more permissive profile or the ``unconfined`` profile to pods that Toil launches.
+
+Toil does not yet have a way to apply a ``container.apparmor.security.beta.kubernetes.io/runner-container: unconfined`` annotation to its pods, `as described in the Kubernetes AppArmor documentation <https://kubernetes.io/docs/tutorials/security/apparmor/#securing-a-pod>`_. This feature is tracked in `issue #4331 <https://github.com/DataBiosphere/toil/issues/4331>`_.
