@@ -2974,10 +2974,9 @@ def scan_for_unsupported_requirements(
     if not bypass_file_store:
         # If we are using the Toil FileStore we can't do InplaceUpdateRequirement
         req, is_mandatory = tool.get_requirement("InplaceUpdateRequirement")
-        if req and is_mandatory:
-            # The tool actually uses this one, and it isn't just a hint.
-            # Complain and explain.
-            raise CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION(
+        if req:
+            # The tool actually uses this one. Complain and explain.
+            msg = (
                 "Toil cannot support InplaceUpdateRequirement when using the Toil file store. "
                 "If you are running on a single machine, or a cluster with a shared filesystem, "
                 "use the --bypass-file-store option to keep intermediate files on the filesystem. "
@@ -2985,7 +2984,12 @@ def scan_for_unsupported_requirements(
                 "options to control where on the filesystem files are placed, if only some parts of "
                 "the filesystem are shared."
             )
-
+            if is_mandatory:
+                # The requirement cannot be fulfilled. Raise an exception.
+                raise CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION(msg)
+            else:
+                # The hint cannot be fulfilled. Issue a warning.
+                logger.warning(msg)
 
 def determine_load_listing(tool: Process) -> str:
     """
