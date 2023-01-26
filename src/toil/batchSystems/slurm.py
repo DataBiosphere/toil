@@ -22,6 +22,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
 from toil.lib.misc import CalledProcessErrorStderr, call_command
+from toil.job import Requirer
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +62,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
-            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + [f'--wrap={command}']
+                              job_environment: Optional[Dict[str, str]] = None,
+                              gpus: Optional[int] = None) -> List[str]:
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment, gpus) + [f'--wrap={command}']
 
         def submitJob(self, subLine):
             try:
@@ -262,11 +264,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                           mem: int,
                           jobID: int,
                           jobName: str,
-                          job_environment: Optional[Dict[str, str]]) -> List[str]:
+                          job_environment: Optional[Dict[str, str]],
+                          gpus: Optional[int]) -> List[str]:
 
             #  Returns the sbatch command line before the script to run
             sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
-
+            if gpus:
+                sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
             environment = {}
             environment.update(self.boss.environment)
             if job_environment:
@@ -333,6 +337,15 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             except ValueError:
                 pass  # slurm may return INVALID instead of a time
             return total_seconds
+
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
+        for accelerator in requirer.accelerators:
+            if accelerator['kind'] != 'gpu':
+                raise InsufficientSystemResources(requirer, 'accelerators', details=
+                                                  [
+                                                      f'The accelerator {accelerator} could not be provided'
+                                                      'The Toil Slurm batch system only supports gpu accelerators at the moment.'
+                                                  ])
 
     ###
     ### The interface for SLURM
