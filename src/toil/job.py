@@ -15,13 +15,16 @@ import collections
 import copy
 import importlib
 import inspect
+import io
 import itertools
 import logging
 import math
 import os
-import pickle
+import dill as pickle
+import dill.detect
 import sys
 import time
+import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -2230,7 +2233,44 @@ class Job:
 
         class FilteredUnpickler(pickle.Unpickler):
             def find_class(self, module, name):
-                return filter_main(module, name)
+                logger.debug('Fetching %s from %s', name, module)
+                found = filter_main(module, name)
+                
+                if isinstance(found, (types.FunctionType, types.BuiltinFunctionType)):
+                    logger.debug('Found function %s taking %s', found, inspect.signature(found))
+                    def fake_found(*args, **kwargs):
+                        logger.debug('Calling %s with (%s, %s)', found, args, kwargs)
+                        return found(*args, **kwargs)
+                    return fake_found
+                else:
+                    logger.debug('Found class %s from %s taking %s', str(found), inspect.getmodule(found), inspect.signature(found.__init__))
+                    # We want to inherit from found, but if we do, Python
+                    # complains that "interpreted classes cannot inherit from
+                    # compiled", a weird rule it seems to have made up just to
+                    # annoy me.
+                    class TurboFake:
+                        def __init__(*args, **kwargs):
+                            logger.debug('Making %s with (%s, %s)', found, args, kwargs)
+                            if hasattr(found, '__init__'):
+                                try:
+                                    found.__init__(*args, **kwargs)
+                                    logger.debug('Init would have succeeded')
+                                except:
+                                    logger.exception('Init problem')
+                            pass
+                            
+                        def __setitem__(*args, **kwargs):
+                            logger.debug('Setting item in %s with (%s, %s)', found, args, kwargs)
+                            pass
+                            
+                        def append(*args, **kwargs):
+                            logger.debug('Appending to %s with (%s, %s)', found, args, kwargs)
+                            pass
+                    
+                    BLOCKED={"<class 'schema_salad.avro.schema.Field'>"}
+                    if str(found) in BLOCKED:
+                        return TurboFake
+                    return found
 
         unpickler = FilteredUnpickler(fileHandle)
 
@@ -2435,7 +2475,24 @@ class Job:
 
                 # Save the body of the job
                 with jobStore.write_file_stream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
-                    pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
+                    # Overriding the pickler doesn't get us any recursive calls.
+                    
+                    dill.detect.trace(True)
+                    dumped = pickle.dumps(self)
+                    # TODO: This immediately fails
+                    # reloaded = pickle.loads(dumped)
+                    
+                    command = description.command
+                    if command:
+                        commandTokens = command.split()
+                        userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
+                        logger.debug('Loading user module %s.', userModule)
+                        userModule = cls._loadUserModule(userModule)
+                    else:
+                        userModule = None
+                    reloaded2 = Job._unpickle(userModule, io.BytesIO(dumped), requireInstanceOf=Job)
+                    
+                    fileHandle.write(dumped)
             finally:
                 # Restore important fields (before handling errors)
                 self._directPredecessors = directPredecessors
