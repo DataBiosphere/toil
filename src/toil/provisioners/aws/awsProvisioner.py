@@ -68,6 +68,7 @@ from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import (ErrorCondition,
                             get_error_body,
                             get_error_code,
+                            get_error_message,
                             get_error_status,
                             old_retry,
                             retry)
@@ -116,7 +117,15 @@ def awsRetryPredicate(e):
     return False
 
 
-def expectedShutdownErrors(e):
+def expectedShutdownErrors(e: Exception) -> bool:
+    """
+    Matches errors that we expect to occur during shutdown, and which indicate
+    that we need to wait or try again.
+
+    Should *not* match any errors which indicate that an operation is
+    impossible or unnecessary (such as errors resulting from a thing not
+    existing to be deleted).
+    """
     return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
 
 
@@ -249,7 +258,7 @@ class AWSProvisioner(AbstractProvisioner):
             s3_client.head_bucket(Bucket=bucket_name)
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
-            if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if get_error_status(err) == 404:
                 bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=self._region)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
@@ -276,7 +285,7 @@ class AWSProvisioner(AbstractProvisioner):
         try:
             return obj.get().get('Body').read()
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if get_error_status(e) == 404:
                 logger.warning(f'Trying to read non-existent file "{key}" from {bucket_name}.')
             raise
 
@@ -615,12 +624,21 @@ class AWSProvisioner(AbstractProvisioner):
 
         logger.debug('Deleting autoscaling groups ...')
         removed = False
+
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
-                    # We delete the group and all the instances via ForceDelete.
-                    self.aws.client(self._region, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
-                    removed = True
+                    try:
+                        # We delete the group and all the instances via ForceDelete.
+                        self.aws.client(self._region, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
+                        removed = True
+                    except ClientError as e:
+                        if get_error_code(e) == 'ValidationError' and 'AutoScalingGroup name not found' in get_error_message(e):
+                            # This ASG does not need to be removed (or a
+                            # previous delete returned an error but also
+                            # succeeded).
+                            pass
+
         if removed:
             logger.debug('... Successfully deleted autoscaling groups')
 
@@ -709,7 +727,7 @@ class AWSProvisioner(AbstractProvisioner):
                 except s3.meta.client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                    if get_error_status(e) == 404:
                         pass
                     else:
                         raise  # retry this
