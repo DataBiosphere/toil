@@ -245,6 +245,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ResourcePool(self.maxDisk, 'disk'),
         ]
 
+        # A set of batch system IDs of submitted jobs
+        self._queued_job_ids: Set[int] = set()
+
         # Keep track of the acquired resources for each job.
         self._acquired_resources: Dict[str, List[int]] = {}
 
@@ -541,7 +544,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     # Something actually weird is happening.
                     raise
 
-    def _scheduler(self):
+    def _scheduler(self) -> None:
         """
         The schedular thread looks at jobs from the input queue, and submit
         jobs to the Kubernetes cluster when there are available resources.
@@ -551,9 +554,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         while True:
             with self._work_available:
                 # Wait until we get notified to do work and release lock.
-                logger.debug("!! waiting for work")
                 self._work_available.wait()
-                logger.debug("!! new work!")
 
                 if self.shutting_down.is_set():
                     # We're shutting down.
@@ -565,12 +566,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Loop through all jobs inside the queue and see if any of them
                 # could be launched.
-                jobs = Queue()
+                jobs: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
                 while True:
                     try:
                         job = self._jobs_queue.get_nowait()
                         job_id, job_desc, spec = job
-                        logger.debug(f"!! processing job id: {job_id}")
 
                         # Check if this job has been previously killed.
                         if job_id in self._killed_queue_jobs:
@@ -578,13 +578,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             logger.debug(f"Skipping killed job {job_id}")
                             continue
 
-                        result = self._launch_job(job_id, job_desc, spec)
+                        job_name = f'{self.job_prefix}{job_id}'
+                        result = self._launch_job(job_name, job_desc, spec)
                         if result is False:
                             # Not enough resources to launch this job.
                             logger.debug(f"!! not enough resources to run job id: {job_id}")
                             jobs.put(job)
                         else:
-                            logger.debug(f"!! acquired resources and launched job id: {job_id}")
+                            self._queued_job_ids.remove(job_id)
 
                     except Empty:
                         break
@@ -906,11 +907,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             resource.release(request)
 
         if notify:
-            self._work_available.notify_all()
+            with self._work_available:
+                self._work_available.notify_all()
 
     def _launch_job(
         self,
-        job_id: int,
+        job_name: str,
         job_desc: JobDescription,
         pod_spec: V1PodSpec
     ) -> bool:
@@ -919,7 +921,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         Return False if we can't launch the job.
         """
-        job_name = f'{self.job_prefix}{job_id}'
 
         # Limit the amount of resources requested at a time. Put this job
         # into the backlog queue if it will use more than the currently
@@ -934,7 +935,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                logger.warning(f"Not enough {source.resource_type} to run job {job_id}")
+                logger.warning(f"Not enough {source.resource_type} to run job {job_name}")
                 self._release_acquired_resources(acquired, notify=False)
                 return False
 
@@ -966,7 +967,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Launch the job
         launched = self._api('batch', errors=[]).create_namespaced_job(self.namespace, job)
 
-        logger.debug(f"Launched job: {job_id}")
+        logger.debug(f"Launched job: {job_name}")
 
         return True
 
@@ -985,7 +986,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         :param propagation_policy: The propagation policy for the delete.
         :param gone_ok: If True, don't raise an error if the job is already gone.
         :param resource_notify: If True, notify the threads that are waiting on
-                                the self._work_available condition.
+            the self._work_available condition.
         """
         try:
             logger.debug(f'Deleting Kubernetes job {job_name}')
@@ -1023,10 +1024,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         job_id = self.getNextJobID()
 
         # Put job inside queue to be launched to the cluster
+        self._queued_job_ids.add(job_id)
         self._jobs_queue.put((job_id, job_desc, pod_spec))
 
         # Let schedular know that there is work to do.
-        self._work_available.notify_all()
+        with self._work_available:
+            self._work_available.notify_all()
 
         logger.debug(f"Enqueued job {job_id}")
 
@@ -1670,11 +1673,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Shutdown scheduling thread
         self.shutting_down.set()
-        try:
+        with self._work_available:
             self._work_available.notify_all()   # Wake it up.
-        except RuntimeError as e:
-            # TODO: fix this
-            logging.warning("error when calling notify_all() on condition", e)
 
         self.schedulingThread.join()
 
@@ -1738,8 +1738,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return jobIDs
 
     def getIssuedBatchJobIDs(self) -> List[int]:
-        # Make sure to send the local jobs also
-        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
+        # Make sure to send the local jobs and queued jobs also
+        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + list(self._queued_job_ids)
 
     def _get_start_time(self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None) -> datetime.datetime:
         """
