@@ -22,3 +22,4 @@ diff_cover
 lxml
 docutils>=0.16,<0.18
 pyupgrade
+pytest-xdist

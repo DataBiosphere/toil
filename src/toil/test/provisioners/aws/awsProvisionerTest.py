@@ -282,7 +282,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
 
 @integrative
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(2400)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
     def __init__(self, name):

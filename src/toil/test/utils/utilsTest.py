@@ -294,7 +294,7 @@ class UtilsTest(ToilTest):
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
@@ -334,7 +334,7 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 
