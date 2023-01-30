@@ -104,7 +104,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
-from toil.common import Config, Toil
+from toil.common import Config, Toil, SYS_MAX_SIZE
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now
@@ -235,10 +235,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.run_id = f'toil-{self.unique_id}'
 
         # Keep track of available resources.
+        maxMillicores = int(SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000)
         self.resource_sources = [
             # A pool representing available CPU in units of millicores (1 CPU
             # unit = 1000 millicores)
-            ResourcePool(int(self.maxCores / 1000), 'cores'),
+            ResourcePool(maxMillicores, 'cores'),
             # A pool representing available memory in bytes
             ResourcePool(self.maxMemory, 'memory'),
             # A pool representing the available space in bytes
@@ -268,6 +269,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.schedulingThread.start()
 
         logger.warning("On branch issues/2864-k8s-queue-jobs")
+        logger.warning(f"available resources: {maxMillicores} cores, {self.maxMemory} memory, {self.maxDisk} disk")
 
     def _pretty_print(self, kubernetes_object: Any) -> str:
         """
@@ -554,7 +556,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         while True:
             with self._work_available:
                 # Wait until we get notified to do work and release lock.
+                logger.debug("!! [scheduler] waiting for work to do")
                 self._work_available.wait()
+                logger.debug("!! [scheduler] more work")
 
                 if self.shutting_down.is_set():
                     # We're shutting down.
@@ -582,7 +586,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         result = self._launch_job(job_name, job_desc, spec)
                         if result is False:
                             # Not enough resources to launch this job.
-                            logger.debug(f"!! not enough resources to run job id: {job_id}")
                             jobs.put(job)
                         else:
                             self._queued_job_ids.remove(job_id)
@@ -1806,6 +1809,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # delete it. Instead, let's keep track of it and don't submit
                 # when we encounter it.
                 self._killed_queue_jobs.add(job_id)
+
+                # Make sure we don't keep track of it for getIssuedBatchJobIDs().
+                if job_id in self._queued_job_ids:
+                    self._queued_job_ids.remove(job_id)
+
                 continue
             # Work out what the job would be named
             job_name = self.job_prefix + str(job_id)
