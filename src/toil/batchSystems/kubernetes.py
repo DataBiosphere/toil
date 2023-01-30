@@ -24,9 +24,11 @@ import datetime
 import logging
 import math
 import os
+from queue import Empty, Queue
 import string
 import sys
 import tempfile
+from threading import Event, Thread, Condition
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
@@ -35,6 +37,7 @@ from typing import (Any,
                     Dict,
                     Iterator,
                     List,
+                    Set,
                     Literal,
                     Optional,
                     Tuple,
@@ -96,6 +99,7 @@ from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
                                                    InsufficientSystemResources,
+                                                   ResourcePool,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
@@ -229,6 +233,38 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # This will be a label to select all our jobs.
         self.run_id = f'toil-{self.unique_id}'
+
+        # Keep track of available resources.
+        self.resource_sources = [
+            # A pool representing available CPU in units of millicores (1 CPU
+            # unit = 1000 millicores)
+            ResourcePool(int(self.maxCores / 1000), 'cores'),
+            # A pool representing available memory in bytes
+            ResourcePool(self.maxMemory, 'memory'),
+            # A pool representing the available space in bytes
+            ResourcePool(self.maxDisk, 'disk'),
+        ]
+
+        # Keep track of the acquired resources for each job.
+        self._acquired_resources: Dict[str, List[int]] = {}
+
+        # Queue for jobs to be submitted to the Kubernetes cluster.
+        self._jobs_queue: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
+
+        # A set of job IDs that should be killed.
+        self._killed_queue_jobs: Set[int] = set()
+
+        # We use this event to signal shutdown
+        self.shutting_down = Event()
+
+        # A condition set to true when there is more work to do. e.g.: new job
+        # in the queue or any resource becomes available.
+        self._work_available = Condition()
+
+        self.schedulingThread = Thread(target=self._scheduler, daemon=True)
+        self.schedulingThread.start()
+
+        logger.warning("On branch issues/2864-k8s-queue-jobs")
 
     def _pretty_print(self, kubernetes_object: Any) -> str:
         """
@@ -504,6 +540,56 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 else:
                     # Something actually weird is happening.
                     raise
+
+    def _scheduler(self):
+        """
+        The schedular thread looks at jobs from the input queue, and submit
+        jobs to the Kubernetes cluster when there are available resources.
+
+        Similar to the "daddy" thread in the single machine batch system. 
+        """
+        with self._work_available:
+            while True:
+                # Wait until we get notified to do work and release lock.
+                self._work_available.wait()
+
+                if self.shutting_down.is_set():
+                    # We're shutting down.
+                    logger.info("Shutting down scheduler thread.")
+                    break
+
+                # Either we have new jobs inside the queue or more resources
+                # have become available.
+
+                # Loop through all jobs inside the queue and see if any of them
+                # could be launched.
+                jobs = Queue()
+                while True:
+                    try:
+                        job = self._jobs_queue.get_nowait()
+                        job_id, job_desc, spec = job
+
+                        # Check if this job has been previously killed.
+                        if job_id in self._killed_queue_jobs:
+                            self._killed_queue_jobs.remove(job_id)
+                            logger.debug(f"Skipping killed job {job_id}")
+                            continue
+
+                        result = self._launch_job(job_id, job_desc, spec)
+                        if result is False:
+                            # Not enough resources to launch this job.
+                            jobs.put(job)
+
+                    except Empty:
+                        break
+
+                # We've gone over the entire queue and these are the jobs that
+                # have not been scheduled, so put them back to the queue.
+                while True:
+                    try:
+                        self._jobs_queue.put(jobs.get_nowait())
+                    except Empty:
+                        break
 
     def setUserScript(self, userScript: Resource) -> None:
         logger.info(f'Setting user script for deployment: {userScript}')
@@ -797,54 +883,148 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
+    def _release_acquired_resources(self, resources: List[int], notify: bool = False) -> None:
+        """
+        Release all resources acquired for a job.
+
+        :param resources: The resources in the order: core, memory, disk.
+        :param notify: If True, notify the threads that are waiting on the
+                       self._work_available condition.
+        """
+        # TODO: accelerators?
+
+        # What pools and sets do we want resources from
+
+        for resource, request in zip(self.resource_sources, resources):
+            assert isinstance(resource, ResourcePool) and isinstance(request, int)
+            resource.release(request)
+
+        if notify:
+            self._work_available.notify_all()
+
+    def _launch_job(
+        self,
+        job_id: int,
+        job_desc: JobDescription,
+        pod_spec: V1PodSpec
+    ) -> bool:
+        """
+        Create and launch the given job to the Kubernetes cluster.
+
+        Return False if we can't launch the job.
+        """
+        job_name = f'{self.job_prefix}{job_id}'
+
+        # Limit the amount of resources requested at a time. Put this job
+        # into the backlog queue if it will use more than the currently
+        # available resources.
+        resource_requests: List[int] = [int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
+
+        acquired = []
+        for source, request in zip(self.resource_sources, resource_requests):
+            # For each kind of resource we want, go get it
+            assert ((isinstance(source, ResourcePool) and isinstance(request, int)))
+            if source.acquireNow(request):
+                acquired.append(request)
+            else:
+                # We can't get everything
+                logger.warning(f"Not enough {source.resource_type} to run job {job_id}")
+                self._release_acquired_resources(acquired, notify=False)
+                return False
+
+        self._acquired_resources[job_name] = acquired
+        # We have all the resources we need; submit it to the cluster.
+
+        # Make metadata to label the job/pod with info.
+        # Don't let the cluster autoscaler evict any Toil jobs.
+        metadata = V1ObjectMeta(name=job_name,
+                                labels={"toil_run": self.run_id},
+                                annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
+
+        # Wrap the spec in a template
+        template = V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
+
+        # Make another spec for the job, asking to run the template with no
+        # backoff/retry. Specify our own TTL to avoid catching the notice
+        # of over-zealous abandoned job cleanup scripts.
+        job_spec = V1JobSpec(template=template,
+                             backoff_limit=0,
+                             ttl_seconds_after_finished=self.finished_job_ttl)
+
+        # And make the actual job
+        job = V1Job(spec=job_spec,
+                    metadata=metadata,
+                    api_version="batch/v1",
+                    kind="Job")
+
+        # Launch the job
+        launched = self._api('batch', errors=[]).create_namespaced_job(self.namespace, job)
+
+        logger.debug(f"Launched job: {job_id}")
+
+        return True
+
+    def _delete_job(
+        self,
+        job_name: str, *,
+        propagation_policy: Literal["Foreground", "Background"] = "Foreground",
+        gone_ok: bool = False,
+        resource_notify: bool = True
+    ) -> None:
+        """
+        Given the name of a kubernetes job, delete the job and release all
+        acquired resources for the job.
+
+        :param job_name: The Kubernetes job name.
+        :param propagation_policy: The propagation policy for the delete.
+        :param gone_ok: If True, don't raise an error if the job is already gone.
+        :param resource_notify: If True, notify the threads that are waiting on
+                                the self._work_available condition.
+        """
+        try:
+            logger.debug(f'Deleting Kubernetes job {job_name}')
+            self._api('batch', errors=[404] if gone_ok else []).delete_namespaced_job(
+                job_name,
+                self.namespace,
+                propagation_policy=propagation_policy
+            )
+        finally:
+            # We should always release the acquired resources.
+            resources = self._acquired_resources.get(job_name)
+            if not resources:
+                logger.warning(f"Cannot get the acquired resources from {job_name}")
+                return
+            # Release the acquired resource and notify our schedulers that we have more resources avaiable.
+            self._release_acquired_resources(resources, notify=resource_notify)
+
+
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
         localID = self.handleLocalJob(job_desc)
         if localID is not None:
             # It is a local job
             return localID
-        else:
-            # We actually want to send to the cluster
 
-            # Check resource requirements
-            self.check_resource_request(job_desc)
+        # We actually want to send to the cluster
 
-            # Make a pod that describes running the job
-            pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)
+        # Check resource requirements
+        self.check_resource_request(job_desc)
 
-            # Make a batch system scope job ID
-            jobID = self.getNextJobID()
-            # Make a unique name
-            jobName = self.job_prefix + str(jobID)
+        # Make a pod that describes running the job
+        pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)
 
-            # Make metadata to label the job/pod with info.
-            # Don't let the cluster autoscaler evict any Toil jobs.
-            metadata = V1ObjectMeta(name=jobName,
-                                                      labels={"toil_run": self.run_id},
-                                                      annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
+        # Make a batch system scope job ID
+        job_id = self.getNextJobID()
 
-            # Wrap the spec in a template
-            template = V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
+        # Put job inside queue to be launched to the cluster
+        self._jobs_queue.put((job_id, job_desc, pod_spec))
 
-            # Make another spec for the job, asking to run the template with no
-            # backoff/retry. Specify our own TTL to avoid catching the notice
-            # of over-zealous abandoned job cleanup scripts.
-            job_spec = V1JobSpec(template=template,
-                                                   backoff_limit=0,
-                                                   ttl_seconds_after_finished=self.finished_job_ttl)
+        # Let schedular know that there is work to do.
+        self._work_available.notify_all()
 
-            # And make the actual job
-            job = V1Job(spec=job_spec,
-                                          metadata=metadata,
-                                          api_version="batch/v1",
-                                          kind="Job")
+        logger.debug(f"Enqueued job {job_id}")
 
-            # Make the job
-            launched = self._api('batch', errors=[]).create_namespaced_job(self.namespace, job)
-
-            logger.debug('Launched job: %s', jobName)
-
-            return jobID
+        return job_id
 
     class _ArgsDict(TypedDict):
         """
@@ -1231,10 +1411,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                     if (exitReason == BatchJobExitReason.FAILED) or (succeeded_pods + failed_pods == totalPods):
                         # Cleanup if job is all finished or there was a pod that failed
-                        logger.debug('Deleting Kubernetes job %s', jobObject.metadata.name)
-                        self._api('batch', errors=[]).delete_namespaced_job(
+                        # TODO: use delete_job() to release acquired resources
+                        self._delete_job(
                             jobObject.metadata.name,
-                            self.namespace,
                             propagation_policy='Foreground'
                         )
                         # Make sure the job is deleted so we won't see it again.
@@ -1431,12 +1610,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         try:
             # Delete the job and all dependents (pods), hoping to get a 404 if it's magically gone
-            logger.debug('Deleting Kubernetes job %s', jobObject.metadata.name)
-            self._api('batch', errors=[404]).delete_namespaced_job(
-                jobObject.metadata.name,
-                self.namespace,
-                propagation_policy='Foreground'
-            )
+            self._delete_job(jobObject.metadata.name, propagation_policy='Foreground', gone_ok=True)
 
             # That just kicks off the deletion process. Foreground doesn't
             # actually block. See
@@ -1488,6 +1662,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown local processes first
         self.shutdownLocal()
 
+        # Shutdown scheduling thread
+        self.shutting_down.set()
+        self._work_available.notify_all()   # Wake it up.
+
+        self.schedulingThread.join()
 
         # Kill all of our jobs and clean up pods that are associated with those jobs
         try:
@@ -1498,6 +1677,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 propagation_policy='Background'
             )
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
+            # TODO: should we release all resources? We're shutting down so would it matter?
         except ApiException as e:
             if e.status != 404:
                 # Anything other than a 404 is weird here.
@@ -1505,14 +1685,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             # If batch delete fails, try to delete all remaining jobs individually.
             logger.debug('Deleting Kubernetes jobs individually for toil_run=%s', self.run_id)
-            for jobID in self._getIssuedNonLocalBatchJobIDs():
-                jobName = f'{self.job_prefix}{jobID}'
-                logger.debug(f'Deleting Kubernetes job {jobName}')
-                self._api('batch', errors=[]).delete_namespaced_job(
-                    jobName,
-                    self.namespace,
-                    propagation_policy='Background'
-                )
+            for job_id in self._getIssuedNonLocalBatchJobIDs():
+                job_name = f'{self.job_prefix}{job_id}'
+                self._delete_job(job_name, propagation_policy='Background', resource_notify=False)
 
             # Aggregate all pods and check if any pod has failed to cleanup or is orphaned.
             ourPods = self._ourPodObject()
@@ -1573,6 +1748,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return start_time
 
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
+        # TODO: verify that this should just return the running jobs, not the ones
+        #   that are pending to be launched.
+
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObject():
@@ -1603,32 +1781,34 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Clears workflow's jobs listed in jobIDs.
 
         # First get the jobs we even issued non-locally
-        issuedOnKubernetes = set(self._getIssuedNonLocalBatchJobIDs())
+        issued_on_kubernetes = set(self._getIssuedNonLocalBatchJobIDs())
+        deleted_jobs: List[str] = []
 
-        for jobID in jobIDs:
+        for job_id in jobIDs:
             # For each job we are supposed to kill
-            if jobID not in issuedOnKubernetes:
+            if job_id not in issued_on_kubernetes:
                 # It never went to Kubernetes (or wasn't there when we just
                 # looked), so we can't kill it on Kubernetes.
+
+                # It is likely that the job is still waiting inside the jobs
+                # queue and hasn't been submitted to Kubernetes. In this case,
+                # it is not reliable to loop through the queue and try to
+                # delete it. Instead, let's keep track of it and don't submit
+                # when we encounter it.
+                self._killed_queue_jobs.add(job_id)
                 continue
             # Work out what the job would be named
-            jobName = self.job_prefix + str(jobID)
+            job_name = self.job_prefix + str(job_id)
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
-            logger.debug('Deleting Kubernetes job %s', jobName)
-            response = self._api('batch', errors=[]).delete_namespaced_job(
-                jobName,
-                self.namespace,
-                propagation_policy='Foreground'
-            )
-            logger.debug('Killed job by request: %s', jobName)
+            self._delete_job(job_name, propagation_policy='Foreground')
 
-        for jobID in jobIDs:
+            deleted_jobs.append(job_name)
+            logger.debug('Killed job by request: %s', job_name)
+
+        for job_name in deleted_jobs:
             # Now we need to wait for all the jobs we killed to be gone.
-
-            # Work out what the job would be named
-            jobName = self.job_prefix + str(jobID)
 
             # Block until the delete takes.
             # The user code technically might stay running forever, but we push
@@ -1636,7 +1816,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # a resource) onto the user code, instead of always hanging
             # whenever we can't certify that a faulty node is no longer running
             # the user code. 
-            self._waitForJobDeath(jobName)
+            self._waitForJobDeath(job_name)
 
     @classmethod
     def get_default_kubernetes_owner(cls) -> str:
