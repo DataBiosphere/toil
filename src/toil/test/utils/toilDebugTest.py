@@ -1,3 +1,4 @@
+"""A set of test cases for toilwdl.py"""
 # Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,98 +14,122 @@
 # limitations under the License.
 import logging
 import os
-import shutil
 import subprocess
-import unittest
+from pathlib import Path
 
 from toil.lib.resources import glob
-from toil.test import ToilTest, slow
+from toil.test import slow
 from toil.version import python
+
+import pytest
 
 logger = logging.getLogger(__name__)
 
-class ToilDebugFileTest(ToilTest):
-    """A set of test cases for toilwdl.py"""
 
-    def setUp(self):
-        """Initial set up of variables for the test."""
-        subprocess.check_call([python, os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
-        self.jobStoreDir = os.path.abspath('toilWorkflowRun')
-        self.tempDir = self._createTempDir(purpose='tempDir')
-        self.outputDir = os.path.abspath('testoutput')
-        os.makedirs(self.outputDir, exist_ok=True)
+@pytest.fixture
+def workflow_debug_jobstore(tmp_path: Path) -> str:
+    jobStorePath = str(tmp_path / "toilWorkflowRun")
+    subprocess.check_call(
+        [
+            python,
+            os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py"),
+            jobStorePath,
+        ]
+    )
+    return jobStorePath
 
-    def tearDown(self):
-        """Default tearDown for unittest."""
 
-        shutil.rmtree(self.jobStoreDir)
-        shutil.rmtree(self.outputDir)
-        ABC = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/ABC.txt')
-        if os.path.exists(ABC):
-            os.remove(ABC)
+@slow
+def testJobStoreContents(workflow_debug_jobstore: str):
+    """
+    Test toilDebugFile.printContentsOfJobStore().
 
-        unittest.TestCase.tearDown(self)
+    Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
+    jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This checks to
+    make sure these contents are found in the jobStore and printed.
+    """
+    jobStoreDir = workflow_debug_jobstore
+    contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
 
-    @slow
-    def testJobStoreContents(self):
-        """Test toilDebugFile.printContentsOfJobStore().
+    subprocess.check_call(
+        [
+            python,
+            os.path.abspath("src/toil/utils/toilDebugFile.py"),
+            jobStoreDir,
+            "--logDebug",
+            "--listFilesInJobStore=True",
+        ]
+    )
+    jobstoreFileContents = os.path.abspath("jobstore_files.txt")
+    files = []
+    match = 0
+    with open(jobstoreFileContents) as f:
+        for line in f:
+            files.append(line.strip())
+    for xfile in files:
+        for expected_file in contents:
+            if xfile.endswith(expected_file):
+                match = match + 1
+    logger.debug(files)
+    logger.debug(contents)
+    logger.debug(match)
+    # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
+    assert match == 6
+    os.remove(jobstoreFileContents)
 
-        Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
-        jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This checks to
-        make sure these contents are found in the jobStore and printed."""
 
-        contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
+def fetchFiles(symLink, jobStoreDir: str, outputDir):
+    """
+    Fn for testFetchJobStoreFiles() and testFetchJobStoreFilesWSymlinks().
 
-        subprocess.check_call([python, os.path.abspath('src/toil/utils/toilDebugFile.py'), self.jobStoreDir, '--listFilesInJobStore=True'])
-        jobstoreFileContents = os.path.abspath('jobstore_files.txt')
-        files = []
-        match = 0
-        with open(jobstoreFileContents) as f:
-            for line in f:
-                files.append(line.strip())
-        for xfile in files:
-            for expected_file in contents:
-                if xfile.endswith(expected_file):
-                    match = match + 1
-        logger.debug(files)
-        logger.debug(contents)
-        logger.debug(match)
-        # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
-        assert match == 6
-        os.remove(jobstoreFileContents)
+    Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
+    jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This test then
+    attempts to get a list of these files and copy them over into our
+    output diectory from the jobStore, confirm that they are present, and
+    then delete them.
+    """
+    contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
+    cmd = [
+        python,
+        os.path.abspath("src/toil/utils/toilDebugFile.py"),
+        jobStoreDir,
+        "--fetch",
+        "*A.txt",
+        "*B.txt",
+        "*C.txt",
+        "*ABC.txt",
+        "*mkFile.py",
+        "--localFilePath=" + outputDir,
+        "--useSymlinks=" + str(symLink),
+    ]
+    print(cmd)
+    subprocess.check_call(cmd)
+    for xfile in contents:
+        matchingFilesFound = glob(glob_pattern="*" + xfile, directoryname=outputDir)
+        assert len(matchingFilesFound) >= 1
+        for fileFound in matchingFilesFound:
+            assert fileFound.endswith(xfile) and os.path.exists(fileFound)
+            if fileFound.endswith("-" + xfile):
+                os.remove(fileFound)
 
-    # expected run time = 4s
-    def testFetchJobStoreFiles(self):
-        """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
-        self.fetchFiles(symLink=False)
 
-    # expected run time = 4s
-    def testFetchJobStoreFilesWSymlinks(self):
-        """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
-        self.fetchFiles(symLink=True)
+# expected run time = 4s
+def testFetchJobStoreFiles(tmp_path: Path, workflow_debug_jobstore: str) -> None:
+    """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
+    outputDir = tmp_path / "testoutput"
+    outputDir.mkdir()
+    fetchFiles(
+        symLink=False, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
+    )
 
-    def fetchFiles(self, symLink):
-        """
-        Fn for testFetchJobStoreFiles() and testFetchJobStoreFilesWSymlinks().
 
-        Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
-        jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This test then
-        attempts to get a list of these files and copy them over into our
-        output diectory from the jobStore, confirm that they are present, and
-        then delete them.
-        """
-        contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
-        cmd = [python, os.path.abspath('src/toil/utils/toilDebugFile.py'),
-               self.jobStoreDir,
-               '--fetch', '*A.txt', '*B.txt', '*C.txt', '*ABC.txt', '*mkFile.py',
-               '--localFilePath=' + self.outputDir,
-               '--useSymlinks=' + str(symLink)]
-        print(cmd)
-        subprocess.check_call(cmd)
-        for xfile in contents:
-            matchingFilesFound = glob(glob_pattern='*' + xfile, directoryname=self.outputDir)
-            self.assertGreaterEqual(len(matchingFilesFound), 1)
-            for fileFound in matchingFilesFound:
-                assert fileFound.endswith(xfile) and os.path.exists(fileFound)
-                if fileFound.endswith('-' + xfile):
-                    os.remove(fileFound)
+# expected run time = 4s
+def testFetchJobStoreFilesWSymlinks(
+    tmp_path: Path, workflow_debug_jobstore: str
+) -> None:
+    """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
+    outputDir = tmp_path / "testoutput"
+    outputDir.mkdir()
+    fetchFiles(
+        symLink=True, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
+    )
