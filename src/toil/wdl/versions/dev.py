@@ -32,7 +32,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
 
     @property
     def version(self) -> str:
-        return 'development'
+        return "development"
 
     def analyze(self):
         """
@@ -58,7 +58,7 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         Similar to version 1.0, except this also contains 'workflow'.
         """
         element = ctx.children[0]
-        if is_context(element, 'WorkflowContext'):
+        if is_context(element, "WorkflowContext"):
             self.visit_workflow(element)
         else:
             # let super take care of the rest.
@@ -88,9 +88,9 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         """
         identifier = ctx.type_base().children[0]
 
-        if identifier == 'Directory':
+        if identifier == "Directory":
             # TODO: implement Directory type
-            raise NotImplementedError('Directory type is not implemented.')
+            raise NotImplementedError("Directory type is not implemented.")
         else:
             # let super take care of the rest.
             return super().visit_wdl_type(ctx)
@@ -99,9 +99,9 @@ class AnalyzeDevelopmentWDL(AnalyzeV1WDL):  # extend from 1.0
         """
         Similar to version 1.0, except struct literal is added.
         """
-        if is_context(expr, 'Struct_literalContext'):
+        if is_context(expr, "Struct_literalContext"):
             # TODO: implement struct literal
-            raise NotImplementedError(f'WDL struct is not implemented.')
+            raise NotImplementedError(f"WDL struct is not implemented.")
         else:
             # let super take care of the rest.
             return super().visit_expr_core(expr)

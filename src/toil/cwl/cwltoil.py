@@ -2991,6 +2991,7 @@ def scan_for_unsupported_requirements(
                 # The hint cannot be fulfilled. Issue a warning.
                 logger.warning(msg)
 
+
 def determine_load_listing(tool: Process) -> str:
     """
     Determine the directory.listing feature in CWL.

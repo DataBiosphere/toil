@@ -34,8 +34,9 @@ else:
 from urllib.parse import ParseResult, urlparse
 
 from toil.bus import JobStatus
-from toil.server.wes.abstract_backend import \
-    MalformedRequestException as InvalidRequestError
+from toil.server.wes.abstract_backend import (
+    MalformedRequestException as InvalidRequestError,
+)
 from toil.server.wes.abstract_backend import TaskLog
 
 logger = logging.getLogger(__name__)
@@ -54,19 +55,24 @@ Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
 # The official spec we are working with here is: https://aws.github.io/amazon-genomics-cli/docs/concepts/workflows/#multi-file-workflows
 
+
 class WorkflowPlan(TypedDict):
     """
     These functions pass around dicts of a certain type, with `data` and `files` keys.
     """
+
     data: "DataDict"
     files: "FilesDict"
+
 
 class DataDict(TypedDict, total=False):
     """
     Under `data`, there can be:
     * `workflowUrl` (required if no `workflowSource`): URL to main workflow code.
     """
+
     workflowUrl: str
+
 
 class FilesDict(TypedDict, total=False):
     """
@@ -76,10 +82,12 @@ class FilesDict(TypedDict, total=False):
     * `workflowOptions`: Open binary-mode file for a JSON of options sent along with the workflow.
     * `workflowDependencies`: Open binary-mode file for the zip the workflow came in, if any.
     """
+
     workflowSource: IO[bytes]
     workflowInputFiles: List[IO[bytes]]
     workflowOptions: IO[bytes]
     workflowDependencies: IO[bytes]
+
 
 def parse_workflow_zip_file(file: str, workflow_type: str) -> WorkflowPlan:
     r"""
@@ -234,7 +242,9 @@ def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
     return {"data": data, "files": files}
 
 
-def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = None) -> str:
+def workflow_manifest_url_to_path(
+    url: ParseResult, parent_dir: Optional[str] = None
+) -> str:
     """
     Interpret a possibly-relative parsed URL, relative to the given parent directory.
     """
@@ -242,6 +252,7 @@ def workflow_manifest_url_to_path(url: ParseResult, parent_dir: Optional[str] = 
     if parent_dir:
         return path.join(parent_dir, relpath)
     return relpath
+
 
 # This one is all UCSC code
 def task_filter(task: TaskLog, job_status: JobStatus) -> Optional[TaskLog]:
@@ -263,6 +274,8 @@ def task_filter(task: TaskLog, job_status: JobStatus) -> Optional[TaskLog]:
 
     modified_task = dict(task)
     # Tack the batch ID onto the end of the name with the required separator
-    modified_task["name"] = "|".join([cast(str, modified_task.get("name", "")), batch_id])
+    modified_task["name"] = "|".join(
+        [cast(str, modified_task.get("name", "")), batch_id]
+    )
     logger.info("Transformed task %s to %s", task, modified_task)
     return modified_task

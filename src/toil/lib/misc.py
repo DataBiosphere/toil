@@ -23,19 +23,20 @@ def get_public_ip() -> str:
     try:
         # Try to get the internet-facing IP by attempting a connection
         # to a non-existent server and reading what IP was used.
-        ip = '127.0.0.1'
+        ip = "127.0.0.1"
         with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
             # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
             # there is guaranteed to be no one listening on the other
             # end (and we won't accidentally DOS anyone).
-            sock.connect(('203.0.113.1', 1))
+            sock.connect(("203.0.113.1", 1))
             ip = sock.getsockname()[0]
         return ip
     except:
         # Something went terribly wrong. Just give loopback rather
         # than killing everything, because this is often called just
         # to provide a default argument
-        return '127.0.0.1'
+        return "127.0.0.1"
+
 
 def get_user_name() -> str:
     """
@@ -48,19 +49,22 @@ def get_user_name() -> str:
         except KeyError:
             # This is expected if the user isn't in /etc/passwd, such as in a
             # Docker container when running as a weird UID. Make something up.
-            return 'UnknownUser' + str(os.getuid())
+            return "UnknownUser" + str(os.getuid())
     except Exception as e:
         # We can't get the UID, or something weird has gone wrong.
-        logger.error('Unexpected error getting user name: %s', e)
-        return 'UnknownUser'
+        logger.error("Unexpected error getting user name: %s", e)
+        return "UnknownUser"
+
 
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
+
 def unix_now_ms() -> float:
     """Return the current time in milliseconds since the Unix epoch."""
     return time.time() * 1000
+
 
 def slow_down(seconds: float) -> float:
     """
@@ -78,6 +82,7 @@ def slow_down(seconds: float) -> float:
     """
 
     return max(seconds, sys.float_info.epsilon)
+
 
 def printq(msg: str, quiet: bool) -> None:
     if not quiet:
@@ -104,12 +109,22 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
         if (self.returncode < 0) or (self.stderr is None):
             return str(super())
         else:
-            err = self.stderr if isinstance(self.stderr, str) else self.stderr.decode("ascii", errors="replace")
+            err = (
+                self.stderr
+                if isinstance(self.stderr, str)
+                else self.stderr.decode("ascii", errors="replace")
+            )
             return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
 
 
-def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
-                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None) -> Union[str, bytes]:
+def call_command(
+    cmd: List[str],
+    *args: str,
+    input: Optional[str] = None,
+    timeout: Optional[float] = None,
+    useCLocale: bool = True,
+    env: Optional[typing.Dict[str, str]] = None
+) -> Union[str, bytes]:
     """Simplified calling of external commands.  This always returns
     stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
     is raised.  The captured stderr is always printed, regardless of
@@ -126,12 +141,20 @@ def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeou
         env["LANGUAGE"] = env["LC_ALL"] = "C"
 
     logger.debug("run command: {}".format(" ".join(cmd)))
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            encoding='utf-8', errors="replace", env=env)
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     sys.stderr.write(stderr)
     if proc.returncode != 0:
         logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
-        raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
+        raise CalledProcessErrorStderr(
+            proc.returncode, cmd, output=stdout, stderr=stderr
+        )
     logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
     return stdout

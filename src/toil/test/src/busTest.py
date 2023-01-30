@@ -16,13 +16,18 @@ import logging
 from threading import Thread, current_thread
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.bus import JobCompletedMessage, JobIssuedMessage, MessageBus, replay_message_bus
+from toil.bus import (
+    JobCompletedMessage,
+    JobIssuedMessage,
+    MessageBus,
+    replay_message_bus,
+)
 from toil.test import ToilTest, get_temp_file
 
 logger = logging.getLogger(__name__)
 
+
 class MessageBusTest(ToilTest):
-    
     def test_enum_ints_in_file(self) -> None:
         """
         Make sure writing bus messages to files works with enums.
@@ -37,7 +42,7 @@ class MessageBusTest(ToilTest):
         # Make sure stuff goes away in the right order
         del handler_to_keep_alive
         del bus
-        
+
         for line in open(bus_file):
             logger.debug("Bus line: %s", line)
 
@@ -94,6 +99,3 @@ class MessageBusTest(ToilTest):
         self.assertEqual(box.count(JobIssuedMessage), 11)
         # And having polled for those, our handler should have run
         self.assertEqual(message_count, 11)
-
-
-

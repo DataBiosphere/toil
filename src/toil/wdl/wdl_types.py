@@ -45,7 +45,9 @@ class WDLType:
             if self.optional:
                 return self.default_value
             else:
-                raise WDLRuntimeError(f"Required input for '{self.name}' type not specified.")
+                raise WDLRuntimeError(
+                    f"Required input for '{self.name}' type not specified."
+                )
 
         if isinstance(value, Promise):
             return value
@@ -72,63 +74,63 @@ class WDLCompoundType(WDLType, ABC):
 
 
 class WDLStringType(WDLType):
-    """ Represents a WDL String primitive type."""
+    """Represents a WDL String primitive type."""
 
     @property
     def name(self) -> str:
-        return 'String'
+        return "String"
 
     @property
     def default_value(self) -> str:
-        return ''
+        return ""
 
     def _create(self, value: Any) -> Any:
         return str(value)
 
 
 class WDLIntType(WDLType):
-    """ Represents a WDL Int primitive type."""
+    """Represents a WDL Int primitive type."""
 
     @property
     def name(self) -> str:
-        return 'Int'
+        return "Int"
 
     def _create(self, value: Any) -> Any:
         return int(value)
 
 
 class WDLFloatType(WDLType):
-    """ Represents a WDL Float primitive type."""
+    """Represents a WDL Float primitive type."""
 
     @property
     def name(self) -> str:
-        return 'Float'
+        return "Float"
 
     def _create(self, value: Any) -> Any:
         return float(value)
 
 
 class WDLBooleanType(WDLType):
-    """ Represents a WDL Boolean primitive type."""
+    """Represents a WDL Boolean primitive type."""
 
     @property
     def name(self) -> str:
-        return 'Boolean'
+        return "Boolean"
 
     def _create(self, value: Any) -> Any:
         return True if value else False
 
 
 class WDLFileType(WDLType):
-    """ Represents a WDL File primitive type."""
+    """Represents a WDL File primitive type."""
 
     @property
     def name(self) -> str:
-        return 'File'
+        return "File"
 
     @property
     def default_value(self) -> str:
-        return ''
+        return ""
 
     def _create(self, value: Any) -> Any:
         if isinstance(value, (WDLFile, Promise)):
@@ -139,7 +141,7 @@ class WDLFileType(WDLType):
 
 
 class WDLArrayType(WDLCompoundType):
-    """ Represents a WDL Array compound type."""
+    """Represents a WDL Array compound type."""
 
     def __init__(self, element: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -147,17 +149,19 @@ class WDLArrayType(WDLCompoundType):
 
     @property
     def name(self) -> str:
-        return f'Array[{self.element.name}]'
+        return f"Array[{self.element.name}]"
 
     def _create(self, value: Any) -> Any:
         if not isinstance(value, list):
-            raise WDLRuntimeError(f"Expected an array input for Array, but got '{type(value)}'")
+            raise WDLRuntimeError(
+                f"Expected an array input for Array, but got '{type(value)}'"
+            )
 
         return [self.element.create(val) for val in value]
 
 
 class WDLPairType(WDLCompoundType):
-    """ Represents a WDL Pair compound type."""
+    """Represents a WDL Pair compound type."""
 
     def __init__(self, left: WDLType, right: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -166,28 +170,30 @@ class WDLPairType(WDLCompoundType):
 
     @property
     def name(self) -> str:
-        return f'Pair[{self.left.name}, {self.right.name}]'
+        return f"Pair[{self.left.name}, {self.right.name}]"
 
     def _create(self, value: Any) -> Any:
         if isinstance(value, WDLPair):
             return value
         elif isinstance(value, tuple):
             if len(value) != 2:
-                raise WDLRuntimeError('Only support Pair len == 2')
+                raise WDLRuntimeError("Only support Pair len == 2")
             left, right = value
         elif isinstance(value, dict):
-            if 'left' not in value or 'right' not in value:
-                raise WDLRuntimeError('Pair needs \'left\' and \'right\' keys')
-            left = value.get('left')
-            right = value.get('right')
+            if "left" not in value or "right" not in value:
+                raise WDLRuntimeError("Pair needs 'left' and 'right' keys")
+            left = value.get("left")
+            right = value.get("right")
         else:
-            raise WDLRuntimeError(f"Expected a pair input for Pair, but got '{type(value)}'")
+            raise WDLRuntimeError(
+                f"Expected a pair input for Pair, but got '{type(value)}'"
+            )
 
         return WDLPair(self.left.create(left), self.right.create(right))
 
 
 class WDLMapType(WDLCompoundType):
-    """ Represents a WDL Map compound type."""
+    """Represents a WDL Map compound type."""
 
     def __init__(self, key: WDLType, value: WDLType, optional: bool = False):
         super().__init__(optional)
@@ -196,11 +202,13 @@ class WDLMapType(WDLCompoundType):
 
     @property
     def name(self) -> str:
-        return f'Map[{self.key.name}, {self.value.name}]'
+        return f"Map[{self.key.name}, {self.value.name}]"
 
     def _create(self, value: Any) -> Any:
         if not isinstance(value, dict):
-            raise WDLRuntimeError(f"Expected a map input for Map, but got '{type(value)}'")
+            raise WDLRuntimeError(
+                f"Expected a map input for Map, but got '{type(value)}'"
+            )
 
         return {self.key.create(k): self.value.create(v) for k, v in value.items()}
 
@@ -209,7 +217,10 @@ class WDLFile:
     """
     Represents a WDL File.
     """
-    def __init__(self, file_path: str, file_name: Optional[str] = None, imported: bool = False):
+
+    def __init__(
+        self, file_path: str, file_name: Optional[str] = None, imported: bool = False
+    ):
         """
         :param file_path: Path to file.
         :param file_name: Optional. Preserved file name.
@@ -232,7 +243,7 @@ class WDLPair:
         self.right = right
 
     def to_dict(self) -> Dict[str, Any]:
-        return {'left': self.left, 'right': self.right}
+        return {"left": self.left, "right": self.right}
 
     def __eq__(self, other: Any) -> Any:
         if not isinstance(other, WDLPair):

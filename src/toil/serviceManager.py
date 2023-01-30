@@ -213,7 +213,7 @@ class ServiceManager:
 
         Will block until all services are started and blocked.
         """
-        logger.debug('Waiting for service manager thread to finish ...')
+        logger.debug("Waiting for service manager thread to finish ...")
         start_time = time.time()
         self.__terminate.set()
         self.__service_starter.join()
@@ -238,13 +238,17 @@ class ServiceManager:
         while True:
             with throttle(1.0):
                 if self.__terminate.is_set():
-                    logger.debug('Received signal to quit starting services.')
+                    logger.debug("Received signal to quit starting services.")
                     break
                 try:
                     client_id = self.__clients_in.get_nowait()
                     client = self.__toil_state.get_job(client_id)
                     host_id_batches = list(client.serviceHostIDsInBatches())
-                    logger.debug("Service manager processing client %s with %d batches of services", client, len(host_id_batches))
+                    logger.debug(
+                        "Service manager processing client %s with %d batches of services",
+                        client,
+                        len(host_id_batches),
+                    )
                     if len(host_id_batches) > 1:
                         # Have to fall back to the old blocking behavior to
                         # ensure entire service "groups" are issued as a whole.
@@ -275,7 +279,7 @@ class ServiceManager:
 
                 pending_service_count = len(starting_services)
                 if pending_service_count > 0 and log_limiter.throttle(False):
-                    logger.debug('%d services are starting...', pending_service_count)
+                    logger.debug("%d services are starting...", pending_service_count)
 
                 for service_id in list(starting_services):
                     service_job_desc = self._get_service_job(service_id)
@@ -284,7 +288,9 @@ class ServiceManager:
                         or service_job_desc.errorJobStoreID is None
                     ):
                         raise Exception("Must be a registered ServiceJobDescription")
-                    if not self.__job_store.file_exists(service_job_desc.startJobStoreID):
+                    if not self.__job_store.file_exists(
+                        service_job_desc.startJobStoreID
+                    ):
                         # Service has started (or failed)
                         logger.debug(
                             "Service %s has removed %s and is therefore started",
@@ -296,7 +302,9 @@ class ServiceManager:
                         remaining_services_by_client[client_id] -= 1
                         assert remaining_services_by_client[client_id] >= 0
                         del service_to_client[service_id]
-                        if not self.__job_store.file_exists(service_job_desc.errorJobStoreID):
+                        if not self.__job_store.file_exists(
+                            service_job_desc.errorJobStoreID
+                        ):
                             logger.error(
                                 "Service %s has immediately failed before it could be used",
                                 service_job_desc,
@@ -307,13 +315,22 @@ class ServiceManager:
 
                 # Find if any clients have had *all* their services started.
                 ready_clients = set()
-                for client_id, remainingServices in remaining_services_by_client.items():
+                for (
+                    client_id,
+                    remainingServices,
+                ) in remaining_services_by_client.items():
                     if remainingServices == 0:
                         if client_id in clients_with_failed_services:
-                            logger.error('Job %s has had all its services try to start, but at least one failed', self.__toil_state.get_job(client_id))
+                            logger.error(
+                                "Job %s has had all its services try to start, but at least one failed",
+                                self.__toil_state.get_job(client_id),
+                            )
                             self.__failed_clients_out.put(client_id)
                         else:
-                            logger.debug('Job %s has all its services started', self.__toil_state.get_job(client_id))
+                            logger.debug(
+                                "Job %s has all its services started",
+                                self.__toil_state.get_job(client_id),
+                            )
                             self.__clients_out.put(client_id)
                         ready_clients.add(client_id)
                 for client_id in ready_clients:
@@ -329,7 +346,9 @@ class ServiceManager:
 
         # Start the service jobs in batches, waiting for each batch
         # to become established before starting the next batch
-        for service_job_list in self.__toil_state.get_job(client_id).serviceHostIDsInBatches():
+        for service_job_list in self.__toil_state.get_job(
+            client_id
+        ).serviceHostIDsInBatches():
             # When we get the job descriptions we store them here to go over them again.
             wait_on = []
             for service_id in service_job_list:
@@ -369,7 +388,7 @@ class ServiceManager:
                     time.sleep(1.0)
 
                     if log_limiter.throttle(False):
-                        logger.info('Service %s is starting...', service_job_desc)
+                        logger.info("Service %s is starting...", service_job_desc)
 
                     # Check if the thread should quit
                     if self.__terminate.is_set():
@@ -382,9 +401,14 @@ class ServiceManager:
                     ):
                         # The service job has gone away but the service never flipped its start flag.
                         # That's not what the worker is supposed to do when running a service at all.
-                        logger.error('Service %s has completed and been removed without ever starting', service_job_desc)
+                        logger.error(
+                            "Service %s has completed and been removed without ever starting",
+                            service_job_desc,
+                        )
                         # Stop everything.
-                        raise RuntimeError(f"Service {service_job_desc} is in an inconsistent state")
+                        raise RuntimeError(
+                            f"Service {service_job_desc} is in an inconsistent state"
+                        )
 
                 # We don't bail out early here.
 
@@ -395,7 +419,6 @@ class ServiceManager:
                 # they depend on failed. They should already have been killed,
                 # though, so they should stop immediately when we run them. TODO:
                 # this is a bad design!
-
 
         # Add the JobDescription to the output queue of jobs whose services have been started
         self.__clients_out.put(client_id)

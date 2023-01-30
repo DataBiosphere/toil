@@ -23,6 +23,7 @@ class CleanWorkDirTest(ToilTest):
     """
     Tests testing :class:toil.fileStores.abstractFileStore.AbstractFileStore
     """
+
     def setUp(self):
         super().setUp()
         self.testDir = self._createTempDir()
@@ -33,33 +34,61 @@ class CleanWorkDirTest(ToilTest):
 
     def testNever(self):
         retainedTempData = self._runAndReturnWorkDir("never", job=tempFileTestJob)
-        self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
-                                                  "cleanWorkDir being set to 'never'")
+        self.assertNotEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was deleted despite "
+            "cleanWorkDir being set to 'never'",
+        )
 
     def testAlways(self):
         retainedTempData = self._runAndReturnWorkDir("always", job=tempFileTestJob)
-        self.assertEqual(retainedTempData, [], "The worker's temporary workspace was not deleted despite "
-                                               "cleanWorkDir being set to 'always'")
+        self.assertEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was not deleted despite "
+            "cleanWorkDir being set to 'always'",
+        )
 
     def testOnErrorWithError(self):
-        retainedTempData = self._runAndReturnWorkDir("onError", job=tempFileTestErrorJob, expectError=True)
-        self.assertEqual(retainedTempData, [], "The worker's temporary workspace was not deleted despite "
-                                               "an error occurring and cleanWorkDir being set to 'onError'")
+        retainedTempData = self._runAndReturnWorkDir(
+            "onError", job=tempFileTestErrorJob, expectError=True
+        )
+        self.assertEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was not deleted despite "
+            "an error occurring and cleanWorkDir being set to 'onError'",
+        )
 
     def testOnErrorWithNoError(self):
         retainedTempData = self._runAndReturnWorkDir("onError", job=tempFileTestJob)
-        self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
-                                                  "no error occurring and cleanWorkDir being set to 'onError'")
+        self.assertNotEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was deleted despite "
+            "no error occurring and cleanWorkDir being set to 'onError'",
+        )
 
     def testOnSuccessWithError(self):
-        retainedTempData = self._runAndReturnWorkDir("onSuccess", job=tempFileTestErrorJob, expectError=True)
-        self.assertNotEqual(retainedTempData, [], "The worker's temporary workspace was deleted despite "
-                                                  "an error occurring and cleanWorkDir being set to 'onSuccesss'")
+        retainedTempData = self._runAndReturnWorkDir(
+            "onSuccess", job=tempFileTestErrorJob, expectError=True
+        )
+        self.assertNotEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was deleted despite "
+            "an error occurring and cleanWorkDir being set to 'onSuccesss'",
+        )
 
     def testOnSuccessWithSuccess(self):
         retainedTempData = self._runAndReturnWorkDir("onSuccess", job=tempFileTestJob)
-        self.assertEqual(retainedTempData, [], "The worker's temporary workspace was not deleted despite "
-                                               "a successful job execution and cleanWorkDir being set to 'onSuccesss'")
+        self.assertEqual(
+            retainedTempData,
+            [],
+            "The worker's temporary workspace was not deleted despite "
+            "a successful job execution and cleanWorkDir being set to 'onSuccesss'",
+        )
 
     def _runAndReturnWorkDir(self, cleanWorkDir, job, expectError=False):
         """
@@ -89,9 +118,11 @@ class CleanWorkDirTest(ToilTest):
         else:
             self.fail("Toil run succeeded unexpectedly")
 
+
 def tempFileTestJob(job):
     with open(job.fileStore.getLocalTempFile(), "w") as f:
         f.write("test file retention")
+
 
 def tempFileTestErrorJob(job):
     with open(job.fileStore.getLocalTempFile(), "w") as f:

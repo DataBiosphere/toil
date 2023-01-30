@@ -105,6 +105,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
     TODO: Propose a PR in wes-service to include workflow_engine_params.
     """
+
     def __init__(self, endpoint: str, auth: Optional[Tuple[str, str]] = None) -> None:
         """
         :param endpoint: The http(s) URL of the WES server. Must include the
@@ -113,12 +114,19 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                      request to the WES server.
         """
         proto, host = endpoint.split("://")
-        super().__init__({
-            # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
-            "auth": {"Authorization": "Basic " + b64encode(f"{auth[0]}:{auth[1]}".encode()).decode("utf-8")} if auth else {},
-            "proto": proto,
-            "host": host
-        })
+        super().__init__(
+            {
+                # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
+                "auth": {
+                    "Authorization": "Basic "
+                    + b64encode(f"{auth[0]}:{auth[1]}".encode()).decode("utf-8")
+                }
+                if auth
+                else {},
+                "proto": proto,
+                "host": host,
+            }
+        )
 
     def get_version(self, extension: str, workflow_file: str) -> str:
         """Determines the version of a .py, .wdl, or .cwl file."""
@@ -157,7 +165,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         return cast(Dict[str, Any], workflow_params)
 
-    def modify_param_paths(self, base_dir: str, workflow_params: Dict[str, Any]) -> None:
+    def modify_param_paths(
+        self, base_dir: str, workflow_params: Dict[str, Any]
+    ) -> None:
         """
         Modify the file paths in the input workflow parameters to be relative
         to base_dir.
@@ -192,14 +202,15 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
                     replace_paths(file.values())
                 elif isinstance(file, list):
                     replace_paths(file)
+
         replace_paths(workflow_params.values())
 
     def build_wes_request(
-            self,
-            workflow_file: str,
-            workflow_params_file: Optional[str],
-            attachments: Optional[List[str]],
-            workflow_engine_parameters: Optional[List[str]] = None
+        self,
+        workflow_file: str,
+        workflow_params_file: Optional[str],
+        attachments: Optional[List[str]],
+        workflow_engine_parameters: Optional[List[str]] = None,
     ) -> Tuple[Dict[str, str], Iterable[Tuple[str, Tuple[str, BytesIO]]]]:
         """
         Build the workflow run request to submit to WES.
@@ -237,17 +248,17 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             "workflow_url": workflow_file,
             "workflow_params": "",  # to be set after attachments are processed
             "workflow_type": workflow_type,
-            "workflow_type_version": workflow_type_version
+            "workflow_type_version": workflow_type_version,
         }
 
         # Convert engine arguments into a JSON object
         if workflow_engine_parameters:
             params = {}
             for param in workflow_engine_parameters:
-                if '=' not in param:  # flags like "--logDebug"
+                if "=" not in param:  # flags like "--logDebug"
                     k, v = param, None
                 else:
-                    k, v = param.split('=', 1)
+                    k, v = param.split("=", 1)
                 params[k] = v
             data["workflow_engine_parameters"] = json.dumps(params)
 
@@ -278,11 +289,11 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         return data, [("workflow_attachment", val) for val in workflow_attachments]
 
     def run_with_engine_options(
-            self,
-            workflow_file: str,
-            workflow_params_file: Optional[str],
-            attachments: Optional[List[str]],
-            workflow_engine_parameters: Optional[List[str]]
+        self,
+        workflow_file: str,
+        workflow_params_file: Optional[str],
+        attachments: Optional[List[str]],
+        workflow_engine_parameters: Optional[List[str]],
     ) -> Dict[str, Any]:
         """
         Composes and sends a post request that signals the WES server to run a
@@ -297,10 +308,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         :return: The body of the post result as a dictionary.
         """
-        data, files = self.build_wes_request(workflow_file,
-                                             workflow_params_file,
-                                             attachments,
-                                             workflow_engine_parameters)
+        data, files = self.build_wes_request(
+            workflow_file, workflow_params_file, attachments, workflow_engine_parameters
+        )
         post_result = requests.post(
             urljoin(f"{self.proto}://{self.host}", "/ga4gh/wes/v1/runs"),
             data=data,
@@ -320,13 +330,15 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
                        this returns the dependencies from the input file.
     """
 
-    option = '--print-input-deps' if input_file else '--print-deps'
+    option = "--print-input-deps" if input_file else "--print-deps"
 
-    args = ['cwltool', option, '--relative-deps', 'cwd', cwl_file]
+    args = ["cwltool", option, "--relative-deps", "cwd", cwl_file]
     if input_file:
         args.append(input_file)
 
-    p = subprocess.run(args=args, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    p = subprocess.run(
+        args=args, check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
 
     result = p.stdout.decode()
     if not result:
@@ -368,10 +380,12 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
     return deps
 
 
-def submit_run(client: WESClientWithWorkflowEngineParameters,
-               cwl_file: str,
-               input_file: Optional[str] = None,
-               engine_options: Optional[List[str]] = None) -> str:
+def submit_run(
+    client: WESClientWithWorkflowEngineParameters,
+    cwl_file: str,
+    input_file: Optional[str] = None,
+    engine_options: Optional[List[str]] = None,
+) -> str:
     """
     Given a CWL file, its input files, and an optional list of engine options,
     submit the CWL workflow to the WES server via the WES client.
@@ -395,19 +409,28 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
         cwl_file,
         input_file,
         attachments=attachments,
-        workflow_engine_parameters=engine_options)
+        workflow_engine_parameters=engine_options,
+    )
     return run_result.get("run_id", None)
 
 
 def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool:
-    """ Return True if the given workflow run is in a finished state."""
+    """Return True if the given workflow run is in a finished state."""
     status_result = client.get_run_status(run_id)
     state = status_result.get("state")
 
-    return state in ("COMPLETE", "CANCELING", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR")
+    return state in (
+        "COMPLETE",
+        "CANCELING",
+        "CANCELED",
+        "EXECUTOR_ERROR",
+        "SYSTEM_ERROR",
+    )
 
 
-def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: str) -> None:
+def print_logs_and_exit(
+    client: WESClientWithWorkflowEngineParameters, run_id: str
+) -> None:
     """
     Fetch the workflow logs from the WES server, print the results, then exit
     the program with the same exit code as the workflow run.
@@ -425,15 +448,19 @@ def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: s
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="A CWL runner that runs workflows through WES.")
+    parser = argparse.ArgumentParser(
+        description="A CWL runner that runs workflows through WES."
+    )
 
     # the first two positional arguments are the CWL file and its input file
     parser.add_argument("cwl_file", type=str)
     parser.add_argument("input_file", type=str, nargs="?", default=None)
     # arguments used by the WES runner
-    parser.add_argument("--wes_endpoint",
-                        default=os.environ.get("TOIL_WES_ENDPOINT", "http://localhost:8080"),
-                        help="The http(s) URL of the WES server.  (default: %(default)s)")
+    parser.add_argument(
+        "--wes_endpoint",
+        default=os.environ.get("TOIL_WES_ENDPOINT", "http://localhost:8080"),
+        help="The http(s) URL of the WES server.  (default: %(default)s)",
+    )
     # the rest of the arguments are passed as engine options to the WES server
     options, rest = parser.parse_known_args()
 
@@ -449,7 +476,8 @@ def main() -> None:
 
     client = WESClientWithWorkflowEngineParameters(
         endpoint=endpoint,
-        auth=(wes_user, wes_password) if wes_user and wes_password else None)
+        auth=(wes_user, wes_password) if wes_user and wes_password else None,
+    )
 
     run_id = submit_run(client, cwl_file, input_file, engine_options=rest)
     assert run_id
@@ -462,5 +490,5 @@ def main() -> None:
     print_logs_and_exit(client, run_id)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

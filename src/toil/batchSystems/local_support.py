@@ -14,8 +14,10 @@
 import logging
 from typing import Dict, List, Optional
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    BatchSystemSupport,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.cwl.utils import CWL_INTERNAL_JOBS
@@ -27,7 +29,9 @@ logger = logging.getLogger(__name__)
 class BatchSystemLocalSupport(BatchSystemSupport):
     """Adds a local queue for helper jobs, useful for CWL & others."""
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
             config, config.maxLocalJobs, maxMemory, maxDisk
@@ -40,8 +44,9 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
         """
-        if (not self.config.runCwlInternalJobsOnWorkers
-                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
+        if not self.config.runCwlInternalJobsOnWorkers and jobDesc.jobName.startswith(
+            CWL_INTERNAL_JOBS
+        ):
             # Since singleMachine.py doesn't typecheck yet and MyPy is ignoring
             # it, it will raise errors here unless we add type annotations to
             # everything we get back from it. THe easiest way to do that seems

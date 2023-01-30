@@ -23,16 +23,20 @@ from io import BytesIO
 from typing import List
 from urllib.parse import ParseResult
 
-from google.api_core.exceptions import (GoogleAPICallError,
-                                        InternalServerError,
-                                        ServiceUnavailable)
+from google.api_core.exceptions import (
+    GoogleAPICallError,
+    InternalServerError,
+    ServiceUnavailable,
+)
 from google.cloud import exceptions, storage
 
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    JobStoreExistsException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
@@ -41,7 +45,7 @@ from toil.lib.retry import old_retry
 
 log = logging.getLogger(__name__)
 
-GOOGLE_STORAGE = 'gs'
+GOOGLE_STORAGE = "gs"
 
 MAX_BATCH_SIZE = 1000
 
@@ -74,19 +78,22 @@ def google_retry(f):
 
     It should wrap any function that makes use of the Google Client API
     """
+
     @wraps(f)
     def wrapper(*args, **kwargs):
-        for attempt in old_retry(delays=truncExpBackoff(),
-                                 timeout=300,
-                                 predicate=google_retry_predicate):
+        for attempt in old_retry(
+            delays=truncExpBackoff(), timeout=300, predicate=google_retry_predicate
+        ):
             with attempt:
                 return f(*args, **kwargs)
+
     return wrapper
 
 
 class GoogleJobStore(AbstractJobStore):
 
-    nodeServiceAccountJson = '/root/service_account.json'
+    nodeServiceAccountJson = "/root/service_account.json"
+
     def __init__(self, locator: str) -> None:
         super().__init__(locator)
 
@@ -98,37 +105,46 @@ class GoogleJobStore(AbstractJobStore):
             projectID = None
 
         self.projectID = projectID
-        self.bucketName = namePrefix+"--toil"
+        self.bucketName = namePrefix + "--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
 
         # this is a :class:`~google.cloud.storage.bucket.Bucket`
         self.bucket = None
 
-        self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
-        self.statsReadPrefix = '_'
-        self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
+        self.statsBaseID = "f16eef0c-b597-4b8b-9b0c-4d605b4f506c"
+        self.statsReadPrefix = "_"
+        self.readStatsBaseID = self.statsReadPrefix + self.statsBaseID
 
         self.sseKey = None
 
         # Determine if we have an override environment variable for our credentials.
         # We don't pull out the filename; we just see if a name is there.
-        self.credentialsFromEnvironment = bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS', False))
+        self.credentialsFromEnvironment = bool(
+            os.getenv("GOOGLE_APPLICATION_CREDENTIALS", False)
+        )
 
-        if self.credentialsFromEnvironment and not os.path.exists(os.getenv('GOOGLE_APPLICATION_CREDENTIALS')):
+        if self.credentialsFromEnvironment and not os.path.exists(
+            os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        ):
             # If the file is missing, complain.
             # This variable holds a file name and not any sensitive data itself.
-            log.warning("File '%s' from GOOGLE_APPLICATION_CREDENTIALS is unavailable! "
-                        "We may not be able to authenticate!",
-                        os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
+            log.warning(
+                "File '%s' from GOOGLE_APPLICATION_CREDENTIALS is unavailable! "
+                "We may not be able to authenticate!",
+                os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+            )
 
-        if not self.credentialsFromEnvironment and os.path.exists(self.nodeServiceAccountJson):
+        if not self.credentialsFromEnvironment and os.path.exists(
+            self.nodeServiceAccountJson
+        ):
             # load credentials from a particular file on GCE nodes if an override path is not set
-            self.storageClient = storage.Client.from_service_account_json(self.nodeServiceAccountJson)
+            self.storageClient = storage.Client.from_service_account_json(
+                self.nodeServiceAccountJson
+            )
         else:
             # Either a filename is specified, or our fallback file isn't there.
             # See if Google can work out how to authenticate.
             self.storageClient = storage.Client()
-
 
     @google_retry
     def initialize(self, config=None):
@@ -140,7 +156,7 @@ class GoogleJobStore(AbstractJobStore):
 
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:
-            with open(self.config.sseKey, 'rb') as f:
+            with open(self.config.sseKey, "rb") as f:
                 self.sseKey = compat_bytes(f.read())
                 assert len(self.sseKey) == 32
 
@@ -170,18 +186,23 @@ class GoogleJobStore(AbstractJobStore):
             count = 0
             while count < len(blobs_to_delete):
                 with self.storageClient.batch():
-                    for blob in blobs_to_delete[count:count + MAX_BATCH_SIZE]:
+                    for blob in blobs_to_delete[count : count + MAX_BATCH_SIZE]:
                         blob.delete()
                     count = count + MAX_BATCH_SIZE
             self.bucket.delete()
 
     def _new_job_id(self):
-        return f'job-{uuid.uuid4()}'
+        return f"job-{uuid.uuid4()}"
 
     def assign_job_id(self, job_description):
         jobStoreID = self._new_job_id()
-        log.debug("Assigning ID to job %s for '%s'",
-                  jobStoreID, '<no command>' if job_description.command is None else job_description.command)
+        log.debug(
+            "Assigning ID to job %s for '%s'",
+            jobStoreID,
+            "<no command>"
+            if job_description.command is None
+            else job_description.command,
+        )
         job_description.jobStoreID = jobStoreID
 
     @contextmanager
@@ -191,12 +212,17 @@ class GoogleJobStore(AbstractJobStore):
 
     def create_job(self, job_description):
         job_description.pre_update_hook()
-        self._write_bytes(job_description.jobStoreID, pickle.dumps(job_description, protocol=pickle.HIGHEST_PROTOCOL))
+        self._write_bytes(
+            job_description.jobStoreID,
+            pickle.dumps(job_description, protocol=pickle.HIGHEST_PROTOCOL),
+        )
         return job_description
 
     @google_retry
     def job_exists(self, job_id):
-        return self.bucket.blob(compat_bytes(job_id), encryption_key=self.sseKey).exists()
+        return self.bucket.blob(
+            compat_bytes(job_id), encryption_key=self.sseKey
+        ).exists()
 
     @google_retry
     def get_public_url(self, fileName):
@@ -223,7 +249,11 @@ class GoogleJobStore(AbstractJobStore):
 
     def update_job(self, job):
         job.pre_update_hook()
-        self._write_bytes(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
+        self._write_bytes(
+            job.jobStoreID,
+            pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL),
+            update=True,
+        )
 
     @google_retry
     def delete_job(self, job_id):
@@ -244,28 +274,36 @@ class GoogleJobStore(AbstractJobStore):
         if self.credentialsFromEnvironment:
             # Send along the environment variable that points to the credentials file.
             # It must be available in the same place on all nodes.
-            env['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            env["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv(
+                "GOOGLE_APPLICATION_CREDENTIALS"
+            )
 
         return env
 
     @google_retry
     def jobs(self):
-        for blob in self.bucket.list_blobs(prefix=b'job-'):
+        for blob in self.bucket.list_blobs(prefix=b"job-"):
             jobStoreID = blob.name
             # TODO: do this better
-            if len(jobStoreID) == 40 and jobStoreID.startswith('job-'):  # 'job-' + uuid length
+            if len(jobStoreID) == 40 and jobStoreID.startswith(
+                "job-"
+            ):  # 'job-' + uuid length
                 yield self.load_job(jobStoreID)
 
     def write_file(self, local_path, job_id=None, cleanup=False):
         fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
-        with open(local_path, 'rb') as f:
+        with open(local_path, "rb") as f:
             self._write_file(fileID, f)
         return fileID
 
     @contextmanager
-    def write_file_stream(self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None):
+    def write_file_stream(
+        self, job_id=None, cleanup=False, basename=None, encoding=None, errors=None
+    ):
         fileID = self._new_id(isFile=True, jobStoreID=job_id if cleanup else None)
-        with self._upload_stream(fileID, update=False, encoding=encoding, errors=errors) as writable:
+        with self._upload_stream(
+            fileID, update=False, encoding=encoding, errors=errors
+        ) as writable:
             yield writable, fileID
 
     def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
@@ -280,16 +318,19 @@ class GoogleJobStore(AbstractJobStore):
         if not self.file_exists(file_id):
             raise NoSuchFileException(file_id)
         with AtomicFileCreate(local_path) as tmpPath:
-            with open(tmpPath, 'wb') as writeable:
-                blob = self.bucket.get_blob(compat_bytes(file_id), encryption_key=self.sseKey)
+            with open(tmpPath, "wb") as writeable:
+                blob = self.bucket.get_blob(
+                    compat_bytes(file_id), encryption_key=self.sseKey
+                )
                 blob.download_to_file(writeable)
-        if getattr(file_id, 'executable', False):
+        if getattr(file_id, "executable", False):
             os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
 
     @contextmanager
     def read_file_stream(self, file_id, encoding=None, errors=None):
-        with self.read_shared_file_stream(file_id, isProtected=True, encoding=encoding,
-                                          errors=errors) as readable:
+        with self.read_shared_file_stream(
+            file_id, isProtected=True, encoding=encoding, errors=errors
+        ) as readable:
             yield readable
 
     def delete_file(self, file_id):
@@ -297,32 +338,49 @@ class GoogleJobStore(AbstractJobStore):
 
     @google_retry
     def file_exists(self, file_id):
-        return self.bucket.blob(compat_bytes(file_id), encryption_key=self.sseKey).exists()
+        return self.bucket.blob(
+            compat_bytes(file_id), encryption_key=self.sseKey
+        ).exists()
 
     @google_retry
     def get_file_size(self, file_id):
         if not self.file_exists(file_id):
             return 0
-        return self.bucket.get_blob(compat_bytes(file_id), encryption_key=self.sseKey).size
+        return self.bucket.get_blob(
+            compat_bytes(file_id), encryption_key=self.sseKey
+        ).size
 
     def update_file(self, file_id, local_path):
-        with open(local_path, 'rb') as f:
+        with open(local_path, "rb") as f:
             self._write_file(file_id, f, update=True)
 
     @contextmanager
     def update_file_stream(self, file_id, encoding=None, errors=None):
-        with self._upload_stream(file_id, update=True, encoding=encoding, errors=errors) as writable:
+        with self._upload_stream(
+            file_id, update=True, encoding=encoding, errors=errors
+        ) as writable:
             yield writable
 
     @contextmanager
-    def write_shared_file_stream(self, shared_file_name, encrypted=True, encoding=None, errors=None):
-        with self._upload_stream(shared_file_name, encrypt=encrypted, update=True, encoding=encoding,
-                                 errors=errors) as writable:
+    def write_shared_file_stream(
+        self, shared_file_name, encrypted=True, encoding=None, errors=None
+    ):
+        with self._upload_stream(
+            shared_file_name,
+            encrypt=encrypted,
+            update=True,
+            encoding=encoding,
+            errors=errors,
+        ) as writable:
             yield writable
 
     @contextmanager
-    def read_shared_file_stream(self, shared_file_name, isProtected=True, encoding=None, errors=None):
-        with self._download_stream(shared_file_name, encrypt=isProtected, encoding=encoding, errors=errors) as readable:
+    def read_shared_file_stream(
+        self, shared_file_name, isProtected=True, encoding=None, errors=None
+    ):
+        with self._download_stream(
+            shared_file_name, encrypt=isProtected, encoding=encoding, errors=errors
+        ) as readable:
             yield readable
 
     @classmethod
@@ -345,7 +403,7 @@ class GoogleJobStore(AbstractJobStore):
         fileName = url.path
 
         # remove leading '/', which can cause problems if fileName is a path
-        if fileName.startswith('/'):
+        if fileName.startswith("/"):
             fileName = fileName[1:]
 
         storageClient = storage.Client()
@@ -371,7 +429,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _supports_url(cls, url, export=False):
-        return url.scheme.lower() == 'gs'
+        return url.scheme.lower() == "gs"
 
     @classmethod
     def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
@@ -380,11 +438,15 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _list_url(cls, url: ParseResult) -> List[str]:
-        raise NotImplementedError("Listing files in Google buckets is not yet implemented!")
+        raise NotImplementedError(
+            "Listing files in Google buckets is not yet implemented!"
+        )
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
-        raise NotImplementedError("Checking directory status in Google buckets is not yet implemented!")
+        raise NotImplementedError(
+            "Checking directory status in Google buckets is not yet implemented!"
+        )
 
     @google_retry
     def write_logs(self, msg: bytes) -> None:
@@ -414,7 +476,9 @@ class GoogleJobStore(AbstractJobStore):
                     if not read_all:
                         # rename this file by copying it and deleting the old version to avoid
                         # rereading it
-                        newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
+                        newID = (
+                            self.readStatsBaseID + blob.name[len(self.statsBaseID) :]
+                        )
                         # NOTE: just copies then deletes old.
                         self.bucket.rename_blob(blob, compat_bytes(newID))
                 except NoSuchFileException:
@@ -430,7 +494,7 @@ class GoogleJobStore(AbstractJobStore):
                 if lastTry:
                     # this was our second try, we are reasonably sure there aren't any stats
                     # left to gather
-                        break
+                    break
                 # Try one more time in a couple seconds
                 time.sleep(5)
                 lastTry = True
@@ -444,11 +508,11 @@ class GoogleJobStore(AbstractJobStore):
     @staticmethod
     def _new_id(isFile=False, jobStoreID=None):
         if isFile and jobStoreID:  # file associated with job
-            return jobStoreID+str(uuid.uuid4())
+            return jobStoreID + str(uuid.uuid4())
         elif isFile:  # nonassociated file
             return str(uuid.uuid4())
         else:  # job id
-            return f'job-{uuid.uuid4()}'
+            return f"job-{uuid.uuid4()}"
 
     @google_retry
     def _delete(self, jobStoreFileID):
@@ -472,8 +536,12 @@ class GoogleJobStore(AbstractJobStore):
         return job.download_as_string()
 
     @google_retry
-    def _write_file(self, jobStoreID: str, fileObj: bytes, update=False, encrypt=True) -> None:
-        blob = self.bucket.blob(compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
+    def _write_file(
+        self, jobStoreID: str, fileObj: bytes, update=False, encrypt=True
+    ) -> None:
+        blob = self.bucket.blob(
+            compat_bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None
+        )
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
             assert not blob.exists()
@@ -487,7 +555,9 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     @google_retry
-    def _upload_stream(self, fileName, update=False, encrypt=True, encoding=None, errors=None):
+    def _upload_stream(
+        self, fileName, update=False, encrypt=True, encoding=None, errors=None
+    ):
         """
         Yields a context manager that can be used to write to the bucket
         with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
@@ -513,7 +583,10 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of WritablePipe.
         :rtype: :class:`~toil.jobStores.utils.writablePipe`
         """
-        blob = self.bucket.blob(compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None)
+        blob = self.bucket.blob(
+            compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None
+        )
+
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
                 if not update:
@@ -549,7 +622,9 @@ class GoogleJobStore(AbstractJobStore):
         :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
         """
 
-        blob = self.bucket.get_blob(compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None)
+        blob = self.bucket.get_blob(
+            compat_bytes(fileName), encryption_key=self.sseKey if encrypt else None
+        )
         if blob is None:
             raise NoSuchFileException(fileName)
 

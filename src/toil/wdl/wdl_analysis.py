@@ -14,14 +14,16 @@
 import logging
 from collections import OrderedDict
 
-from toil.wdl.wdl_types import (WDLArrayType,
-                                WDLBooleanType,
-                                WDLFileType,
-                                WDLFloatType,
-                                WDLIntType,
-                                WDLMapType,
-                                WDLPairType,
-                                WDLStringType)
+from toil.wdl.wdl_types import (
+    WDLArrayType,
+    WDLBooleanType,
+    WDLFileType,
+    WDLFloatType,
+    WDLIntType,
+    WDLMapType,
+    WDLPairType,
+    WDLStringType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ class AnalyzeWDL:
 
     Requires a WDL file.  The WDL file contains ordered commands.
     """
+
     def __init__(self, wdl_file: str):
         self.wdl_file = wdl_file
 
@@ -82,18 +85,14 @@ class AnalyzeWDL:
         """
 
     primitive_types = {
-        'String': WDLStringType,
-        'Int': WDLIntType,
-        'Float': WDLFloatType,
-        'Boolean': WDLBooleanType,
-        'File': WDLFileType
+        "String": WDLStringType,
+        "Int": WDLIntType,
+        "Float": WDLFloatType,
+        "Boolean": WDLBooleanType,
+        "File": WDLFileType,
     }
 
-    compound_types = {
-        'Array': WDLArrayType,
-        'Pair': WDLPairType,
-        'Map': WDLMapType
-    }
+    compound_types = {"Array": WDLArrayType, "Pair": WDLPairType, "Map": WDLMapType}
 
     def create_wdl_primitive_type(self, key: str, optional: bool = False):
         """
@@ -103,9 +102,11 @@ class AnalyzeWDL:
         if type_:
             return type_(optional=optional)
         else:
-            raise RuntimeError(f'Unsupported primitive type: {key}')
+            raise RuntimeError(f"Unsupported primitive type: {key}")
 
-    def create_wdl_compound_type(self, key: str, elements: list, optional: bool = False):
+    def create_wdl_compound_type(
+        self, key: str, elements: list, optional: bool = False
+    ):
         """
         Returns an instance of WDLCompoundType.
         """
@@ -113,4 +114,4 @@ class AnalyzeWDL:
         if type_:
             return type_(*elements, optional=optional)
         else:
-            raise RuntimeError(f'Unsupported compound type: {key}')
+            raise RuntimeError(f"Unsupported compound type: {key}")

@@ -32,7 +32,9 @@ def main() -> None:
         jobstore.destroy()
         logger.info(f"Successfully deleted the job store: {options.jobStore}")
     except NoSuchJobStoreException:
-        logger.info(f"Failed to delete the job store: {options.jobStore} is non-existent.")
+        logger.info(
+            f"Failed to delete the job store: {options.jobStore} is non-existent."
+        )
     except:
         logger.info(f"Failed to delete the job store: {options.jobStore}")
         raise

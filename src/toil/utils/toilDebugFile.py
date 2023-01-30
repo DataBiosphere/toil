@@ -38,14 +38,18 @@ def fetchJobStoreFiles(jobStore: AbstractJobStore, options: argparse.Namespace) 
     :param options.jobStore: The path to the jobStore directory.
     """
     for jobStoreFile in options.fetch:
-        jobStoreHits = glob(directoryname=options.jobStore,
-                            glob_pattern=jobStoreFile)
+        jobStoreHits = glob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            logger.debug(f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}")
-            jobStore.read_file(jobStoreFileID,
-                               os.path.join(options.localFilePath[0],
-                                           os.path.basename(jobStoreFileID)),
-                               symlink=options.useSymlinks)
+            logger.debug(
+                f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}"
+            )
+            jobStore.read_file(
+                jobStoreFileID,
+                os.path.join(
+                    options.localFilePath[0], os.path.basename(jobStoreFileID)
+                ),
+                symlink=options.useSymlinks,
+            )
 
 
 def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) -> None:
@@ -73,7 +77,7 @@ def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) 
     if os.path.exists(logFile):
         os.remove(logFile)
     for gfile in sorted(list_of_files):
-        if not gfile.endswith('.new'):
+        if not gfile.endswith(".new"):
             logger.debug(f"{nameOfJob} File: {os.path.basename(gfile)}")
             with open(logFile, "a+") as f:
                 f.write(os.path.basename(gfile))
@@ -82,22 +86,29 @@ def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) 
 
 def main() -> None:
     parser = parser_with_common_options(jobstore_option=True)
-    parser.add_argument("--localFilePath",
-                        nargs=1,
-                        help="Location to which to copy job store files.")
-    parser.add_argument("--fetch",
-                        nargs="+",
-                        help="List of job-store files to be copied locally."
-                             "Use either explicit names (i.e. 'data.txt'), or "
-                             "specify glob patterns (i.e. '*.txt')")
-    parser.add_argument("--listFilesInJobStore",
-                        help="Prints a list of the current files in the jobStore.")
-    parser.add_argument("--fetchEntireJobStore",
-                        help="Copy all job store files into a local directory.")
-    parser.add_argument("--useSymlinks",
-                        help="Creates symlink 'shortcuts' of files in the localFilePath"
-                             " instead of hardlinking or copying, where possible.  If this is"
-                             " not possible, it will copy the files (shutil.copyfile()).")
+    parser.add_argument(
+        "--localFilePath", nargs=1, help="Location to which to copy job store files."
+    )
+    parser.add_argument(
+        "--fetch",
+        nargs="+",
+        help="List of job-store files to be copied locally."
+        "Use either explicit names (i.e. 'data.txt'), or "
+        "specify glob patterns (i.e. '*.txt')",
+    )
+    parser.add_argument(
+        "--listFilesInJobStore",
+        help="Prints a list of the current files in the jobStore.",
+    )
+    parser.add_argument(
+        "--fetchEntireJobStore", help="Copy all job store files into a local directory."
+    )
+    parser.add_argument(
+        "--useSymlinks",
+        help="Creates symlink 'shortcuts' of files in the localFilePath"
+        " instead of hardlinking or copying, where possible.  If this is"
+        " not possible, it will copy the files (shutil.copyfile()).",
+    )
 
     # Load the jobStore
     options = parser.parse_args()

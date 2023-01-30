@@ -24,8 +24,10 @@ from shutil import which
 from threading import Thread
 from typing import Dict, Optional, Union
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    BatchSystemSupport,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.options import OptionSetter
 from toil.common import SYS_MAX_SIZE, Toil
 from toil.lib.iterables import concat
@@ -50,7 +52,7 @@ class ParasolBatchSystem(BatchSystemSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super().__init__(config, maxCores, maxMemory, maxDisk)
         if maxMemory != SYS_MAX_SIZE:
-            logger.warning('The Parasol batch system does not support maxMemory.')
+            logger.warning("The Parasol batch system does not support maxMemory.")
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand
         if os.path.sep not in command:
@@ -58,12 +60,14 @@ class ParasolBatchSystem(BatchSystemSupport):
                 command = which(command)
             except StopIteration:
                 raise RuntimeError("Can't find %s on PATH." % command)
-        logger.debug('Using Parasol at %s', command)
+        logger.debug("Using Parasol at %s", command)
         self.parasolCommand = command
         jobStoreType, path = Toil.parseLocator(config.jobStore)
-        if jobStoreType != 'file':
-            raise RuntimeError("The parasol batch system doesn't currently work with any "
-                               "jobStore type except file jobStores.")
+        if jobStoreType != "file":
+            raise RuntimeError(
+                "The parasol batch system doesn't currently work with any "
+                "jobStore type except file jobStores."
+            )
         self.parasolResultsDir = tempfile.mkdtemp(dir=os.path.abspath(path))
         logger.debug("Using parasol results dir: %s", self.parasolResultsDir)
 
@@ -103,24 +107,24 @@ class ParasolBatchSystem(BatchSystemSupport):
         """
         command = list(concat(self.parasolCommand, command))
         while True:
-            logger.debug('Running %r', command)
-            process = subprocess.Popen(command,
-                                       stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE,
-                                       bufsize=-1)
+            logger.debug("Running %r", command)
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=-1
+            )
             stdout, stderr = process.communicate()
             status = process.wait()
-            for line in stderr.decode('utf-8').split('\n'):
-                if line: logger.warning(line)
+            for line in stderr.decode("utf-8").split("\n"):
+                if line:
+                    logger.warning(line)
             if status == 0:
-                return 0, stdout.decode('utf-8').split('\n')
-            message = 'Command %r failed with exit status %i' % (command, status)
+                return 0, stdout.decode("utf-8").split("\n")
+            message = "Command %r failed with exit status %i" % (command, status)
             if autoRetry:
                 logger.warning(message)
             else:
                 logger.error(message)
                 return status, None
-            logger.warning('Waiting for a 10s, before trying again')
+            logger.warning("Waiting for a 10s, before trying again")
             time.sleep(10)
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
@@ -138,7 +142,9 @@ class ParasolBatchSystem(BatchSystemSupport):
         # meams the new job can't ever decrease the memory requirements
         # of jobs already in the batch.
         if len(self.resultsFiles) >= self.maxBatches:
-            raise RuntimeError('Number of batches reached limit of %i' % self.maxBatches)
+            raise RuntimeError(
+                "Number of batches reached limit of %i" % self.maxBatches
+            )
         try:
             results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
@@ -147,12 +153,18 @@ class ParasolBatchSystem(BatchSystemSupport):
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(job_environment), jobDesc.command))
-        parasolCommand = ['-verbose',
-                          '-ram=%i' % jobDesc.memory,
-                          '-cpu=%i' % jobDesc.cores,
-                          '-results=' + results,
-                          'add', 'job', command]
+        command = " ".join(
+            concat("env", self.__environment(job_environment), jobDesc.command)
+        )
+        parasolCommand = [
+            "-verbose",
+            "-ram=%i" % jobDesc.memory,
+            "-cpu=%i" % jobDesc.cores,
+            "-results=" + results,
+            "add",
+            "job",
+            command,
+        ]
         # Deal with the cpus
         self.usedCpus += jobDesc.cores
         while True:  # Process finished results with no wait
@@ -175,7 +187,9 @@ class ParasolBatchSystem(BatchSystemSupport):
             if match is None:
                 # This is because parasol add job will return success, even if the job was not
                 # properly issued!
-                logger.debug('We failed to properly add the job, we will try again after a 5s.')
+                logger.debug(
+                    "We failed to properly add the job, we will try again after a 5s."
+                )
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
@@ -185,8 +199,10 @@ class ParasolBatchSystem(BatchSystemSupport):
                 return jobID
 
     def setEnv(self, name, value=None):
-        if value and ' ' in value:
-            raise ValueError('Parasol does not support spaces in environment variable values.')
+        if value and " " in value:
+            raise ValueError(
+                "Parasol does not support spaces in environment variable values."
+            )
         return super().setEnv(name, value)
 
     def __environment(self, job_environment: Optional[Dict[str, str]] = None):
@@ -194,7 +210,10 @@ class ParasolBatchSystem(BatchSystemSupport):
         if job_environment:
             environment.update(job_environment)
 
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(environment.items()))
+        return (
+            k + "=" + (os.environ[k] if v is None else v)
+            for k, v in list(environment.items())
+        )
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -204,28 +223,34 @@ class ParasolBatchSystem(BatchSystemSupport):
             for jobID in jobIDs:
                 if jobID in self.runningJobs:
                     self.runningJobs.remove(jobID)
-                exitValue = self._runParasol(['remove', 'job', str(jobID)],
-                                             autoRetry=False)[0]
-                logger.debug("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
+                exitValue = self._runParasol(
+                    ["remove", "job", str(jobID)], autoRetry=False
+                )[0]
+                logger.debug(
+                    "Tried to remove jobID: %i, with exit value: %i"
+                    % (jobID, exitValue)
+                )
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break
-            logger.warning('Tried to kill some jobs, but something happened and they are still '
-                           'going, will try again in 5s.')
+            logger.warning(
+                "Tried to kill some jobs, but something happened and they are still "
+                "going, will try again in 5s."
+            )
             time.sleep(5)
         # Update the CPU usage, because killed jobs aren't written to the results file.
         for jobID in jobIDs:
             if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
 
-    runningPattern = re.compile(r'r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+')
+    runningPattern = re.compile(r"r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+")
 
     def getJobIDsForResultsFile(self, resultsFile):
         """
         Get all queued and running jobs for a results file.
         """
         jobIDs = []
-        for line in self._runParasol(['-extended', 'list', 'jobs'])[1]:
+        for line in self._runParasol(["-extended", "list", "jobs"])[1]:
             fields = line.strip().split()
             if len(fields) == 0 or fields[-1] != resultsFile:
                 continue
@@ -253,8 +278,8 @@ class ParasolBatchSystem(BatchSystemSupport):
         # r 5410324 benedictpaten worker 1247030076 localhost
         runningJobs = {}
         issuedJobs = self.getIssuedBatchJobIDs()
-        for line in self._runParasol(['pstat2'])[1]:
-            if line != '':
+        for line in self._runParasol(["pstat2"])[1]:
+            if line != "":
                 match = self.runningPattern.match(line)
                 if match is not None:
                     jobID = int(match.group(1))
@@ -303,7 +328,9 @@ class ParasolBatchSystem(BatchSystemSupport):
         try:
             while self.running:
                 # Look for any new results files that have been created, and open them
-                newResultsFiles = set(os.listdir(self.parasolResultsDir)).difference(resultsFiles)
+                newResultsFiles = set(os.listdir(self.parasolResultsDir)).difference(
+                    resultsFiles
+                )
                 for newFile in newResultsFiles:
                     newFilePath = os.path.join(self.parasolResultsDir, newFile)
                     resultsFileHandles.append(open(newFilePath))
@@ -313,9 +340,21 @@ class ParasolBatchSystem(BatchSystemSupport):
                         line = fileHandle.readline()
                         if not line:
                             break
-                        assert line[-1] == '\n'
-                        (status, host, jobId, exe, usrTicks, sysTicks, submitTime, startTime,
-                         endTime, user, errFile, command) = line[:-1].split(None, 11)
+                        assert line[-1] == "\n"
+                        (
+                            status,
+                            host,
+                            jobId,
+                            exe,
+                            usrTicks,
+                            sysTicks,
+                            submitTime,
+                            startTime,
+                            endTime,
+                            user,
+                            errFile,
+                            command,
+                        ) = line[:-1].split(None, 11)
                         status = int(status)
                         jobId = int(jobId)
                         if os.WIFEXITED(status):
@@ -338,7 +377,14 @@ class ParasolBatchSystem(BatchSystemSupport):
                             wallTime = float(max(1, usrTicks + sysTicks)) * 0.01
                         else:
                             wallTime = float(endTime - startTime)
-                        self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobId, exitStatus=status, wallTime=wallTime, exitReason=None))
+                        self.updatedJobsQueue.put(
+                            UpdatedBatchJobInfo(
+                                jobID=jobId,
+                                exitStatus=status,
+                                wallTime=wallTime,
+                                exitReason=None,
+                            )
+                        )
                 time.sleep(1)
         except:
             logger.warning("Error occurred while parsing parasol results files.")
@@ -350,33 +396,46 @@ class ParasolBatchSystem(BatchSystemSupport):
     def shutdown(self) -> None:
         self.killBatchJobs(self.getIssuedBatchJobIDs())  # cleanup jobs
         for results in self.resultsFiles.values():
-            exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
-                                         autoRetry=False)[0]
+            exitValue = self._runParasol(
+                ["-results=" + results, "clear", "sick"], autoRetry=False
+            )[0]
             if exitValue is not None:
-                logger.warning("Could not clear sick status of the parasol batch %s" % results)
-            exitValue = self._runParasol(['-results=' + results, 'flushResults'],
-                                         autoRetry=False)[0]
+                logger.warning(
+                    "Could not clear sick status of the parasol batch %s" % results
+                )
+            exitValue = self._runParasol(
+                ["-results=" + results, "flushResults"], autoRetry=False
+            )[0]
             if exitValue is not None:
                 logger.warning("Could not flush the parasol batch %s" % results)
         self.running = False
-        logger.debug('Joining worker thread...')
+        logger.debug("Joining worker thread...")
         self.worker.join()
-        logger.debug('... joined worker thread.')
+        logger.debug("... joined worker thread.")
         for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
-                            help="The name or path of the parasol program. Will be looked up on PATH "
-                                 "unless it starts with a slash.  (default: %(default)s).")
-        parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
-                            help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
-                                 "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
+        parser.add_argument(
+            "--parasolCommand",
+            dest="parasolCommand",
+            default="parasol",
+            help="The name or path of the parasol program. Will be looked up on PATH "
+            "unless it starts with a slash.  (default: %(default)s).",
+        )
+        parser.add_argument(
+            "--parasolMaxBatches",
+            dest="parasolMaxBatches",
+            default=1000,
+            help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
+            "created for jobs with a a unique set of resource requirements.  (default: %(default)s).",
+        )
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
         from toil.common import iC
-        setOption("parasolCommand", None, None, 'parasol')
+
+        setOption("parasolCommand", None, None, "parasol")
         setOption("parasolMaxBatches", int, iC(1), 10000)

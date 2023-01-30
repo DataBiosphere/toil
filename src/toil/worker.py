@@ -31,17 +31,18 @@ from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
-from toil.cwl.utils import (CWL_INTERNAL_JOBS,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
+from toil.cwl.utils import (
+    CWL_INTERNAL_JOBS,
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,9 @@ class StatsDict(MagicExpando):
     jobs: List[str]
 
 
-def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, config: Config) -> Optional[JobDescription]:
+def nextChainable(
+    predecessor: JobDescription, jobStore: AbstractJobStore, config: Config
+) -> Optional[JobDescription]:
     """
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
@@ -62,32 +65,56 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     :param jobStore: The JobStore to fetch JobDescriptions from.
     :param config: The configuration for the current run.
     """
-    #If no more jobs to run or services not finished, quit
-    if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
-        logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
-                     len(predecessor.stack), len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
+    # If no more jobs to run or services not finished, quit
+    if (
+        len(predecessor.stack) == 0
+        or len(predecessor.services) > 0
+        or (
+            isinstance(predecessor, CheckpointJobDescription)
+            and predecessor.checkpoint != None
+        )
+    ):
+        logger.debug(
+            "Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
+            len(predecessor.stack),
+            len(predecessor.services),
+            (
+                isinstance(predecessor, CheckpointJobDescription)
+                and predecessor.checkpoint != None
+            ),
+        )
         return None
 
-    if len(predecessor.stack) > 1 and len(predecessor.stack[-1]) > 0 and len(predecessor.stack[-2]) > 0:
+    if (
+        len(predecessor.stack) > 1
+        and len(predecessor.stack[-1]) > 0
+        and len(predecessor.stack[-2]) > 0
+    ):
         # TODO: Without a real stack list we can freely mutate, we can't chain
         # to a child, which may branch, and then go back and do the follow-ons
         # of the original job.
         # TODO: Go back to a free-form stack list and require some kind of
         # stack build phase?
-        logger.debug("Stopping running chain of jobs because job has both children and follow-ons")
+        logger.debug(
+            "Stopping running chain of jobs because job has both children and follow-ons"
+        )
         return None
 
-    #Get the next set of jobs to run
+    # Get the next set of jobs to run
     jobs = predecessor.nextSuccessors()
     if len(jobs) == 0:
         # If there are no jobs, we might just not have any children.
-        logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")
+        logger.debug(
+            "Stopping running chain of jobs because job has no ready children or follow-ons"
+        )
         return None
 
-    #If there are 2 or more jobs to run in parallel we quit
+    # If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
-        logger.debug("No more jobs can run in series by this worker,"
-                    " it's got %i children", len(jobs)-1)
+        logger.debug(
+            "No more jobs can run in series by this worker," " it's got %i children",
+            len(jobs) - 1,
+        )
         return None
 
     # Grab the only job that should be there.
@@ -96,8 +123,8 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     # Load the successor JobDescription
     successor = jobStore.load_job(successorID)
 
-    #We check the requirements of the successor to see if we can run it
-    #within the current worker
+    # We check the requirements of the successor to see if we can run it
+    # within the current worker
     if successor.memory > predecessor.memory:
         logger.debug("We need more memory for the next job, so finishing")
         return None
@@ -108,14 +135,20 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
         logger.debug("We need more disk for the next job, so finishing")
         return None
     if successor.preemptable != predecessor.preemptable:
-        logger.debug("Preemptability is different for the next job, returning to the leader")
+        logger.debug(
+            "Preemptability is different for the next job, returning to the leader"
+        )
         return None
     if successor.predecessorNumber > 1:
-        logger.debug("The next job has multiple predecessors; we must return to the leader.")
+        logger.debug(
+            "The next job has multiple predecessors; we must return to the leader."
+        )
         return None
 
     if len(successor.services) > 0:
-        logger.debug("The next job requires services that will not yet be started; we must return to the leader.")
+        logger.debug(
+            "The next job requires services that will not yet be started; we must return to the leader."
+        )
         return None
 
     if isinstance(successor, CheckpointJobDescription):
@@ -126,7 +159,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     # Made it through! This job is chainable.
     return successor
 
-def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobStoreID: str, redirectOutputToLogFile: bool = True) -> int:
+
+def workerScript(
+    jobStore: AbstractJobStore,
+    config: Config,
+    jobName: str,
+    jobStoreID: str,
+    redirectOutputToLogFile: bool = True,
+) -> int:
     """
     Worker process script, runs a job.
 
@@ -142,7 +182,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     set_log_level(config.logLevel)
 
     ##########################################
-    #Create the worker killer, if requested
+    # Create the worker killer, if requested
     ##########################################
 
     logFileByteReportLimit = config.maxLogFileSize
@@ -183,10 +223,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         # before it does. Either way, init will have to clean it up for us.
 
     ##########################################
-    #Load the environment for the job
+    # Load the environment for the job
     ##########################################
 
-    #First load the environment for the job.
+    # First load the environment for the job.
     with jobStore.read_shared_file_stream("environment.pickle") as fileHandle:
         environment = safeUnpickleFromStream(fileHandle)
     env_reject = {
@@ -198,15 +238,15 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         "LOGNAME",
         "USER",
         "DISPLAY",
-        "JAVA_HOME"
+        "JAVA_HOME",
     }
     for i in environment:
         if i == "PATH":
             # Handle path specially. Sometimes e.g. leader may not include
             # /bin, but the Toil appliance needs it.
-            if i in os.environ and os.environ[i] != '':
+            if i in os.environ and os.environ[i] != "":
                 # Use the provided PATH and then the local system's PATH
-                os.environ[i] = environment[i] + ':' + os.environ[i]
+                os.environ[i] = environment[i] + ":" + os.environ[i]
             else:
                 # Use the provided PATH only
                 os.environ[i] = environment[i]
@@ -214,38 +254,42 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
-        for e in environment["PYTHONPATH"].split(':'):
-            if e != '':
+        for e in environment["PYTHONPATH"].split(":"):
+            if e != "":
                 sys.path.append(e)
 
     ##########################################
-    #Setup the temporary directories.
+    # Setup the temporary directories.
     ##########################################
     # Dir to put all this worker's temp files in.
     assert config.workflowID is not None
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
-    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir, config.coordination_dir)
+    toil_coordination_dir = Toil.get_local_workflow_coordination_dir(
+        config.workflowID, config.workDir, config.coordination_dir
+    )
     localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
 
     ##########################################
-    #Setup the logging
+    # Setup the logging
     ##########################################
 
-    #This is mildly tricky because we don't just want to
-    #redirect stdout and stderr for this Python process; we want to redirect it
-    #for this process and all children. Consequently, we can't just replace
-    #sys.stdout and sys.stderr; we need to mess with the underlying OS-level
-    #file descriptors. See <http://stackoverflow.com/a/11632982/402891>
+    # This is mildly tricky because we don't just want to
+    # redirect stdout and stderr for this Python process; we want to redirect it
+    # for this process and all children. Consequently, we can't just replace
+    # sys.stdout and sys.stderr; we need to mess with the underlying OS-level
+    # file descriptors. See <http://stackoverflow.com/a/11632982/402891>
 
-    #When we start, standard input is file descriptor 0, standard output is
-    #file descriptor 1, and standard error is file descriptor 2.
+    # When we start, standard input is file descriptor 0, standard output is
+    # file descriptor 1, and standard error is file descriptor 2.
 
     # Do we even want to redirect output? Let the config make us not do it.
-    redirectOutputToLogFile = redirectOutputToLogFile and not config.disableWorkerOutputCapture
+    redirectOutputToLogFile = (
+        redirectOutputToLogFile and not config.disableWorkerOutputCapture
+    )
 
-    #What file do we want to point FDs 1 and 2 to?
+    # What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
 
     if redirectOutputToLogFile:
@@ -291,6 +335,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
     def blockFn() -> bool:
         return True
+
     listOfJobs = [jobName]
     job = None
     try:
@@ -336,7 +381,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         # If a checkpoint exists, restart from the checkpoint
         ##########################################
 
-        if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
+        if (
+            isinstance(jobDesc, CheckpointJobDescription)
+            and jobDesc.checkpoint is not None
+        ):
             # The job is a checkpoint, and is being restarted after previously completing
             logger.debug("Job is a checkpoint")
             # If the checkpoint still has extant successors or services, its
@@ -351,12 +399,23 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
             # because of the job being a checkpoint
             else:
-                logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
-                #Delete any remnant files
-                list(map(jobStore.delete_file, list(filter(jobStore.file_exists, jobDesc.checkpointFilesToDelete))))
+                logger.debug(
+                    "The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete."
+                )
+                # Delete any remnant files
+                list(
+                    map(
+                        jobStore.delete_file,
+                        list(
+                            filter(
+                                jobStore.file_exists, jobDesc.checkpointFilesToDelete
+                            )
+                        ),
+                    )
+                )
 
         ##########################################
-        #Setup the stats, if requested
+        # Setup the stats, if requested
         ##########################################
 
         if config.stats:
@@ -365,7 +424,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         startTime = time.time()
         while True:
             ##########################################
-            #Run the job body, if there is one
+            # Run the job body, if there is one
             ##########################################
 
             logger.info("Working on job %s", jobDesc)
@@ -382,10 +441,16 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 logger.info("Loaded body %s from description %s", job, jobDesc)
 
                 # Create a fileStore object for the job
-                fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
-                                                              caching=config.caching)
-                with job._executor(stats=statsDict if config.stats else None,
-                                   fileStore=fileStore):
+                fileStore = AbstractFileStore.createFileStore(
+                    jobStore,
+                    jobDesc,
+                    localWorkerTempDir,
+                    blockFn,
+                    caching=config.caching,
+                )
+                with job._executor(
+                    stats=statsDict if config.stats else None, fileStore=fileStore
+                ):
                     with deferredFunctionManager.open() as defer:
                         with fileStore.open(job):
                             # Get the next block function to wait on committing this job
@@ -400,7 +465,12 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             # wants across multiple Toil versions. We also
                             # still pass a jobGraph argument to placate old
                             # versions of Cactus.
-                            job._runner(jobGraph=None, jobStore=jobStore, fileStore=fileStore, defer=defer)
+                            job._runner(
+                                jobGraph=None,
+                                jobStore=jobStore,
+                                fileStore=fileStore,
+                                defer=defer,
+                            )
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
@@ -408,9 +478,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 logger.info("Completed body for %s", jobDesc)
 
             else:
-                #The command may be none, in which case
-                #the JobDescription is either a shell ready to be deleted or has
-                #been scheduled after a failure to cleanup
+                # The command may be none, in which case
+                # the JobDescription is either a shell ready to be deleted or has
+                # been scheduled after a failure to cleanup
                 logger.debug("No user job to run, so finishing")
                 break
 
@@ -418,7 +488,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 raise RuntimeError("The termination flag is set")
 
             ##########################################
-            #Establish if we can run another job within the worker
+            # Establish if we can run another job within the worker
             ##########################################
             successor = nextChainable(jobDesc, jobStore, config)
             if successor is None or config.disableChaining:
@@ -467,8 +537,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
             # Build a fileStore to update the job and commit the replacement.
             # TODO: can we have a commit operation without an entire FileStore???
-            fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
-                                                          caching=config.caching)
+            fileStore = AbstractFileStore.createFileStore(
+                jobStore, jobDesc, localWorkerTempDir, blockFn, caching=config.caching
+            )
 
             # Update blockFn to wait for that commit operation.
             blockFn = fileStore.waitForCommit
@@ -485,7 +556,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             logger.debug("Starting the next job")
 
         ##########################################
-        #Finish up the stats
+        # Finish up the stats
         ##########################################
         if config.stats:
             totalCPUTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
@@ -495,16 +566,25 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
         # log the worker log path here so that if the file is truncated the path can still be found
         if redirectOutputToLogFile:
-            logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
+            logger.info(
+                "Worker log can be found at %s. Set --cleanWorkDir to retain this log",
+                localWorkerTempDir,
+            )
 
-        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
+        logger.info(
+            "Finished running the chain of jobs on this node, we ran for a total of %f seconds",
+            time.time() - startTime,
+        )
 
     ##########################################
-    #Trapping where worker goes wrong
+    # Trapping where worker goes wrong
     ##########################################
-    except Exception as e: #Case that something goes wrong in worker
+    except Exception as e:  # Case that something goes wrong in worker
         traceback.print_exc()
-        logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
+        logger.error(
+            "Exiting the worker because of a failed job on host %s",
+            socket.gethostname(),
+        )
         if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
             # We need to inform the leader that this is a CWL workflow problem
             # and it needs to inform its caller.
@@ -521,16 +601,15 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             logger.debug("cwltool.main._terminate_processess exception: %s", (e))
             raise e
 
-
     ##########################################
-    #Wait for the asynchronous chain of writes/updates to finish
+    # Wait for the asynchronous chain of writes/updates to finish
     ##########################################
 
     blockFn()
 
     ##########################################
-    #All the asynchronous worker/update threads must be finished now,
-    #so safe to test if they completed okay
+    # All the asynchronous worker/update threads must be finished now,
+    # so safe to test if they completed okay
     ##########################################
 
     if AbstractFileStore._terminateEvent.is_set():
@@ -543,7 +622,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         jobAttemptFailed = True
 
     ##########################################
-    #Cleanup
+    # Cleanup
     ##########################################
 
     # Close the worker logging
@@ -583,37 +662,56 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         )
         jobDesc.chainedJobs = listOfJobs
         with jobStore.update_file_stream(logJobStoreFileID) as w:
-            with open(tempWorkerLogPath, 'rb') as f:
-                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
+            with open(tempWorkerLogPath, "rb") as f:
+                if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                     if logFileByteReportLimit > 0:
-                        f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                        f.seek(
+                            -logFileByteReportLimit, 2
+                        )  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
-                        f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
+                        f.seek(
+                            logFileByteReportLimit, 0
+                        )  # seek to first tooBig bytes of file
                 # Dump the possibly-invalid-Unicode bytes into the log file
-                w.write(f.read()) # TODO load file using a buffer
+                w.write(f.read())  # TODO load file using a buffer
         # Commit log file reference back to JobStore
         jobStore.update_job(jobDesc)
 
-    elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
-          and redirectOutputToLogFile):  # write log messages
-        with open(tempWorkerLogPath, 'rb') as logFile:
+    elif (
+        debugging
+        or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS))
+    ) and redirectOutputToLogFile:  # write log messages
+        with open(tempWorkerLogPath, "rb") as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
-                    logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
+                    logFile.seek(
+                        -logFileByteReportLimit, 2
+                    )  # seek to last tooBig bytes of file
                 elif logFileByteReportLimit < 0:
-                    logFile.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
+                    logFile.seek(
+                        logFileByteReportLimit, 0
+                    )  # seek to first tooBig bytes of file
             # Make sure lines are Unicode so they can be JSON serialized as part of the dict.
             # We may have damaged the Unicode text by cutting it at an arbitrary byte so we drop bad characters.
-            logMessages = [line.decode('utf-8', 'skip') for line in logFile.read().splitlines()]
+            logMessages = [
+                line.decode("utf-8", "skip") for line in logFile.read().splitlines()
+            ]
         statsDict.logs.names = listOfJobs
         statsDict.logs.messages = logMessages
 
-    if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
+    if (
+        debugging or config.stats or statsDict.workers.logsToMaster
+    ) and not jobAttemptFailed:  # We have stats/logging to report back
         jobStore.write_logs(json.dumps(statsDict, ensure_ascii=True))
 
     # Remove the temp dir
     cleanUp = config.cleanWorkDir
-    if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
+    if (
+        cleanUp == "always"
+        or (cleanUp == "onSuccess" and not jobAttemptFailed)
+        or (cleanUp == "onError" and jobAttemptFailed)
+    ):
+
         def make_parent_writable(func: Callable[[str], Any], path: str, _: Any) -> None:
             """
             When encountering an error removing a file or directory, make sure
@@ -624,9 +722,17 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             """
             # Just chmod it for rwx for user. This can't work anyway if it isn't ours.
             try:
-                os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+                os.chmod(
+                    os.path.dirname(path), stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR
+                )
             except PermissionError as e:
-                logger.error('Could not set permissions on %s to allow cleanup of %s: %s', os.path.dirname(path), path, e)
+                logger.error(
+                    "Could not set permissions on %s to allow cleanup of %s: %s",
+                    os.path.dirname(path),
+                    path,
+                    e,
+                )
+
         shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
 
     # This must happen after the log file is done with, else there is no place to put the log
@@ -640,6 +746,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         return failure_exit_code
     else:
         return 0
+
 
 def parse_args(args: List[str]) -> argparse.Namespace:
     """
@@ -655,20 +762,27 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     # Now add all the options to it
 
     # Base required job information
-    parser.add_argument("jobName", type=str,
-        help="Text name of the job being run")
-    parser.add_argument("jobStoreLocator", type=str,
-        help="Information required to connect to the job store")
-    parser.add_argument("jobStoreID", type=str,
-        help="ID of the job within the job store")
+    parser.add_argument("jobName", type=str, help="Text name of the job being run")
+    parser.add_argument(
+        "jobStoreLocator",
+        type=str,
+        help="Information required to connect to the job store",
+    )
+    parser.add_argument(
+        "jobStoreID", type=str, help="ID of the job within the job store"
+    )
 
     # Additional worker abilities
-    parser.add_argument("--context", default=[], action="append",
+    parser.add_argument(
+        "--context",
+        default=[],
+        action="append",
         help="""Pickled, base64-encoded context manager(s) to run job inside of.
                 Allows the Toil leader to pass setup and cleanup work provided by the
                 batch system, in the form of pickled Python context manager objects,
                 that the worker can then run before/after the job on the batch
-                system's behalf.""")
+                system's behalf.""",
+    )
 
     return parser.parse_args(args)
 
@@ -688,10 +802,12 @@ def in_contexts(contexts: List[str]) -> Iterator[None]:
         rest = contexts[1:]
 
         try:
-            manager = pickle.loads(base64.b64decode(first.encode('utf-8')))
+            manager = pickle.loads(base64.b64decode(first.encode("utf-8")))
         except:
             exc_info = sys.exc_info()
-            logger.error('Exception while unpickling context manager: ', exc_info=exc_info)
+            logger.error(
+                "Exception while unpickling context manager: ", exc_info=exc_info
+            )
             raise
 
         with manager:
@@ -714,7 +830,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     jobStoreID = argv[3]
 
     ##########################################
-    #Load the jobStore/config file
+    # Load the jobStore/config file
     ##########################################
 
     jobStore = Toil.resumeJobStore(options.jobStoreLocator)

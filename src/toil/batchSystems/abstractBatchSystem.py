@@ -18,17 +18,19 @@ import shutil
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    Iterator,
-                    List,
-                    NamedTuple,
-                    Optional,
-                    TypeVar,
-                    Union,
-                    cast)
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
@@ -43,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
+
 class BatchJobExitReason(enum.IntEnum):
     FINISHED: int = 1  # Successfully finished.
     FAILED: int = 2  # Job finished, but failed.
@@ -50,6 +53,7 @@ class BatchJobExitReason(enum.IntEnum):
     KILLED: int = 4  # Job killed before finishing.
     ERROR: int = 5  # Internal error.
     MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
+
 
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: int
@@ -62,6 +66,7 @@ class UpdatedBatchJobInfo(NamedTuple):
 
     exitReason: Optional[BatchJobExitReason]
     wallTime: Union[float, int, None]
+
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
@@ -80,8 +85,10 @@ class WorkerCleanupInfo(NamedTuple):
     'onSuccess', 'onError', 'never')
     """
 
+
 class AbstractBatchSystem(ABC):
     """An abstract base class to represent the interface the batch system must provide to Toil."""
+
     @classmethod
     @abstractmethod
     def supportsAutoDeployment(cls) -> bool:
@@ -130,7 +137,9 @@ class AbstractBatchSystem(ABC):
         pass
 
     @abstractmethod
-    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(
+        self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None
+    ) -> int:
         """
         Issues a job with the specified command to the batch system and returns
         a unique jobID.
@@ -272,7 +281,9 @@ class AbstractBatchSystem(ABC):
 class BatchSystemSupport(AbstractBatchSystem):
     """Partial implementation of AbstractBatchSystem, support methods."""
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         """
         Initialize initial state of the object.
 
@@ -320,9 +331,11 @@ class BatchSystemSupport(AbstractBatchSystem):
                greater than allowed
         """
         try:
-            for resource, requested, available in [('cores', requirer.cores, self.maxCores),
-                                                   ('memory', requirer.memory, self.maxMemory),
-                                                   ('disk', requirer.disk, self.maxDisk)]:
+            for resource, requested, available in [
+                ("cores", requirer.cores, self.maxCores),
+                ("memory", requirer.memory, self.maxMemory),
+                ("disk", requirer.disk, self.maxDisk),
+            ]:
                 assert requested is not None
                 if requested > available:
                     raise InsufficientSystemResources(requirer, resource, available)
@@ -331,7 +344,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         except InsufficientSystemResources as e:
             # Add more annotation info to the error
             e.batch_system = self.__class__.__name__ or None
-            e.source = self.config.workDir if e.resource == 'disk' else None
+            e.source = self.config.workDir if e.resource == "disk" else None
             raise e
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
@@ -344,9 +357,12 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if len(requirer.accelerators) > 0:
             # By default we assume we can't fulfill any of these
-            raise InsufficientSystemResources(requirer, 'accelerators', [], details=[
-                'The batch system does not support any accelerators.'
-            ])
+            raise InsufficientSystemResources(
+                requirer,
+                "accelerators",
+                [],
+                details=["The batch system does not support any accelerators."],
+            )
 
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
@@ -383,7 +399,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()
 
-    def formatStdOutErrPath(self, toil_job_id: int, cluster_job_id: str, std: str) -> str:
+    def formatStdOutErrPath(
+        self, toil_job_id: int, cluster_job_id: str, std: str
+    ) -> str:
         """
         Format path for batch system standard output/error and other files
         generated by the batch system itself.
@@ -402,18 +420,20 @@ class BatchSystemSupport(AbstractBatchSystem):
         if self.config.noStdOutErr:
             return os.devnull
 
-        fileName: str = f'toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log'
+        fileName: str = (
+            f"toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log"
+        )
         workDir: str = Toil.getToilWorkDir(self.config.workDir)
         return os.path.join(workDir, fileName)
-    
+
     def format_std_out_err_glob(self, toil_job_id: int) -> str:
         """
         Get a glob string that will match all file paths generated by formatStdOutErrPath for a job.
         """
-        file_glob: str = f'toil_{self.config.workflowID}.{toil_job_id}.*.log'
+        file_glob: str = f"toil_{self.config.workflowID}.{toil_job_id}.*.log"
         work_dir: str = Toil.getToilWorkDir(self.config.workDir)
         return os.path.join(work_dir, file_glob)
-        
+
     @staticmethod
     def workerCleanup(info: WorkerCleanupInfo) -> None:
         """
@@ -425,16 +445,21 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert isinstance(info, WorkerCleanupInfo)
         assert info.workflow_id is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflow_id, info.work_dir, info.coordination_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(
+            info.workflow_id, info.work_dir, info.coordination_dir
+        )
         DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(info.workflow_id, info.work_dir, info.coordination_dir)
-        if info.clean_work_dir in ('always', 'onSuccess', 'onError'):
+        AbstractFileStore.shutdownFileStore(
+            info.workflow_id, info.work_dir, info.coordination_dir
+        )
+        if info.clean_work_dir in ("always", "onSuccess", "onError"):
             if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
                 shutil.rmtree(workflowDir, ignore_errors=True)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.
                 shutil.rmtree(coordination_dir, ignore_errors=True)
+
 
 class NodeInfo:
     """
@@ -452,10 +477,17 @@ class NodeInfo:
     The workers attribute is an integer reflecting the number of workers currently active workers
     on the node.
     """
-    def __init__(self, coresUsed: float, memoryUsed: float,
-                 coresTotal: float, memoryTotal: int,
-                 requestedCores: float, requestedMemory: int,
-                 workers: int) -> None:
+
+    def __init__(
+        self,
+        coresUsed: float,
+        memoryUsed: float,
+        coresTotal: float,
+        memoryTotal: int,
+        requestedCores: float,
+        requestedMemory: int,
+        workers: int,
+    ) -> None:
         self.coresUsed = coresUsed
         self.memoryUsed = memoryUsed
 
@@ -476,7 +508,9 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
+    def getNodes(
+        self, preemptable: Optional[bool] = None, timeout: int = 600
+    ) -> Dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
@@ -521,7 +555,15 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
+    def __init__(
+        self,
+        requirer: Requirer,
+        resource: str,
+        available: Optional[ParsedRequirement] = None,
+        batch_system: Optional[str] = None,
+        source: Optional[str] = None,
+        details: List[str] = [],
+    ) -> None:
         """
         Make a new exception about how we couldn't get enough of something.
 
@@ -534,10 +576,12 @@ class InsufficientSystemResources(Exception):
         :param details: Any extra details about the problem that can be attached to the error.
         """
 
-        self.job_name : Optional[str] = None
-        if hasattr(requirer, 'jobName') and isinstance(getattr(requirer, 'jobName'), str):
+        self.job_name: Optional[str] = None
+        if hasattr(requirer, "jobName") and isinstance(
+            getattr(requirer, "jobName"), str
+        ):
             # Keep the job name if any
-            self.job_name = cast(str, getattr(requirer, 'jobName'))
+            self.job_name = cast(str, getattr(requirer, "jobName"))
 
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
@@ -551,31 +595,38 @@ class InsufficientSystemResources(Exception):
         Explain the exception.
         """
 
-        unit = 'bytes of ' if self.resource in ('disk', 'memory') else ''
-        purpose = ' for temporary space' if self.resource == 'disk' else ''
-        qualifier = ' free on {self.source}' if self.resource == 'disk' and self.source is not None else ''
+        unit = "bytes of " if self.resource in ("disk", "memory") else ""
+        purpose = " for temporary space" if self.resource == "disk" else ""
+        qualifier = (
+            " free on {self.source}"
+            if self.resource == "disk" and self.source is not None
+            else ""
+        )
 
         msg = []
         if self.job_name is not None:
-            msg.append(f'The job {self.job_name} is requesting ')
+            msg.append(f"The job {self.job_name} is requesting ")
         else:
-            msg.append(f'Requesting ')
-        msg.append(f'{self.requested} {unit}{self.resource}')
+            msg.append(f"Requesting ")
+        msg.append(f"{self.requested} {unit}{self.resource}")
         msg.append(purpose)
         if self.available is not None:
-            msg.append(f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
-            if self.resource in ('cores', 'memory', 'disk'):
-                msg.append(f', or enforced by --max{self.resource.capitalize()}')
+            msg.append(
+                f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with'
+            )
+            if self.resource in ("cores", "memory", "disk"):
+                msg.append(f", or enforced by --max{self.resource.capitalize()}")
         else:
-            msg.append(', but that is not available')
-        msg.append('.')
+            msg.append(", but that is not available")
+        msg.append(".")
 
-        if self.resource == 'disk':
-            msg.append(' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.')
+        if self.resource == "disk":
+            msg.append(
+                ' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.'
+            )
 
         for detail in self.details:
-            msg.append(' ')
+            msg.append(" ")
             msg.append(detail)
 
-        return ''.join(msg)
-
+        return "".join(msg)

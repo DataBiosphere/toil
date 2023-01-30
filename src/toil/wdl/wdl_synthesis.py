@@ -17,12 +17,14 @@ import tempfile
 from typing import Optional
 
 from toil.wdl.wdl_functions import heredoc_wdl
-from toil.wdl.wdl_types import (WDLArrayType,
-                                WDLCompoundType,
-                                WDLFileType,
-                                WDLMapType,
-                                WDLPairType,
-                                WDLType)
+from toil.wdl.wdl_types import (
+    WDLArrayType,
+    WDLCompoundType,
+    WDLFileType,
+    WDLMapType,
+    WDLPairType,
+    WDLType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +47,17 @@ class SynthesizeWDL:
     then write the main and all of its subsections.
     """
 
-    def __init__(self,
-                 version: str,
-                 tasks_dictionary: dict,
-                 workflows_dictionary: dict,
-                 output_directory: str,
-                 json_dict: dict,
-                 docker_user: str,
-                 jobstore: Optional[str] = None,
-                 destBucket: Optional[str] = None):
+    def __init__(
+        self,
+        version: str,
+        tasks_dictionary: dict,
+        workflows_dictionary: dict,
+        output_directory: str,
+        json_dict: dict,
+        docker_user: str,
+        jobstore: Optional[str] = None,
+        destBucket: Optional[str] = None,
+    ):
 
         self.version = version
         self.output_directory = output_directory
@@ -62,17 +66,20 @@ class SynthesizeWDL:
                 os.makedirs(self.output_directory)
             except:
                 raise OSError(
-                    'Could not create directory.  Insufficient permissions or disk space most likely.')
+                    "Could not create directory.  Insufficient permissions or disk space most likely."
+                )
 
-        self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
+        self.output_file = os.path.join(self.output_directory, "toilwdl_compiled.py")
 
         if jobstore:
             self.jobstore = jobstore
         else:
-            self.jobstore = tempfile.mkdtemp(prefix=f"{os.getcwd()}{os.sep}toilWorkflowRun")
+            self.jobstore = tempfile.mkdtemp(
+                prefix=f"{os.getcwd()}{os.sep}toilWorkflowRun"
+            )
             os.rmdir(self.jobstore)
 
-        if docker_user != 'None':
+        if docker_user != "None":
             self.docker_user = "'" + docker_user + "'"
         else:
             self.docker_user = docker_user
@@ -96,7 +103,8 @@ class SynthesizeWDL:
 
     def write_modules(self):
         # string used to write imports to the file
-        module_string = heredoc_wdl('''
+        module_string = heredoc_wdl(
+            """
                     from toil.job import Job
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
@@ -168,7 +176,9 @@ class SynthesizeWDL:
                     logger = logging.getLogger(__name__)
 
 
-                        ''', {'jobstore': self.jobstore})[1:]
+                        """,
+            {"jobstore": self.jobstore},
+        )[1:]
         return module_string
 
     def write_main(self):
@@ -192,7 +202,7 @@ class SynthesizeWDL:
         :return: giant string containing the main def for the toil script.
         """
 
-        main_section = ''
+        main_section = ""
 
         # write out the main header
         main_header = self.write_main_header()
@@ -210,12 +220,15 @@ class SynthesizeWDL:
         return main_section
 
     def write_main_header(self):
-        main_header = heredoc_wdl('''
+        main_header = heredoc_wdl(
+            """
             if __name__=="__main__":
                 options = Job.Runner.getDefaultOptions("{jobstore}")
                 options.clean = 'always'
                 with Toil(options) as fileStore:
-            ''', {'jobstore': self.jobstore})
+            """,
+            {"jobstore": self.jobstore},
+        )
         return main_header
 
     def write_main_jobwrappers(self):
@@ -224,36 +237,45 @@ class SynthesizeWDL:
 
         :return: A string representing this.
         """
-        main_section = ''
+        main_section = ""
 
         # toil cannot technically start with multiple jobs, so an empty
         # 'initialize_jobs' function is always called first to get around this
-        main_section = main_section + '        job0 = Job.wrapJobFn(initialize_jobs)\n'
+        main_section = main_section + "        job0 = Job.wrapJobFn(initialize_jobs)\n"
 
         # declare each job in main as a wrapped toil function in order of priority
         for wf in self.workflows_dictionary:
             self.current_workflow = wf
             for assignment in self.workflows_dictionary[wf]:
-                if assignment.startswith('declaration'):
-                    main_section += self.write_main_jobwrappers_declaration(self.workflows_dictionary[wf][assignment])
-                if assignment.startswith('call'):
-                    main_section += '        job0 = job0.encapsulate()\n'
-                    main_section += self.write_main_jobwrappers_call(self.workflows_dictionary[wf][assignment])
-                if assignment.startswith('scatter'):
-                    main_section += '        job0 = job0.encapsulate()\n'
-                    main_section += self.write_main_jobwrappers_scatter(self.workflows_dictionary[wf][assignment],
-                                                                        assignment)
-                if assignment.startswith('if'):
-                    main_section += '        if {}:\n'.format(self.workflows_dictionary[wf][assignment]['expression'])
-                    main_section += self.write_main_jobwrappers_if(self.workflows_dictionary[wf][assignment]['body'])
+                if assignment.startswith("declaration"):
+                    main_section += self.write_main_jobwrappers_declaration(
+                        self.workflows_dictionary[wf][assignment]
+                    )
+                if assignment.startswith("call"):
+                    main_section += "        job0 = job0.encapsulate()\n"
+                    main_section += self.write_main_jobwrappers_call(
+                        self.workflows_dictionary[wf][assignment]
+                    )
+                if assignment.startswith("scatter"):
+                    main_section += "        job0 = job0.encapsulate()\n"
+                    main_section += self.write_main_jobwrappers_scatter(
+                        self.workflows_dictionary[wf][assignment], assignment
+                    )
+                if assignment.startswith("if"):
+                    main_section += "        if {}:\n".format(
+                        self.workflows_dictionary[wf][assignment]["expression"]
+                    )
+                    main_section += self.write_main_jobwrappers_if(
+                        self.workflows_dictionary[wf][assignment]["body"]
+                    )
 
-        main_section += '\n        fileStore.start(job0)\n'
+        main_section += "\n        fileStore.start(job0)\n"
 
         return main_section
 
     def write_main_jobwrappers_declaration(self, declaration):
 
-        main_section = ''
+        main_section = ""
         var_name, var_type, var_expr = declaration
 
         # check the json file for the expression's value
@@ -262,12 +284,15 @@ class SynthesizeWDL:
         if json_expressn is not None:
             var_expr = json_expressn
 
-        main_section += '        {} = {}.create(\n                {})\n' \
-            .format(var_name, self.write_declaration_type(var_type), var_expr)
+        main_section += "        {} = {}.create(\n                {})\n".format(
+            var_name, self.write_declaration_type(var_type), var_expr
+        )
 
         # import filepath into jobstore
         if self.needs_file_import(var_type) and var_expr:
-            main_section += f'        {var_name} = process_infile({var_name}, fileStore)\n'
+            main_section += (
+                f"        {var_name} = process_infile({var_name}, fileStore)\n"
+            )
 
         return main_section
 
@@ -277,7 +302,8 @@ class SynthesizeWDL:
 
         :return: A string representing this.
         """
-        main_section = heredoc_wdl('''
+        main_section = heredoc_wdl(
+            """
             outdir = '{outdir}'
             onlyfiles = [os.path.join(outdir, f) for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
             for output_f_path in onlyfiles:
@@ -285,79 +311,104 @@ class SynthesizeWDL:
                 preserveThisFilename = os.path.basename(output_f_path)
                 destUrl = '/'.join(s.strip('/') for s in [destBucket, preserveThisFilename])
                 fileStore.exportFile(output_file, destUrl)
-            ''', {'outdir': self.output_directory}, indent='    ')
+            """,
+            {"outdir": self.output_directory},
+            indent="    ",
+        )
         return main_section
 
     def fetch_ignoredifs(self, assignments, breaking_assignment):
         ignore_ifs = []
         for assignment in assignments:
-            if assignment.startswith('call'):
+            if assignment.startswith("call"):
                 pass
-            elif assignment.startswith('scatter'):
+            elif assignment.startswith("scatter"):
                 pass
-            elif assignment.startswith('if'):
-                if not self.fetch_ignoredifs_chain(assignments[assignment]['body'], breaking_assignment):
+            elif assignment.startswith("if"):
+                if not self.fetch_ignoredifs_chain(
+                    assignments[assignment]["body"], breaking_assignment
+                ):
                     ignore_ifs.append(assignment)
         return ignore_ifs
 
     def fetch_ignoredifs_chain(self, assignments, breaking_assignment):
         for assignment in assignments:
-            if assignment.startswith('call'):
+            if assignment.startswith("call"):
                 if assignment == breaking_assignment:
                     return True
-            if assignment.startswith('scatter'):
+            if assignment.startswith("scatter"):
                 if assignment == breaking_assignment:
                     return True
-            if assignment.startswith('if'):
-                return self.fetch_ignoredifs_chain(assignments[assignment]['body'], breaking_assignment)
+            if assignment.startswith("if"):
+                return self.fetch_ignoredifs_chain(
+                    assignments[assignment]["body"], breaking_assignment
+                )
         return False
 
     def write_main_jobwrappers_if(self, if_statement):
         # check for empty if statement
         if not if_statement:
-            return self.indent('        pass')
+            return self.indent("        pass")
 
-        main_section = ''
+        main_section = ""
         for assignment in if_statement:
-            if assignment.startswith('declaration'):
-                main_section += self.write_main_jobwrappers_declaration(if_statement[assignment])
-            if assignment.startswith('call'):
-                main_section += '        job0 = job0.encapsulate()\n'
-                main_section += self.write_main_jobwrappers_call(if_statement[assignment])
-            if assignment.startswith('scatter'):
-                main_section += '        job0 = job0.encapsulate()\n'
-                main_section += self.write_main_jobwrappers_scatter(if_statement[assignment], assignment)
-            if assignment.startswith('if'):
-                main_section += '        if {}:\n'.format(if_statement[assignment]['expression'])
-                main_section += self.write_main_jobwrappers_if(if_statement[assignment]['body'])
+            if assignment.startswith("declaration"):
+                main_section += self.write_main_jobwrappers_declaration(
+                    if_statement[assignment]
+                )
+            if assignment.startswith("call"):
+                main_section += "        job0 = job0.encapsulate()\n"
+                main_section += self.write_main_jobwrappers_call(
+                    if_statement[assignment]
+                )
+            if assignment.startswith("scatter"):
+                main_section += "        job0 = job0.encapsulate()\n"
+                main_section += self.write_main_jobwrappers_scatter(
+                    if_statement[assignment], assignment
+                )
+            if assignment.startswith("if"):
+                main_section += "        if {}:\n".format(
+                    if_statement[assignment]["expression"]
+                )
+                main_section += self.write_main_jobwrappers_if(
+                    if_statement[assignment]["body"]
+                )
         main_section = self.indent(main_section)
         return main_section
 
     def write_main_jobwrappers_scatter(self, task, assignment):
         scatter_inputs = self.fetch_scatter_inputs(assignment)
 
-        main_section = '        {scatter} = job0.addChild({scatter}Cls('.format(scatter=assignment)
+        main_section = "        {scatter} = job0.addChild({scatter}Cls(".format(
+            scatter=assignment
+        )
         for var in scatter_inputs:
-            main_section += var + '=' + var + ', '
-        if main_section.endswith(', '):
+            main_section += var + "=" + var + ", "
+        if main_section.endswith(", "):
             main_section = main_section[:-2]
-        main_section += '))\n'
+        main_section += "))\n"
 
         scatter_outputs = self.fetch_scatter_outputs(task)
         for var in scatter_outputs:
-            main_section += '        {var} = {scatter}.rv("{var}")\n'.format(var=var['task'] + '_' + var['output'], scatter=assignment)
+            main_section += '        {var} = {scatter}.rv("{var}")\n'.format(
+                var=var["task"] + "_" + var["output"], scatter=assignment
+            )
 
         return main_section
 
     def fetch_scatter_outputs(self, task):
         scatteroutputs = []
 
-        for var in task['body']:
+        for var in task["body"]:
             # TODO variable support
-            if var.startswith('call'):
-                if 'outputs' in self.tasks_dictionary[task['body'][var]['task']]:
-                    for output in self.tasks_dictionary[task['body'][var]['task']]['outputs']:
-                        scatteroutputs.append({'task': task['body'][var]['alias'], 'output': output[0]})
+            if var.startswith("call"):
+                if "outputs" in self.tasks_dictionary[task["body"][var]["task"]]:
+                    for output in self.tasks_dictionary[task["body"][var]["task"]][
+                        "outputs"
+                    ]:
+                        scatteroutputs.append(
+                            {"task": task["body"][var]["alias"], "output": output[0]}
+                        )
         return scatteroutputs
 
     def fetch_scatter_inputs(self, assigned):
@@ -373,21 +424,36 @@ class SynthesizeWDL:
             for assignment in self.workflows_dictionary[wf]:
                 if assignment == assigned:
                     return scatternamespace
-                elif assignment.startswith('declaration'):
+                elif assignment.startswith("declaration"):
                     name, _, _ = self.workflows_dictionary[wf][assignment]
                     scatternamespace.append(name)
-                elif assignment.startswith('call'):
-                    if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:
-                        for output in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]['outputs']:
-                            scatternamespace.append(self.workflows_dictionary[wf][assignment]['alias'] + '_' + output[0])
-                elif assignment.startswith('scatter'):
-                    for var in self.fetch_scatter_outputs(self.workflows_dictionary[wf][assignment]):
-                        scatternamespace.append(var['task'] + '_' + var['output'])
-                elif assignment.startswith('if') and assignment not in ignored_ifs:
-                    new_list, cont_or_break = self.fetch_scatter_inputs_chain(self.workflows_dictionary[wf][assignment]['body'],
-                                                                        assigned,
-                                                                        ignored_ifs,
-                                                                        inputs_list=[])
+                elif assignment.startswith("call"):
+                    if (
+                        "outputs"
+                        in self.tasks_dictionary[
+                            self.workflows_dictionary[wf][assignment]["task"]
+                        ]
+                    ):
+                        for output in self.tasks_dictionary[
+                            self.workflows_dictionary[wf][assignment]["task"]
+                        ]["outputs"]:
+                            scatternamespace.append(
+                                self.workflows_dictionary[wf][assignment]["alias"]
+                                + "_"
+                                + output[0]
+                            )
+                elif assignment.startswith("scatter"):
+                    for var in self.fetch_scatter_outputs(
+                        self.workflows_dictionary[wf][assignment]
+                    ):
+                        scatternamespace.append(var["task"] + "_" + var["output"])
+                elif assignment.startswith("if") and assignment not in ignored_ifs:
+                    new_list, cont_or_break = self.fetch_scatter_inputs_chain(
+                        self.workflows_dictionary[wf][assignment]["body"],
+                        assigned,
+                        ignored_ifs,
+                        inputs_list=[],
+                    )
                     scatternamespace += new_list
                     if not cont_or_break:
                         return scatternamespace
@@ -397,39 +463,45 @@ class SynthesizeWDL:
         for i in inputs:
             if i == assigned:
                 return inputs_list, False
-            elif i.startswith('call'):
-                if 'outputs' in self.tasks_dictionary[inputs[i]['task']]:
-                    for output in self.tasks_dictionary[inputs[i]['task']]['outputs']:
-                        inputs_list.append(inputs[i]['alias'] + '_' + output[0])
-            elif i.startswith('scatter'):
+            elif i.startswith("call"):
+                if "outputs" in self.tasks_dictionary[inputs[i]["task"]]:
+                    for output in self.tasks_dictionary[inputs[i]["task"]]["outputs"]:
+                        inputs_list.append(inputs[i]["alias"] + "_" + output[0])
+            elif i.startswith("scatter"):
                 for var in self.fetch_scatter_outputs(inputs[i]):
-                    inputs_list.append(var['task'] + '_' + var['output'])
-            elif i.startswith('if') and i not in ignored_ifs:
-                inputs_list, cont_or_break = self.fetch_scatter_inputs_chain(inputs[i]['body'], assigned, ignored_ifs, inputs_list)
+                    inputs_list.append(var["task"] + "_" + var["output"])
+            elif i.startswith("if") and i not in ignored_ifs:
+                inputs_list, cont_or_break = self.fetch_scatter_inputs_chain(
+                    inputs[i]["body"], assigned, ignored_ifs, inputs_list
+                )
                 if not cont_or_break:
                     return inputs_list, False
         return inputs_list, True
 
     def write_main_jobwrappers_call(self, task):
-        main_section = '        {} = job0.addChild({}Cls('.format(task['alias'], task['task'])
-        for var in task['io']:
-            main_section += var + '=' + task['io'][var] + ', '
-        if main_section.endswith(', '):
+        main_section = "        {} = job0.addChild({}Cls(".format(
+            task["alias"], task["task"]
+        )
+        for var in task["io"]:
+            main_section += var + "=" + task["io"][var] + ", "
+        if main_section.endswith(", "):
             main_section = main_section[:-2]
-        main_section += '))\n'
+        main_section += "))\n"
 
         call_outputs = self.fetch_call_outputs(task)
         for var in call_outputs:
-            main_section += '        {var} = {task}.rv("{output}")\n'.format(var=var['task'] + '_' + var['output'],
-                                                                             task=var['task'],
-                                                                             output=var['output'])
+            main_section += '        {var} = {task}.rv("{output}")\n'.format(
+                var=var["task"] + "_" + var["output"],
+                task=var["task"],
+                output=var["output"],
+            )
         return main_section
 
     def fetch_call_outputs(self, task):
         calloutputs = []
-        if 'outputs' in self.tasks_dictionary[task['task']]:
-            for output in self.tasks_dictionary[task['task']]['outputs']:
-                calloutputs.append({'task': task['alias'], 'output': output[0]})
+        if "outputs" in self.tasks_dictionary[task["task"]]:
+            for output in self.tasks_dictionary[task["task"]]["outputs"]:
+                calloutputs.append({"task": task["alias"], "output": output[0]})
         return calloutputs
 
     def write_functions(self):
@@ -441,28 +513,38 @@ class SynthesizeWDL:
 
         # toil cannot technically start with multiple jobs, so an empty
         # 'initialize_jobs' function is always called first to get around this
-        fn_section = 'def initialize_jobs(job):\n' + \
-                     '    job.fileStore.logToMaster("initialize_jobs")\n'
+        fn_section = (
+            "def initialize_jobs(job):\n"
+            + '    job.fileStore.logToMaster("initialize_jobs")\n'
+        )
 
         for job in self.tasks_dictionary:
             fn_section += self.write_function(job)
 
         for wf in self.workflows_dictionary:
             for assignment in self.workflows_dictionary[wf]:
-                if assignment.startswith('scatter'):
-                    fn_section += self.write_scatterfunction(self.workflows_dictionary[wf][assignment], assignment)
-                if assignment.startswith('if'):
-                    fn_section += self.write_scatterfunctions_within_if(self.workflows_dictionary[wf][assignment]['body'])
+                if assignment.startswith("scatter"):
+                    fn_section += self.write_scatterfunction(
+                        self.workflows_dictionary[wf][assignment], assignment
+                    )
+                if assignment.startswith("if"):
+                    fn_section += self.write_scatterfunctions_within_if(
+                        self.workflows_dictionary[wf][assignment]["body"]
+                    )
 
         return fn_section
 
     def write_scatterfunctions_within_if(self, ifstatement):
-        fn_section = ''
+        fn_section = ""
         for assignment in ifstatement:
-            if assignment.startswith('scatter'):
-                fn_section += self.write_scatterfunction(ifstatement[assignment], assignment)
-            if assignment.startswith('if'):
-                fn_section += self.write_scatterfunctions_within_if(ifstatement[assignment]['body'])
+            if assignment.startswith("scatter"):
+                fn_section += self.write_scatterfunction(
+                    ifstatement[assignment], assignment
+                )
+            if assignment.startswith("if"):
+                fn_section += self.write_scatterfunctions_within_if(
+                    ifstatement[assignment]["body"]
+                )
         return fn_section
 
     def write_scatterfunction(self, job, scattername):
@@ -493,17 +575,18 @@ class SynthesizeWDL:
         """
         scatter_inputs = self.fetch_scatter_inputs(scattername)
 
-        fn_section = f'\n\nclass {scattername}Cls(Job):\n'
-        fn_section += '    def __init__(self, '
+        fn_section = f"\n\nclass {scattername}Cls(Job):\n"
+        fn_section += "    def __init__(self, "
         for input in scatter_inputs:
-            fn_section += f'{input}=None, '
-        fn_section += '*args, **kwargs):\n'
-        fn_section += '        Job.__init__(self)\n\n'
+            fn_section += f"{input}=None, "
+        fn_section += "*args, **kwargs):\n"
+        fn_section += "        Job.__init__(self)\n\n"
 
         for input in scatter_inputs:
-            fn_section += '        self.id_{input} = {input}\n'.format(input=input)
+            fn_section += "        self.id_{input} = {input}\n".format(input=input)
 
-        fn_section += heredoc_wdl('''
+        fn_section += heredoc_wdl(
+            """
 
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
@@ -514,9 +597,12 @@ class SynthesizeWDL:
                                  except OSError as e:
                                      if e.errno != errno.EEXIST:
                                          raise
-                                 ''', {'jobname': scattername}, indent='    ')[1:]
+                                 """,
+            {"jobname": scattername},
+            indent="    ",
+        )[1:]
         for input in scatter_inputs:
-            fn_section += '        {input} = self.id_{input}\n'.format(input=input)
+            fn_section += "        {input} = self.id_{input}\n".format(input=input)
         return fn_section
 
     def write_scatterfunction_outputreturn(self, scatter_outputs):
@@ -524,13 +610,15 @@ class SynthesizeWDL:
 
         :return:
         """
-        fn_section = '\n        rvDict = {'
+        fn_section = "\n        rvDict = {"
         for var in scatter_outputs:
-            fn_section += '"{var}": {var}, '.format(var=var['task'] + '_' + var['output'])
-        if fn_section.endswith(', '):
+            fn_section += '"{var}": {var}, '.format(
+                var=var["task"] + "_" + var["output"]
+            )
+        if fn_section.endswith(", "):
             fn_section = fn_section[:-2]
-        fn_section += '}\n'
-        fn_section += '        return rvDict\n\n'
+        fn_section += "}\n"
+        fn_section += "        return rvDict\n\n"
 
         return fn_section[:-1]
 
@@ -539,9 +627,11 @@ class SynthesizeWDL:
 
         :return:
         """
-        fn_section = '\n'
+        fn_section = "\n"
         for var in scatter_outputs:
-            fn_section += '        {var} = []\n'.format(var=var['task'] + '_' + var['output'])
+            fn_section += "        {var} = []\n".format(
+                var=var["task"] + "_" + var["output"]
+            )
 
         return fn_section
 
@@ -550,46 +640,55 @@ class SynthesizeWDL:
 
         :return:
         """
-        collection = job['collection']
-        item = job['item']
+        collection = job["collection"]
+        item = job["item"]
 
-        fn_section = f'        for {item} in {collection}:\n'
+        fn_section = f"        for {item} in {collection}:\n"
 
-        previous_dependency = 'self'
-        for statement in job['body']:
-            if statement.startswith('declaration'):
+        previous_dependency = "self"
+        for statement in job["body"]:
+            if statement.startswith("declaration"):
                 # reusing write_main_jobwrappers_declaration() here, but it needs to be indented one more level.
                 fn_section += self.indent(
-                    self.write_main_jobwrappers_declaration(job['body'][statement]))
-            elif statement.startswith('call'):
-                fn_section += self.write_scatter_callwrapper(job['body'][statement], previous_dependency)
-                previous_dependency = 'job_' + job['body'][statement]['alias']
-            elif statement.startswith('scatter'):
-                raise NotImplementedError('nested scatter not implemented.')
-            elif statement.startswith('if'):
-                fn_section += '            if {}:\n'.format(job['body'][statement]['expression'])
+                    self.write_main_jobwrappers_declaration(job["body"][statement])
+                )
+            elif statement.startswith("call"):
+                fn_section += self.write_scatter_callwrapper(
+                    job["body"][statement], previous_dependency
+                )
+                previous_dependency = "job_" + job["body"][statement]["alias"]
+            elif statement.startswith("scatter"):
+                raise NotImplementedError("nested scatter not implemented.")
+            elif statement.startswith("if"):
+                fn_section += "            if {}:\n".format(
+                    job["body"][statement]["expression"]
+                )
                 # reusing write_main_jobwrappers_if() here, but it needs to be indented one more level.
-                fn_section += self.indent(self.write_main_jobwrappers_if(job['body'][statement]['body']))
+                fn_section += self.indent(
+                    self.write_main_jobwrappers_if(job["body"][statement]["body"])
+                )
 
         # check for empty scatter section
-        if len(job['body']) == 0:
-            fn_section += '            pass'
+        if len(job["body"]) == 0:
+            fn_section += "            pass"
 
         for var in scatter_outputs:
-            fn_section += '            {var}.append({task}.rv("{output}"))\n'.format(var=var['task'] + '_' + var['output'],
-                                                                                     task='job_' + var['task'],
-                                                                                     output=var['output'])
+            fn_section += '            {var}.append({task}.rv("{output}"))\n'.format(
+                var=var["task"] + "_" + var["output"],
+                task="job_" + var["task"],
+                output=var["output"],
+            )
         return fn_section
 
     def write_scatter_callwrapper(self, job, previous_dependency):
-        fn_section = '            job_{alias} = {pd}.addFollowOn({task}Cls('.format(alias=job['alias'],
-                                                                                    pd=previous_dependency,
-                                                                                    task=job['task'])
-        for var in job['io']:
-            fn_section += var + '=' + job['io'][var] + ', '
-        if fn_section.endswith(', '):
+        fn_section = "            job_{alias} = {pd}.addFollowOn({task}Cls(".format(
+            alias=job["alias"], pd=previous_dependency, task=job["task"]
+        )
+        for var in job["io"]:
+            fn_section += var + "=" + job["io"][var] + ", "
+        if fn_section.endswith(", "):
             fn_section = fn_section[:-2]
-        fn_section += '))\n'
+        fn_section += "))\n"
         return fn_section
 
     def write_function(self, job):
@@ -628,7 +727,9 @@ class SynthesizeWDL:
             fn_section += self.write_function_subprocesspopen()
 
         # write the outputs for the definition to return
-        fn_section += self.write_function_outputreturn(job, docker=self.needsdocker(job))
+        fn_section += self.write_function_outputreturn(
+            job, docker=self.needsdocker(job)
+        )
 
         return fn_section
 
@@ -644,41 +745,43 @@ class SynthesizeWDL:
         :param job_declaration_array: A list of all inputs that job requires.
         :return: A string representing this.
         """
-        fn_section = f'\n\nclass {job}Cls(Job):\n'
-        fn_section += '    def __init__(self, '
-        if 'inputs' in self.tasks_dictionary[job]:
-            for i in self.tasks_dictionary[job]['inputs']:
+        fn_section = f"\n\nclass {job}Cls(Job):\n"
+        fn_section += "    def __init__(self, "
+        if "inputs" in self.tasks_dictionary[job]:
+            for i in self.tasks_dictionary[job]["inputs"]:
                 var = i[0]
                 vartype = i[1]
-                if vartype == 'String':
+                if vartype == "String":
                     fn_section += f'{var}="", '
                 else:
-                    fn_section += f'{var}=None, '
-        fn_section += '*args, **kwargs):\n'
-        fn_section += f'        super({job}Cls, self).__init__(*args, **kwargs)\n'
+                    fn_section += f"{var}=None, "
+        fn_section += "*args, **kwargs):\n"
+        fn_section += f"        super({job}Cls, self).__init__(*args, **kwargs)\n"
 
         # TODO: Resolve inherent problems resolving resource requirements
         # In WDL, "local-disk " + 500 + " HDD" cannot be directly converted to python.
         # This needs a special handler.
-        if 'runtime' in self.tasks_dictionary[job]:
+        if "runtime" in self.tasks_dictionary[job]:
             runtime_resources = []
-            if 'memory' in self.tasks_dictionary[job]['runtime']:
-                runtime_resources.append('memory=memory')
-                memory = self.tasks_dictionary[job]['runtime']['memory']
-                fn_section += f'        memory=parse_memory({memory})\n'
-            if 'cpu' in self.tasks_dictionary[job]['runtime']:
-                runtime_resources.append('cores=cores')
-                cores = self.tasks_dictionary[job]['runtime']['cpu']
-                fn_section += f'        cores=parse_cores({cores})\n'
-            if 'disks' in self.tasks_dictionary[job]['runtime']:
-                runtime_resources.append('disk=disk')
-                disk = self.tasks_dictionary[job]['runtime']['disks']
-                fn_section += f'        disk=parse_disk({disk})\n'
-            runtime_resources = ['self'] + runtime_resources
-            fn_section += '        Job.__init__({})\n\n'.format(', '.join(runtime_resources))
+            if "memory" in self.tasks_dictionary[job]["runtime"]:
+                runtime_resources.append("memory=memory")
+                memory = self.tasks_dictionary[job]["runtime"]["memory"]
+                fn_section += f"        memory=parse_memory({memory})\n"
+            if "cpu" in self.tasks_dictionary[job]["runtime"]:
+                runtime_resources.append("cores=cores")
+                cores = self.tasks_dictionary[job]["runtime"]["cpu"]
+                fn_section += f"        cores=parse_cores({cores})\n"
+            if "disks" in self.tasks_dictionary[job]["runtime"]:
+                runtime_resources.append("disk=disk")
+                disk = self.tasks_dictionary[job]["runtime"]["disks"]
+                fn_section += f"        disk=parse_disk({disk})\n"
+            runtime_resources = ["self"] + runtime_resources
+            fn_section += "        Job.__init__({})\n\n".format(
+                ", ".join(runtime_resources)
+            )
 
-        if 'inputs' in self.tasks_dictionary[job]:
-            for i in self.tasks_dictionary[job]['inputs']:
+        if "inputs" in self.tasks_dictionary[job]:
+            for i in self.tasks_dictionary[job]["inputs"]:
                 var = i[0]
                 var_type = i[1]
                 var_expressn = i[2]
@@ -691,13 +794,17 @@ class SynthesizeWDL:
 
                 if var_expressn is None:
                     # declarations from workflow
-                    fn_section += f'        self.id_{var} = {var}\n'
+                    fn_section += f"        self.id_{var} = {var}\n"
                 else:
                     # declarations from a WDL or JSON file
-                    fn_section += '        self.id_{} = {}.create(\n                {})\n'\
-                        .format(var, self.write_declaration_type(var_type), var_expressn)
+                    fn_section += (
+                        "        self.id_{} = {}.create(\n                {})\n".format(
+                            var, self.write_declaration_type(var_type), var_expressn
+                        )
+                    )
 
-        fn_section += heredoc_wdl('''
+        fn_section += heredoc_wdl(
+            """
 
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
@@ -711,25 +818,29 @@ class SynthesizeWDL:
                                  except OSError as e:
                                      if e.errno != errno.EEXIST:
                                          raise
-                                 ''', {'jobname': job}, indent='    ')[1:]
-        if 'inputs' in self.tasks_dictionary[job]:
-            for i in self.tasks_dictionary[job]['inputs']:
+                                 """,
+            {"jobname": job},
+            indent="    ",
+        )[1:]
+        if "inputs" in self.tasks_dictionary[job]:
+            for i in self.tasks_dictionary[job]["inputs"]:
                 var = i[0]
                 var_type = i[1]
 
                 docker_bool = str(self.needsdocker(job))
 
                 if self.needs_file_import(var_type):
-                    args = ', '.join(
+                    args = ", ".join(
                         [
-                            f'abspath_file(self.id_{var}, _toil_wdl_internal__current_working_dir)',
-                            'tempDir',
-                            'fileStore',
-                            f'docker={docker_bool}'
-                        ])
-                    fn_section += f'        {var} = process_and_read_file({args})\n'
+                            f"abspath_file(self.id_{var}, _toil_wdl_internal__current_working_dir)",
+                            "tempDir",
+                            "fileStore",
+                            f"docker={docker_bool}",
+                        ]
+                    )
+                    fn_section += f"        {var} = process_and_read_file({args})\n"
                 else:
-                    fn_section += f'        {var} = self.id_{var}\n'
+                    fn_section += f"        {var} = self.id_{var}\n"
 
         return fn_section
 
@@ -749,11 +860,11 @@ class SynthesizeWDL:
         for identifier in self.json_dict:
             # check task declarations
             if task:
-                if identifier == f'{wf}.{task}.{var}':
+                if identifier == f"{wf}.{task}.{var}":
                     return self.json_dict[identifier]
             # else check workflow declarations
             else:
-                if identifier == f'{wf}.{var}':
+                if identifier == f"{wf}.{var}":
                     return self.json_dict[identifier]
 
         return None
@@ -770,9 +881,13 @@ class SynthesizeWDL:
             if isinstance(var_type, WDLArrayType):
                 return self.needs_file_import(var_type.element)
             elif isinstance(var_type, WDLPairType):
-                return self.needs_file_import(var_type.left) or self.needs_file_import(var_type.right)
+                return self.needs_file_import(var_type.left) or self.needs_file_import(
+                    var_type.right
+                )
             elif isinstance(var_type, WDLMapType):
-                return self.needs_file_import(var_type.key) or self.needs_file_import(var_type.value)
+                return self.needs_file_import(var_type.key) or self.needs_file_import(
+                    var_type.value
+                )
             else:
                 raise NotImplementedError
         return False
@@ -782,25 +897,25 @@ class SynthesizeWDL:
         Return a string that preserves the construction of the given WDL type
         so it can be passed into the compiled script.
         """
-        section = var_type.__class__.__name__ + '('  # e.g.: 'WDLIntType('
+        section = var_type.__class__.__name__ + "("  # e.g.: 'WDLIntType('
 
         if isinstance(var_type, WDLCompoundType):
             if isinstance(var_type, WDLArrayType):
                 section += self.write_declaration_type(var_type.element)
             elif isinstance(var_type, WDLPairType):
-                section += self.write_declaration_type(var_type.left) + ', '
+                section += self.write_declaration_type(var_type.left) + ", "
                 section += self.write_declaration_type(var_type.right)
             elif isinstance(var_type, WDLMapType):
-                section += self.write_declaration_type(var_type.key) + ', '
+                section += self.write_declaration_type(var_type.key) + ", "
                 section += self.write_declaration_type(var_type.value)
             else:
                 raise ValueError(var_type)
 
         if var_type.optional:
             if isinstance(var_type, WDLCompoundType):
-                section += ', '
-            section += 'optional=True'
-        return section + ')'
+                section += ", "
+            section += "optional=True"
+        return section + ")"
 
     def write_function_bashscriptline(self, job):
         """
@@ -816,7 +931,7 @@ class SynthesizeWDL:
         # if 'outputs' in self.tasks_dictionary[job]:
         #     for output in self.tasks_dictionary[job]['outputs']:
         #         fn_section += '({}), '.format(output[2])
-        if fn_section.endswith(', '):
+        if fn_section.endswith(", "):
             fn_section = fn_section[:-2]
         fn_section += f"], cmd=cmd, job_name='{str(job)}')\n\n"
 
@@ -831,10 +946,13 @@ class SynthesizeWDL:
                                                             e.g. "ubuntu:latest"
         :return: A string containing the apiDockerCall() that will run the job.
         """
-        docker_dict = {"docker_image": self.tasks_dictionary[job]['runtime']['docker'],
-                       "job_task_reference": job,
-                       "docker_user": str(self.docker_user)}
-        docker_template = heredoc_wdl('''
+        docker_dict = {
+            "docker_image": self.tasks_dictionary[job]["runtime"]["docker"],
+            "job_task_reference": job,
+            "docker_user": str(self.docker_user),
+        }
+        docker_template = heredoc_wdl(
+            """
         # apiDockerCall() with demux=True returns a tuple of bytes objects (stdout, stderr).
         _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = \\
             apiDockerCall(self,
@@ -851,7 +969,10 @@ class SynthesizeWDL:
                 f.write(_toil_wdl_internal__stdout)
             if _toil_wdl_internal__stderr:
                 f.write(_toil_wdl_internal__stderr)
-        ''', docker_dict, indent='        ')[1:]
+        """,
+            docker_dict,
+            indent="        ",
+        )[1:]
 
         return docker_template
 
@@ -866,29 +987,37 @@ class SynthesizeWDL:
         :return: A string representing this.
         """
 
-        fn_section = '\n'
+        fn_section = "\n"
         cmd_array = []
-        if 'raw_commandline' in self.tasks_dictionary[job]:
-            for cmd in self.tasks_dictionary[job]['raw_commandline']:
+        if "raw_commandline" in self.tasks_dictionary[job]:
+            for cmd in self.tasks_dictionary[job]["raw_commandline"]:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({i} if not isinstance({i}, WDLFile) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
-                fn_section = fn_section + heredoc_wdl('''
+                    cmd = 'str({i} if not isinstance({i}, WDLFile) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(
+                        i=cmd, nl=r"\n"
+                    )
+                fn_section = fn_section + heredoc_wdl(
+                    """
                         try:
                             # Intended to deal with "optional" inputs that may not exist
                             # TODO: handle this better
                             command{num} = {cmd}
                         except:
-                            command{num} = ''\n''', {'cmd': cmd, 'num': self.cmd_num}, indent='        ')
-                cmd_array.append('command' + str(self.cmd_num))
+                            command{num} = ''\n""",
+                    {"cmd": cmd, "num": self.cmd_num},
+                    indent="        ",
+                )
+                cmd_array.append("command" + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
 
         if cmd_array:
-            fn_section += '\n        cmd = '
+            fn_section += "\n        cmd = "
             for command in cmd_array:
-                fn_section += f'{command} + '
-            if fn_section.endswith(' + '):
+                fn_section += f"{command} + "
+            if fn_section.endswith(" + "):
                 fn_section = fn_section[:-3]
-            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
+            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(
+                nl=r"\n"
+            )
         else:
             # empty command section
             fn_section += '        cmd = ""'
@@ -904,9 +1033,12 @@ class SynthesizeWDL:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :return: A string representing this.
         """
-        fn_section = heredoc_wdl('''
+        fn_section = heredoc_wdl(
+            """
                 this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = this_process.communicate()\n''', indent='        ')
+                _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = this_process.communicate()\n""",
+            indent="        ",
+        )
 
         return fn_section
 
@@ -921,9 +1053,10 @@ class SynthesizeWDL:
         :return: A string representing this.
         """
 
-        fn_section = ''
+        fn_section = ""
 
-        fn_section += heredoc_wdl('''
+        fn_section += heredoc_wdl(
+            """
             _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout,
                                                                    tempDir,
                                                                    fileStore=fileStore)
@@ -931,11 +1064,13 @@ class SynthesizeWDL:
                                                                    tempDir,
                                                                    fileStore=fileStore,
                                                                    stderr=True)
-        ''', indent='        ')[1:]
+        """,
+            indent="        ",
+        )[1:]
 
-        if 'outputs' in self.tasks_dictionary[job]:
+        if "outputs" in self.tasks_dictionary[job]:
             return_values = []
-            for output in self.tasks_dictionary[job]['outputs']:
+            for output in self.tasks_dictionary[job]["outputs"]:
                 output_name = output[0]
                 output_type = output[1]
                 output_value = output[2]
@@ -945,30 +1080,35 @@ class SynthesizeWDL:
                         "output_name": output_name,
                         "output_type": self.write_declaration_type(output_type),
                         "expression": output_value,
-                        "out_dir": self.output_directory}
+                        "out_dir": self.output_directory,
+                    }
 
-                    nonglob_template = heredoc_wdl('''
+                    nonglob_template = heredoc_wdl(
+                        """
                         {output_name} = {output_type}.create(
                             {expression}, output=True)
                         {output_name} = process_outfile({output_name}, fileStore, tempDir, '{out_dir}')
-                    ''', nonglob_dict, indent='        ')[1:]
+                    """,
+                        nonglob_dict,
+                        indent="        ",
+                    )[1:]
                     fn_section += nonglob_template
                     return_values.append(output_name)
                 else:
-                    fn_section += f'        {output_name} = {output_value}\n'
+                    fn_section += f"        {output_name} = {output_value}\n"
                     return_values.append(output_name)
 
             if return_values:
-                fn_section += '        rvDict = {'
+                fn_section += "        rvDict = {"
             for return_value in return_values:
                 fn_section += '"{rv}": {rv}, '.format(rv=return_value)
-            if fn_section.endswith(', '):
+            if fn_section.endswith(", "):
                 fn_section = fn_section[:-2]
             if return_values:
-                fn_section = fn_section + '}\n'
+                fn_section = fn_section + "}\n"
 
             if return_values:
-                fn_section += '        return rvDict\n\n'
+                fn_section += "        return rvDict\n\n"
 
         return fn_section
 
@@ -976,8 +1116,8 @@ class SynthesizeWDL:
         """
         Indent the input string by 4 spaces.
         """
-        split_string = string2indent.split('\n')
-        return '\n'.join(f'    {line}' for line in split_string)
+        split_string = string2indent.split("\n")
+        return "\n".join(f"    {line}" for line in split_string)
 
     def needsdocker(self, job):
         """
@@ -985,17 +1125,13 @@ class SynthesizeWDL:
         :param job:
         :return:
         """
-        if 'runtime' in self.tasks_dictionary[job]:
-            if 'docker' in self.tasks_dictionary[job]['runtime']:
+        if "runtime" in self.tasks_dictionary[job]:
+            if "docker" in self.tasks_dictionary[job]["runtime"]:
                 return True
 
         return False
 
-    def write_python_file(self,
-                          module_section,
-                          fn_section,
-                          main_section,
-                          output_file):
+    def write_python_file(self, module_section, fn_section, main_section, output_file):
         """
         Just takes three strings and writes them to output_file.
 
@@ -1005,7 +1141,7 @@ class SynthesizeWDL:
         :param job_section: A string import files into toil and declaring jobs.
         :param output_file: The file to write the compiled toil script to.
         """
-        with open(output_file, 'w') as file:
+        with open(output_file, "w") as file:
             file.write(module_section)
             file.write(fn_section)
             file.write(main_section)

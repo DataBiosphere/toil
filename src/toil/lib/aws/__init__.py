@@ -20,14 +20,7 @@ import re
 import socket
 import threading
 from functools import lru_cache
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Iterable,
-                    List,
-                    Optional,
-                    TypeVar,
-                    Union)
+from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -35,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # This file isn't allowed to import anything that depends on Boto or Boto3,
 # which may not be installed, because it has to be importable everywhere.
+
 
 def get_current_aws_region() -> Optional[str]:
     """
@@ -45,11 +39,13 @@ def get_current_aws_region() -> Optional[str]:
     aws_zone = get_current_aws_zone()
     return zone_to_region(aws_zone) if aws_zone else None
 
+
 def get_aws_zone_from_environment() -> Optional[str]:
     """
     Get the AWS zone from TOIL_AWS_ZONE if set.
     """
-    return os.environ.get('TOIL_AWS_ZONE', None)
+    return os.environ.get("TOIL_AWS_ZONE", None)
+
 
 def get_aws_zone_from_metadata() -> Optional[str]:
     """
@@ -64,11 +60,15 @@ def get_aws_zone_from_metadata() -> Optional[str]:
         # Use the ECS metadata service
         logger.debug("Fetch AZ from ECS metadata")
         try:
-            resp = json.load(urlopen(os.environ['ECS_CONTAINER_METADATA_URI_V4'] + '/task', timeout=1))
+            resp = json.load(
+                urlopen(
+                    os.environ["ECS_CONTAINER_METADATA_URI_V4"] + "/task", timeout=1
+                )
+            )
             logger.debug("ECS metadata: %s", resp)
             if isinstance(resp, dict):
                 # We found something. Go with that.
-                return resp.get('AvailabilityZone')
+                return resp.get("AvailabilityZone")
         except (json.decoder.JSONDecodeError, KeyError, URLError) as e:
             # We're on ECS but can't get the metadata. That's odd.
             logger.warning("Skipping ECS metadata due to error: %s", e)
@@ -79,8 +79,9 @@ def get_aws_zone_from_metadata() -> Optional[str]:
             # Use the EC2 metadata service
             import boto
             from boto.utils import get_instance_metadata
+
             logger.debug("Fetch AZ from EC2 metadata")
-            return get_instance_metadata()['placement']['availability-zone']
+            return get_instance_metadata()["placement"]["availability-zone"]
         except ImportError:
             # This is expected to happen a lot
             logger.debug("No boto to fetch ECS metadata")
@@ -89,6 +90,7 @@ def get_aws_zone_from_metadata() -> Optional[str]:
             logger.warning("Skipping EC2 metadata due to error: %s", e)
     return None
 
+
 def get_aws_zone_from_boto() -> Optional[str]:
     """
     Get the AWS zone from the Boto config file, if it is configured and the
@@ -96,24 +98,27 @@ def get_aws_zone_from_boto() -> Optional[str]:
     """
     try:
         import boto
-        zone = boto.config.get('Boto', 'ec2_region_name')
+
+        zone = boto.config.get("Boto", "ec2_region_name")
         if zone is not None:
-            zone += 'a'  # derive an availability zone in the region
+            zone += "a"  # derive an availability zone in the region
         return zone
     except ImportError:
         pass
     return None
 
+
 def get_aws_zone_from_environment_region() -> Optional[str]:
     """
     Pick an AWS zone in the region defined by TOIL_AWS_REGION, if it is set.
     """
-    aws_region = os.environ.get('TOIL_AWS_REGION')
+    aws_region = os.environ.get("TOIL_AWS_REGION")
     if aws_region is not None:
         # If a region is specified, use the first zone in the region.
-        return aws_region + 'a'
+        return aws_region + "a"
     # Otherwise, don't pick a region and let us fall back on the next method.
     return None
+
 
 def get_current_aws_zone() -> Optional[str]:
     """
@@ -132,19 +137,23 @@ def get_current_aws_zone() -> Optional[str]:
 
     Returns None if no method can produce a zone to use.
     """
-    return get_aws_zone_from_environment() or \
-        get_aws_zone_from_metadata() or \
-        get_aws_zone_from_environment_region() or \
-        get_aws_zone_from_boto()
+    return (
+        get_aws_zone_from_environment()
+        or get_aws_zone_from_metadata()
+        or get_aws_zone_from_environment_region()
+        or get_aws_zone_from_boto()
+    )
+
 
 def zone_to_region(zone: str) -> str:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
     # re.compile() caches the regex internally so we don't have to
-    availability_zone = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
+    availability_zone = re.compile(r"^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$")
     m = availability_zone.match(zone)
     if not m:
         raise ValueError(f"Can't extract region from availability zone '{zone}'")
     return m.group(1)
+
 
 def running_on_ec2() -> bool:
     """
@@ -155,20 +164,24 @@ def running_on_ec2() -> bool:
         with open(path) as f:
             return f.read(len(prefix)) == prefix
 
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
+    hv_uuid_path = "/sys/hypervisor/uuid"
+    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, "ec2"):
         return True
     # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
     # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
     try:
-        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
+        urlopen(
+            "http://169.254.169.254/latest/dynamic/instance-identity/document",
+            timeout=1,
+        )
         return True
     except (URLError, socket.timeout):
         return False
+
 
 def running_on_ecs() -> bool:
     """
     Return True if we are currently running on Amazon ECS, and false otherwise.
     """
     # We only care about relatively current ECS
-    return 'ECS_CONTAINER_METADATA_URI_V4' in os.environ
+    return "ECS_CONTAINER_METADATA_URI_V4" in os.environ

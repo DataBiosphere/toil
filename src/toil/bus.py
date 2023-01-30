@@ -70,33 +70,37 @@ import queue
 import json
 import tempfile
 import threading
-from typing import (IO,
-                    Any,
-                    Callable,
-                    Dict,
-                    Iterator,
-                    List,
-                    NamedTuple,
-                    Optional,
-                    Type,
-                    TypeVar,
-                    Union,
-                    cast)
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
 from pubsub.core.topicobj import Topic
 from pubsub.core.topicutils import ALL_TOPICS
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 # We define a bunch of named tuple message types.
 # These all need to be plain data: only hold ints, strings, etc.
+
 
 class JobIssuedMessage(NamedTuple):
     """
     Produced when a job is issued to run on the batch system.
     """
+
     # The kind of job issued, for statistics aggregation
     job_type: str
     # The job store ID of the job
@@ -104,20 +108,24 @@ class JobIssuedMessage(NamedTuple):
     # The toil batch ID of the job
     toil_batch_id: int
 
+
 class JobUpdatedMessage(NamedTuple):
     """
     Produced when a job is "updated" and ready to have something happen to it.
     """
+
     # The job store ID of the job
     job_id: str
     # The error code/return code for the job, which is nonzero if something has
     # gone wrong, and 0 otherwise.
     result_status: int
 
+
 class JobCompletedMessage(NamedTuple):
     """
     Produced when a job is completed, whether successful or not.
     """
+
     # The kind of job issued, for statistics aggregation
     job_type: str
     # The job store ID of the job
@@ -125,27 +133,33 @@ class JobCompletedMessage(NamedTuple):
     # Exit code for job_id
     exit_code: int
 
+
 class JobFailedMessage(NamedTuple):
     """
     Produced when a job is completely failed, and will not be retried again.
     """
+
     # The kind of job issued, for statistics aggregation
     job_type: str
     # The job store ID of the job
     job_id: str
 
+
 class JobMissingMessage(NamedTuple):
     """
     Produced when a job goes missing and should be in the batch system but isn't.
     """
+
     # The job store ID of the job
     job_id: str
+
 
 class JobAnnotationMessage(NamedTuple):
     """
     Produced when extra information (such as an AWS Batch job ID from the
     AWSBatchBatchSystem) is available that goes with a job.
     """
+
     # The job store ID of the job
     job_id: str
     # The name of the annotation
@@ -153,49 +167,59 @@ class JobAnnotationMessage(NamedTuple):
     # The annotation data
     annotation_value: str
 
+
 class ExternalBatchIdMessage(NamedTuple):
     """
     Produced when using a batch system, links toil assigned batch ID to
     Batch system ID (Whatever's returned by local implementation, PID, batch ID, etc)
     """
-    #Assigned toil batch job id
+
+    # Assigned toil batch job id
     toil_batch_id: int
-    #Batch system scheduler identity
+    # Batch system scheduler identity
     external_batch_id: str
-    #Batch system name
+    # Batch system name
     batch_system: str
+
 
 class QueueSizeMessage(NamedTuple):
     """
     Produced to describe the size of the queue of jobs issued but not yet
     completed. Theoretically recoverable from other messages.
     """
+
     # The size of the queue
     queue_size: int
+
 
 class ClusterSizeMessage(NamedTuple):
     """
     Produced by the Toil-integrated autoscaler describe the number of
     instances of a certain type in a cluster.
     """
+
     # The instance type name, like t4g.medium
     instance_type: str
     # The number of instances of that type that the Toil autoscaler thinks
     # there are
     current_size: int
 
+
 class ClusterDesiredSizeMessage(NamedTuple):
     """
     Produced by the Toil-integrated autoscaler to describe the number of
     instances of a certain type that it thinks will be needed.
     """
+
     # The instance type name, like t4g.medium
     instance_type: str
     # The number of instances of that type that the Toil autoscaler wants there
     # to be
     desired_size: int
 
+
 # Then we define a serialization format.
+
 
 def message_to_bytes(message: NamedTuple) -> bytes:
     """
@@ -206,32 +230,39 @@ def message_to_bytes(message: NamedTuple) -> bytes:
         if isinstance(item, (int, float, bool)) or item is None:
             # This also handles e.g. values from an IntEnum, where the type extends int.
             # They might replace __str__() but we hope they use a compatible __format__()
-            parts.append(f"{item}".encode('utf-8'))
+            parts.append(f"{item}".encode("utf-8"))
         elif isinstance(item, str):
-            parts.append(item.encode('unicode_escape'))
+            parts.append(item.encode("unicode_escape"))
         else:
             # We haven't implemented this type yet.
-            raise RuntimeError(f"Cannot store message argument of type {type(item)}: {item}")
-    return b'\t'.join(parts)
+            raise RuntimeError(
+                f"Cannot store message argument of type {type(item)}: {item}"
+            )
+    return b"\t".join(parts)
 
 
 # TODO: Messages have to be named tuple types.
-MessageType = TypeVar('MessageType')
+MessageType = TypeVar("MessageType")
+
+
 def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageType:
     """
     Convert bytes from message_to_bytes back to a message of the given type.
     """
-    parts = data.split(b'\t')
+    parts = data.split(b"\t")
 
     # Get a mapping from field name to type in the named tuple.
     # We need to check a couple different fields because this moved in a recent
     # Python 3 release.
-    field_to_type: Optional[Dict[str, type]] = cast(Optional[Dict[str, type]],
-                                                    getattr(message_type, '__annotations__',
-                                                            getattr(message_type, '_field_types', None)))
+    field_to_type: Optional[Dict[str, type]] = cast(
+        Optional[Dict[str, type]],
+        getattr(
+            message_type, "__annotations__", getattr(message_type, "_field_types", None)
+        ),
+    )
     if field_to_type is None:
         raise RuntimeError(f"Cannot get field types from {message_type}")
-    field_names: List[str] = getattr(message_type, '_fields')
+    field_names: List[str] = getattr(message_type, "_fields")
 
     if len(field_names) != len(parts):
         raise RuntimeError(f"Cannot parse {field_names} from {parts}")
@@ -242,17 +273,15 @@ def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageTyp
     for name, part in zip(field_names, parts):
         field_type = field_to_type[name]
         if field_type in [int, float, bool]:
-            typed_parts.append(field_type(part.decode('utf-8')))
+            typed_parts.append(field_type(part.decode("utf-8")))
         elif field_type == str:
             # Decode, accounting for escape sequences
-            typed_parts.append(part.decode('unicode_escape'))
+            typed_parts.append(part.decode("unicode_escape"))
         else:
             raise RuntimeError(f"Cannot read message argument of type {field_type}")
 
     # Build the parts back up into the named tuple.
     return message_type(*typed_parts)
-
-
 
 
 class MessageBus:
@@ -283,7 +312,7 @@ class MessageBus:
         characters, hierarchically dotted).
         """
 
-        return '.'.join([message_type.__module__, message_type.__name__])
+        return ".".join([message_type.__module__, message_type.__name__])
 
     # All our messages are NamedTuples, but NamedTuples don't actually inherit
     # from NamedTupe, so MyPy complains if we require that here.
@@ -326,13 +355,16 @@ class MessageBus:
         Runs only in the owning thread. Delivers a message to its listeners.
         """
         topic = self._type_to_name(type(message))
-        logger.debug('Notifying %s with message: %s', topic, message)
+        logger.debug("Notifying %s with message: %s", topic, message)
         self._pubsub.sendMessage(topic, message=message)
 
     # This next function takes callables that take things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
-    MessageType = TypeVar('MessageType', bound='NamedTuple')
-    def subscribe(self, message_type: Type[MessageType], handler: Callable[[MessageType], Any]) -> Listener:
+    MessageType = TypeVar("MessageType", bound="NamedTuple")
+
+    def subscribe(
+        self, message_type: Type[MessageType], handler: Callable[[MessageType], Any]
+    ) -> Listener:
         """
         Register the given callable to be called when messages of the given type are sent.
         It will be called with messages sent after the subscription is created.
@@ -340,7 +372,7 @@ class MessageBus:
         """
 
         topic = self._type_to_name(message_type)
-        logger.debug('Listening for message topic: %s', topic)
+        logger.debug("Listening for message topic: %s", topic)
 
         # Make sure to wrap the handler so we get the right argument name and
         # we can control lifetime.
@@ -353,10 +385,10 @@ class MessageBus:
         # Hide the handler function in the pubsub listener to keep it alive.
         # If it goes out of scope the subscription expires, and the pubsub
         # system only uses weak references.
-        setattr(listener, 'handler_wrapper', handler_wraper)
+        setattr(listener, "handler_wrapper", handler_wraper)
         return listener
 
-    def connect(self, wanted_types: List[type]) -> 'MessageBusConnection':
+    def connect(self, wanted_types: List[type]) -> "MessageBusConnection":
         """
         Get a connection object that serves as an inbox for messages of the
         given types.
@@ -368,7 +400,7 @@ class MessageBus:
         connection._set_bus_and_message_types(self, wanted_types)
         return connection
 
-    def outbox(self) -> 'MessageOutbox':
+    def outbox(self) -> "MessageOutbox":
         """
         Get a connection object that only allows sending messages.
         """
@@ -386,24 +418,25 @@ class MessageBus:
         somewhere or delete it.
         """
 
-
-        stream = open(file_path, 'wb')
+        stream = open(file_path, "wb")
 
         # Type of the ** is the value type of the dictionary; key type is always string.
-        def handler(topic_object: Topic = Listener.AUTO_TOPIC, **message_data: NamedTuple) -> None:
+        def handler(
+            topic_object: Topic = Listener.AUTO_TOPIC, **message_data: NamedTuple
+        ) -> None:
             """
             Log the message in the given message data, associated with the
             given topic.
             """
             # There should always be a "message"
             assert len(message_data) == 1
-            assert 'message' in message_data
-            message = message_data['message']
+            assert "message" in message_data
+            message = message_data["message"]
             topic = topic_object.getName()
-            stream.write(topic.encode('utf-8'))
-            stream.write(b'\t')
+            stream.write(topic.encode("utf-8"))
+            stream.write(b"\t")
             stream.write(message_to_bytes(message))
-            stream.write(b'\n')
+            stream.write(b"\n")
             stream.flush()
 
         listener, _ = self._pubsub.subscribe(handler, ALL_TOPICS)
@@ -411,7 +444,6 @@ class MessageBus:
         # To keep this alive, we need to keep the handler alive, and we might
         # want the pypubsub Listener.
         return (handler, listener)
-
 
     # TODO: If we annotate this as returning an Iterator[NamedTuple], MyPy
     # complains when we loop over it that the loop variable is a <nothing>,
@@ -422,7 +454,9 @@ class MessageBus:
     # union of the types passed in message_types, in a way that MyPy can
     # understand.
     @classmethod
-    def scan_bus_messages(cls, stream: IO[bytes], message_types: List[Type[NamedTuple]]) -> Iterator[Any]:
+    def scan_bus_messages(
+        cls, stream: IO[bytes], message_types: List[Type[NamedTuple]]
+    ) -> Iterator[Any]:
         """
         Get an iterator over all messages in the given log stream of the given
         types, in order. Discard any trailing partial messages.
@@ -432,15 +466,15 @@ class MessageBus:
         name_to_type = {cls._type_to_name(t): t for t in message_types}
 
         for line in stream:
-            logger.debug('Got message: %s', line)
-            if not line.endswith(b'\n'):
+            logger.debug("Got message: %s", line)
+            if not line.endswith(b"\n"):
                 # Skip unterminated line
                 continue
             # Drop the newline and split on first tab
-            parts = line[:-1].split(b'\t', 1)
+            parts = line[:-1].split(b"\t", 1)
 
             # Get the type of the message
-            message_type = name_to_type.get(parts[0].decode('utf-8'))
+            message_type = name_to_type.get(parts[0].decode("utf-8"))
             if message_type is None:
                 # We aren't interested in this kind of message.
                 continue
@@ -450,6 +484,7 @@ class MessageBus:
 
             # And produce it
             yield message
+
 
 class MessageBusClient:
     """
@@ -473,6 +508,7 @@ class MessageBusClient:
         """
         self._bus = bus
 
+
 class MessageInbox(MessageBusClient):
     """
     A buffered connection to a message bus that lets us receive messages.
@@ -495,9 +531,12 @@ class MessageInbox(MessageBusClient):
         # We define a handler for messages
         def on_message(message: Any) -> None:
             self._messages_by_type[type(message)].append(message)
+
         self._handler = on_message
 
-    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
+    def _set_bus_and_message_types(
+        self, bus: MessageBus, wanted_types: List[type]
+    ) -> None:
         """
         Connect to the given bus and collect the given message types.
 
@@ -542,7 +581,8 @@ class MessageInbox(MessageBusClient):
 
     # This next function returns things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
-    MessageType = TypeVar('MessageType')
+    MessageType = TypeVar("MessageType")
+
     def for_each(self, message_type: Type[MessageType]) -> Iterator[MessageType]:
         """
         Loop over all messages currently pending of the given type. Each that
@@ -572,7 +612,9 @@ class MessageInbox(MessageBusClient):
                 handled = False
                 try:
                     # Emit the message
-                    assert isinstance(message, message_type), f"Unacceptable message type {type(message)} in list for type {message_type}"
+                    assert isinstance(
+                        message, message_type
+                    ), f"Unacceptable message type {type(message)} in list for type {message_type}"
                     yield message
                     # If we get here it was handled without error.
                     handled = True
@@ -587,7 +629,10 @@ class MessageInbox(MessageBusClient):
             # Dump anything remaining in our buffer back into the main buffer,
             # in the right order, and before the later messages.
             message_list.reverse()
-            self._messages_by_type[message_type] = message_list + self._messages_by_type[message_type]
+            self._messages_by_type[message_type] = (
+                message_list + self._messages_by_type[message_type]
+            )
+
 
 class MessageOutbox(MessageBusClient):
     """
@@ -610,6 +655,7 @@ class MessageOutbox(MessageBusClient):
             raise RuntimeError("Cannot send message when not connected to a bus")
         self._bus.publish(message)
 
+
 class MessageBusConnection(MessageInbox, MessageOutbox):
     """
     A two-way connection to a message bus. Buffers incoming messages until you
@@ -622,7 +668,9 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         """
         super().__init__()
 
-    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
+    def _set_bus_and_message_types(
+        self, bus: MessageBus, wanted_types: List[type]
+    ) -> None:
         """
         Connect to the given bus and collect the given message types.
 
@@ -649,7 +697,9 @@ class JobStatus:
     batch_system: str
 
     def __repr__(self) -> str:
-        return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+        return json.dumps(self, default=lambda o: o.__dict__, indent=4)
+
+
 def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.
@@ -666,15 +716,26 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     is running.
     """
 
-    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
+    job_statuses: Dict[str, JobStatus] = collections.defaultdict(
+        lambda: JobStatus("", "", -1, {}, -1, "", "")
+    )
     batch_to_job_id = {}
     try:
-        with open(path, 'rb') as log_stream:
+        with open(path, "rb") as log_stream:
             # Read all the full, properly-terminated messages about job updates
-            for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
-                                                                   JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
+            for event in MessageBus.scan_bus_messages(
+                log_stream,
+                [
+                    JobUpdatedMessage,
+                    JobIssuedMessage,
+                    JobCompletedMessage,
+                    JobFailedMessage,
+                    JobAnnotationMessage,
+                    ExternalBatchIdMessage,
+                ],
+            ):
                 # And for each of them
-                logger.info('Got message from workflow: %s', event)
+                logger.info("Got message from workflow: %s", event)
 
                 if isinstance(event, JobUpdatedMessage):
                     # Apply the latest return code from the job with this ID.
@@ -695,15 +756,22 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
                         job_statuses[event.job_id].exit_code = 1
                 elif isinstance(event, JobAnnotationMessage):
                     # Remember the last value of any annotation that is set
-                    job_statuses[event.job_id].annotations[event.annotation_name] = event.annotation_value
+                    job_statuses[event.job_id].annotations[
+                        event.annotation_name
+                    ] = event.annotation_value
                 elif isinstance(event, ExternalBatchIdMessage):
                     if event.toil_batch_id in batch_to_job_id:
-                        job_statuses[batch_to_job_id[event.toil_batch_id]].external_batch_id = event.external_batch_id
-                        job_statuses[batch_to_job_id[event.toil_batch_id]].batch_system = event.batch_system
+                        job_statuses[
+                            batch_to_job_id[event.toil_batch_id]
+                        ].external_batch_id = event.external_batch_id
+                        job_statuses[
+                            batch_to_job_id[event.toil_batch_id]
+                        ].batch_system = event.batch_system
     except FileNotFoundError:
         logger.warning("We were unable to access the file")
 
     return job_statuses
+
 
 def gen_message_bus_path() -> str:
     """
@@ -713,4 +781,4 @@ def gen_message_bus_path() -> str:
     fd, path = tempfile.mkstemp()
     os.close(fd)
     return path
-    #TODO Might want to clean up the tmpfile at some point after running the workflow
+    # TODO Might want to clean up the tmpfile at some point after running the workflow

@@ -57,30 +57,45 @@ def main():
 
     Additional support to be broadened to include more features soon.
     """
-    parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
-    parser.add_argument('wdl_file', help='A WDL workflow file.')
-    parser.add_argument('secondary_file', help='A secondary data file (json).')
+    parser = argparse.ArgumentParser(description="Runs WDL files with toil.")
+    parser.add_argument("wdl_file", help="A WDL workflow file.")
+    parser.add_argument("secondary_file", help="A secondary data file (json).")
     parser.add_argument("--jobStore", type=str, required=False, default=None)
-    parser.add_argument('-o',
-                        '--outdir',
-                        required=False,
-                        default=os.getcwd(),
-                        help='Optionally specify the directory that outputs '
-                             'are written to.  Default is the current working dir.')
-    parser.add_argument('--dev_mode', required=False, default=False,
-                        help='1. Creates "AST.out", which holds the printed AST and '
-                             '"mappings.out", which holds the parsed task, workflow '
-                             'dictionaries that were generated.  '
-                             '2. Saves the compiled toil script generated from the '
-                             'wdl/json files from deletion.  '
-                             '3. Skips autorunning the compiled python file.')
-    parser.add_argument('--docker_user', required=False, default='root',
-                        help='The user permissions that the docker containers will be run '
-                             'with (and the permissions set on any output files produced).  '
-                             'Default is "root".  Setting this to None will set this to '
-                             'the current user.')
-    parser.add_argument("--destBucket", type=str, required=False, default=False,
-                        help="Specify a cloud bucket endpoint for output files.")
+    parser.add_argument(
+        "-o",
+        "--outdir",
+        required=False,
+        default=os.getcwd(),
+        help="Optionally specify the directory that outputs "
+        "are written to.  Default is the current working dir.",
+    )
+    parser.add_argument(
+        "--dev_mode",
+        required=False,
+        default=False,
+        help='1. Creates "AST.out", which holds the printed AST and '
+        '"mappings.out", which holds the parsed task, workflow '
+        "dictionaries that were generated.  "
+        "2. Saves the compiled toil script generated from the "
+        "wdl/json files from deletion.  "
+        "3. Skips autorunning the compiled python file.",
+    )
+    parser.add_argument(
+        "--docker_user",
+        required=False,
+        default="root",
+        help="The user permissions that the docker containers will be run "
+        "with (and the permissions set on any output files produced).  "
+        'Default is "root".  Setting this to None will set this to '
+        "the current user.",
+    )
+    parser.add_argument(
+        "--destBucket",
+        type=str,
+        required=False,
+        default=False,
+        help="Specify a cloud bucket endpoint for output files.",
+    )
 
     # wdl_run_args is an array containing all of the unknown arguments not
     # specified by the parser in this main.  All of these will be passed down in
@@ -97,21 +112,23 @@ def main():
         aWDL.write_AST(out_dir=args.outdir)
 
     # read secondary file; create dictionary to hold variables
-    if args.secondary_file.endswith('.json'):
+    if args.secondary_file.endswith(".json"):
         json_dict = dict_from_JSON(args.secondary_file)
     else:
-        raise RuntimeError('Unsupported Secondary File Type.  Use json.')
+        raise RuntimeError("Unsupported Secondary File Type.  Use json.")
 
     aWDL.analyze()
 
-    sWDL = SynthesizeWDL(aWDL.version,
-                         aWDL.tasks_dictionary,
-                         aWDL.workflows_dictionary,
-                         args.outdir,
-                         json_dict,
-                         args.docker_user,
-                         args.jobStore,
-                         args.destBucket)
+    sWDL = SynthesizeWDL(
+        aWDL.version,
+        aWDL.tasks_dictionary,
+        aWDL.workflows_dictionary,
+        args.outdir,
+        json_dict,
+        args.docker_user,
+        args.jobStore,
+        args.destBucket,
+    )
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
@@ -120,22 +137,19 @@ def main():
     main_section = sWDL.write_main()
 
     # write 3 strings to a python output file
-    sWDL.write_python_file(module_section,
-                           fn_section,
-                           main_section,
-                           sWDL.output_file)
+    sWDL.write_python_file(module_section, fn_section, main_section, sWDL.output_file)
 
     if args.dev_mode:
-        logger.debug('WDL file compiled to toil script.')
+        logger.debug("WDL file compiled to toil script.")
         write_mappings(aWDL)
     else:
-        logger.debug('WDL file compiled to toil script.  Running now.')
-        exe = sys.executable if sys.executable else 'python'
+        logger.debug("WDL file compiled to toil script.  Running now.")
+        exe = sys.executable if sys.executable else "python"
         cmd = [exe, sWDL.output_file]
         cmd.extend(wdl_run_args)
         subprocess.check_call(cmd)
         os.remove(sWDL.output_file)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

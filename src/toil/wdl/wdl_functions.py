@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 class WDLRuntimeError(Exception):
-    """ WDL-related run-time error."""
+    """WDL-related run-time error."""
 
     def __init__(self, message):
         super().__init__(message)
@@ -49,7 +49,7 @@ class WDLJSONEncoder(json.JSONEncoder):
 
 
 def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
-    '''
+    """
     Creates a bashscript to inject into a docker container for the job.
 
     This script wraps the job command(s) given in a bash script, hard links the
@@ -75,8 +75,9 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
                      Will be used to call the script later.
     :return: Nothing, but it writes and deposits a bash script in temp_dir
              intended to be run inside of a docker container for this job.
-    '''
-    wdl_copyright = heredoc_wdl('''        \n
+    """
+    wdl_copyright = heredoc_wdl(
+        """        \n
         # Borrowed/rewritten from the Broad's Cromwell implementation.  As
         # that is under a BSD-ish license, I include here the license off
         # of their GitHub repo.  Thank you Broadies!
@@ -110,10 +111,11 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
         # make a temp directory w/identifier
-        ''')
-    prefix_dict = {"docker_dir": docker_dir,
-                   "cmd": cmd}
-    bashfile_prefix = heredoc_wdl('''
+        """
+    )
+    prefix_dict = {"docker_dir": docker_dir, "cmd": cmd}
+    bashfile_prefix = heredoc_wdl(
+        """
         tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
         chmod 777 $tmpDir
         # set destination for java to deposit all of its files
@@ -128,25 +130,33 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         # gather the input command return code
         echo $? > "$tmpDir/rc.tmp"
 
-        ''', prefix_dict)
+        """,
+        prefix_dict,
+    )
 
-    bashfile_string = '#!/bin/bash' + wdl_copyright + bashfile_prefix
+    bashfile_string = "#!/bin/bash" + wdl_copyright + bashfile_prefix
 
-    begin_globbing_string = heredoc_wdl('''
+    begin_globbing_string = heredoc_wdl(
+        """
         (
         mkdir "$tmpDir/globs"
-        ''')
+        """
+    )
 
     bashfile_string = bashfile_string + begin_globbing_string
 
     for glob_input in globs:
-        add_this_glob = \
-            '( ln -L ' + glob_input + \
-            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
-            ' "$tmpDir/globs" )\n'
+        add_this_glob = (
+            "( ln -L "
+            + glob_input
+            + ' "$tmpDir/globs" 2> /dev/null ) || ( ln '
+            + glob_input
+            + ' "$tmpDir/globs" )\n'
+        )
         bashfile_string = bashfile_string + add_this_glob
 
-    bashfile_suffix = heredoc_wdl('''
+    bashfile_suffix = heredoc_wdl(
+        """
         )
 
         # flush RAM to disk
@@ -154,40 +164,46 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
         mv "$tmpDir/rc.tmp" "$tmpDir/rc"
         chmod -R 777 $tmpDir
-        ''')
+        """
+    )
 
     bashfile_string = bashfile_string + bashfile_suffix
 
-    with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
+    with open(os.path.join(temp_dir, job_name + "_script.sh"), "w") as bashfile:
         bashfile.write(bashfile_string)
 
 
 def process_single_infile(wdl_file: WDLFile, fileStore: AbstractFileStore) -> WDLFile:
     f = wdl_file.file_path
-    logger.info(f'Importing {f} into the jobstore.')
-    if f.startswith('http://') or f.startswith('https://') or \
-            f.startswith('file://') or f.startswith('wasb://'):
+    logger.info(f"Importing {f} into the jobstore.")
+    if (
+        f.startswith("http://")
+        or f.startswith("https://")
+        or f.startswith("file://")
+        or f.startswith("wasb://")
+    ):
         filepath = fileStore.importFile(f)
         preserveThisFilename = os.path.basename(f)
-    elif f.startswith('s3://'):
+    elif f.startswith("s3://"):
         try:
             filepath = fileStore.importFile(f)
             preserveThisFilename = os.path.basename(f)
         except:
             from toil.lib.ec2nodes import EC2Regions
+
             success = False
             for region in EC2Regions:
                 try:
-                    html_path = f'http://s3.{region}.amazonaws.com/' + f[5:]
+                    html_path = f"http://s3.{region}.amazonaws.com/" + f[5:]
                     filepath = fileStore.importFile(html_path)
                     preserveThisFilename = os.path.basename(f)
                     success = True
                 except:
                     pass
             if not success:
-                raise RuntimeError('Unable to import: ' + f)
-    elif f.startswith('gs://'):
-        f = 'https://storage.googleapis.com/' + f[5:]
+                raise RuntimeError("Unable to import: " + f)
+    elif f.startswith("gs://"):
+        f = "https://storage.googleapis.com/" + f[5:]
         filepath = fileStore.importFile(f)
         preserveThisFilename = os.path.basename(f)
     else:
@@ -222,11 +238,14 @@ def process_infile(f: Any, fileStore: AbstractFileStore):
         f.right = process_infile(f.right, fileStore)
         return f
     elif isinstance(f, dict):
-        return {process_infile(k, fileStore): process_infile(v, fileStore) for k, v in f.items()}
+        return {
+            process_infile(k, fileStore): process_infile(v, fileStore)
+            for k, v in f.items()
+        }
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError(f'Error processing file: {str(f)}')
+        raise WDLRuntimeError(f"Error processing file: {str(f)}")
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -261,29 +280,36 @@ def process_single_outfile(wdl_file: WDLFile, fileStore, workDir, outDir) -> WDL
         output_f_path = f
     elif os.path.exists(os.path.abspath(f)):
         output_f_path = os.path.abspath(f)
-    elif os.path.exists(os.path.join(workDir, 'execution', f)):
-        output_f_path = os.path.join(workDir, 'execution', f)
-    elif os.path.exists(os.path.join('execution', f)):
-        output_f_path = os.path.join('execution', f)
+    elif os.path.exists(os.path.join(workDir, "execution", f)):
+        output_f_path = os.path.join(workDir, "execution", f)
+    elif os.path.exists(os.path.join("execution", f)):
+        output_f_path = os.path.join("execution", f)
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
     elif os.path.exists(os.path.join(outDir, f)):
         output_f_path = os.path.join(outDir, f)
     else:
-        tmp = subprocess.check_output(['ls', '-lha', workDir]).decode('utf-8')
-        exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')]).decode('utf-8')
-        for std_file in ('stdout', 'stderr'):
-            std_file = os.path.join(workDir, 'execution', std_file)
+        tmp = subprocess.check_output(["ls", "-lha", workDir]).decode("utf-8")
+        exe = subprocess.check_output(
+            ["ls", "-lha", os.path.join(workDir, "execution")]
+        ).decode("utf-8")
+        for std_file in ("stdout", "stderr"):
+            std_file = os.path.join(workDir, "execution", std_file)
             if os.path.exists(std_file):
-                with open(std_file, 'rb') as f:
+                with open(std_file, "rb") as f:
                     logger.info(f.read())
 
-        raise RuntimeError('OUTPUT FILE: {} was not found in {}!\n'
-                           '{}\n\n'
-                           '{}\n'.format(f, os.getcwd(), tmp, exe))
+        raise RuntimeError(
+            "OUTPUT FILE: {} was not found in {}!\n"
+            "{}\n\n"
+            "{}\n".format(f, os.getcwd(), tmp, exe)
+        )
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
-    fileStore.export_file(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
+    fileStore.export_file(
+        output_file,
+        "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename),
+    )
     return WDLFile(file_path=output_file, file_name=preserveThisFilename, imported=True)
 
 
@@ -298,12 +324,16 @@ def process_outfile(f, fileStore, workDir, outDir):
         f.right = process_outfile(f.right, fileStore, workDir, outDir)
         return f
     elif isinstance(f, dict):
-        return {process_outfile(k, fileStore, workDir, outDir):
-                process_outfile(v, fileStore, workDir, outDir) for k, v in f.items()}
+        return {
+            process_outfile(k, fileStore, workDir, outDir): process_outfile(
+                v, fileStore, workDir, outDir
+            )
+            for k, v in f.items()
+        }
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError(f'Error processing file: {str(f)}')
+        raise WDLRuntimeError(f"Error processing file: {str(f)}")
 
 
 def abspath_single_file(f: WDLFile, cwd: str) -> WDLFile:
@@ -317,14 +347,20 @@ def abspath_file(f: Any, cwd: str):
     if not f:
         # in the case of "optional" files (same treatment in 'process_and_read_file()')
         # TODO: handle this at compile time, not here
-        return ''
+        return ""
     if isinstance(f, WDLFile):
         # check if this has already been imported into the fileStore
         if f.imported:
             return f
         path = f.file_path
-        if path.startswith('s3://') or path.startswith('http://') or path.startswith('https://') or \
-                path.startswith('file://') or path.startswith('wasb://') or path.startswith('gs://'):
+        if (
+            path.startswith("s3://")
+            or path.startswith("http://")
+            or path.startswith("https://")
+            or path.startswith("file://")
+            or path.startswith("wasb://")
+            or path.startswith("gs://")
+        ):
             return f
         return abspath_single_file(f, cwd)
     elif isinstance(f, list):
@@ -339,13 +375,18 @@ def abspath_file(f: Any, cwd: str):
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError(f'Error processing file: ({str(f)}) of type: ({str(type(f))}).')
+        raise WDLRuntimeError(
+            f"Error processing file: ({str(f)}) of type: ({str(type(f))})."
+        )
 
 
 def read_single_file(f: WDLFile, tempDir, fileStore, docker=False) -> str:
     import os
+
     try:
-        fpath = fileStore.readGlobalFile(f.file_path, userPath=os.path.join(tempDir, f.file_name))
+        fpath = fileStore.readGlobalFile(
+            f.file_path, userPath=os.path.join(tempDir, f.file_name)
+        )
     except:
         fpath = os.path.join(tempDir, f.file_name)
     return fpath
@@ -362,12 +403,16 @@ def read_file(f: Any, tempDir: str, fileStore: AbstractFileStore, docker: bool =
         f.right = read_file(f.right, tempDir, fileStore, docker=docker)
         return f
     elif isinstance(f, dict):
-        return {read_file(k, tempDir, fileStore, docker=docker):
-                read_file(v, tempDir, fileStore, docker=docker) for k, v in f.items()}
+        return {
+            read_file(k, tempDir, fileStore, docker=docker): read_file(
+                v, tempDir, fileStore, docker=docker
+            )
+            for k, v in f.items()
+        }
     elif isinstance(f, (int, str, bool, float)):
         return f
     else:
-        raise WDLRuntimeError(f'Error processing file: {str(f)}')
+        raise WDLRuntimeError(f"Error processing file: {str(f)}")
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
@@ -391,19 +436,22 @@ def generate_stdout_file(output, tempDir, fileStore, stderr=False):
     """
     if output is None:
         # write an empty file if there's no stdout/stderr.
-        output = b''
+        output = b""
     elif isinstance(output, str):
-        output = bytes(output, encoding='utf-8')
+        output = bytes(output, encoding="utf-8")
 
     # TODO: we need a way to differentiate the stdout/stderr files in the workflow after execution.
     # Cromwell generates a folder for each task so the file is simply named stdout and lives in
     # the task execution folder. This is not the case with Toil. Though, this would not be a
     # problem with intermediate stdout files as each task has its own temp folder.
-    name = 'stderr' if stderr else 'stdout'
-    local_path = os.path.join(tempDir, 'execution', name)
+    name = "stderr" if stderr else "stdout"
+    local_path = os.path.join(tempDir, "execution", name)
 
     # import to fileStore then read to local temp file
-    with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
+    with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (
+        stream,
+        file_id,
+    ):
         stream.write(output)
 
     assert file_id is not None
@@ -419,16 +467,17 @@ def parse_memory(memory):
     :return:
     """
     memory = str(memory)
-    if 'None' in memory:
+    if "None" in memory:
         return 2147483648  # toil's default
     try:
         import re
-        raw_mem_split = re.split('([a-zA-Z]+)', memory)
+
+        raw_mem_split = re.split("([a-zA-Z]+)", memory)
         mem_split = []
 
         for r in raw_mem_split:
             if r:
-                mem_split.append(r.replace(' ', ''))
+                mem_split.append(r.replace(" ", ""))
 
         if len(mem_split) == 1:
             return int(memory)
@@ -438,14 +487,14 @@ def parse_memory(memory):
             unit = mem_split[1]
             return int(float(num) * bytes_in_unit(unit))
         else:
-            raise RuntimeError(f'Memory parsing failed: {memory}')
+            raise RuntimeError(f"Memory parsing failed: {memory}")
     except:
         return 2147483648  # toil's default
 
 
 def parse_cores(cores):
     cores = str(cores)
-    if 'None' in cores:
+    if "None" in cores:
         return 1  # toil's default
     if cores:
         return float(cores)
@@ -455,19 +504,23 @@ def parse_cores(cores):
 
 def parse_disk(disk):
     disk = str(disk)
-    if 'None' in disk:
+    if "None" in disk:
         return 2147483648  # toil's default
     try:
         total_disk = 0
-        disks = disk.split(',')
+        disks = disk.split(",")
         for d in disks:
-            d = d.strip().split(' ')
+            d = d.strip().split(" ")
             if len(d) > 1:
                 for part in d:
                     if is_number(part):
-                        total_disk += parse_memory(f'{part} GB')
+                        total_disk += parse_memory(f"{part} GB")
             else:
-                return parse_memory(d[0]) if parse_memory(d[0]) > 2147483648 else 2147483648
+                return (
+                    parse_memory(d[0])
+                    if parse_memory(d[0]) > 2147483648
+                    else 2147483648
+                )
         return total_disk if total_disk > 2147483648 else 2147483648
     except:
         return 2147483648  # toil's default
@@ -481,9 +534,11 @@ def is_number(s):
         return False
 
 
-def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
-         unit: Optional[str] = 'B',
-         fileStore: Optional[AbstractFileStore] = None) -> float:
+def size(
+    f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
+    unit: Optional[str] = "B",
+    fileStore: Optional[AbstractFileStore] = None,
+) -> float:
     """
     Given a `File` and a `String` (optional), returns the size of the file in Bytes
     or in the unit specified by the second argument.
@@ -508,7 +563,9 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     elif isinstance(f, list):
         f = [WDLFile(file_path=sf) if isinstance(sf, str) else sf for sf in f]
 
-    assert isinstance(f, (WDLFile, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
+    assert isinstance(
+        f, (WDLFile, list)
+    ), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
 
     # validate the input. fileStore is only required if the input is not processed.
     f = process_infile(f, fileStore)
@@ -527,11 +584,13 @@ def select_first(values):
     for var in values:
         if var:
             return var
-    raise ValueError(f'No defined variables found for select_first array: {str(values)}')
+    raise ValueError(
+        f"No defined variables found for select_first array: {str(values)}"
+    )
 
 
 def combine_dicts(dict1, dict2):
-    combineddict= {}
+    combineddict = {}
     for k, v in dict1.items():
         counter1 = 0
         while isinstance(v, list):
@@ -564,13 +623,13 @@ def basename(path, suffix=None):
     if suffix:
         suffix = suffix.strip()
         if path.endswith(suffix):
-            path = path[:-len(suffix)]
+            path = path[: -len(suffix)]
     return os.path.basename(path)
 
 
-def heredoc_wdl(template, dictionary={}, indent=''):
+def heredoc_wdl(template, dictionary={}, indent=""):
     template = textwrap.dedent(template).format(**dictionary)
-    return template.replace('\n', '\n' + indent) + '\n'
+    return template.replace("\n", "\n" + indent) + "\n"
 
 
 def floor(i: Union[int, float]) -> int:
@@ -597,10 +656,10 @@ def read_lines(path: str) -> List[str]:
     """
     # file should already be imported locally via `process_and_read_file`
     with open(path) as f:
-        return f.read().rstrip('\n').split('\n')
+        return f.read().rstrip("\n").split("\n")
 
 
-def read_tsv(path: str, delimiter: str = '\t') -> List[List[str]]:
+def read_tsv(path: str, delimiter: str = "\t") -> List[List[str]]:
     """
     Take a tsv filepath and return an array; e.g. [[],[],[]].
 
@@ -665,7 +724,7 @@ def read_map(path: str) -> Dict[str, str]:
             if not line:
                 # remove extra lines
                 continue
-            key, value = line.split('\t', 1)
+            key, value = line.split("\t", 1)
             d[key] = value.strip()
     return d
 
@@ -724,7 +783,7 @@ def read_boolean(path: Union[str, WDLFile]) -> bool:
         path = path.file_path
 
     with open(path) as f:
-        return f.read().strip().lower() == 'true'
+        return f.read().strip().lower() == "true"
 
 
 def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
@@ -740,26 +799,30 @@ def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> s
     # md5sum = hashlib.md5(content).hexdigest()
     # name = f'{function_name}_{md5sum}.tmp'
 
-    name = f'{function_name}_{uuid.uuid4()}.tmp'
-    return os.path.join(temp_dir, 'execution', name)
+    name = f"{function_name}_{uuid.uuid4()}.tmp"
+    return os.path.join(temp_dir, "execution", name)
 
 
-def write_lines(in_lines: List[str],
-                temp_dir: Optional[str] = None,
-                file_store: Optional[AbstractFileStore] = None) -> str:
+def write_lines(
+    in_lines: List[str],
+    temp_dir: Optional[str] = None,
+    file_store: Optional[AbstractFileStore] = None,
+) -> str:
     """
     Given something that's compatible with `Array[String]`, this writes each element
     to it's own line on a file.  with newline `\n` characters as line separators.
 
     WDL syntax: File write_lines(Array[String])
     """
-    assert isinstance(in_lines, list), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
+    assert isinstance(
+        in_lines, list
+    ), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
 
-    path = _get_temp_file_path('write_lines', temp_dir)
+    path = _get_temp_file_path("write_lines", temp_dir)
 
-    with open(path, 'w') as file:
+    with open(path, "w") as file:
         for line in in_lines:
-            file.write(f'{line}\n')
+            file.write(f"{line}\n")
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)
@@ -767,21 +830,25 @@ def write_lines(in_lines: List[str],
     return path
 
 
-def write_tsv(in_tsv: List[List[str]],
-              delimiter: str = '\t',
-              temp_dir: Optional[str] = None,
-              file_store: Optional[AbstractFileStore] = None) -> str:
+def write_tsv(
+    in_tsv: List[List[str]],
+    delimiter: str = "\t",
+    temp_dir: Optional[str] = None,
+    file_store: Optional[AbstractFileStore] = None,
+) -> str:
     """
     Given something that's compatible with `Array[Array[String]]`, this writes a TSV
     file of the data structure.
 
     WDL syntax: File write_tsv(Array[Array[String]])
     """
-    assert isinstance(in_tsv, list), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
+    assert isinstance(
+        in_tsv, list
+    ), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
 
-    path = _get_temp_file_path('write_tsv', temp_dir)
+    path = _get_temp_file_path("write_tsv", temp_dir)
 
-    with open(path, 'w') as file:
+    with open(path, "w") as file:
         tsv_writer = csv.writer(file, delimiter=delimiter)
         for row in in_tsv:
             tsv_writer.writerow(row)
@@ -792,11 +859,13 @@ def write_tsv(in_tsv: List[List[str]],
     return path
 
 
-def write_json(in_json: Any,
-               indent: Union[None, int, str] = None,
-               separators: Optional[Tuple[str, str]] = (',', ':'),
-               temp_dir: Optional[str] = None,
-               file_store: Optional[AbstractFileStore] = None) -> str:
+def write_json(
+    in_json: Any,
+    indent: Union[None, int, str] = None,
+    separators: Optional[Tuple[str, str]] = (",", ":"),
+    temp_dir: Optional[str] = None,
+    file_store: Optional[AbstractFileStore] = None,
+) -> str:
     """
     Given something with any type, this writes the JSON equivalent to a file. See
     the table in the definition of
@@ -805,10 +874,14 @@ def write_json(in_json: Any,
     WDL syntax: File write_json(mixed)
     """
 
-    path = _get_temp_file_path('write_json', temp_dir)
+    path = _get_temp_file_path("write_json", temp_dir)
 
-    with open(path, 'w') as file:
-        file.write(json.dumps(in_json, indent=indent, separators=separators, cls=WDLJSONEncoder))
+    with open(path, "w") as file:
+        file.write(
+            json.dumps(
+                in_json, indent=indent, separators=separators, cls=WDLJSONEncoder
+            )
+        )
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)
@@ -816,22 +889,26 @@ def write_json(in_json: Any,
     return path
 
 
-def write_map(in_map: Dict[str, str],
-              temp_dir: Optional[str] = None,
-              file_store: Optional[AbstractFileStore] = None) -> str:
+def write_map(
+    in_map: Dict[str, str],
+    temp_dir: Optional[str] = None,
+    file_store: Optional[AbstractFileStore] = None,
+) -> str:
     """
     Given something that's compatible with `Map[String, String]`, this writes a TSV
      file of the data structure.
 
     WDL syntax: File write_map(Map[String, String])
     """
-    assert isinstance(in_map, dict), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
+    assert isinstance(
+        in_map, dict
+    ), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
 
-    path = _get_temp_file_path('write_map', temp_dir)
+    path = _get_temp_file_path("write_map", temp_dir)
 
-    with open(path, 'w') as file:
+    with open(path, "w") as file:
         for key, val in in_map.items():
-            file.write(f'{key}\t{val}\n')
+            file.write(f"{key}\t{val}\n")
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)
@@ -847,7 +924,9 @@ def wdl_range(num: int) -> List[int]:
     WDL syntax: Array[Int] range(Int)
     """
     if not (isinstance(num, int) and num >= 0):
-        raise WDLRuntimeError(f'range() requires an integer greater than or equal to 0 (but got {num})')
+        raise WDLRuntimeError(
+            f"range() requires an integer greater than or equal to 0 (but got {num})"
+        )
 
     return list(range(num))
 
@@ -859,12 +938,18 @@ def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
 
     WDL syntax: Array[Array[X]] transpose(Array[Array[X]])
     """
-    assert isinstance(in_array, list), f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+    assert isinstance(
+        in_array, list
+    ), f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}'
 
     for arr in in_array:
-        assert isinstance(arr, list), f'transpose() requires all collections to be a list!  Not: {type(arr)}'
+        assert isinstance(
+            arr, list
+        ), f"transpose() requires all collections to be a list!  Not: {type(arr)}"
         # zip() can handle this but Cromwell can not.
-        assert len(arr) == len(in_array[0]), 'transpose() requires all collections have the same size!'
+        assert len(arr) == len(
+            in_array[0]
+        ), "transpose() requires all collections have the same size!"
 
     return [list(i) for i in zip(*in_array)]
 
@@ -876,7 +961,9 @@ def length(in_array: List[Any]) -> int:
     """
     if not isinstance(in_array, list):
         # Cromwell throws an exception for anything other than a WDL Array
-        raise WDLRuntimeError(f'length() requires ${in_array} to be a list!  Not: {type(in_array)}')
+        raise WDLRuntimeError(
+            f"length() requires ${in_array} to be a list!  Not: {type(in_array)}"
+        )
 
     return len(in_array)
 
@@ -889,12 +976,17 @@ def wdl_zip(left: List[Any], right: List[Any]) -> List[WDLPair]:
     WDL syntax: Array[Pair[X,Y]] zip(Array[X], Array[Y])
     """
     if not isinstance(left, list) or not isinstance(right, list):
-        raise WDLRuntimeError(f'zip() requires both inputs to be lists!  Not: {type(left)} and {type(right)}')
+        raise WDLRuntimeError(
+            f"zip() requires both inputs to be lists!  Not: {type(left)} and {type(right)}"
+        )
 
     if len(left) != len(right):
-        raise WDLRuntimeError('zip() requires that input values have the same size!')
+        raise WDLRuntimeError("zip() requires that input values have the same size!")
 
-    return list(WDLPair(left=left_val, right=right_val) for left_val, right_val in zip(left, right))
+    return list(
+        WDLPair(left=left_val, right=right_val)
+        for left_val, right_val in zip(left, right)
+    )
 
 
 def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
@@ -905,9 +997,15 @@ def cross(left: List[Any], right: List[Any]) -> List[WDLPair]:
     WDL syntax: Array[Pair[X,Y]] cross(Array[X], Array[Y])
     """
     if not isinstance(left, list) or not isinstance(right, list):
-        raise WDLRuntimeError(f'cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}')
+        raise WDLRuntimeError(
+            f"cross() requires both inputs to be Array[]!  Not: {type(left)} and {type(right)}"
+        )
 
-    return list(WDLPair(left=left_val, right=right_val) for left_val in left for right_val in right)
+    return list(
+        WDLPair(left=left_val, right=right_val)
+        for left_val in left
+        for right_val in right
+    )
 
 
 def as_pairs(in_map: dict) -> List[WDLPair]:
@@ -920,7 +1018,9 @@ def as_pairs(in_map: dict) -> List[WDLPair]:
     WDL syntax: Array[Pair[X,Y]] as_pairs(Map[X,Y])
     """
     if not isinstance(in_map, dict):
-        raise WDLRuntimeError(f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}')
+        raise WDLRuntimeError(
+            f'as_pairs() requires "{in_map}" to be Map[]!  Not: {type(in_map)}'
+        )
 
     return list(WDLPair(left=k, right=v) for k, v in in_map.items())
 
@@ -934,7 +1034,9 @@ def as_map(in_array: List[WDLPair]) -> dict:
     WDL syntax: Map[X,Y] as_map(Array[Pair[X,Y]])
     """
     if not isinstance(in_array, list):
-        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+        raise WDLRuntimeError(
+            f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+        )
 
     map = {}
 
@@ -968,7 +1070,9 @@ def collect_by_key(in_array: List[WDLPair]) -> dict:
     WDL syntax: Map[X,Array[Y]] collect_by_key(Array[Pair[X,Y]])
     """
     if not isinstance(in_array, list):
-        raise WDLRuntimeError(f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}')
+        raise WDLRuntimeError(
+            f'as_map() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+        )
 
     map = {}
 
@@ -986,12 +1090,16 @@ def flatten(in_array: List[list]) -> list:
 
     WDL syntax: Array[X] flatten(Array[Array[X]])
     """
-    assert isinstance(in_array, list), f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+    assert isinstance(
+        in_array, list
+    ), f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}'
 
     arr = []
 
     for element in in_array:
-        assert isinstance(element, list), f'flatten() requires all collections to be a list!  Not: {type(element)}'
+        assert isinstance(
+            element, list
+        ), f"flatten() requires all collections to be a list!  Not: {type(element)}"
         arr.extend(element)
 
     return arr

@@ -28,27 +28,46 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 
-
-
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
 
     def test_permissions_iam(self):
-        granted_perms = {'*': {'Action': ['ec2:*', 'iam:*', 's3:*', 'sdb:*'], 'NotAction': []}}
-        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
-        granted_perms = {'*': {'Action': [], 'NotAction': ['s3:*']}}
-        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
+        granted_perms = {
+            "*": {"Action": ["ec2:*", "iam:*", "s3:*", "sdb:*"], "NotAction": []}
+        }
+        assert (
+            iam.policy_permissions_allow(
+                granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS
+            )
+            is True
+        )
+        granted_perms = {"*": {"Action": [], "NotAction": ["s3:*"]}}
+        assert (
+            iam.policy_permissions_allow(
+                granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS
+            )
+            is True
+        )
 
     def test_negative_permissions_iam(self):
-        granted_perms = {'*': {'Action': ['ec2:*', 's3:*', 'sdb:*'], 'NotAction': []}}
-        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
-        granted_perms = {'*': {'Action': [], 'NotAction': ['iam:*', 'ec2:*']}}
-        assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is False
+        granted_perms = {"*": {"Action": ["ec2:*", "s3:*", "sdb:*"], "NotAction": []}}
+        assert (
+            iam.policy_permissions_allow(
+                granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS
+            )
+            is False
+        )
+        granted_perms = {"*": {"Action": [], "NotAction": ["iam:*", "ec2:*"]}}
+        assert (
+            iam.policy_permissions_allow(
+                granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS
+            )
+            is False
+        )
 
     def test_wildcard_handling(self):
-        assert iam.permission_matches_any("iam:CreateRole", ['iam:Create**']) is True
-        assert iam.permission_matches_any("iam:GetUser", ['iam:???????']) is True
-        assert iam.permission_matches_any("iam:ListRoleTags", ['iam:*?*Tags']) is True
+        assert iam.permission_matches_any("iam:CreateRole", ["iam:Create**"]) is True
+        assert iam.permission_matches_any("iam:GetUser", ["iam:???????"]) is True
+        assert iam.permission_matches_any("iam:ListRoleTags", ["iam:*?*Tags"]) is True
         assert iam.permission_matches_any("iam:*", ["*"]) is True
-        assert iam.permission_matches_any("ec2:*", ['iam:*']) is False
-
+        assert iam.permission_matches_any("ec2:*", ["iam:*"]) is False

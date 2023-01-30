@@ -24,31 +24,37 @@ from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.common import Toil
 from toil.job import Job
-from toil.jobStores.abstractJobStore import (JobStoreExistsException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import (
+    JobStoreExistsException,
+    NoSuchJobStoreException,
+)
 from toil.leader import FailedJobsException
 from toil.lib.bioio import root_logger
-from toil.test import (ToilTest,
-                       needs_aws_ec2,
-                       needs_google,
-                       needs_gridengine,
-                       needs_mesos,
-                       needs_parasol,
-                       needs_torque,
-                       slow)
+from toil.test import (
+    ToilTest,
+    needs_aws_ec2,
+    needs_google,
+    needs_gridengine,
+    needs_mesos,
+    needs_parasol,
+    needs_torque,
+    slow,
+)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
-from toil.test.sort.sort import (copySubRangeOfFile,
-                                 getMidPoint,
-                                 main,
-                                 makeFileToSort,
-                                 merge,
-                                 sort)
+from toil.test.sort.sort import (
+    copySubRangeOfFile,
+    getMidPoint,
+    main,
+    makeFileToSort,
+    merge,
+    sort,
+)
 
 logger = logging.getLogger(__name__)
 
-defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', 10))
-defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', 10))
-defaultN = int(os.environ.get('TOIL_TEST_SORT_N', defaultLineLen * defaultLines / 5))
+defaultLineLen = int(os.environ.get("TOIL_TEST_SORT_LINE_LEN", 10))
+defaultLines = int(os.environ.get("TOIL_TEST_SORT_LINES", 10))
+defaultN = int(os.environ.get("TOIL_TEST_SORT_N", defaultLineLen * defaultLines / 5))
 
 
 @contextmanager
@@ -68,10 +74,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     Tests Toil by sorting a file in parallel on various combinations of job stores and batch
     systems.
     """
+
     def setUp(self):
         super().setUp()
-        self.tempDir = self._createTempDir(purpose='tempDir')
-        self.outputFile = os.path.join(self.tempDir, 'sortedFile.txt')
+        self.tempDir = self._createTempDir(purpose="tempDir")
+        self.outputFile = os.path.join(self.tempDir, "sortedFile.txt")
         self.inputFile = os.path.join(self.tempDir, "fileToSort.txt")
 
     def tearDown(self):
@@ -79,9 +86,19 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             shutil.rmtree(self.tempDir)
         ToilTest.tearDown(self)
 
-    def _toilSort(self, jobStoreLocator, batchSystem,
-                  lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
-                  retryCount=2, badWorker=0.5, downCheckpoints=False, caching=True):
+    def _toilSort(
+        self,
+        jobStoreLocator,
+        batchSystem,
+        lines=defaultLines,
+        N=defaultN,
+        testNo=1,
+        lineLen=defaultLineLen,
+        retryCount=2,
+        badWorker=0.5,
+        downCheckpoints=False,
+        caching=True,
+    ):
         """
         Generate a file consisting of the given number of random lines, each line of the given
         length. Sort the file with Toil by splitting the file recursively until each part is less
@@ -113,8 +130,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.caching = caching
                 # This is required because mesos_endpoint now defaults to the IP of the machine
                 # that is starting the workflow while the mesos *tests* run locally.
-                if batchSystem == 'mesos':
-                    options.mesos_endpoint = 'localhost:5050'
+                if batchSystem == "mesos":
+                    options.mesos_endpoint = "localhost:5050"
                 options.downCheckpoints = downCheckpoints
                 options.N = N
                 options.outputFile = self.outputFile
@@ -167,18 +184,22 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
                         if totalTrys > 32:  # p(fail after this many restarts) = 0.5**32
-                            self.fail('Exceeded a reasonable number of restarts')
+                            self.fail("Exceeded a reasonable number of restarts")
                         totalTrys += 1
             finally:
-                subprocess.check_call([resolveEntryPoint('toil'), 'clean', jobStoreLocator])
+                subprocess.check_call(
+                    [resolveEntryPoint("toil"), "clean", jobStoreLocator]
+                )
                 # final test to make sure the jobStore was actually deleted
-                self.assertRaises(NoSuchJobStoreException, Toil.resumeJobStore, jobStoreLocator)
-
-
+                self.assertRaises(
+                    NoSuchJobStoreException, Toil.resumeJobStore, jobStoreLocator
+                )
 
     @needs_aws_ec2
     def testAwsSingle(self):
-        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='single_machine')
+        self._toilSort(
+            jobStoreLocator=self._awsJobStore(), batchSystem="single_machine"
+        )
 
     @needs_aws_ec2
     @needs_mesos
@@ -193,13 +214,17 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testFileMesos(self):
         self._startMesos()
         try:
-            self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem="mesos")
+            self._toilSort(
+                jobStoreLocator=self._getTestJobStorePath(), batchSystem="mesos"
+            )
         finally:
             self._stopMesos()
 
     @needs_google
     def testGoogleSingle(self):
-        self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="single_machine")
+        self._toilSort(
+            jobStoreLocator=self._googleJobStore(), batchSystem="single_machine"
+        )
 
     @needs_google
     @needs_mesos
@@ -211,36 +236,57 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._stopMesos()
 
     def testFileSingle(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine')
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(), batchSystem="single_machine"
+        )
 
     def testFileSingleNonCaching(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
-                       caching=False)
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(),
+            batchSystem="single_machine",
+            caching=False,
+        )
 
     def testFileSingleCheckpoints(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
-                       retryCount=2, downCheckpoints=True)
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(),
+            batchSystem="single_machine",
+            retryCount=2,
+            downCheckpoints=True,
+        )
 
     def testFileSingle10000(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
-                       lines=10000, N=10000)
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(),
+            batchSystem="single_machine",
+            lines=10000,
+            N=10000,
+        )
 
     @needs_gridengine
-    @unittest.skip('GridEngine does not support shared caching')
+    @unittest.skip("GridEngine does not support shared caching")
     def testFileGridEngine(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='gridengine')
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(), batchSystem="gridengine"
+        )
 
     @needs_torque
-    @unittest.skip('PBS/Torque does not support shared caching')
+    @unittest.skip("PBS/Torque does not support shared caching")
     def testFileTorqueEngine(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='torque')
+        self._toilSort(
+            jobStoreLocator=self._getTestJobStorePath(), batchSystem="torque"
+        )
 
     @needs_parasol
-    @unittest.skip("skipping until parasol support is less flaky (see github issue #449")
+    @unittest.skip(
+        "skipping until parasol support is less flaky (see github issue #449"
+    )
     def testFileParasol(self):
         self._startParasol()
         try:
-            self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='parasol')
+            self._toilSort(
+                jobStoreLocator=self._getTestJobStorePath(), batchSystem="parasol"
+            )
         finally:
             self._stopParasol()
 
@@ -266,7 +312,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             makeFileToSort(tempFile2)
             sort(tempFile1)
             sort(tempFile2)
-            with open(tempFile3, 'w') as fileHandle:
+            with open(tempFile3, "w") as fileHandle:
                 with open(tempFile1) as tempFileHandle1:
                     with open(tempFile2) as tempFileHandle2:
                         merge(tempFileHandle1, tempFileHandle2, fileHandle)
@@ -285,7 +331,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             assert fileSize > 0
             fileStart = random.choice(range(0, fileSize))
             fileEnd = random.choice(range(fileStart, fileSize))
-            with open(outputFile, 'w') as f:
+            with open(outputFile, "w") as f:
                 f.write(copySubRangeOfFile(tempFile, fileStart, fileEnd))
             with open(outputFile) as f:
                 l = f.read()
@@ -302,11 +348,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             midPoint = getMidPoint(self.inputFile, 0, fileSize)
             print(f"The mid point is {midPoint} of a file of {fileSize} bytes.")
             assert midPoint < fileSize
-            assert sorted_contents[midPoint] == '\n'
+            assert sorted_contents[midPoint] == "\n"
             assert midPoint >= 0
 
     def _awsJobStore(self):
-        return f'aws:{self.awsRegion()}:sort-test-{uuid4()}'
+        return f"aws:{self.awsRegion()}:sort-test-{uuid4()}"
 
     def _googleJobStore(self):
         return f'google:{os.getenv("TOIL_GOOGLE_PROJECTID")}:sort-test-{uuid4()}'

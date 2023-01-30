@@ -21,7 +21,6 @@ from toil.test import ToilTest
 
 
 class JobDescriptionTest(ToilTest):
-
     def setUp(self):
         super().setUp()
         self.jobStorePath = self._getTestJobStorePath()
@@ -29,7 +28,7 @@ class JobDescriptionTest(ToilTest):
         Job.Runner.addToilOptions(parser)
         options = parser.parse_args(args=[self.jobStorePath])
         self.toil = Toil(options)
-        self.assertEqual( self.toil, self.toil.__enter__() )
+        self.assertEqual(self.toil, self.toil.__enter__())
 
     def tearDown(self):
         self.toil.__exit__(None, None, None)
@@ -43,15 +42,24 @@ class JobDescriptionTest(ToilTest):
         """
 
         command = "by your command"
-        memory = 2^32
-        disk = 2^32
+        memory = 2 ^ 32
+        disk = 2 ^ 32
         cores = "1"
         preemptable = 1
 
-        j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
-                           jobName='testJobGraph', unitName='noName')
+        j = JobDescription(
+            command=command,
+            requirements={
+                "memory": memory,
+                "cores": cores,
+                "disk": disk,
+                "preemptable": preemptable,
+            },
+            jobName="testJobGraph",
+            unitName="noName",
+        )
 
-        #Check attributes
+        # Check attributes
         self.assertEqual(j.command, command)
         self.assertEqual(j.memory, memory)
         self.assertEqual(j.disk, disk)
@@ -67,30 +75,39 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
 
-        #Check equals function (should be based on object identity and not contents)
-        j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
-                            jobName='testJobGraph', unitName='noName')
+        # Check equals function (should be based on object identity and not contents)
+        j2 = JobDescription(
+            command=command,
+            requirements={
+                "memory": memory,
+                "cores": cores,
+                "disk": disk,
+                "preemptable": preemptable,
+            },
+            jobName="testJobGraph",
+            unitName="noName",
+        )
         self.assertNotEqual(j, j2)
         ###TODO test other functionality
 
     def testJobDescriptionSequencing(self):
-        j = JobDescription(command='command', requirements={},  jobName='unimportant')
+        j = JobDescription(command="command", requirements={}, jobName="unimportant")
 
-        j.addChild('child')
-        j.addFollowOn('followOn')
+        j.addChild("child")
+        j.addFollowOn("followOn")
 
         # With a command, nothing should be ready to run
         self.assertEqual(list(j.nextSuccessors()), [])
 
         # With command cleared, child should be ready to run
         j.command = None
-        self.assertEqual(list(j.nextSuccessors()), ['child'])
+        self.assertEqual(list(j.nextSuccessors()), ["child"])
 
         # Without the child, the follow-on should be ready to run
-        j.filterSuccessors(lambda jID: jID != 'child')
-        self.assertEqual(list(j.nextSuccessors()), ['followOn'])
+        j.filterSuccessors(lambda jID: jID != "child")
+        self.assertEqual(list(j.nextSuccessors()), ["followOn"])
 
         # Without the follow-on, we should return None, to be distinct from an
         # empty list. Nothing left to do!
-        j.filterSuccessors(lambda jID: jID != 'followOn')
+        j.filterSuccessors(lambda jID: jID != "followOn")
         self.assertEqual(j.nextSuccessors(), None)

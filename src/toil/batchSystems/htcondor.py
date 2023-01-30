@@ -20,8 +20,9 @@ from typing import Any, Dict, Optional
 
 import htcondor
 
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,12 +41,16 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 self.waitingJobs.append(newJob)
 
             # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(
+                self.boss.config.maxLocalJobs
+            ):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
                 # Prepare the htcondor.Submit object
-                submitObj: htcondor.Submit = self.prepareSubmission(cpu, memory, disk, jobID, jobName, command)
+                submitObj: htcondor.Submit = self.prepareSubmission(
+                    cpu, memory, disk, jobID, jobName, command
+                )
                 logger.debug("Submitting %r", submitObj)
 
                 # Submit job and get batch system ID (i.e. the ClusterId)
@@ -63,53 +68,70 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return activity
 
-        def prepareSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str) -> htcondor.Submit:
+        def prepareSubmission(
+            self,
+            cpu: int,
+            memory: int,
+            disk: int,
+            jobID: int,
+            jobName: str,
+            command: str,
+        ) -> htcondor.Submit:
 
             # Convert resource requests
-            cpu = int(math.ceil(cpu)) # integer CPUs
-            ht_memory = float(memory)/1024 # memory in KB
-            ht_disk = float(disk)/1024 # disk in KB
+            cpu = int(math.ceil(cpu))  # integer CPUs
+            ht_memory = float(memory) / 1024  # memory in KB
+            ht_disk = float(disk) / 1024  # disk in KB
 
             # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
             # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
             # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
             # in the submit file, so that HTCondor will write the standard output/error files on the
             # compute node, then transfer back once the job has completed.
-            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'out')
-            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'err')
-            condorlogfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'events')
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, "$(cluster)", "out")
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, "$(cluster)", "err")
+            condorlogfile: str = self.boss.formatStdOutErrPath(
+                jobID, "$(cluster)", "events"
+            )
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.
             submit_parameters = {
-                'executable': '/bin/sh',
-                'transfer_executable': 'False',
-                'arguments': f'''"-c '{command}'"'''.encode(),    # Workaround for HTCondor Python bindings Unicode conversion bug
-                'environment': self.getEnvString(),
-                'getenv': 'True',
-                'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile
-                'output': stdoutfile,
-                'error': stderrfile,
-                'log': condorlogfile,
-                'request_cpus': f'{cpu}',
-                'request_memory': f'{ht_memory:.3f}KB',
-                'request_disk': f'{ht_disk:.3f}KB',
-                'leave_in_queue': '(JobStatus == 4)',
-                '+IsToilJob': 'True',
-                '+ToilJobID': f'{jobID}',
-                '+ToilJobName': f'"{jobName}"',
-                '+ToilJobKilled': 'False',
+                "executable": "/bin/sh",
+                "transfer_executable": "False",
+                "arguments": f'''"-c '{command}'"'''.encode(),  # Workaround for HTCondor Python bindings Unicode conversion bug
+                "environment": self.getEnvString(),
+                "getenv": "True",
+                "should_transfer_files": "Yes",  # See note above for stdoutfile, stderrfile
+                "output": stdoutfile,
+                "error": stderrfile,
+                "log": condorlogfile,
+                "request_cpus": f"{cpu}",
+                "request_memory": f"{ht_memory:.3f}KB",
+                "request_disk": f"{ht_disk:.3f}KB",
+                "leave_in_queue": "(JobStatus == 4)",
+                "+IsToilJob": "True",
+                "+ToilJobID": f"{jobID}",
+                "+ToilJobName": f'"{jobName}"',
+                "+ToilJobKilled": "False",
             }
 
             # Extra parameters for HTCondor
-            extra_parameters = os.getenv('TOIL_HTCONDOR_PARAMS')
+            extra_parameters = os.getenv("TOIL_HTCONDOR_PARAMS")
             if extra_parameters is not None:
-                logger.debug(f"Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {extra_parameters}")
-                for parameter, value in [parameter_value.split('=', 1) for parameter_value in extra_parameters.split(';')]:
+                logger.debug(
+                    f"Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {extra_parameters}"
+                )
+                for parameter, value in [
+                    parameter_value.split("=", 1)
+                    for parameter_value in extra_parameters.split(";")
+                ]:
                     parameter = parameter.strip()
                     value = value.strip()
                     if parameter in submit_parameters:
-                        raise ValueError(f"Some extra parameters are incompatible: {extra_parameters}")
+                        raise ValueError(
+                            f"Some extra parameters are incompatible: {extra_parameters}"
+                        )
 
                     submit_parameters[parameter] = value
 
@@ -129,23 +151,24 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
 
             # Get all Toil jobs that are running
-            requirements = '(JobStatus == 2) && (IsToilJob)'
-            projection = ['ClusterId', 'ToilJobID', 'EnteredCurrentStatus']
+            requirements = "(JobStatus == 2) && (IsToilJob)"
+            projection = ["ClusterId", "ToilJobID", "EnteredCurrentStatus"]
             schedd = self.connectSchedd()
-            ads = schedd.xquery(requirements = requirements,
-                                    projection = projection)
+            ads = schedd.xquery(requirements=requirements, projection=projection)
 
             # Only consider the Toil jobs that are part of this workflow
-            batchJobIDs = [batchJobID for (batchJobID, task) in self.batchJobIDs.values()]
+            batchJobIDs = [
+                batchJobID for (batchJobID, task) in self.batchJobIDs.values()
+            ]
             job_runtimes = {}
             for ad in ads:
-                batchJobID = int(ad['ClusterId'])
-                jobID = int(ad['ToilJobID'])
+                batchJobID = int(ad["ClusterId"])
+                jobID = int(ad["ToilJobID"])
                 if not (batchJobID in batchJobIDs):
                     continue
 
                 # HTCondor stores the start of the runtime as a Unix timestamp
-                runtime = time.time() - ad['EnteredCurrentStatus']
+                runtime = time.time() - ad["EnteredCurrentStatus"]
                 job_runtimes[jobID] = runtime
 
             return job_runtimes
@@ -156,28 +179,33 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Set the job to be killed when its exit status is checked
             schedd = self.connectSchedd()
-            job_spec = f'(ClusterId == {batchJobID})'
-            schedd.edit(job_spec, 'ToilJobKilled', 'True')
+            job_spec = f"(ClusterId == {batchJobID})"
+            schedd.edit(job_spec, "ToilJobKilled", "True")
 
         def getJobExitCode(self, batchJobID):
             logger.debug(f"Getting exit code for HTCondor job {batchJobID}")
 
             status = {
-                1: 'Idle',
-                2: 'Running',
-                3: 'Removed',
-                4: 'Completed',
-                5: 'Held',
-                6: 'Transferring Output',
-                7: 'Suspended'
+                1: "Idle",
+                2: "Running",
+                3: "Removed",
+                4: "Completed",
+                5: "Held",
+                6: "Transferring Output",
+                7: "Suspended",
             }
 
-            requirements = f'(ClusterId == {batchJobID})'
-            projection = ['JobStatus', 'ToilJobKilled', 'ExitCode',
-                              'HoldReason', 'HoldReasonSubCode']
+            requirements = f"(ClusterId == {batchJobID})"
+            projection = [
+                "JobStatus",
+                "ToilJobKilled",
+                "ExitCode",
+                "HoldReason",
+                "HoldReasonSubCode",
+            ]
 
             schedd = self.connectSchedd()
-            ads = schedd.xquery(requirements = requirements,  projection = projection)
+            ads = schedd.xquery(requirements=requirements, projection=projection)
 
             # Make sure a ClassAd was returned
             try:
@@ -187,7 +215,8 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                     ad = ads.next()
             except StopIteration:
                 logger.error(
-                    f"No HTCondor ads returned using constraint: {requirements}")
+                    f"No HTCondor ads returned using constraint: {requirements}"
+                )
                 raise
 
             # Make sure only one ClassAd was returned
@@ -200,65 +229,79 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 pass
             else:
                 logger.warning(
-                    f"Multiple HTCondor ads returned using constraint: {requirements}")
+                    f"Multiple HTCondor ads returned using constraint: {requirements}"
+                )
 
-            if ad['ToilJobKilled']:
+            if ad["ToilJobKilled"]:
                 logger.debug(f"HTCondor job {batchJobID} was killed by Toil")
 
                 # Remove the job from the Schedd and return 1
-                job_spec = f'ClusterId == {batchJobID}'
+                job_spec = f"ClusterId == {batchJobID}"
                 schedd.act(htcondor.JobAction.Remove, job_spec)
                 return 1
 
-            elif status[ad['JobStatus']] == 'Completed':
-                logger.debug("HTCondor job {} completed with exit code {}".format(
-                    batchJobID, ad['ExitCode']))
+            elif status[ad["JobStatus"]] == "Completed":
+                logger.debug(
+                    "HTCondor job {} completed with exit code {}".format(
+                        batchJobID, ad["ExitCode"]
+                    )
+                )
 
                 # Remove the job from the Schedd and return its exit code
-                job_spec = f'ClusterId == {batchJobID}'
+                job_spec = f"ClusterId == {batchJobID}"
                 schedd.act(htcondor.JobAction.Remove, job_spec)
-                return int(ad['ExitCode'])
+                return int(ad["ExitCode"])
 
-            elif status[ad['JobStatus']] == 'Held':
-                logger.error("HTCondor job {} was held: '{} (sub code {})'".format(
-                    batchJobID, ad['HoldReason'], ad['HoldReasonSubCode']))
+            elif status[ad["JobStatus"]] == "Held":
+                logger.error(
+                    "HTCondor job {} was held: '{} (sub code {})'".format(
+                        batchJobID, ad["HoldReason"], ad["HoldReasonSubCode"]
+                    )
+                )
 
                 # Remove the job from the Schedd and return 1
-                job_spec = f'ClusterId == {batchJobID}'
+                job_spec = f"ClusterId == {batchJobID}"
                 schedd.act(htcondor.JobAction.Remove, job_spec)
                 return 1
 
-            else: # Job still running or idle or doing something else
-                logger.debug("HTCondor job {} has not completed (Status: {})".format(
-                    batchJobID, status[ad['JobStatus']]))
+            else:  # Job still running or idle or doing something else
+                logger.debug(
+                    "HTCondor job {} has not completed (Status: {})".format(
+                        batchJobID, status[ad["JobStatus"]]
+                    )
+                )
                 return None
-
 
         """
         Implementation-specific helper methods
         """
 
         def connectSchedd(self):
-            '''Connect to HTCondor Schedd and return a Schedd object'''
+            """Connect to HTCondor Schedd and return a Schedd object"""
 
-            condor_host = os.getenv('TOIL_HTCONDOR_COLLECTOR')
-            schedd_name = os.getenv('TOIL_HTCONDOR_SCHEDD')
+            condor_host = os.getenv("TOIL_HTCONDOR_COLLECTOR")
+            schedd_name = os.getenv("TOIL_HTCONDOR_SCHEDD")
 
             # If TOIL_HTCONDOR_ variables are set, use them to find the Schedd
             if condor_host and schedd_name:
                 logger.debug(
                     "Connecting to HTCondor Schedd {} using Collector at {}".format(
-                        schedd_name, condor_host))
+                        schedd_name, condor_host
+                    )
+                )
                 try:
                     schedd_ad = htcondor.Collector(condor_host).locate(
-                        htcondor.DaemonTypes.Schedd, schedd_name)
+                        htcondor.DaemonTypes.Schedd, schedd_name
+                    )
                 except OSError:
                     logger.error(
-                        f"Could not connect to HTCondor Collector at {condor_host}")
+                        f"Could not connect to HTCondor Collector at {condor_host}"
+                    )
                     raise
                 except ValueError:
                     logger.error(
-                        f"Could not find HTCondor Schedd with name {schedd_name}")
+                        f"Could not find HTCondor Schedd with name {schedd_name}"
+                    )
                     raise
                 else:
                     schedd = htcondor.Schedd(schedd_ad)
@@ -270,7 +313,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Ping the Schedd to make sure it's there and responding
             try:
-                schedd.xquery(limit = 0)
+                schedd.xquery(limit=0)
             except RuntimeError:
                 logger.error("Could not connect to HTCondor Schedd")
                 raise
@@ -294,13 +337,15 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
                     # The entire value should be encapsulated in single quotes
                     # Quote marks (single or double) that are part of the value should be duplicated
-                    env_string += "'" + value.replace("'", "''").replace('"', '""') + "'"
+                    env_string += (
+                        "'" + value.replace("'", "''").replace('"', '""') + "'"
+                    )
 
                     env_items.append(env_string)
 
             # The entire string should be encapsulated in double quotes
             # Each variable should be separated by a single space
-            return '"' + ' '.join(env_items) + '"'
+            return '"' + " ".join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
     def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
@@ -314,7 +359,20 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             self.currentJobs.add(jobID)
 
             # Add the jobNode.disk and jobNode.jobName to the job tuple
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command,
-                                   job_environment))
-            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+            self.newJobsQueue.put(
+                (
+                    jobID,
+                    jobNode.cores,
+                    jobNode.memory,
+                    jobNode.disk,
+                    jobNode.jobName,
+                    jobNode.command,
+                    job_environment,
+                )
+            )
+            logger.debug(
+                "Issued the job command: %s with job id: %s ",
+                jobNode.command,
+                str(jobID),
+            )
         return jobID

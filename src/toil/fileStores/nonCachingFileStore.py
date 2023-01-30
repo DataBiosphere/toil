@@ -18,17 +18,19 @@ import os
 import tempfile
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import (IO,
-                    Any,
-                    Callable,
-                    DefaultDict,
-                    Dict,
-                    Generator,
-                    Iterator,
-                    List,
-                    Optional,
-                    Union,
-                    cast)
+from typing import (
+    IO,
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Union,
+    cast,
+)
 
 import dill
 
@@ -67,7 +69,9 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
-            logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
+            logger.warning(
+                f"Starting job {self.jobName} with less than 10%% of disk space remaining."
+            )
         try:
             os.chdir(self.localTempDir)
             with super().open(job):
@@ -75,19 +79,23 @@ class NonCachingFileStore(AbstractFileStore):
         finally:
             disk = getDirSizeRecursively(self.localTempDir)
             percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
-            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                          f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
+            disk_usage = (
+                f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
+                f"{bytes2human(jobReqs)}B [{jobReqs}B] requested)."
+            )
             if disk > jobReqs:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
-                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
-                                 level=logging.WARNING)
+                self.logToMaster(
+                    "Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                    f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
+                    level=logging.WARNING,
+                )
             else:
                 self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             os.remove(self.jobStateFile)
 
-    def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
+    def writeGlobalFile(self, localFileName: str, cleanup: bool = False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = str(self.jobDesc.jobStoreID)
         fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup)
@@ -97,12 +105,20 @@ class NonCachingFileStore(AbstractFileStore):
             self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
-    def readGlobalFile(self, fileStoreID: str, userPath: Optional[str] = None, cache: bool=True, mutable: bool=False,
-                            symlink: bool=False) -> str:
+    def readGlobalFile(
+        self,
+        fileStoreID: str,
+        userPath: Optional[str] = None,
+        cache: bool = True,
+        mutable: bool = False,
+        symlink: bool = False,
+    ) -> str:
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
-                raise RuntimeError(' File %s ' % localFilePath + ' exists. Cannot Overwrite.')
+                raise RuntimeError(
+                    " File %s " % localFilePath + " exists. Cannot Overwrite."
+                )
         else:
             localFilePath = self.getLocalTempFileName()
 
@@ -112,12 +128,19 @@ class NonCachingFileStore(AbstractFileStore):
         return localFilePath
 
     @contextmanager
-    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
-        with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
+    def readGlobalFileStream(
+        self,
+        fileStoreID: str,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[Union[IO[bytes], IO[str]]]:
+        with self.jobStore.read_file_stream(
+            fileStoreID, encoding=encoding, errors=errors
+        ) as f:
             self.logAccess(fileStoreID)
             yield f
 
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
@@ -128,7 +151,9 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
-            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
+            raise OSError(
+                errno.ENOENT, "Attempting to delete local copies of a file with none"
+            )
         else:
             for localFilePath in localFilePaths:
                 os.remove(localFilePath)
@@ -183,7 +208,9 @@ class NonCachingFileStore(AbstractFileStore):
         """
 
     @classmethod
-    def _removeDeadJobs(cls, coordination_dir: str, batchSystemShutdown: bool=False) -> None:
+    def _removeDeadJobs(
+        cls, coordination_dir: str, batchSystemShutdown: bool = False
+    ) -> None:
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
@@ -194,12 +221,12 @@ class NonCachingFileStore(AbstractFileStore):
         """
 
         for jobState in cls._getAllJobStates(coordination_dir):
-            if not process_name_exists(coordination_dir, jobState['jobProcessName']):
+            if not process_name_exists(coordination_dir, jobState["jobProcessName"]):
                 # We need to have a race to pick someone to clean up.
 
                 try:
                     # Open the directory
-                    dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
+                    dirFD = os.open(jobState["jobDir"], os.O_RDONLY)
                 except FileNotFoundError:
                     # The cleanup has happened and we can't contest for it
                     continue
@@ -212,8 +239,11 @@ class NonCachingFileStore(AbstractFileStore):
                     os.close(dirFD)
                 else:
                     # We got it
-                    logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                   'state of the job on disk.', jobState['jobName'])
+                    logger.warning(
+                        "Detected that job (%s) prematurely terminated.  Fixing the "
+                        "state of the job on disk.",
+                        jobState["jobName"],
+                    )
 
                     try:
                         if not batchSystemShutdown:
@@ -221,7 +251,7 @@ class NonCachingFileStore(AbstractFileStore):
                             # Delete the old work directory if it still exists.  Do this only during
                             # the life of the program and dont' do it during the batch system
                             # cleanup. Leave that to the batch system cleanup code.
-                            robust_rmtree(jobState['jobDir'])
+                            robust_rmtree(jobState["jobDir"])
                     finally:
                         fcntl.lockf(dirFD, fcntl.LOCK_UN)
                         os.close(dirFD)
@@ -237,15 +267,15 @@ class NonCachingFileStore(AbstractFileStore):
         :return: dict with keys (jobName,  jobProcessName, jobDir)
         """
         jobStateFiles = []
-        
+
         # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
         for entry in os.scandir(os.fsencode(coordination_dir)):
             # For each job state file in the coordination directory
-            if entry.name.endswith(b'.jobState'):
+            if entry.name.endswith(b".jobState"):
                 # This is the state of a job
                 jobStateFiles.append(os.fsdecode(entry.path))
-        
+
         for fname in jobStateFiles:
             try:
                 yield NonCachingFileStore._readJobState(fname)
@@ -258,7 +288,7 @@ class NonCachingFileStore(AbstractFileStore):
 
     @staticmethod
     def _readJobState(jobStateFileName: str) -> Dict[str, str]:
-        with open(jobStateFileName, 'rb') as fH:
+        with open(jobStateFileName, "rb") as fH:
             state = dill.load(fH)
         return cast(Dict[str, str], state)
 
@@ -272,17 +302,21 @@ class NonCachingFileStore(AbstractFileStore):
         :return: Path to the job state file
         :rtype: str
         """
-        jobState = {'jobProcessName': get_process_name(self.coordination_dir),
-                    'jobName': self.jobName,
-                    'jobDir': self.localTempDir}
-        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
-        with open(fd, 'wb') as fH:
+        jobState = {
+            "jobProcessName": get_process_name(self.coordination_dir),
+            "jobName": self.jobName,
+            "jobDir": self.localTempDir,
+        }
+        (fd, jobStateFile) = tempfile.mkstemp(
+            suffix=".jobState.tmp", dir=self.coordination_dir
+        )
+        with open(fd, "wb") as fH:
             # Write data
             dill.dump(jobState, fH)
         # Drop suffix
-        jobStateFile = jobStateFile[:-len('.tmp')]
+        jobStateFile = jobStateFile[: -len(".tmp")]
         # Put in place
-        os.rename(jobStateFile + '.tmp', jobStateFile)
+        os.rename(jobStateFile + ".tmp", jobStateFile)
         return jobStateFile
 
     @classmethod

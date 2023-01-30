@@ -14,9 +14,11 @@
 import logging
 import os
 
-from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
-                              get_flatcar_ami,
-                              official_flatcar_ami_release)
+from toil.lib.aws.ami import (
+    aws_marketplace_flatcar_ami_search,
+    get_flatcar_ami,
+    official_flatcar_ami_release,
+)
 from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2
 
@@ -28,35 +30,39 @@ logging.basicConfig(level=logging.DEBUG)
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
-        session = establish_boto3_session(region_name='us-west-2')
-        cls.ec2_client = session.client('ec2')
+        session = establish_boto3_session(region_name="us-west-2")
+        cls.ec2_client = session.client("ec2")
 
     def test_fetch_flatcar(self):
-        with self.subTest('Test flatcar AMI from user is prioritized.'):
-            os.environ['TOIL_AWS_AMI'] = 'overridden'
+        with self.subTest("Test flatcar AMI from user is prioritized."):
+            os.environ["TOIL_AWS_AMI"] = "overridden"
             ami = get_flatcar_ami(self.ec2_client)
-            self.assertEqual(ami, 'overridden')
-            del os.environ['TOIL_AWS_AMI']
+            self.assertEqual(ami, "overridden")
+            del os.environ["TOIL_AWS_AMI"]
 
-        with self.subTest('Test flatcar AMI returns an AMI-looking AMI.'):
+        with self.subTest("Test flatcar AMI returns an AMI-looking AMI."):
             ami = get_flatcar_ami(self.ec2_client)
-            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
-            self.assertTrue(ami.startswith('ami-'))
+            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami.startswith("ami-"))
 
-        with self.subTest('Test official_flatcar_ami_release() returns an AMI-looking AMI.'):
+        with self.subTest(
+            "Test official_flatcar_ami_release() returns an AMI-looking AMI."
+        ):
             ami = official_flatcar_ami_release(self.ec2_client)
-            self.assertTrue(ami is None or len(ami) == len('ami-02b46c73fed689d1c'))
-            self.assertTrue(ami is None or ami.startswith('ami-'))
+            self.assertTrue(ami is None or len(ami) == len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami is None or ami.startswith("ami-"))
 
-        with self.subTest('Test aws_marketplace_flatcar_ami_search() returns an AMI-looking AMI.'):
+        with self.subTest(
+            "Test aws_marketplace_flatcar_ami_search() returns an AMI-looking AMI."
+        ):
             ami = aws_marketplace_flatcar_ami_search(self.ec2_client)
-            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
-            self.assertTrue(ami.startswith('ami-'))
+            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+            self.assertTrue(ami.startswith("ami-"))
 
-        with self.subTest('Test flatcar AMI finder architecture parameter.'):
+        with self.subTest("Test flatcar AMI finder architecture parameter."):
             amis = set()
-            for arch in ['amd64', 'arm64']:
+            for arch in ["amd64", "arm64"]:
                 ami = get_flatcar_ami(self.ec2_client, architecture=arch)
-                self.assertTrue(ami.startswith('ami-'))
+                self.assertTrue(ami.startswith("ami-"))
                 amis.add(ami)
             self.assertTrue(len(amis) == 2)

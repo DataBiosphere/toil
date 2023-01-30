@@ -32,10 +32,11 @@ def have_working_nvidia_smi() -> bool:
     it can fulfill a CUDARequirement.
     """
     try:
-        subprocess.check_call(['nvidia-smi'])
+        subprocess.check_call(["nvidia-smi"])
     except (FileNotFoundError, subprocess.CalledProcessError):
         return False
     return True
+
 
 @memoize
 def have_working_nvidia_docker_runtime() -> bool:
@@ -44,10 +45,23 @@ def have_working_nvidia_docker_runtime() -> bool:
     """
     try:
         # The runtime injects nvidia-smi; it doesn't seem to have to be in the image we use here
-        subprocess.check_call(['docker', 'run', '--rm', '--runtime', 'nvidia', '--gpus', 'all', 'ubuntu:20.04', 'nvidia-smi'])
+        subprocess.check_call(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--runtime",
+                "nvidia",
+                "--gpus",
+                "all",
+                "ubuntu:20.04",
+                "nvidia-smi",
+            ]
+        )
     except subprocess.CalledProcessError:
         return False
     return True
+
 
 @memoize
 def count_nvidia_gpus() -> int:
@@ -60,9 +74,11 @@ def count_nvidia_gpus() -> int:
     # <https://github.com/common-workflow-language/cwltool/blob/6f29c59fb1b5426ef6f2891605e8fa2d08f1a8da/cwltool/cuda.py>
     # Some example output is here: <https://gist.github.com/loretoparisi/2620b777562c2dfd50d6b618b5f20867>
     try:
-        return int(minidom.parseString(
-            subprocess.check_output(["nvidia-smi", "-q", "-x"])
-        ).getElementsByTagName("attached_gpus")[0].firstChild.data)
+        return int(
+            minidom.parseString(subprocess.check_output(["nvidia-smi", "-q", "-x"]))
+            .getElementsByTagName("attached_gpus")[0]
+            .firstChild.data
+        )
     except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError):
         return 0
 
@@ -81,9 +97,15 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     """
 
     # For now we only know abput nvidia GPUs
-    return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
+    return [
+        {"kind": "gpu", "brand": "nvidia", "api": "cuda", "count": 1}
+        for _ in range(count_nvidia_gpus())
+    ]
 
-def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set[int]) -> Dict[str, str]:
+
+def get_restrictive_environment_for_local_accelerators(
+    accelerator_numbers: Set[int],
+) -> Dict[str, str]:
     """
     Get environment variables which can be applied to a process to restrict it
     to using only the given accelerator numbers.
@@ -94,6 +116,4 @@ def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set
 
     # Since we only know about nvidia GPUs right now, we can just say our
     # accelerator numbering space is the same as nvidia's GPU numbering space.
-    return {'CUDA_VISIBLE_DEVICES': ','.join(str(i) for i in accelerator_numbers)}
-
-
+    return {"CUDA_VISIBLE_DEVICES": ",".join(str(i) for i in accelerator_numbers)}

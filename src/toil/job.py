@@ -27,26 +27,29 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from contextlib import contextmanager
 from io import BytesIO
-from typing import (TYPE_CHECKING,
-                    Any,
-                    Callable,
-                    Dict,
-                    Iterator,
-                    List,
-                    Mapping,
-                    Optional,
-                    Sequence,
-                    Set,
-                    Tuple,
-                    Union,
-                    cast,
-                    overload)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+    overload,
+)
 
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
 import dill
+
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
@@ -61,8 +64,7 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import get_total_cpu_time, get_total_cpu_time_and_memory_usage
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
@@ -135,7 +137,7 @@ class TemporaryID:
         return self.__repr__()
 
     def __repr__(self) -> str:
-        return f'TemporaryID({self._value})'
+        return f"TemporaryID({self._value})"
 
     def __hash__(self) -> int:
         return hash(self._value)
@@ -146,11 +148,13 @@ class TemporaryID:
     def __ne__(self, other: Any) -> bool:
         return not isinstance(other, TemporaryID) or self._value != other._value
 
+
 class AcceleratorRequirement(TypedDict):
     """
     Represents a requirement for one or more computational accelerators, like a
     GPU or FPGA.
     """
+
     count: int
     """
     How many of the accelerator are needed to run the job.
@@ -187,7 +191,9 @@ class AcceleratorRequirement(TypedDict):
     # TODO: support requesting any GPU with X amount of vram
 
     @staticmethod
-    def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
+    def parse(
+        spec: Union[int, str, Dict[str, Union[str, int]]]
+    ) -> "AcceleratorRequirement":
         """
         Parse an AcceleratorRequirement specified by user code. Supports formats like:
 
@@ -223,16 +229,16 @@ class AcceleratorRequirement(TypedDict):
         it gets something it can't parse because it's the wrong type.
         """
 
-        KINDS = {'gpu'}
-        BRANDS = {'nvidia', 'amd'}
-        APIS = {'cuda', 'rocm', 'opencl'}
+        KINDS = {"gpu"}
+        BRANDS = {"nvidia", "amd"}
+        APIS = {"cuda", "rocm", "opencl"}
 
-        parsed: AcceleratorRequirement = {'count': 1, 'kind': 'gpu'}
+        parsed: AcceleratorRequirement = {"count": 1, "kind": "gpu"}
 
         if isinstance(spec, int):
-            parsed['count'] = spec
+            parsed["count"] = spec
         elif isinstance(spec, str):
-            parts = spec.split(':')
+            parts = spec.split(":")
 
             if len(parts) > 2:
                 raise ValueError("Could not parse AcceleratorRequirement: " + spec)
@@ -241,7 +247,7 @@ class AcceleratorRequirement(TypedDict):
 
             try:
                 # If they have : and then a count, or just a count, handle that.
-                parsed['count'] = int(possible_count)
+                parsed["count"] = int(possible_count)
                 if len(parts) > 1:
                     # Then we take whatever was before the colon as text
                     possible_description = parts[0]
@@ -251,66 +257,83 @@ class AcceleratorRequirement(TypedDict):
                 # It doesn't end with a number
                 if len(parts) == 2:
                     # We should have a number though.
-                    raise ValueError("Could not parse AcceleratorRequirement count in: " + spec)
+                    raise ValueError(
+                        "Could not parse AcceleratorRequirement count in: " + spec
+                    )
                 else:
                     # Must be just the description
                     possible_description = possible_count
 
             # Determine if we have a kind, brand, API, or (by default) model
             if possible_description in KINDS:
-                parsed['kind'] = possible_description
+                parsed["kind"] = possible_description
             elif possible_description in BRANDS:
-                parsed['brand'] = possible_description
+                parsed["brand"] = possible_description
             elif possible_description in APIS:
-                parsed['api'] = possible_description
+                parsed["api"] = possible_description
             else:
-                parsed['model'] = possible_description
+                parsed["model"] = possible_description
         elif isinstance(spec, dict):
             # It's a dict, so merge with the defaults.
             parsed.update(spec)
             # TODO: make sure they didn't misspell keys or something
         else:
-            raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
+            raise TypeError(
+                f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement"
+            )
 
-        if parsed['kind'] == 'gpu':
+        if parsed["kind"] == "gpu":
             # Use some smarts about what current GPUs are like to elaborate the
             # description.
 
-            if 'brand' not in parsed and 'model' in parsed:
+            if "brand" not in parsed and "model" in parsed:
                 # Try to guess the brand from the model
                 for brand in BRANDS:
-                    if parsed['model'].startswith(brand):
+                    if parsed["model"].startswith(brand):
                         # The model often starts with the brand
-                        parsed['brand'] = brand
+                        parsed["brand"] = brand
                         break
 
-            if 'brand' not in parsed and 'api' in parsed:
+            if "brand" not in parsed and "api" in parsed:
                 # Try to guess the brand from the API
-                if parsed['api'] == 'cuda':
+                if parsed["api"] == "cuda":
                     # Only nvidia makes cuda cards
-                    parsed['brand'] = 'nvidia'
-                elif parsed['api'] == 'rocm':
+                    parsed["brand"] = "nvidia"
+                elif parsed["api"] == "rocm":
                     # Only amd makes rocm cards
-                    parsed['brand'] = 'amd'
+                    parsed["brand"] = "amd"
 
         return parsed
 
     @staticmethod
-    def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
+    def satisfies(
+        candidate: "AcceleratorRequirement", requirement: "AcceleratorRequirement"
+    ) -> bool:
         """
         Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
         """
 
-        for key in ['kind', 'brand', 'api', 'model']:
+        for key in ["kind", "brand", "api", "model"]:
             if key in requirement:
                 if key not in candidate:
-                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have a %s', candidate, requirement, key)
+                    logger.debug(
+                        "Candidate %s does not satisfy requirement %s because it does not have a %s",
+                        candidate,
+                        requirement,
+                        key,
+                    )
                     return False
                 if candidate[key] != requirement[key]:
-                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have the correct %s', candidate, requirement, key)
+                    logger.debug(
+                        "Candidate %s does not satisfy requirement %s because it does not have the correct %s",
+                        candidate,
+                        requirement,
+                        key,
+                    )
                     return False
         # If all these match or are more specific than required, we match!
         return True
+
 
 class RequirementsDict(TypedDict):
     """
@@ -324,6 +347,7 @@ class RequirementsDict(TypedDict):
     accelerators: NotRequired[List[AcceleratorRequirement]]
     preemptable: NotRequired[bool]
 
+
 # These must be all the key names in RequirementsDict
 REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptable"]
 
@@ -334,9 +358,21 @@ ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
 ParseableIndivisibleResource = Union[str, int]
 ParseableDivisibleResource = Union[str, int, float]
 ParseableFlag = Union[str, int, bool]
-ParseableAcceleratorRequirement = Union[str, int, Mapping[str, Any], AcceleratorRequirement, Sequence[Union[str, int, Mapping[str, Any], AcceleratorRequirement]]]
+ParseableAcceleratorRequirement = Union[
+    str,
+    int,
+    Mapping[str, Any],
+    AcceleratorRequirement,
+    Sequence[Union[str, int, Mapping[str, Any], AcceleratorRequirement]],
+]
 
-ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleResource, ParseableFlag, ParseableAcceleratorRequirement]
+ParseableRequirement = Union[
+    ParseableIndivisibleResource,
+    ParseableDivisibleResource,
+    ParseableFlag,
+    ParseableAcceleratorRequirement,
+]
+
 
 class Requirer:
     """
@@ -346,9 +382,7 @@ class Requirer:
 
     _requirementOverrides: RequirementsDict
 
-    def __init__(
-        self, requirements: Mapping[str, ParseableRequirement]
-    ) -> None:
+    def __init__(self, requirements: Mapping[str, ParseableRequirement]) -> None:
         """
         Parse and save the given requirements.
 
@@ -393,7 +427,7 @@ class Requirer:
         """Return the dict to use as the instance's __dict__ when pickling."""
         # We want to exclude the config from pickling.
         state = self.__dict__.copy()
-        state['_config'] = None
+        state["_config"] = None
         return state
 
     def __copy__(self) -> "Requirer":
@@ -438,7 +472,8 @@ class Requirer:
     @overload
     @staticmethod
     def _parseResource(
-        name: Union[Literal["memory"], Literal["disks"]], value: ParseableIndivisibleResource
+        name: Union[Literal["memory"], Literal["disks"]],
+        value: ParseableIndivisibleResource,
     ) -> int:
         ...
 
@@ -458,16 +493,12 @@ class Requirer:
 
     @overload
     @staticmethod
-    def _parseResource(
-        name: str, value: ParseableRequirement
-    ) -> ParsedRequirement:
+    def _parseResource(name: str, value: ParseableRequirement) -> ParsedRequirement:
         ...
 
     @overload
     @staticmethod
-    def _parseResource(
-        name: str, value: None
-    ) -> None:
+    def _parseResource(name: str, value: None) -> None:
         ...
 
     @staticmethod
@@ -505,37 +536,45 @@ class Requirer:
             # Anything can be None.
             return value
 
-        if name in ('memory', 'disk', 'cores'):
+        if name in ("memory", "disk", "cores"):
             # These should be numbers that accept things like "5G".
             if isinstance(value, (str, bytes)):
                 value = human2bytes(value)
             if isinstance(value, int):
                 return value
-            elif isinstance(value, float) and name == 'cores':
+            elif isinstance(value, float) and name == "cores":
                 # But only cores can be fractional.
                 return value
             else:
-                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
-        elif name == 'preemptable':
+                raise TypeError(
+                    f"The '{name}' requirement does not accept values that are of type {type(value)}"
+                )
+        elif name == "preemptable":
             if isinstance(value, str):
                 if value.lower() == "true":
                     return True
                 elif value.lower() == "false":
                     return False
                 else:
-                    raise ValueError(f"The '{name}' requirement, as a string, must be 'true' or 'false' but is {value}")
+                    raise ValueError(
+                        f"The '{name}' requirement, as a string, must be 'true' or 'false' but is {value}"
+                    )
             elif isinstance(value, int):
                 if value == 1:
                     return True
                 if value == 0:
                     return False
                 else:
-                    raise ValueError(f"The '{name}' requirement, as an int, must be 1 or 0 but is {value}")
+                    raise ValueError(
+                        f"The '{name}' requirement, as an int, must be 1 or 0 but is {value}"
+                    )
             elif isinstance(value, bool):
                 return value
             else:
-                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
-        elif name == 'accelerators':
+                raise TypeError(
+                    f"The '{name}' requirement does not accept values that are of type {type(value)}"
+                )
+        elif name == "accelerators":
             # The type checking for this is delegated to the
             # AcceleratorRequirement class.
             if isinstance(value, list):
@@ -564,7 +603,7 @@ class Requirer:
                 )
             return value
         elif self._config is not None:
-            value = getattr(self._config, 'default' + requirement.capitalize())
+            value = getattr(self._config, "default" + requirement.capitalize())
             if value is None:
                 raise AttributeError(
                     f"Encountered None for default '{requirement}' requirement "
@@ -622,7 +661,9 @@ class Requirer:
     @property
     def accelerators(self) -> List[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
-        return cast(List[AcceleratorRequirement], self._fetchRequirement("accelerators"))
+        return cast(
+            List[AcceleratorRequirement], self._fetchRequirement("accelerators")
+        )
 
     @accelerators.setter
     def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
@@ -646,7 +687,7 @@ class Requirer:
         if isinstance(original_value, (int, float)):
             # This is something we actually can scale up and down
             new_value = original_value * factor
-            if requirement in ('memory', 'disk'):
+            if requirement in ("memory", "disk"):
                 # Must round to an int
                 new_value = math.ceil(new_value)
             setattr(scaled, requirement, new_value)
@@ -666,10 +707,10 @@ class Requirer:
                 if isinstance(v, (int, float)) and v > 1000:
                     # Make large numbers readable
                     v = bytes2human(v)
-                parts.append(f'{k}: {v}')
+                parts.append(f"{k}: {v}")
         if len(parts) == 0:
-            parts = ['no requirements']
-        return ', '.join(parts)
+            parts = ["no requirements"]
+        return ", ".join(parts)
 
 
 class JobDescription(Requirer):
@@ -720,7 +761,10 @@ class JobDescription(Requirer):
 
         # Save names, making sure they are strings and not e.g. bytes.
         def makeString(x: Union[str, bytes]) -> str:
-            return x if not isinstance(x, bytes) else x.decode('utf-8', errors='replace')
+            return (
+                x if not isinstance(x, bytes) else x.decode("utf-8", errors="replace")
+            )
+
         self.jobName = makeString(jobName)
         self.unitName = makeString(unitName)
         self.displayName = makeString(displayName)
@@ -891,7 +935,11 @@ class JobDescription(Requirer):
         :rtype: tuple(tuple(str))
         """
         result = []
-        if self.command is not None or len(self.childIDs) != 0 or len(self.followOnIDs) != 0:
+        if (
+            self.command is not None
+            or len(self.childIDs) != 0
+            or len(self.followOnIDs) != 0
+        ):
             # Follow-ons haven't all finished yet
             result.append(tuple(self.followOnIDs))
         if self.command is not None or len(self.childIDs) != 0:
@@ -953,7 +1001,10 @@ class JobDescription(Requirer):
         follow-on, and service jobs appear to be finished and removed.
         """
 
-        return self.command == None and next(self.successorsAndServiceHosts(), None) is None
+        return (
+            self.command == None
+            and next(self.successorsAndServiceHosts(), None) is None
+        )
 
     def replace(self, other: "JobDescription") -> None:
         """
@@ -1023,8 +1074,12 @@ class JobDescription(Requirer):
         """
         self.childIDs = {renames.get(old, old) for old in self.childIDs}
         self.followOnIDs = {renames.get(old, old) for old in self.followOnIDs}
-        self.serviceTree = {renames.get(parent, parent): [renames.get(child, child) for child in children]
-                            for parent, children in self.serviceTree.items()}
+        self.serviceTree = {
+            renames.get(parent, parent): [
+                renames.get(child, child) for child in children
+            ]
+            for parent, children in self.serviceTree.items()
+        }
 
     def addPredecessor(self) -> None:
         """Notify the JobDescription that a predecessor has been added to its Job."""
@@ -1040,7 +1095,11 @@ class JobDescription(Requirer):
         :param jobStore: The job store we are being placed into
         """
 
-    def setupJobAfterFailure(self, exit_status: Optional[int] = None, exit_reason: Optional["BatchJobExitReason"] = None):
+    def setupJobAfterFailure(
+        self,
+        exit_status: Optional[int] = None,
+        exit_reason: Optional["BatchJobExitReason"] = None,
+    ):
         """
         Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
@@ -1061,30 +1120,49 @@ class JobDescription(Requirer):
         # Make sure we have an assigned config.
         assert self._config is not None
 
-        if self._config.enableUnlimitedPreemptableRetries and exit_reason == BatchJobExitReason.LOST:
-            logger.info("*Not* reducing try count (%s) of job %s with ID %s",
-                        self.remainingTryCount, self, self.jobStoreID)
+        if (
+            self._config.enableUnlimitedPreemptableRetries
+            and exit_reason == BatchJobExitReason.LOST
+        ):
+            logger.info(
+                "*Not* reducing try count (%s) of job %s with ID %s",
+                self.remainingTryCount,
+                self,
+                self.jobStoreID,
+            )
         else:
             self.remainingTryCount = max(0, self.remainingTryCount - 1)
-            logger.warning("Due to failure we are reducing the remaining try count of job %s with ID %s to %s",
-                           self, self.jobStoreID, self.remainingTryCount)
+            logger.warning(
+                "Due to failure we are reducing the remaining try count of job %s with ID %s to %s",
+                self,
+                self.jobStoreID,
+                self.remainingTryCount,
+            )
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
         if exit_reason == BatchJobExitReason.MEMLIMIT and self._config.doubleMem:
             self.memory = self.memory * 2
-            logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
-                           self, self.memory)
+            logger.warning(
+                "We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
+                self,
+                self.memory,
+            )
         if self.memory < self._config.defaultMemory:
             self.memory = self._config.defaultMemory
-            logger.warning("We have increased the default memory of the failed job %s to %s bytes",
-                           self, self.memory)
+            logger.warning(
+                "We have increased the default memory of the failed job %s to %s bytes",
+                self,
+                self.memory,
+            )
 
         if self.disk < self._config.defaultDisk:
             self.disk = self._config.defaultDisk
-            logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
-                           self, self.disk)
-
+            logger.warning(
+                "We have increased the disk of the failed job %s to the default of %s bytes",
+                self,
+                self.disk,
+            )
 
     def getLogFileHandle(self, jobStore):
         """
@@ -1132,12 +1210,12 @@ class JobDescription(Requirer):
         """Produce a useful logging string identifying this job."""
         printedName = "'" + self.jobName + "'"
         if self.unitName:
-            printedName += ' ' + self.unitName
+            printedName += " " + self.unitName
 
         if self.jobStoreID is not None:
-            printedName += ' ' + str(self.jobStoreID)
+            printedName += " " + str(self.jobStoreID)
 
-        printedName += ' v' + str(self._job_version)
+        printedName += " v" + str(self._job_version)
 
         return printedName
 
@@ -1146,7 +1224,7 @@ class JobDescription(Requirer):
     # a time, keyed by jobStoreID.
 
     def __repr__(self):
-        return f'{self.__class__.__name__}( **{self.__dict__!r} )'
+        return f"{self.__class__.__name__}( **{self.__dict__!r} )"
 
     def pre_update_hook(self) -> None:
         """
@@ -1246,20 +1324,27 @@ class CheckpointJobDescription(JobDescription):
         """
         assert self.checkpoint is not None
         successorsDeleted = []
-        if self.childIDs or self.followOnIDs or self.serviceTree or self.command is not None:
+        if (
+            self.childIDs
+            or self.followOnIDs
+            or self.serviceTree
+            or self.command is not None
+        ):
             if self.command is not None:
                 assert self.command == self.checkpoint
                 logger.debug("Checkpoint job already has command set to run")
             else:
                 self.command = self.checkpoint
 
-            jobStore.update_job(self) # Update immediately to ensure that checkpoint
+            jobStore.update_job(self)  # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
             if self.childIDs or self.followOnIDs or self.serviceTree:
                 # If the subtree of successors is not complete restart everything
-                logger.debug("Checkpoint job has unfinished successor jobs, deleting children: %s, followOns: %s, services: %s " %
-                             (self.childIDs, self.followOnIDs, self.serviceTree.keys()))
+                logger.debug(
+                    "Checkpoint job has unfinished successor jobs, deleting children: %s, followOns: %s, services: %s "
+                    % (self.childIDs, self.followOnIDs, self.serviceTree.keys())
+                )
 
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue
@@ -1272,9 +1357,13 @@ class CheckpointJobDescription(JobDescription):
                             logger.debug("Job %s has already been deleted", otherJobID)
                     if jobDesc.jobStoreID != self.jobStoreID:
                         # Delete everything under us except us.
-                        logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
+                        logger.debug(
+                            "Checkpoint is deleting old successor job: %s",
+                            jobDesc.jobStoreID,
+                        )
                         jobStore.delete_job(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
+
                 recursiveDelete(self)
 
                 # Cut links to the jobs we deleted.
@@ -1335,9 +1424,13 @@ class Job:
         displayName = displayName if displayName else jobName
 
         # Build a requirements dict for the description
-        requirements = {'memory': memory, 'cores': cores, 'disk': disk,
-                        'accelerators': accelerators,
-                        'preemptable': preemptable}
+        requirements = {
+            "memory": memory,
+            "cores": cores,
+            "disk": disk,
+            "accelerators": accelerators,
+            "preemptable": preemptable,
+        }
         if descriptionClass is None:
             if checkpoint:
                 # Actually describe as a checkpoint job
@@ -1348,7 +1441,9 @@ class Job:
         # Create the JobDescription that owns all the scheduling information.
         # Make it with a temporary ID until we can be assigned a real one by
         # the JobStore.
-        self._description = descriptionClass(requirements, jobName, unitName=unitName, displayName=displayName)
+        self._description = descriptionClass(
+            requirements, jobName, unitName=unitName, displayName=displayName
+        )
 
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.
@@ -1369,7 +1464,9 @@ class Job:
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
-        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(self.__module__).globalize()
+        self.userModule: ModuleDescriptor = ModuleDescriptor.forModule(
+            self.__module__
+        ).globalize()
         # Maps index paths into composite return values to lists of IDs of files containing
         # promised values for those return value items. An index path is a tuple of indices that
         # traverses a nested data structure of lists, dicts, tuples or any other type supporting
@@ -1389,7 +1486,7 @@ class Job:
         if self.description is None:
             return repr(self)
         else:
-            return 'Job(' + str(self.description) + ')'
+            return "Job(" + str(self.description) + ")"
 
     @property
     def jobStoreID(self):
@@ -1421,9 +1518,10 @@ class Job:
         :rtype: int
         """
         return self.description.disk
+
     @disk.setter
     def disk(self, val):
-         self.description.disk = val
+        self.description.disk = val
 
     @property
     def memory(self):
@@ -1433,33 +1531,36 @@ class Job:
         :rtype: int
         """
         return self.description.memory
+
     @memory.setter
     def memory(self, val):
-         self.description.memory = val
+        self.description.memory = val
 
     @property
     def cores(self):
         """
-        The number of CPU cores required.
+         The number of CPU cores required.
 
-       :rtype: int|float
+        :rtype: int|float
         """
         return self.description.cores
+
     @cores.setter
     def cores(self, val):
-         self.description.cores = val
+        self.description.cores = val
 
     @property
     def accelerators(self):
         """
-        Any accelerators, such as GPUs, that are needed.
+         Any accelerators, such as GPUs, that are needed.
 
-       :rtype: list
+        :rtype: list
         """
         return self.description.accelerators
+
     @accelerators.setter
     def accelerators(self, val):
-         self.description.accelerators = val
+        self.description.accelerators = val
 
     @property
     def preemptable(self):
@@ -1469,9 +1570,10 @@ class Job:
         :rtype: bool
         """
         return self.description.preemptable
+
     @preemptable.setter
     def preemptable(self, val):
-         self.description.preemptable = val
+        self.description.preemptable = val
 
     @property
     def checkpoint(self):
@@ -1586,7 +1688,7 @@ class Job:
 
         return followOnJob
 
-    def hasPredecessor(self, job: 'Job') -> bool:
+    def hasPredecessor(self, job: "Job") -> bool:
         """Check if a given job is already a predecessor of this job."""
         return job in self._directPredecessors
 
@@ -1648,7 +1750,9 @@ class Job:
 
     def hasService(self, service: "Service") -> bool:
         """Return True if the given Service is a service of this job, and False otherwise."""
-        return service.hostID is None or self._description.hasServiceHostJob(service.hostID)
+        return service.hostID is None or self._description.hasServiceHostJob(
+            service.hostID
+        )
 
     # Convenience functions for creating jobs
 
@@ -1696,7 +1800,9 @@ class Job:
         :return: The new child job that wraps fn.
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addChild(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
+            return self.addChild(
+                PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs)
+            )
         else:
             return self.addChild(JobFunctionWrappingJob(fn, *args, **kwargs))
 
@@ -1712,7 +1818,9 @@ class Job:
         :return: The new follow-on job that wraps fn.
         """
         if PromisedRequirement.convertPromises(kwargs):
-            return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
+            return self.addFollowOn(
+                PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs)
+            )
         else:
             return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
 
@@ -1817,8 +1925,12 @@ class Job:
             raise JobPromiseConstraintError(self)
         # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.write_file_stream() as (fileHandle, jobStoreFileID):
-            promise = UnfulfilledPromiseSentinel(str(self.description), jobStoreFileID, False)
-            logger.debug('Issuing promise %s for result of %s', jobStoreFileID, self.description)
+            promise = UnfulfilledPromiseSentinel(
+                str(self.description), jobStoreFileID, False
+            )
+            logger.debug(
+                "Issuing promise %s for result of %s", jobStoreFileID, self.description
+            )
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
@@ -1868,7 +1980,7 @@ class Job:
         self.checkJobGraphAcylic()
         self.checkNewCheckpointsAreLeafVertices()
 
-    def getRootJobs(self) -> Set['Job']:
+    def getRootJobs(self) -> Set["Job"]:
         """
         Returns the set of root job objects that contain this job.
         A root job is a job with no predecessors (i.e. which are not children, follow-ons, or services).
@@ -1900,8 +2012,9 @@ class Job:
         """
         rootJobs = self.getRootJobs()
         if len(rootJobs) != 1:
-            raise JobGraphDeadlockException("Graph does not contain exactly one"
-                                            " root job: %s" % rootJobs)
+            raise JobGraphDeadlockException(
+                "Graph does not contain exactly one" " root job: %s" % rootJobs
+            )
 
     def checkJobGraphAcylic(self):
         """
@@ -1921,15 +2034,15 @@ class Job:
 
         Only deals with jobs created here, rather than loaded from the job store.
         """
-        #Get the root jobs
+        # Get the root jobs
         roots = self.getRootJobs()
         if len(roots) == 0:
             raise JobGraphDeadlockException("Graph contains no root jobs due to cycles")
 
-        #Get implied edges
+        # Get implied edges
         extraEdges = self._getImpliedEdges(roots)
 
-        #Check for directed cycles in the augmented graph
+        # Check for directed cycles in the augmented graph
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
@@ -1941,13 +2054,19 @@ class Job:
         if self not in visited:
             visited.add(self)
             stack.append(self)
-            for successor in [self._registry[jID] for jID in self.description.allSuccessors() if jID in self._registry] + extraEdges[self]:
+            for successor in [
+                self._registry[jID]
+                for jID in self.description.allSuccessors()
+                if jID in self._registry
+            ] + extraEdges[self]:
                 # Grab all the successors in the current registry (i.e. added form this node) and look at them.
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
             assert stack.pop() == self
         if self in stack:
             stack.append(self)
-            raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
+            raise JobGraphDeadlockException(
+                "A cycle of job dependencies has been detected '%s'" % stack
+            )
 
     @staticmethod
     def _getImpliedEdges(roots):
@@ -1958,14 +2077,14 @@ class Job:
 
         :returns: dict from Job object to list of Job objects that must be done before it can start.
         """
-        #Get nodes (Job objects) in job graph
+        # Get nodes (Job objects) in job graph
         nodes = set()
         for root in roots:
             root._collectAllSuccessors(nodes)
 
         ##For each follow-on edge calculate the extra implied edges
-        #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
-        #connected by an implied edge
+        # Adjacency list of implied edges, i.e. map of jobs to lists of jobs
+        # connected by an implied edge
         extraEdges = {n: [] for n in nodes}
         for job in nodes:
             for depth in range(1, len(job.description.stack)):
@@ -1986,7 +2105,11 @@ class Job:
                 for inUpper in reacheable:
                     # Add extra edges to the roots of all the lower subtrees
                     # But skip anything in the lower subtree not in the current _registry (i.e. not created hear)
-                    extraEdges[inUpper] += [job._registry[lowerID] for lowerID in lower if lowerID in job._registry]
+                    extraEdges[inUpper] += [
+                        job._registry[lowerID]
+                        for lowerID in lower
+                        if lowerID in job._registry
+                    ]
 
         return extraEdges
 
@@ -2006,17 +2129,21 @@ class Job:
         :raises toil.job.JobGraphDeadlockException: if there exists a job being added to the graph for which \
         checkpoint=True and which is not a leaf.
         """
-        roots = self.getRootJobs() # Roots jobs of component, these are preexisting jobs in the graph
+        roots = (
+            self.getRootJobs()
+        )  # Roots jobs of component, these are preexisting jobs in the graph
 
         # All jobs in the component of the job graph containing self
         jobs = set()
-        list(map(lambda x : x._collectAllSuccessors(jobs), roots))
+        list(map(lambda x: x._collectAllSuccessors(jobs), roots))
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in [x for x in jobs if x.checkpoint]:
-            if y not in roots: # The roots are the prexisting jobs
+            if y not in roots:  # The roots are the prexisting jobs
                 if not Job._isLeafVertex(y):
-                    raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
+                    raise JobGraphDeadlockException(
+                        "New checkpoint job %s is not a leaf in the job graph" % y
+                    )
 
     ####################################################
     # Deferred function system
@@ -2045,7 +2172,9 @@ class Job:
         :param dict kwargs: The keyword arguments to the function
         """
         if self._defer is None:
-            raise Exception('A deferred function may only be registered with a job while that job is running.')
+            raise Exception(
+                "A deferred function may only be registered with a job while that job is running."
+            )
         self._defer(DeferredFunction.create(function, *args, **kwargs))
 
     ####################################################
@@ -2054,7 +2183,7 @@ class Job:
     # and defining a service (Job.Service)
     ####################################################
 
-    class Runner():
+    class Runner:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
@@ -2124,20 +2253,30 @@ class Job:
         Is not executed as a job; runs within a ServiceHostJob.
         """
 
-        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptable=None, unitName=None):
+        def __init__(
+            self,
+            memory=None,
+            cores=None,
+            disk=None,
+            accelerators=None,
+            preemptable=None,
+            unitName=None,
+        ):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
 
             # Save the requirements in ourselves so they are visible on `self` to user code.
-            super().__init__({
-                'memory': memory,
-                'cores': cores,
-                'disk': disk,
-                'accelerators': accelerators,
-                'preemptable': preemptable
-            })
+            super().__init__(
+                {
+                    "memory": memory,
+                    "cores": cores,
+                    "disk": disk,
+                    "accelerators": accelerators,
+                    "preemptable": preemptable,
+                }
+            )
 
             # And the unit name
             self.unitName = unitName
@@ -2217,15 +2356,19 @@ class Job:
 
         def filter_main(module_name, class_name):
             try:
-                if module_name == '__main__':
+                if module_name == "__main__":
                     return getattr(userModule, class_name)
                 else:
                     return getattr(importlib.import_module(module_name), class_name)
             except:
-                if module_name == '__main__':
-                    logger.debug('Failed getting %s from module %s.', class_name, userModule)
+                if module_name == "__main__":
+                    logger.debug(
+                        "Failed getting %s from module %s.", class_name, userModule
+                    )
                 else:
-                    logger.debug('Failed getting %s from module %s.', class_name, module_name)
+                    logger.debug(
+                        "Failed getting %s from module %s.", class_name, module_name
+                    )
                 raise
 
         class FilteredUnpickler(pickle.Unpickler):
@@ -2236,7 +2379,9 @@ class Job:
 
         runnable = unpickler.load()
         if requireInstanceOf is not None:
-            assert isinstance(runnable, requireInstanceOf), f"Did not find a {requireInstanceOf} when expected"
+            assert isinstance(
+                runnable, requireInstanceOf
+            ), f"Did not find a {requireInstanceOf} when expected"
 
         return runnable
 
@@ -2268,11 +2413,20 @@ class Job:
                 # File may be gone if the job is a service being re-run and the accessing job is
                 # already complete.
                 if jobStore.file_exists(promiseFileStoreID):
-                    logger.debug("Resolve promise %s from %s with a %s", promiseFileStoreID, self, type(promisedValue))
+                    logger.debug(
+                        "Resolve promise %s from %s with a %s",
+                        promiseFileStoreID,
+                        self,
+                        type(promisedValue),
+                    )
                     with jobStore.update_file_stream(promiseFileStoreID) as fileHandle:
                         pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
                 else:
-                    logger.debug("Do not resolve promise %s from %s because it is no longer needed", promiseFileStoreID, self)
+                    logger.debug(
+                        "Do not resolve promise %s from %s because it is no longer needed",
+                        promiseFileStoreID,
+                        self,
+                    )
 
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
@@ -2323,8 +2477,8 @@ class Job:
             job = todo[-1]
             todo.pop()
 
-            #Do not add the job to the ordering until all its predecessors have been
-            #added to the ordering
+            # Do not add the job to the ordering until all its predecessors have been
+            # added to the ordering
             outstandingPredecessor = False
             for predJob in job._directPredecessors:
                 if predJob.jobStoreID not in visited:
@@ -2337,7 +2491,9 @@ class Job:
                 visited.add(job.jobStoreID)
                 ordering.append(job)
 
-                for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
+                for otherID in itertools.chain(
+                    job.description.followOnIDs, job.description.childIDs
+                ):
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
@@ -2408,15 +2564,17 @@ class Job:
 
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, TemporaryID), f"Tried to save job {self} without ID assigned!"
+        assert not isinstance(
+            self.jobStoreID, TemporaryID
+        ), f"Tried to save job {self} without ID assigned!"
 
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
 
         # Clear out old Cactus compatibility fields that don't need to be
         # preserved and shouldn't be serialized.
-        if hasattr(self, '_services'):
-            delattr(self, '_services')
+        if hasattr(self, "_services"):
+            delattr(self, "_services")
 
         # Remember fields we will overwrite
         description = self._description
@@ -2434,7 +2592,9 @@ class Job:
                 self._directPredecessors = set()
 
                 # Save the body of the job
-                with jobStore.write_file_stream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
+                with jobStore.write_file_stream(
+                    description.jobStoreID, cleanup=True
+                ) as (fileHandle, fileStoreID):
                     pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
             finally:
                 # Restore important fields (before handling errors)
@@ -2458,7 +2618,9 @@ class Job:
         userScript = self.getUserScript().globalize()
 
         # The command connects the body of the job to the JobDescription
-        self._description.command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
+        self._description.command = " ".join(
+            ("_toil", fileStoreID) + userScript.toCommand()
+        )
 
     def _saveJobGraph(self, jobStore, saveSelf=False, returnValues=None):
         """
@@ -2525,7 +2687,9 @@ class Job:
 
         for job in ordering:
             logger.info("Processing job %s", job.description)
-            for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
+            for serviceBatch in reversed(
+                list(job.description.serviceHostIDsInBatches())
+            ):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
                     logger.info("Processing service %s", serviceID)
@@ -2563,7 +2727,8 @@ class Job:
         # All other job vertices in the graph are checked by checkNewCheckpointsAreLeafVertices
         if self.checkpoint and not Job._isLeafVertex(self):
             raise JobGraphDeadlockException(
-                'New checkpoint job %s is not a leaf in the job graph' % self)
+                "New checkpoint job %s is not a leaf in the job graph" % self
+            )
 
         # Save the root job and all descendants and services
         self._saveJobGraph(jobStore, saveSelf=True)
@@ -2595,17 +2760,17 @@ class Job:
         commandTokens = command.split()
         assert "_toil" == commandTokens[0]
         userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
-        logger.debug('Loading user module %s.', userModule)
+        logger.debug("Loading user module %s.", userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
 
-        #Loads context manager using file stream
+        # Loads context manager using file stream
         if pickleFile == "firstJob":
             manager = jobStore.read_shared_file_stream(pickleFile)
         else:
             manager = jobStore.read_file_stream(pickleFile)
 
-        #Open and unpickle
+        # Open and unpickle
         with manager as fileHandle:
 
             job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
@@ -2616,7 +2781,6 @@ class Job:
             job._registry = {job.jobStoreID: job}
 
         return job
-
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
@@ -2684,7 +2848,7 @@ class Job:
                     clock=str(totalCpuTime - startClock),
                     class_name=self._jobName(),
                     memory=str(totalMemoryUsage),
-                    requested_cores=str(self.cores)
+                    requested_cores=str(self.cores),
                 )
             )
 
@@ -2729,7 +2893,6 @@ class Job:
         self._defer = None
         self._fileStore = None
 
-
         # Serialize the new Jobs defined by the run method to the jobStore
         self._saveJobGraph(jobStore, saveSelf=False, returnValues=returnValues)
 
@@ -2758,6 +2921,7 @@ class JobGraphDeadlockException(JobException):
     An exception raised in the event that a workflow contains an unresolvable \
     dependency, such as a cycle. See :func:`toil.job.Job.checkJobGraphForDeadlocks`.
     """
+
     def __init__(self, string):
         super().__init__(string)
 
@@ -2766,6 +2930,7 @@ class FunctionWrappingJob(Job):
     """
     Job used to wrap a function. In its `run` method the wrapped function is called.
     """
+
     def __init__(self, userFunction, *args, **kwargs):
         """
         :param callable userFunction: The function to wrap. It will be called with ``*args`` and
@@ -2785,7 +2950,9 @@ class FunctionWrappingJob(Job):
         if argSpec.defaults is None:
             argDict = {}
         else:
-            argDict = dict(list(zip(argSpec.args[-len(argSpec.defaults):], argSpec.defaults)))
+            argDict = dict(
+                list(zip(argSpec.args[-len(argSpec.defaults) :], argSpec.defaults))
+            )
 
         def resolve(key, default=None, dehumanize=False):
             try:
@@ -2803,36 +2970,48 @@ class FunctionWrappingJob(Job):
                 value = human2bytes(value)
             return value
 
-        super().__init__(memory=resolve('memory', dehumanize=True),
-                         cores=resolve('cores', dehumanize=True),
-                         disk=resolve('disk', dehumanize=True),
-                         accelerators=resolve('accelerators'),
-                         preemptable=resolve('preemptable'),
-                         checkpoint=resolve('checkpoint', default=False),
-                         unitName=resolve('name', default=None))
+        super().__init__(
+            memory=resolve("memory", dehumanize=True),
+            cores=resolve("cores", dehumanize=True),
+            disk=resolve("disk", dehumanize=True),
+            accelerators=resolve("accelerators"),
+            preemptable=resolve("preemptable"),
+            checkpoint=resolve("checkpoint", default=False),
+            unitName=resolve("name", default=None),
+        )
 
-        self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
+        self.userFunctionModule = ModuleDescriptor.forModule(
+            userFunction.__module__
+        ).globalize()
         self.userFunctionName = str(userFunction.__name__)
         self.description.jobName = self.userFunctionName
         self._args = args
         self._kwargs = kwargs
 
     def _getUserFunction(self):
-        logger.debug('Loading user function %s from module %s.',
-                     self.userFunctionName,
-                     self.userFunctionModule)
+        logger.debug(
+            "Loading user function %s from module %s.",
+            self.userFunctionName,
+            self.userFunctionModule,
+        )
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-    def run(self,fileStore):
-        userFunction = self._getUserFunction( )
+    def run(self, fileStore):
+        userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
     def getUserScript(self):
         return self.userFunctionModule
 
     def _jobName(self):
-        return ".".join((self.__class__.__name__, self.userFunctionModule.name, self.userFunctionName))
+        return ".".join(
+            (
+                self.__class__.__name__,
+                self.userFunctionModule.name,
+                self.userFunctionName,
+            )
+        )
 
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
@@ -2881,10 +3060,13 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
     Spawns child function using parent function parameters and fulfilled promised
     resource requirements.
     """
+
     def __init__(self, userFunction, *args, **kwargs):
         self._promisedKwargs = kwargs.copy()
         # Replace resource requirements in intermediate job with small values.
-        kwargs.update(dict(disk='1M', memory='32M', cores=0.1, accelerators=[], preemptible=True))
+        kwargs.update(
+            dict(disk="1M", memory="32M", cores=0.1, accelerators=[], preemptible=True)
+        )
         super().__init__(userFunction, *args, **kwargs)
 
     @classmethod
@@ -2909,7 +3091,9 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
         for requirement in REQUIREMENT_NAMES:
             try:
                 if isinstance(self._promisedKwargs[requirement], PromisedRequirement):
-                    self._promisedKwargs[requirement] = self._promisedKwargs[requirement].getValue()
+                    self._promisedKwargs[requirement] = self._promisedKwargs[
+                        requirement
+                    ].getValue()
             except KeyError:
                 pass
 
@@ -2923,7 +3107,9 @@ class PromisedRequirementJobFunctionWrappingJob(PromisedRequirementFunctionWrapp
     def run(self, fileStore):
         self.evaluatePromisedRequirements()
         userFunction = self._getUserFunction()
-        return self.addChildJobFn(userFunction, *self._args, **self._promisedKwargs).rv()
+        return self.addChildJobFn(
+            userFunction, *self._args, **self._promisedKwargs
+        ).rv()
 
 
 class EncapsulatedJob(Job):
@@ -2950,6 +3136,7 @@ class EncapsulatedJob(Job):
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
     """
+
     def __init__(self, job, unitName=None):
         """
         :param toil.job.Job job: the job to encapsulate.
@@ -2969,7 +3156,12 @@ class EncapsulatedJob(Job):
             Job.addChild(self, job)
             # Use small resource requirements for dummy Job instance.
             # But not too small, or the job won't have enough resources to safely start up Toil.
-            self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1, unitName=None if unitName is None else unitName + '-followOn')
+            self.encapsulatedFollowOn = Job(
+                disk="100M",
+                memory="512M",
+                cores=0.1,
+                unitName=None if unitName is None else unitName + "-followOn",
+            )
             Job.addFollowOn(self, self.encapsulatedFollowOn)
         else:
             # Unpickling on the worker, to be run as a no-op.
@@ -2980,18 +3172,23 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn = None
 
     def addChild(self, childJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Children cannot be added to EncapsulatedJob while it is running"
+        assert (
+            self.encapsulatedFollowOn is not None
+        ), "Children cannot be added to EncapsulatedJob while it is running"
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
     def addService(self, service, parentService=None):
-        assert self.encapsulatedFollowOn is not None, \
-            "Services cannot be added to EncapsulatedJob while it is running"
-        return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
+        assert (
+            self.encapsulatedFollowOn is not None
+        ), "Services cannot be added to EncapsulatedJob while it is running"
+        return Job.addService(
+            self.encapsulatedFollowOn, service, parentService=parentService
+        )
 
     def addFollowOn(self, followOnJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Follow-ons cannot be added to EncapsulatedJob while it is running"
+        assert (
+            self.encapsulatedFollowOn is not None
+        ), "Follow-ons cannot be added to EncapsulatedJob while it is running"
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
     def rv(self, *path) -> "Promise":
@@ -3031,6 +3228,7 @@ class ServiceHostJob(Job):
     """
     Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
     """
+
     def __init__(self, service):
         """
         This constructor should not be called by a user.
@@ -3044,8 +3242,11 @@ class ServiceHostJob(Job):
 
         # Make ourselves with name info from the Service and a
         # ServiceJobDescription that has the service control flags.
-        super().__init__(**service.requirements,
-            unitName=service.unitName, descriptionClass=ServiceJobDescription)
+        super().__init__(
+            **service.requirements,
+            unitName=service.unitName,
+            descriptionClass=ServiceJobDescription,
+        )
 
         # Make sure the service knows it has a host now
         service.hostID = self.jobStoreID
@@ -3083,13 +3284,19 @@ class ServiceHostJob(Job):
     # stuff onto us.
 
     def addChild(self, child):
-        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
+        raise RuntimeError(
+            "Service host jobs cannot have children, follow-ons, or services"
+        )
 
     def addFollowOn(self, followOn):
-        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
+        raise RuntimeError(
+            "Service host jobs cannot have children, follow-ons, or services"
+        )
 
     def addService(self, service, parentService=None):
-        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
+        raise RuntimeError(
+            "Service host jobs cannot have children, follow-ons, or services"
+        )
 
     def saveBody(self, jobStore):
         """
@@ -3098,7 +3305,9 @@ class ServiceHostJob(Job):
         # Save unpickled service
         service = self.service
         # Serialize service
-        self.pickledService = pickle.dumps(self.service, protocol=pickle.HIGHEST_PROTOCOL)
+        self.pickledService = pickle.dumps(
+            self.service, protocol=pickle.HIGHEST_PROTOCOL
+        )
         # Clear real service until we have the module to load it back
         self.service = None
         # Save body as normal
@@ -3109,45 +3318,61 @@ class ServiceHostJob(Job):
 
     def run(self, fileStore):
         # Unpickle the service
-        logger.debug('Loading service module %s.', self.serviceModule)
+        logger.debug("Loading service module %s.", self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
-        service = self._unpickle(userModule, BytesIO(self.pickledService), requireInstanceOf=Job.Service)
+        service = self._unpickle(
+            userModule, BytesIO(self.pickledService), requireInstanceOf=Job.Service
+        )
         self.pickledService = None
         # Make sure it has the config, since it wasn't load()-ed via the JobStore
         service.assignConfig(fileStore.jobStore.config)
-        #Start the service
+        # Start the service
         startCredentials = service.start(self)
         try:
-            #The start credentials  must be communicated to processes connecting to
-            #the service, to do this while the run method is running we
-            #cheat and set the return value promise within the run method
+            # The start credentials  must be communicated to processes connecting to
+            # the service, to do this while the run method is running we
+            # cheat and set the return value promise within the run method
             self._fulfillPromises(startCredentials, fileStore.jobStore)
-            self._rvs = {}  # Set this to avoid the return values being updated after the
-            #run method has completed!
+            self._rvs = (
+                {}
+            )  # Set this to avoid the return values being updated after the
+            # run method has completed!
 
-            #Now flag that the service is running jobs can connect to it
-            logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
+            # Now flag that the service is running jobs can connect to it
+            logger.debug(
+                "Removing the start jobStoreID to indicate that establishment of the service"
+            )
             assert self.description.startJobStoreID != None
             if fileStore.jobStore.file_exists(self.description.startJobStoreID):
                 fileStore.jobStore.delete_file(self.description.startJobStoreID)
             assert not fileStore.jobStore.file_exists(self.description.startJobStoreID)
 
-            #Now block until we are told to stop, which is indicated by the removal
-            #of a file
+            # Now block until we are told to stop, which is indicated by the removal
+            # of a file
             assert self.description.terminateJobStoreID != None
             while True:
                 # Check for the terminate signal
-                if not fileStore.jobStore.file_exists(self.description.terminateJobStoreID):
-                    logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
-                    if not fileStore.jobStore.file_exists(self.description.errorJobStoreID):
-                        raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
+                if not fileStore.jobStore.file_exists(
+                    self.description.terminateJobStoreID
+                ):
+                    logger.debug(
+                        "Detected that the terminate jobStoreID has been removed so exiting"
+                    )
+                    if not fileStore.jobStore.file_exists(
+                        self.description.errorJobStoreID
+                    ):
+                        raise RuntimeError(
+                            "Detected the error jobStoreID has been removed so exiting with an error"
+                        )
                     break
 
                 # Check the service's status and exit if failed or complete
                 try:
                     if not service.check():
-                        logger.debug("The service has finished okay, but we have not been told to terminate. "
-                                     "Waiting for leader to tell us to come back.")
+                        logger.debug(
+                            "The service has finished okay, but we have not been told to terminate. "
+                            "Waiting for leader to tell us to come back."
+                        )
                         # TODO: Adjust leader so that it keys on something
                         # other than the services finishing (assumed to be
                         # after the children) to know when to run follow-on
@@ -3158,7 +3383,9 @@ class ServiceHostJob(Job):
                     logger.debug("Detected abnormal termination of the service")
                     raise
 
-                time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
+                time.sleep(
+                    fileStore.jobStore.config.servicePollingInterval
+                )  # Avoid excessive polling
 
             logger.debug("Service is done")
         finally:
@@ -3276,11 +3503,13 @@ class PromisedRequirement:
         :param args: variable length argument list
         :type args: int or .Promise
         """
-        if hasattr(valueOrCallable, '__call__'):
-            assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
+        if hasattr(valueOrCallable, "__call__"):
+            assert len(args) != 0, "Need parameters for PromisedRequirement function."
             func = valueOrCallable
         else:
-            assert len(args) == 0, 'Define a PromisedRequirement function to handle multiple arguments.'
+            assert (
+                len(args) == 0
+            ), "Define a PromisedRequirement function to handle multiple arguments."
             func = lambda x: x
             args = [valueOrCallable]
 
@@ -3329,8 +3558,8 @@ class UnfulfilledPromiseSentinel:
         This won't be unpickled unless the promise wasn't resolved, so we throw
         an exception.
         """
-        jobName = stateDict['fulfillingJobName']
-        file_id = stateDict['file_id']
+        jobName = stateDict["fulfillingJobName"]
+        file_id = stateDict["file_id"]
         raise RuntimeError(
             f"This job was passed promise {file_id} that wasn't yet resolved when it "
             f"ran. The job {jobName} that fulfills this promise hasn't yet "

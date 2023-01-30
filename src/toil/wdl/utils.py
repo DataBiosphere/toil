@@ -24,17 +24,17 @@ def get_version(iterable) -> str:
     :return: The WDL version used in the workflow.
     """
     if isinstance(iterable, str):
-        iterable = iterable.split('\n')
+        iterable = iterable.split("\n")
 
     for line in iterable:
         line = line.strip()
         # check if the first non-empty, non-comment line is the version statement
-        if line and not line.startswith('#'):
-            if line.startswith('version '):
+        if line and not line.startswith("#"):
+            if line.startswith("version "):
                 return line[8:].strip()
             break
     # only draft-2 doesn't contain the version declaration
-    return 'draft-2'
+    return "draft-2"
 
 
 def get_analyzer(wdl_file: str) -> AnalyzeWDL:
@@ -46,14 +46,17 @@ def get_analyzer(wdl_file: str) -> AnalyzeWDL:
     with open(wdl_file) as f:
         version = get_version(f)
 
-    if version == 'draft-2':
+    if version == "draft-2":
         from toil.wdl.versions.draft2 import AnalyzeDraft2WDL
+
         return AnalyzeDraft2WDL(wdl_file)
-    elif version == '1.0':
+    elif version == "1.0":
         from toil.wdl.versions.v1 import AnalyzeV1WDL
+
         return AnalyzeV1WDL(wdl_file)
-    elif version == 'development':
+    elif version == "development":
         from toil.wdl.versions.dev import AnalyzeDevelopmentWDL
+
         return AnalyzeDevelopmentWDL(wdl_file)
     else:
         raise RuntimeError(f"Unsupported WDL version: '{version}'.")
@@ -79,7 +82,7 @@ def dict_from_JSON(JSON_file: str) -> dict:
     return json_dict
 
 
-def write_mappings(parser: AnalyzeWDL, filename: str = 'mappings.out') -> None:
+def write_mappings(parser: AnalyzeWDL, filename: str = "mappings.out") -> None:
     """
     Takes an AnalyzeWDL instance and writes the final task dict and workflow
     dict to the given file.
@@ -92,8 +95,8 @@ def write_mappings(parser: AnalyzeWDL, filename: str = 'mappings.out') -> None:
     class Formatter:
         def __init__(self):
             self.types = {}
-            self.htchar = '\t'
-            self.lfchar = '\n'
+            self.htchar = "\t"
+            self.lfchar = "\n"
             self.indent = 0
             self.set_formater(object, self.__class__.format_object)
             self.set_formater(dict, self.__class__.format_dict)
@@ -114,42 +117,65 @@ def write_mappings(parser: AnalyzeWDL, filename: str = 'mappings.out') -> None:
 
         def format_dict(self, value, indent):
             items = [
-                self.lfchar + self.htchar * (indent + 1) + repr(key) + ': ' +
-                (self.types[type(value[key]) if type(value[key]) in self.types else object])(self, value[key],
-                                                                                             indent + 1)
-                for key in value]
-            return '{%s}' % (','.join(items) + self.lfchar + self.htchar * indent)
+                self.lfchar
+                + self.htchar * (indent + 1)
+                + repr(key)
+                + ": "
+                + (
+                    self.types[
+                        type(value[key]) if type(value[key]) in self.types else object
+                    ]
+                )(self, value[key], indent + 1)
+                for key in value
+            ]
+            return "{%s}" % (",".join(items) + self.lfchar + self.htchar * indent)
 
         def format_list(self, value, indent):
             items = [
-                self.lfchar + self.htchar * (indent + 1) + (
-                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
-                for item in value]
-            return '[%s]' % (','.join(items) + self.lfchar + self.htchar * indent)
+                self.lfchar
+                + self.htchar * (indent + 1)
+                + (self.types[type(item) if type(item) in self.types else object])(
+                    self, item, indent + 1
+                )
+                for item in value
+            ]
+            return "[%s]" % (",".join(items) + self.lfchar + self.htchar * indent)
 
         def format_tuple(self, value, indent):
             items = [
-                self.lfchar + self.htchar * (indent + 1) + (
-                    self.types[type(item) if type(item) in self.types else object])(self, item, indent + 1)
-                for item in value]
-            return '(%s)' % (','.join(items) + self.lfchar + self.htchar * indent)
+                self.lfchar
+                + self.htchar * (indent + 1)
+                + (self.types[type(item) if type(item) in self.types else object])(
+                    self, item, indent + 1
+                )
+                for item in value
+            ]
+            return "(%s)" % (",".join(items) + self.lfchar + self.htchar * indent)
 
     pretty = Formatter()
 
     def format_ordereddict(self, value, indent):
         items = [
-            self.lfchar + self.htchar * (indent + 1) +
-            "(" + repr(key) + ', ' + (self.types[
-                type(value[key]) if type(value[key]) in self.types else object
-            ])(self, value[key], indent + 1) + ")"
+            self.lfchar
+            + self.htchar * (indent + 1)
+            + "("
+            + repr(key)
+            + ", "
+            + (
+                self.types[
+                    type(value[key]) if type(value[key]) in self.types else object
+                ]
+            )(self, value[key], indent + 1)
+            + ")"
             for key in value
         ]
-        return 'OrderedDict([%s])' % (','.join(items) +
-                                      self.lfchar + self.htchar * indent)
+        return "OrderedDict([%s])" % (
+            ",".join(items) + self.lfchar + self.htchar * indent
+        )
 
     pretty.set_formater(OrderedDict, format_ordereddict)
 
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         f.write(pretty(parser.tasks_dictionary))
-        f.write('\n\n\n\n\n\n')
+        f.write("\n\n\n\n\n\n")
         f.write(pretty(parser.workflows_dictionary))

@@ -29,7 +29,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
     @property
     def version(self) -> str:
-        return 'draft-2'
+        return "draft-2"
 
     def analyze(self):
         """
@@ -52,7 +52,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         """
         if out_dir is None:
             out_dir = os.getcwd()
-        with open(os.path.join(out_dir, 'AST.out'), 'w') as f:
+        with open(os.path.join(out_dir, "AST.out"), "w") as f:
             with open(self.wdl_file) as wdl:
                 wdl_string = wdl.read()
                 ast = wdl_parser.parse(wdl_string).ast()
@@ -87,7 +87,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return: Creates the self.tasks_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
         """
-        tasks = self.find_asts(ast, 'Task')
+        tasks = self.find_asts(ast, "Task")
         for task in tasks:
             self.parse_task(task)
         return self.tasks_dictionary
@@ -113,24 +113,32 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         declaration_array = []
         for declaration_subAST in task.attr("declarations"):
             declaration_array.append(self.parse_declaration(declaration_subAST))
-            self.tasks_dictionary.setdefault(task_name, OrderedDict())['inputs'] = declaration_array
+            self.tasks_dictionary.setdefault(task_name, OrderedDict())[
+                "inputs"
+            ] = declaration_array
 
         for section in task.attr("sections"):
 
             # task commandline entries section [command(s) to run]
             if section.name == "RawCommand":
                 command_array = self.parse_task_rawcommand(section)
-                self.tasks_dictionary.setdefault(task_name, OrderedDict())['raw_commandline'] = command_array
+                self.tasks_dictionary.setdefault(task_name, OrderedDict())[
+                    "raw_commandline"
+                ] = command_array
 
             # task runtime section (docker image; disk; CPU; RAM; etc.)
             if section.name == "Runtime":
                 runtime_dict = self.parse_task_runtime(section.attr("map"))
-                self.tasks_dictionary.setdefault(task_name, OrderedDict())['runtime'] = runtime_dict
+                self.tasks_dictionary.setdefault(task_name, OrderedDict())[
+                    "runtime"
+                ] = runtime_dict
 
             # task output filenames section (expected return values/files)
             if section.name == "Outputs":
                 output_array = self.parse_task_outputs(section)
-                self.tasks_dictionary.setdefault(task_name, OrderedDict())['outputs'] = output_array
+                self.tasks_dictionary.setdefault(task_name, OrderedDict())[
+                    "outputs"
+                ] = output_array
 
     def parse_task_rawcommand_attributes(self, code_snippet):
         """
@@ -145,12 +153,16 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             raise NotImplementedError
         if isinstance(code_snippet, wdl_parser.AstList):
             for ast in code_snippet:
-                if ast.name == 'CommandParameterAttr':
+                if ast.name == "CommandParameterAttr":
                     # TODO rewrite
-                    if ast.attributes['value'].str == 'string':
-                        attr_dict[ast.attributes['key'].source_string] = "'" + ast.attributes['value'].source_string + "'"
+                    if ast.attributes["value"].str == "string":
+                        attr_dict[ast.attributes["key"].source_string] = (
+                            "'" + ast.attributes["value"].source_string + "'"
+                        )
                     else:
-                        attr_dict[ast.attributes['key'].source_string] = ast.attributes['value'].source_string
+                        attr_dict[ast.attributes["key"].source_string] = ast.attributes[
+                            "value"
+                        ].source_string
         return attr_dict
 
     def parse_task_rawcommand(self, rawcommand_subAST):
@@ -190,11 +202,17 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
             # a variable like ${dinosaurDNA}
             if isinstance(code_snippet, wdl_parser.Ast):
-                if code_snippet.name == 'CommandParameter':
+                if code_snippet.name == "CommandParameter":
                     # change in the future?  seems to be a different parameter but works for all cases it seems?
-                    code_expr = self.parse_declaration_expressn(code_snippet.attr('expr'), es='')
-                    code_attributes = self.parse_task_rawcommand_attributes(code_snippet.attr('attributes'))
-                    command_var = self.modify_cmd_expr_w_attributes(code_expr, code_attributes)
+                    code_expr = self.parse_declaration_expressn(
+                        code_snippet.attr("expr"), es=""
+                    )
+                    code_attributes = self.parse_task_rawcommand_attributes(
+                        code_snippet.attr("attributes")
+                    )
+                    command_var = self.modify_cmd_expr_w_attributes(
+                        code_expr, code_attributes
+                    )
 
             if isinstance(code_snippet, wdl_parser.AstList):
                 raise NotImplementedError
@@ -210,10 +228,12 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return:
         """
         for param in code_attr:
-            if param == 'sep':
+            if param == "sep":
                 code_expr = f"{code_attr[param]}.join(str(x) for x in {code_expr})"
-            elif param == 'default':
-                code_expr = "{expr} if {expr} else {default}".format(default=code_attr[param], expr=code_expr)
+            elif param == "default":
+                code_expr = "{expr} if {expr} else {default}".format(
+                    default=code_attr[param], expr=code_expr
+                )
             else:
                 raise NotImplementedError
         return code_expr
@@ -252,8 +272,8 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             raise NotImplementedError
         elif isinstance(runtime_subAST, wdl_parser.AstList):
             for ast in runtime_subAST:
-                key = self.parse_task_runtime_key(ast.attr('key'))
-                value = self.parse_declaration_expressn(ast.attr('value'), es='')
+                key = self.parse_task_runtime_key(ast.attr("key"))
+                value = self.parse_declaration_expressn(ast.attr("value"), es="")
                 if value.startswith('"'):
                     value = self.translate_wdl_string_to_python_string(value[1:-1])
                 runtime_attributes[key] = value
@@ -300,8 +320,8 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
                 e.g. x = [(var_name, var_type, var_value, var_actions), ...]
         """
         output_array = []
-        for j in i.attributes['attributes']:
-            if j.name == 'Output':
+        for j in i.attributes["attributes"]:
+            if j.name == "Output":
                 output_array.append(self.parse_declaration(j))
             else:
                 raise NotImplementedError
@@ -329,37 +349,37 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         try:
             # add support for 'sep'
-            output_string = ''
+            output_string = ""
             edited_string = some_string.strip()
 
-            if edited_string.find('${') != -1:
+            if edited_string.find("${") != -1:
                 continue_loop = True
                 while continue_loop:
-                    index_start = edited_string.find('${')
-                    index_end = edited_string.find('}', index_start)
+                    index_start = edited_string.find("${")
+                    index_end = edited_string.find("}", index_start)
 
                     stringword = edited_string[:index_start]
 
                     if index_start != 0:
                         output_string = output_string + "'" + stringword + "' + "
 
-                    keyword = edited_string[index_start + 2:index_end]
+                    keyword = edited_string[index_start + 2 : index_end]
                     output_string = output_string + "str(" + keyword + ") + "
 
-                    edited_string = edited_string[index_end + 1:]
-                    if edited_string.find('${') == -1:
+                    edited_string = edited_string[index_end + 1 :]
+                    if edited_string.find("${") == -1:
                         continue_loop = False
                         if edited_string:
                             output_string = output_string + "'" + edited_string + "' + "
             else:
                 output_string = "'" + edited_string + "'"
 
-            if output_string.endswith(' + '):
+            if output_string.endswith(" + "):
                 output_string = output_string[:-3]
 
             return output_string
         except:
-            return ''
+            return ""
 
     def create_workflows_dict(self, ast):
         """
@@ -369,7 +389,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return: Creates the self.workflows_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
         """
-        workflows = self.find_asts(ast, 'Workflow')
+        workflows = self.find_asts(ast, "Workflow")
         for workflow in workflows:
             self.parse_workflow(workflow)
         return self.workflows_dictionary
@@ -385,8 +405,10 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return: Returns nothing but adds a workflow to the
                  self.workflows_dictionary necessary for much of the parser.
         """
-        workflow_name = workflow.attr('name').source_string
-        self.workflows_dictionary[workflow_name] = self.parse_workflow_body(workflow.attr("body"))
+        workflow_name = workflow.attr("name").source_string
+        self.workflows_dictionary[workflow_name] = self.parse_workflow_body(
+            workflow.attr("body")
+        )
 
     def parse_workflow_body(self, i):
         """
@@ -405,38 +427,42 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             for ast in i:
                 if ast.name == "Declaration":
                     declaration = self.parse_declaration(ast)
-                    subworkflow_dict['declaration' + str(self.declaration_number)] = declaration
+                    subworkflow_dict[
+                        "declaration" + str(self.declaration_number)
+                    ] = declaration
                     self.declaration_number += 1
 
                 elif ast.name == "Scatter":
                     scattertask = self.parse_workflow_scatter(ast)
-                    subworkflow_dict['scatter' + str(self.scatter_number)] = scattertask
+                    subworkflow_dict["scatter" + str(self.scatter_number)] = scattertask
                     self.scatter_number += 1
 
                 elif ast.name == "Call":
                     task = self.parse_workflow_call(ast)
-                    subworkflow_dict['call' + str(self.call_number)] = task
+                    subworkflow_dict["call" + str(self.call_number)] = task
                     self.call_number += 1
 
                 elif ast.name == "If":
                     task = self.parse_workflow_if(ast)
-                    subworkflow_dict['if' + str(self.if_number)] = task
+                    subworkflow_dict["if" + str(self.if_number)] = task
                     self.if_number += 1
         return subworkflow_dict
 
     def parse_workflow_if(self, ifAST):
-        expression = self.parse_workflow_if_expression(ifAST.attr('expression'))
-        body = self.parse_workflow_body(ifAST.attr('body'))
-        return {'expression': expression, 'body': body}
+        expression = self.parse_workflow_if_expression(ifAST.attr("expression"))
+        body = self.parse_workflow_body(ifAST.attr("body"))
+        return {"expression": expression, "body": body}
 
     def parse_workflow_if_expression(self, i):
-        return self.parse_declaration_expressn(i, es='')
+        return self.parse_declaration_expressn(i, es="")
 
     def parse_workflow_scatter(self, scatterAST):
-        item = self.parse_workflow_scatter_item(scatterAST.attr('item'))
-        collection = self.parse_workflow_scatter_collection(scatterAST.attr('collection'))
-        body = self.parse_workflow_body(scatterAST.attr('body'))
-        return {'item': item, 'collection': collection, 'body': body}
+        item = self.parse_workflow_scatter_item(scatterAST.attr("item"))
+        collection = self.parse_workflow_scatter_collection(
+            scatterAST.attr("collection")
+        )
+        body = self.parse_workflow_body(scatterAST.attr("body"))
+        return {"item": item, "collection": collection, "body": body}
 
     def parse_workflow_scatter_item(self, i):
         if isinstance(i, wdl_parser.Terminal):
@@ -450,7 +476,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if isinstance(i, wdl_parser.Terminal):
             return i.source_string
         elif isinstance(i, wdl_parser.Ast):
-            return self.parse_declaration_expressn(i, es='')
+            return self.parse_declaration_expressn(i, es="")
         elif isinstance(i, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -473,7 +499,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         """
         var_name = self.parse_declaration_name(ast.attr("name"))
         var_type = self.parse_declaration_type(ast.attr("type"))
-        var_expressn = self.parse_declaration_expressn(ast.attr("expression"), es='')
+        var_expressn = self.parse_declaration_expressn(ast.attr("expression"), es="")
 
         return var_name, var_type, var_expressn
 
@@ -523,18 +549,18 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if isinstance(typeAST, wdl_parser.Terminal):
             return self.create_wdl_primitive_type(typeAST.source_string)
         elif isinstance(typeAST, wdl_parser.Ast):
-            if typeAST.name == 'Type':
-                subtype = typeAST.attr('subtype')
+            if typeAST.name == "Type":
+                subtype = typeAST.attr("subtype")
                 optional = False
-            elif typeAST.name == 'OptionalType':
-                subtype = typeAST.attr('innerType')
+            elif typeAST.name == "OptionalType":
+                subtype = typeAST.attr("innerType")
                 optional = True
             else:
                 raise NotImplementedError
 
             if isinstance(subtype, wdl_parser.AstList):
                 # we're looking at a compound type
-                name = typeAST.attr('name').source_string
+                name = typeAST.attr("name").source_string
                 elements = [self.parse_declaration_type(element) for element in subtype]
                 return self.create_wdl_compound_type(name, elements, optional=optional)
             else:
@@ -563,91 +589,112 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             return None
         else:
             if isinstance(expressionAST, wdl_parser.Terminal):
-                if expressionAST.str == 'boolean':
-                    if expressionAST.source_string == 'false':
-                        return 'False'
-                    elif expressionAST.source_string == 'true':
-                        return 'True'
+                if expressionAST.str == "boolean":
+                    if expressionAST.source_string == "false":
+                        return "False"
+                    elif expressionAST.source_string == "true":
+                        return "True"
                     else:
-                        raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
-                                        ''.format(expressionAST.source_string))
-                elif expressionAST.str == 'string':
-                    parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
-                    return f'{parsed_string}'
+                        raise TypeError(
+                            'Parsed boolean ({}) must be expressed as "true" or "false".'
+                            "".format(expressionAST.source_string)
+                        )
+                elif expressionAST.str == "string":
+                    parsed_string = self.translate_wdl_string_to_python_string(
+                        expressionAST.source_string
+                    )
+                    return f"{parsed_string}"
                 else:
                     # integers, floats, and variables
-                    return f'{expressionAST.source_string}'
+                    return f"{expressionAST.source_string}"
             elif isinstance(expressionAST, wdl_parser.Ast):
-                if expressionAST.name == 'Add':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' + ')
-                elif expressionAST.name == 'Subtract':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' - ')
-                elif expressionAST.name == 'Multiply':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' * ')
-                elif expressionAST.name == 'Divide':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' / ')
-                elif expressionAST.name == 'GreaterThan':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' > ')
-                elif expressionAST.name == 'LessThan':
-                    es = es + self.parse_declaration_expressn_operator(expressionAST.attr('lhs'),
-                                                                       expressionAST.attr('rhs'),
-                                                                       es,
-                                                                       operator=' < ')
-                elif expressionAST.name == 'FunctionCall':
-                    es = es + self.parse_declaration_expressn_fncall(expressionAST.attr('name'),
-                                                                     expressionAST.attr('params'),
-                                                                     es)
-                elif expressionAST.name == 'TernaryIf':
-                    es = es + self.parse_declaration_expressn_ternaryif(expressionAST.attr('cond'),
-                                                                        expressionAST.attr('iftrue'),
-                                                                        expressionAST.attr('iffalse'),
-                                                                        es)
-                elif expressionAST.name == 'MemberAccess':
-                    es = es + self.parse_declaration_expressn_memberaccess(expressionAST.attr('lhs'),
-                                                                           expressionAST.attr('rhs'),
-                                                                           es)
-                elif expressionAST.name == 'ArrayLiteral':
-                    es = es + self.parse_declaration_expressn_arrayliteral(expressionAST.attr('values'),
-                                                                           es)
-                elif expressionAST.name == 'TupleLiteral':
-                    es = es + self.parse_declaration_expressn_tupleliteral(expressionAST.attr('values'),
-                                                                           es)
-                elif expressionAST.name == 'ArrayOrMapLookup':
-                    es = es + self.parse_declaration_expressn_arraymaplookup(expressionAST.attr('lhs'),
-                                                                             expressionAST.attr('rhs'),
-                                                                             es)
-                elif expressionAST.name == 'LogicalNot':
-                    es = es + self.parse_declaration_expressn_logicalnot(expressionAST.attr('expression'),
-                                                                         es)
+                if expressionAST.name == "Add":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" + ",
+                    )
+                elif expressionAST.name == "Subtract":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" - ",
+                    )
+                elif expressionAST.name == "Multiply":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" * ",
+                    )
+                elif expressionAST.name == "Divide":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" / ",
+                    )
+                elif expressionAST.name == "GreaterThan":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" > ",
+                    )
+                elif expressionAST.name == "LessThan":
+                    es = es + self.parse_declaration_expressn_operator(
+                        expressionAST.attr("lhs"),
+                        expressionAST.attr("rhs"),
+                        es,
+                        operator=" < ",
+                    )
+                elif expressionAST.name == "FunctionCall":
+                    es = es + self.parse_declaration_expressn_fncall(
+                        expressionAST.attr("name"), expressionAST.attr("params"), es
+                    )
+                elif expressionAST.name == "TernaryIf":
+                    es = es + self.parse_declaration_expressn_ternaryif(
+                        expressionAST.attr("cond"),
+                        expressionAST.attr("iftrue"),
+                        expressionAST.attr("iffalse"),
+                        es,
+                    )
+                elif expressionAST.name == "MemberAccess":
+                    es = es + self.parse_declaration_expressn_memberaccess(
+                        expressionAST.attr("lhs"), expressionAST.attr("rhs"), es
+                    )
+                elif expressionAST.name == "ArrayLiteral":
+                    es = es + self.parse_declaration_expressn_arrayliteral(
+                        expressionAST.attr("values"), es
+                    )
+                elif expressionAST.name == "TupleLiteral":
+                    es = es + self.parse_declaration_expressn_tupleliteral(
+                        expressionAST.attr("values"), es
+                    )
+                elif expressionAST.name == "ArrayOrMapLookup":
+                    es = es + self.parse_declaration_expressn_arraymaplookup(
+                        expressionAST.attr("lhs"), expressionAST.attr("rhs"), es
+                    )
+                elif expressionAST.name == "LogicalNot":
+                    es = es + self.parse_declaration_expressn_logicalnot(
+                        expressionAST.attr("expression"), es
+                    )
                 else:
                     raise NotImplementedError
             elif isinstance(expressionAST, wdl_parser.AstList):
                 raise NotImplementedError
-            return '(' + es + ')'
+            return "(" + es + ")"
 
     def parse_declaration_expressn_logicalnot(self, exprssn, es):
         if isinstance(exprssn, wdl_parser.Terminal):
             es = es + exprssn.source_string
         elif isinstance(exprssn, wdl_parser.Ast):
-            es = es + self.parse_declaration_expressn(exprssn, es='')
+            es = es + self.parse_declaration_expressn(exprssn, es="")
         elif isinstance(exprssn, wdl_parser.AstList):
             raise NotImplementedError
-        return ' not ' + es
+        return " not " + es
 
     def parse_declaration_expressn_arraymaplookup(self, lhsAST, rhsAST, es):
         """
@@ -661,7 +708,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             es = es + lhsAST.source_string
         elif isinstance(lhsAST, wdl_parser.Ast):
             # parenthesis must be removed because 'i[0]' works, but '(i)[0]' does not
-            es = es + self.parse_declaration_expressn(lhsAST, es='')[1:-1]
+            es = es + self.parse_declaration_expressn(lhsAST, es="")[1:-1]
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
@@ -672,7 +719,7 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        return es + f'[{indexnum}]'
+        return es + f"[{indexnum}]"
 
     def parse_declaration_expressn_memberaccess(self, lhsAST, rhsAST, es):
         """
@@ -692,10 +739,11 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         # hack-y way to make sure pair.left and pair.right are parsed correctly.
         if isinstance(rhsAST, wdl_parser.Terminal) and (
-                rhsAST.source_string == 'left' or rhsAST.source_string == 'right'):
-            es = es + '.'
+            rhsAST.source_string == "left" or rhsAST.source_string == "right"
+        ):
+            es = es + "."
         else:
-            es = es + '_'
+            es = es + "_"
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
@@ -722,9 +770,9 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :param es:
         :return:
         """
-        es = es + self.parse_declaration_expressn(iftrue, es='')
-        es = es + ' if ' + self.parse_declaration_expressn(cond, es='')
-        es = es + ' else ' + self.parse_declaration_expressn(iffalse, es='')
+        es = es + self.parse_declaration_expressn(iftrue, es="")
+        es = es + " if " + self.parse_declaration_expressn(cond, es="")
+        es = es + " else " + self.parse_declaration_expressn(iffalse, es="")
         return es
 
     def parse_declaration_expressn_tupleliteral(self, values, es):
@@ -735,12 +783,12 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :param es:
         :return:
         """
-        es = es + '('
+        es = es + "("
         for ast in values:
-            es = es + self.parse_declaration_expressn(ast, es='') + ', '
-        if es.endswith(', '):
+            es = es + self.parse_declaration_expressn(ast, es="") + ", "
+        if es.endswith(", "):
             es = es[:-2]
-        return es + ')'
+        return es + ")"
 
     def parse_declaration_expressn_arrayliteral(self, values, es):
         """
@@ -750,12 +798,12 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :param es:
         :return:
         """
-        es = es + '['
+        es = es + "["
         for ast in values:
-            es = es + self.parse_declaration_expressn(ast, es='') + ', '
-        if es.endswith(', '):
+            es = es + self.parse_declaration_expressn(ast, es="") + ", "
+        if es.endswith(", "):
             es = es[:-2]
-        return es + ']'
+        return es + "]"
 
     def parse_declaration_expressn_operator(self, lhsAST, rhsAST, es, operator):
         """
@@ -768,24 +816,24 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         :return:
         """
         if isinstance(lhsAST, wdl_parser.Terminal):
-            if lhsAST.str == 'string':
+            if lhsAST.str == "string":
                 es = es + f'"{lhsAST.source_string}"'
             else:
-                es = es + f'{lhsAST.source_string}'
+                es = es + f"{lhsAST.source_string}"
         elif isinstance(lhsAST, wdl_parser.Ast):
-            es = es + self.parse_declaration_expressn(lhsAST, es='')
+            es = es + self.parse_declaration_expressn(lhsAST, es="")
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
         es = es + operator
 
         if isinstance(rhsAST, wdl_parser.Terminal):
-            if rhsAST.str == 'string':
+            if rhsAST.str == "string":
                 es = es + f'"{rhsAST.source_string}"'
             else:
-                es = es + f'{rhsAST.source_string}'
+                es = es + f"{rhsAST.source_string}"
         elif isinstance(rhsAST, wdl_parser.Ast):
-            es = es + self.parse_declaration_expressn(rhsAST, es='')
+            es = es + self.parse_declaration_expressn(rhsAST, es="")
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
         return es
@@ -805,16 +853,16 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         # name of the function
         if isinstance(name, wdl_parser.Terminal):
             if name.str:
-                if name.source_string == 'stdout':
+                if name.source_string == "stdout":
                     # let the stdout() function reference the generated stdout file path.
-                    return es + '_toil_wdl_internal__stdout_file'
-                elif name.source_string == 'stderr':
-                    return es + '_toil_wdl_internal__stderr_file'
-                elif name.source_string in ('range', 'zip'):
+                    return es + "_toil_wdl_internal__stdout_file"
+                elif name.source_string == "stderr":
+                    return es + "_toil_wdl_internal__stderr_file"
+                elif name.source_string in ("range", "zip"):
                     # replace python built-in functions
-                    es += f'wdl_{name.source_string}('
+                    es += f"wdl_{name.source_string}("
                 else:
-                    es = es + name.source_string + '('
+                    es = es + name.source_string + "("
             else:
                 raise NotImplementedError
         elif isinstance(name, wdl_parser.Ast):
@@ -824,14 +872,19 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
 
         es_params = self.parse_declaration_expressn_fncall_normalparams(params)
 
-        if name.source_string == 'glob':
-            return es + es_params + ', tempDir)'
-        elif name.source_string == 'size':
-            return es + (es_params + ', ' if es_params else '') + 'fileStore=fileStore)'
-        elif name.source_string in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
-            return es + es_params + ', temp_dir=tempDir, file_store=fileStore)'
+        if name.source_string == "glob":
+            return es + es_params + ", tempDir)"
+        elif name.source_string == "size":
+            return es + (es_params + ", " if es_params else "") + "fileStore=fileStore)"
+        elif name.source_string in (
+            "write_lines",
+            "write_tsv",
+            "write_json",
+            "write_map",
+        ):
+            return es + es_params + ", temp_dir=tempDir, file_store=fileStore)"
         else:
-            return es + es_params + ')'
+            return es + es_params + ")"
 
     def parse_declaration_expressn_fncall_normalparams(self, params):
 
@@ -841,10 +894,10 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(params, wdl_parser.Ast):
             raise NotImplementedError
         elif isinstance(params, wdl_parser.AstList):
-            es_param = ''
+            es_param = ""
             for ast in params:
-                es_param = es_param + self.parse_declaration_expressn(ast, es='') + ', '
-            if es_param.endswith(', '):
+                es_param = es_param + self.parse_declaration_expressn(ast, es="") + ", "
+            if es_param.endswith(", "):
                 es_param = es_param[:-2]
             return es_param
 
@@ -912,8 +965,8 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         elif isinstance(i, wdl_parser.AstList):
             for ast in i:
                 assert len(i) == 1
-                if ast.name == 'Inputs':
-                    return self.parse_workflow_call_body_io_map(ast.attr('map'))
+                if ast.name == "Inputs":
+                    return self.parse_workflow_call_body_io_map(ast.attr("map"))
                 else:
                     raise NotImplementedError
 
@@ -931,9 +984,9 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
             raise NotImplementedError
         elif isinstance(i, wdl_parser.AstList):
             for ast in i:
-                if ast.name == 'IOMapping':
-                    key = self.parse_declaration_expressn(ast.attr("key"), es='')
-                    value = self.parse_declaration_expressn(ast.attr("value"), es='')
+                if ast.name == "IOMapping":
+                    key = self.parse_declaration_expressn(ast.attr("key"), es="")
+                    value = self.parse_declaration_expressn(ast.attr("value"), es="")
                     io_map[key] = value
                 else:
                     raise NotImplementedError
@@ -951,9 +1004,11 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if isinstance(i, wdl_parser.Terminal):
             return i.source_string  # no io mappings; represents just a blank call
         elif isinstance(i, wdl_parser.Ast):
-            if i.name == 'CallBody':
-                declarations = self.parse_workflow_call_body_declarations(i.attr("declarations")) # have not seen this used
-                io_map = self.parse_workflow_call_body_io(i.attr('io'))
+            if i.name == "CallBody":
+                declarations = self.parse_workflow_call_body_declarations(
+                    i.attr("declarations")
+                )  # have not seen this used
+                io_map = self.parse_workflow_call_body_io(i.attr("io"))
             else:
                 raise NotImplementedError
         elif isinstance(i, wdl_parser.AstList):
@@ -976,5 +1031,4 @@ class AnalyzeDraft2WDL(AnalyzeWDL):
         if not task_alias:
             task_alias = task_being_called
 
-        return {'task': task_being_called, 'alias': task_alias, 'io': io_map}
-
+        return {"task": task_being_called, "alias": task_alias, "io": io_map}

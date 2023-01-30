@@ -28,8 +28,8 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.9.0a1'
-cgcloudVersion = '1.6.0a1.dev393'
+baseVersion = "5.9.0a1"
+cgcloudVersion = "1.6.0a1.dev393"
 
 
 def version():
@@ -37,15 +37,20 @@ def version():
     A version identifier that includes the full-length commit SHA1 and an optional suffix to
     indicate that the working copy is dirty.
     """
-    return '-'.join(filter(None, [distVersion(), currentCommit(), ('dirty' if dirty() else None)]))
+    return "-".join(
+        filter(None, [distVersion(), currentCommit(), ("dirty" if dirty() else None)])
+    )
 
 
 def distVersion():
     """The distribution version identifying a published release on PyPI."""
     from pkg_resources import parse_version
+
     if isinstance(parse_version(baseVersion), tuple):
-        raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
-                           "'pip install setuptools --upgrade'")
+        raise RuntimeError(
+            "Setuptools version 8.0 or newer required. Update by running "
+            "'pip install setuptools --upgrade'"
+        )
     return baseVersion
 
 
@@ -55,7 +60,8 @@ def exactPython():
     for. Something like 'python2.7' or 'python3.6'.
     """
     import sys
-    return f'python{sys.version_info[0]}.{sys.version_info[1]}'
+
+    return f"python{sys.version_info[0]}.{sys.version_info[1]}"
 
 
 def python():
@@ -81,7 +87,7 @@ def _pythonVersionSuffix():
 
     # For now, we assume all Python 3 releases are intercompatible.
     # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
-    return f'-py{sys.version_info[0]}.{sys.version_info[1]}'
+    return f"-py{sys.version_info[0]}.{sys.version_info[1]}"
 
 
 def dockerTag():
@@ -92,37 +98,49 @@ def dockerTag():
 def currentCommit():
     import os
     from subprocess import check_output
+
     try:
         git_root_dir = os.path.dirname(os.path.abspath(__file__))
-        output = check_output(f'git log --pretty=oneline -n 1 -- {git_root_dir}',
-                              shell=True,
-                              cwd=git_root_dir).decode('utf-8').split()[0]
+        output = (
+            check_output(
+                f"git log --pretty=oneline -n 1 -- {git_root_dir}",
+                shell=True,
+                cwd=git_root_dir,
+            )
+            .decode("utf-8")
+            .split()[0]
+        )
     except:
         # Return this if we are not in a git environment.
-        return '000'
+        return "000"
     if isinstance(output, bytes):
-        return output.decode('utf-8')
+        return output.decode("utf-8")
     return str(output)
 
 
 def dockerRegistry():
     import os
-    return os.getenv('TOIL_DOCKER_REGISTRY', 'quay.io/ucsc_cgl')
+
+    return os.getenv("TOIL_DOCKER_REGISTRY", "quay.io/ucsc_cgl")
 
 
 def dockerName():
     import os
-    return os.getenv('TOIL_DOCKER_NAME', 'toil')
+
+    return os.getenv("TOIL_DOCKER_NAME", "toil")
 
 
 def dirty():
     import os
     from subprocess import call
+
     try:
         git_root_dir = os.path.dirname(os.path.abspath(__file__))
-        return 0 != call('(git diff --exit-code && git diff --cached --exit-code) > /dev/null',
-                         shell=True,
-                         cwd=git_root_dir)
+        return 0 != call(
+            "(git diff --exit-code && git diff --cached --exit-code) > /dev/null",
+            shell=True,
+            cwd=git_root_dir,
+        )
     except:
         return False  # In case the git call fails.
 
@@ -136,8 +154,11 @@ def expand_(name=None, others=None):
     :param dict others: A dictionary of additional variables to be included in
                         the return value.
     """
-    variables = {k: v for k, v in globals().items()
-                 if not k.startswith('_') and not k.endswith('_')}
+    variables = {
+        k: v
+        for k, v in globals().items()
+        if not k.startswith("_") and not k.endswith("_")
+    }
 
     if others is not None:
         variables.update(others)
@@ -149,15 +170,16 @@ def expand_(name=None, others=None):
         return v
 
     if name is None:
-        return ''.join(f"{k} = {repr(resolve(k))}\n" for k, v in variables.items())
+        return "".join(f"{k} = {repr(resolve(k))}\n" for k, v in variables.items())
     else:
         return resolve(name)
 
 
 def _main():
     import sys
+
     sys.stdout.write(expand_(*sys.argv[1:]))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _main()

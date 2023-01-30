@@ -34,35 +34,38 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.cwl.utils import (download_structure,
-                            visit_cwl_class_and_reduce,
-                            visit_top_cwl_class)
+from toil.cwl.utils import (
+    download_structure,
+    visit_cwl_class_and_reduce,
+    visit_top_cwl_class,
+)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.aws import zone_to_region
 from toil.lib.threading import cpu_count
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
-from toil.test import (ToilTest,
-                       needs_aws_ec2,
-                       needs_aws_s3,
-                       needs_cwl,
-                       needs_docker,
-                       needs_docker_cuda,
-                       needs_env_var,
-                       needs_fetchable_appliance,
-                       needs_gridengine,
-                       needs_kubernetes,
-                       needs_local_cuda,
-                       needs_lsf,
-                       needs_mesos,
-                       needs_parasol,
-                       needs_slurm,
-                       needs_torque,
-                       needs_wes_server,
-                       slow)
-from toil.test.provisioners.aws.awsProvisionerTest import \
-    AbstractAWSAutoscaleTest
+from toil.test import (
+    ToilTest,
+    needs_aws_ec2,
+    needs_aws_s3,
+    needs_cwl,
+    needs_docker,
+    needs_docker_cuda,
+    needs_env_var,
+    needs_fetchable_appliance,
+    needs_gridengine,
+    needs_kubernetes,
+    needs_local_cuda,
+    needs_lsf,
+    needs_mesos,
+    needs_parasol,
+    needs_slurm,
+    needs_torque,
+    needs_wes_server,
+    slow,
+)
+from toil.test.provisioners.aws.awsProvisionerTest import AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
 log = logging.getLogger(__name__)
@@ -1138,7 +1141,10 @@ def test_pick_value_with_one_null_value(caplog):
     with caplog.at_level(logging.WARNING, logger="toil.cwl.cwltoil"):
         cwltoil.main(args)
         for line in caplog.messages:
-            assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
+            assert (
+                "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input."
+                not in line
+            )
 
 
 @needs_cwl

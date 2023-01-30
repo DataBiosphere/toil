@@ -54,7 +54,7 @@ def run_setup():
         "kubernetes",
         "mesos",
         "wdl",
-        "server"
+        "server",
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)
@@ -64,78 +64,91 @@ def run_setup():
     extras_require["all"] = all_reqs
 
     setup(
-        name='toil',
+        name="toil",
         version=version.distVersion,
-        description='Pipeline management software for clusters.',
-        author='Benedict Paten and the Toil community',
-        author_email='toil-community@googlegroups.com',
+        description="Pipeline management software for clusters.",
+        author="Benedict Paten and the Toil community",
+        author_email="toil-community@googlegroups.com",
         url="https://github.com/DataBiosphere/toil",
         classifiers=[
-          'Development Status :: 5 - Production/Stable',
-          'Environment :: Console',
-          'Intended Audience :: Developers',
-          'Intended Audience :: Science/Research',
-          'Intended Audience :: Healthcare Industry',
-          'License :: OSI Approved :: Apache Software License',
-          'Natural Language :: English',
-          'Operating System :: MacOS :: MacOS X',
-          'Operating System :: POSIX',
-          'Operating System :: POSIX :: Linux',
-          'Programming Language :: Python :: 3.7',
-          'Programming Language :: Python :: 3.8',
-          'Programming Language :: Python :: 3.9',
-          'Programming Language :: Python :: 3.10',
-          'Topic :: Scientific/Engineering',
-          'Topic :: Scientific/Engineering :: Bio-Informatics',
-          'Topic :: Scientific/Engineering :: Astronomy',
-          'Topic :: Scientific/Engineering :: Atmospheric Science',
-          'Topic :: Scientific/Engineering :: Information Analysis',
-          'Topic :: Scientific/Engineering :: Medical Science Apps.',
-          'Topic :: System :: Distributed Computing',
-          'Topic :: Utilities'],
+            "Development Status :: 5 - Production/Stable",
+            "Environment :: Console",
+            "Intended Audience :: Developers",
+            "Intended Audience :: Science/Research",
+            "Intended Audience :: Healthcare Industry",
+            "License :: OSI Approved :: Apache Software License",
+            "Natural Language :: English",
+            "Operating System :: MacOS :: MacOS X",
+            "Operating System :: POSIX",
+            "Operating System :: POSIX :: Linux",
+            "Programming Language :: Python :: 3.7",
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Topic :: Scientific/Engineering",
+            "Topic :: Scientific/Engineering :: Bio-Informatics",
+            "Topic :: Scientific/Engineering :: Astronomy",
+            "Topic :: Scientific/Engineering :: Atmospheric Science",
+            "Topic :: Scientific/Engineering :: Information Analysis",
+            "Topic :: Scientific/Engineering :: Medical Science Apps.",
+            "Topic :: System :: Distributed Computing",
+            "Topic :: Utilities",
+        ],
         license="Apache License v2.0",
         python_requires=">=3.7",
         install_requires=install_requires,
         extras_require=extras_require,
-        package_dir={'': 'src'},
-        packages=find_packages(where='src',
-                               # Note that we intentionally include the top-level `test` package for
-                               # functionality like the @experimental and @integrative decorators:
-                               exclude=['*.test.*']),
+        package_dir={"": "src"},
+        packages=find_packages(
+            where="src",
+            # Note that we intentionally include the top-level `test` package for
+            # functionality like the @experimental and @integrative decorators:
+            exclude=["*.test.*"],
+        ),
         package_data={
-            '': ['*.yml', '*.yaml', 'cloud-config'],
+            "": ["*.yml", "*.yaml", "cloud-config"],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
         # easy to search for.
         entry_points={
-            'console_scripts': [
-                'toil = toil.utils.toilMain:main',
-                '_toil_worker = toil.worker:main',
-                'cwltoil = toil.cwl.cwltoil:cwltoil_was_removed [cwl]',
-                'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
-                'toil-wdl-runner = toil.wdl.toilwdl:main',
-                'toil-wes-cwl-runner = toil.server.cli.wes_cwl_runner:main [server]',
-                '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
-                '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})
+            "console_scripts": [
+                "toil = toil.utils.toilMain:main",
+                "_toil_worker = toil.worker:main",
+                "cwltoil = toil.cwl.cwltoil:cwltoil_was_removed [cwl]",
+                "toil-cwl-runner = toil.cwl.cwltoil:main [cwl]",
+                "toil-wdl-runner = toil.wdl.toilwdl:main",
+                "toil-wes-cwl-runner = toil.server.cli.wes_cwl_runner:main [server]",
+                "_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]",
+                "_toil_contained_executor = toil.batchSystems.contained_executor:executor",
+            ]
+        },
+    )
 
 
 def import_version():
     """Return the module object for src/toil/version.py, generate from the template if required."""
-    if not os.path.exists('src/toil/version.py'):
+    if not os.path.exists("src/toil/version.py"):
         for req in get_requirements("cwl"):
             # Determine cwltool version from requirements file
             if req.startswith("cwltool=="):
-                cwltool_version = req[len("cwltool=="):]
+                cwltool_version = req[len("cwltool==") :]
                 break
         # Use the template to generate src/toil/version.py
         import version_template
-        with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
-            f.write(version_template.expand_(others={
-                # expose the dependency versions that we may need to access in Toil
-                'cwltool_version': cwltool_version,
-            }))
-        os.rename(f.name, 'src/toil/version.py')
+
+        with NamedTemporaryFile(
+            mode="w", dir="src/toil", prefix="version.py.", delete=False
+        ) as f:
+            f.write(
+                version_template.expand_(
+                    others={
+                        # expose the dependency versions that we may need to access in Toil
+                        "cwltool_version": cwltool_version,
+                    }
+                )
+            )
+        os.rename(f.name, "src/toil/version.py")
 
     # Unfortunately, we can't use a straight import here because that would also load the stuff
     # defined in "src/toil/__init__.py" which imports modules from external dependencies that may
@@ -147,7 +160,7 @@ def import_version():
     #     return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
     #
     # Because SourceFileLoader will error and load "src/toil/__init__.py" .
-    return imp.load_source('toil.version', 'src/toil/version.py')
+    return imp.load_source("toil.version", "src/toil/version.py")
 
 
 version = import_version()

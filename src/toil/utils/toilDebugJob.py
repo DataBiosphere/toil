@@ -24,11 +24,17 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     parser = parser_with_common_options(jobstore_option=True)
-    parser.add_argument("jobID", nargs=1,
-                        help="The job store id of a job within the provided jobstore to run by itself.")
-    parser.add_argument("--printJobInfo", nargs=1,
-                        help="Return information about this job to the user including preceding jobs, "
-                             "inputs, outputs, and runtime from the last known run.")
+    parser.add_argument(
+        "jobID",
+        nargs=1,
+        help="The job store id of a job within the provided jobstore to run by itself.",
+    )
+    parser.add_argument(
+        "--printJobInfo",
+        nargs=1,
+        help="Return information about this job to the user including preceding jobs, "
+        "inputs, outputs, and runtime from the last known run.",
+    )
 
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -38,7 +44,9 @@ def main() -> None:
     jobStore = Toil.resumeJobStore(config.jobStore)
 
     if options.printJobInfo:
-        printContentsOfJobStore(jobStorePath=config.jobStore, nameOfJob=options.printJobInfo)
+        printContentsOfJobStore(
+            jobStorePath=config.jobStore, nameOfJob=options.printJobInfo
+        )
 
     # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments

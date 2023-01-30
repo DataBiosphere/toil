@@ -54,8 +54,7 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     # Additionally check that `file` is not a directory, as on Windows
     # directories pass the os.access check.
     def _access_check(fn, mode):
-        return (os.path.exists(fn) and os.access(fn, mode)
-                and not os.path.isdir(fn))
+        return os.path.exists(fn) and os.access(fn, mode) and not os.path.isdir(fn)
 
     # If we're given a path with a directory part, look it up directly rather
     # than referring to PATH directories. This includes checking relative to the
@@ -110,7 +109,7 @@ def toilPackageDirPath() -> str:
     The return value is guaranteed to end in '/toil'.
     """
     result = os.path.dirname(os.path.realpath(__file__))
-    assert result.endswith('/toil')
+    assert result.endswith("/toil")
     return result
 
 
@@ -118,10 +117,12 @@ def inVirtualEnv():
     """
     Returns whether we are inside a virtualenv or Conda virtual environment.
     """
-    return ('VIRTUAL_ENV' in os.environ or
-            'CONDA_DEFAULT_ENV' in os.environ or
-            hasattr(sys, 'real_prefix') or
-            (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
+    return (
+        "VIRTUAL_ENV" in os.environ
+        or "CONDA_DEFAULT_ENV" in os.environ
+        or hasattr(sys, "real_prefix")
+        or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+    )
 
 
 def resolveEntryPoint(entryPoint):
@@ -130,7 +131,7 @@ def resolveEntryPoint(entryPoint):
     return value may be an absolute or a relative path.
     """
 
-    if os.environ.get("TOIL_CHECK_ENV", None) == 'True' and inVirtualEnv():
+    if os.environ.get("TOIL_CHECK_ENV", None) == "True" and inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
@@ -156,9 +157,13 @@ def physicalMemory() -> int:
     True
     """
     try:
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
     except ValueError:
-        return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
+        return int(
+            subprocess.check_output(["sysctl", "-n", "hw.memsize"])
+            .decode("utf-8")
+            .strip()
+        )
 
 
 def physicalDisk(directory: str) -> int:
@@ -183,15 +188,22 @@ def applianceSelf(forceDockerAppliance: bool = False) -> str:
     :rtype: str
     """
     import toil.version
-    registry = lookupEnvVar(name='docker registry',
-                            envName='TOIL_DOCKER_REGISTRY',
-                            defaultValue=toil.version.dockerRegistry)
-    name = lookupEnvVar(name='docker name',
-                        envName='TOIL_DOCKER_NAME',
-                        defaultValue=toil.version.dockerName)
-    appliance = lookupEnvVar(name='docker appliance',
-                             envName='TOIL_APPLIANCE_SELF',
-                             defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
+
+    registry = lookupEnvVar(
+        name="docker registry",
+        envName="TOIL_DOCKER_REGISTRY",
+        defaultValue=toil.version.dockerRegistry,
+    )
+    name = lookupEnvVar(
+        name="docker name",
+        envName="TOIL_DOCKER_NAME",
+        defaultValue=toil.version.dockerName,
+    )
+    appliance = lookupEnvVar(
+        name="docker appliance",
+        envName="TOIL_APPLIANCE_SELF",
+        defaultValue=registry + "/" + name + ":" + toil.version.dockerTag,
+    )
 
     checkDockerSchema(appliance)
 
@@ -212,9 +224,11 @@ def customDockerInitCmd():
 
     :rtype: str
     """
-    command = lookupEnvVar(name='user-defined custom docker init command',
-                           envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
-                           defaultValue='')
+    command = lookupEnvVar(
+        name="user-defined custom docker init command",
+        envName="TOIL_CUSTOM_DOCKER_INIT_COMMAND",
+        defaultValue="",
+    )
     _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
 
@@ -231,16 +245,20 @@ def customInitCmd():
 
     :rtype: str
     """
-    command = lookupEnvVar(name='user-defined custom init command',
-                           envName='TOIL_CUSTOM_INIT_COMMAND',
-                           defaultValue='')
+    command = lookupEnvVar(
+        name="user-defined custom init command",
+        envName="TOIL_CUSTOM_INIT_COMMAND",
+        defaultValue="",
+    )
     _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
 
 
 def _check_custom_bash_cmd(cmd_str):
     """Ensures that the bash command doesn't contain blacklisted characters."""
-    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
+    assert not re.search(
+        r"[\n\r\t]", cmd_str
+    ), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
 
 
 def lookupEnvVar(name: str, envName: str, defaultValue: str) -> str:
@@ -255,10 +273,14 @@ def lookupEnvVar(name: str, envName: str, defaultValue: str) -> str:
     try:
         value = os.environ[envName]
     except KeyError:
-        log.info('Using default %s of %s as %s is not set.', name, defaultValue, envName)
+        log.info(
+            "Using default %s of %s as %s is not set.", name, defaultValue, envName
+        )
         return defaultValue
     else:
-        log.info('Overriding %s of %s with %s from %s.', name, defaultValue, value, envName)
+        log.info(
+            "Overriding %s of %s with %s from %s.", name, defaultValue, value, envName
+        )
         return value
 
 
@@ -277,11 +299,17 @@ def checkDockerImageExists(appliance: str) -> str:
         return appliance
     registryName, imageName, tag = parseDockerAppliance(appliance)
 
-    if registryName == 'docker.io':
-        return requestCheckDockerIo(origAppliance=appliance, imageName=imageName, tag=tag)
+    if registryName == "docker.io":
+        return requestCheckDockerIo(
+            origAppliance=appliance, imageName=imageName, tag=tag
+        )
     else:
-        return requestCheckRegularDocker(origAppliance=appliance, registryName=registryName, imageName=imageName,
-                                         tag=tag)
+        return requestCheckRegularDocker(
+            origAppliance=appliance,
+            registryName=registryName,
+            imageName=imageName,
+            tag=tag,
+        )
 
 
 def parseDockerAppliance(appliance):
@@ -303,21 +331,21 @@ def parseDockerAppliance(appliance):
     appliance = appliance.lower()
 
     # get the tag
-    if ':' in appliance:
-        tag = appliance.split(':')[-1]
-        appliance = appliance[:-(len(':' + tag))]  # remove only the tag
+    if ":" in appliance:
+        tag = appliance.split(":")[-1]
+        appliance = appliance[: -(len(":" + tag))]  # remove only the tag
     else:
         # default to 'latest' if no tag is specified
-        tag = 'latest'
+        tag = "latest"
 
     # get the registry and image
-    registryName = 'docker.io'  # default if not specified
+    registryName = "docker.io"  # default if not specified
     imageName = appliance  # will be true if not specified
-    if '/' in appliance and '.' in appliance.split('/')[0]:
-        registryName = appliance.split('/')[0]
-        imageName = appliance[len(registryName):]
-    registryName = registryName.strip('/')
-    imageName = imageName.strip('/')
+    if "/" in appliance and "." in appliance.split("/")[0]:
+        registryName = appliance.split("/")[0]
+        imageName = appliance[len(registryName) :]
+    registryName = registryName.strip("/")
+    imageName = imageName.strip("/")
 
     return registryName, imageName, tag
 
@@ -325,12 +353,14 @@ def parseDockerAppliance(appliance):
 def checkDockerSchema(appliance):
     if not appliance:
         raise ImageNotFound("No docker image specified.")
-    elif '://' in appliance:
-        raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
-                            "" % appliance)
+    elif "://" in appliance:
+        raise ImageNotFound(
+            "Docker images cannot contain a schema (such as '://'): %s" "" % appliance
+        )
     elif len(appliance) > 256:
-        raise ImageNotFound("Docker image must be less than 256 chars: %s"
-                            "" % appliance)
+        raise ImageNotFound(
+            "Docker image must be less than 256 chars: %s" "" % appliance
+        )
 
 
 class ApplianceImageNotFound(ImageNotFound):
@@ -348,20 +378,24 @@ class ApplianceImageNotFound(ImageNotFound):
     """
 
     def __init__(self, origAppliance, url, statusCode):
-        msg = ("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
-               "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
-               "The specifier is most likely unsupported or malformed.  "
-               "Please supply a docker image with the format: "
-               "'<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
-               "(for official docker.io images).  Examples: "
-               "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
-               "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-               "" % (origAppliance, url, str(statusCode)))
+        msg = (
+            "The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
+            "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
+            "The specifier is most likely unsupported or malformed.  "
+            "Please supply a docker image with the format: "
+            "'<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
+            "(for official docker.io images).  Examples: "
+            "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
+            "'broadinstitute/genomes-in-the-cloud:2.0.0'."
+            "" % (origAppliance, url, str(statusCode))
+        )
         super().__init__(msg)
+
 
 # Cache images we know exist so we don't have to ask the registry about them
 # all the time.
 KNOWN_EXTANT_IMAGES = set()
+
 
 def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     """
@@ -389,8 +423,9 @@ def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
         # Check the cache first
         return origAppliance
 
-    ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
-            ''.format(webhost=registryName, pathName=imageName, tag=tag)
+    ioURL = "https://{webhost}/v2/{pathName}/manifests/{tag}" "".format(
+        webhost=registryName, pathName=imageName, tag=tag
+    )
     response = requests.head(ioURL)
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
@@ -417,17 +452,20 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
         return origAppliance
 
     # only official images like 'busybox' or 'ubuntu'
-    if '/' not in imageName:
-        imageName = 'library/' + imageName
+    if "/" not in imageName:
+        imageName = "library/" + imageName
 
-    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(
-        repo=imageName)
-    requests_url = f'https://registry-1.docker.io/v2/{imageName}/manifests/{tag}'
+    token_url = "https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull".format(
+        repo=imageName
+    )
+    requests_url = f"https://registry-1.docker.io/v2/{imageName}/manifests/{tag}"
 
     token = requests.get(token_url)
     jsonToken = token.json()
     bearer = jsonToken["token"]
-    response = requests.head(requests_url, headers={'Authorization': f'Bearer {bearer}'})
+    response = requests.head(
+        requests_url, headers={"Authorization": f"Bearer {bearer}"}
+    )
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
@@ -439,21 +477,25 @@ def logProcessContext(config: "Config") -> None:
     # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
+
     log.info("Running Toil version %s on host %s.", version, socket.gethostname())
     log.debug("Configuration: %s", config.__dict__)
 
 
 try:
     from boto import provider
-    from botocore.credentials import (JSONFileCache,
-                                      RefreshableCredentials,
-                                      create_credential_resolver)
+    from botocore.credentials import (
+        JSONFileCache,
+        RefreshableCredentials,
+        create_credential_resolver,
+    )
     from botocore.session import Session
 
-    cache_path = '~/.cache/aws/cached_temporary_credentials'
-    datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
+    cache_path = "~/.cache/aws/cached_temporary_credentials"
+    datetime_format = (
+        "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
+    )
     log = logging.getLogger(__name__)
-
 
     # But in addition to our manual cache, we also are going to turn on boto3's
     # new built-in caching layer.
@@ -467,7 +509,6 @@ try:
         """
         return dt.strftime(datetime_format)
 
-
     def str_to_datetime(s):
         """
         Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
@@ -480,7 +521,6 @@ try:
         datetime.datetime(1970, 1, 1, 0, 0)
         """
         return datetime.strptime(s, datetime_format)
-
 
     class BotoCredentialAdapter(provider.Provider):
         """
@@ -500,31 +540,55 @@ try:
         # TODO: We take kwargs because new boto2 versions have an 'anon'
         # argument and we want to be future proof
 
-        def __init__(self, name, access_key=None, secret_key=None,
-                     security_token=None, profile_name=None, **kwargs):
+        def __init__(
+            self,
+            name,
+            access_key=None,
+            secret_key=None,
+            security_token=None,
+            profile_name=None,
+            **kwargs,
+        ):
             """
             Create a new BotoCredentialAdapter.
             """
             # TODO: We take kwargs because new boto2 versions have an 'anon'
             # argument and we want to be future proof
 
-            if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
+            if (
+                (name == "aws" or name is None)
+                and access_key is None
+                and not kwargs.get("anon", False)
+            ):
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
                 # Make sure to enable boto3's own caching, so we can share that
                 # cache with pure boto3 code elsewhere in Toil.
                 # Keep synced with toil.lib.aws.session.establish_boto3_session
-                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
+                self._boto3_resolver = create_credential_resolver(
+                    Session(profile=profile_name), cache=JSONFileCache()
+                )
             else:
                 # We will use the normal flow
                 self._boto3_resolver = None
 
             # Pass along all the arguments
-            super().__init__(name, access_key=access_key,
-                                                        secret_key=secret_key, security_token=security_token,
-                                                        profile_name=profile_name, **kwargs)
+            super().__init__(
+                name,
+                access_key=access_key,
+                secret_key=secret_key,
+                security_token=security_token,
+                profile_name=profile_name,
+                **kwargs,
+            )
 
-        def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
+        def get_credentials(
+            self,
+            access_key=None,
+            secret_key=None,
+            security_token=None,
+            profile_name=None,
+        ):
             """
             Make sure our credential fields are populated. Called by the base class
             constructor.
@@ -538,9 +602,12 @@ try:
             else:
                 # We're not on AWS, or they passed a key, or we're anonymous.
                 # Use the normal route; our credentials shouldn't expire.
-                super().get_credentials(access_key=access_key,
-                                                                   secret_key=secret_key, security_token=security_token,
-                                                                   profile_name=profile_name)
+                super().get_credentials(
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    security_token=security_token,
+                    profile_name=profile_name,
+                )
 
         def _populate_keys_from_metadata_server(self):
             """
@@ -559,7 +626,7 @@ try:
             """
 
             # This should only happen if we have expiring credentials, which we should only get from boto3
-            assert (self._boto3_resolver is not None)
+            assert self._boto3_resolver is not None
 
             self._obtain_credentials_from_cache_or_boto3()
 
@@ -581,7 +648,10 @@ try:
                     resolvers = str(self._boto3_resolver.providers)
                 except:
                     resolvers = "(Resolvers unavailable)"
-                raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+                raise RuntimeError(
+                    "Could not obtain AWS credentials from Boto3. Resolvers tried: "
+                    + resolvers
+                )
 
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()
@@ -590,7 +660,9 @@ try:
             if isinstance(creds, RefreshableCredentials):
                 # Credentials may expire.
                 # Get a naive UTC datetime like boto 2 uses from the boto 3 time.
-                self._credential_expiry_time = creds._expiry_time.astimezone(timezone('UTC')).replace(tzinfo=None)
+                self._credential_expiry_time = creds._expiry_time.astimezone(
+                    timezone("UTC")
+                ).replace(tzinfo=None)
             else:
                 # Credentials never expire
                 self._credential_expiry_time = None
@@ -609,31 +681,33 @@ try:
             (or wait for another cooperating process to do so) if they are missing
             or not fresh enough.
             """
-            cache_path = '~/.cache/aws/cached_temporary_credentials'
+            cache_path = "~/.cache/aws/cached_temporary_credentials"
             path = os.path.expanduser(cache_path)
-            tmp_path = path + '.tmp'
+            tmp_path = path + ".tmp"
             while True:
-                log.debug('Attempting to read cached credentials from %s.', path)
+                log.debug("Attempting to read cached credentials from %s.", path)
                 try:
                     with open(path) as f:
                         content = f.read()
                         if content:
-                            record = content.split('\n')
+                            record = content.split("\n")
                             assert len(record) == 4
                             self._access_key = record[0]
                             self._secret_key = record[1]
                             self._security_token = record[2]
                             self._credential_expiry_time = str_to_datetime(record[3])
                         else:
-                            log.debug('%s is empty. Credentials are not temporary.', path)
+                            log.debug(
+                                "%s is empty. Credentials are not temporary.", path
+                            )
                             self._obtain_credentials_from_boto3()
                             return
                 except OSError as e:
                     if e.errno == errno.ENOENT:
-                        log.debug('Cached credentials are missing.')
+                        log.debug("Cached credentials are missing.")
                         dir_path = os.path.dirname(path)
                         if not os.path.exists(dir_path):
-                            log.debug('Creating parent directory %s', dir_path)
+                            log.debug("Creating parent directory %s", dir_path)
                             try:
                                 # A race would be ok at this point
                                 os.makedirs(dir_path, exist_ok=True)
@@ -642,7 +716,9 @@ try:
                                     # Sometimes we don't actually have write access to ~.
                                     # We may be running in a non-writable Toil container.
                                     # We should just go get our own credentials
-                                    log.debug('Cannot use the credentials cache because we are working on a read-only filesystem.')
+                                    log.debug(
+                                        "Cannot use the credentials cache because we are working on a read-only filesystem."
+                                    )
                                     self._obtain_credentials_from_boto3()
                                 else:
                                     raise
@@ -650,31 +726,39 @@ try:
                         raise
                 else:
                     if self._credentials_need_refresh():
-                        log.debug('Cached credentials are expired.')
+                        log.debug("Cached credentials are expired.")
                     else:
-                        log.debug('Cached credentials exist and are still fresh.')
+                        log.debug("Cached credentials exist and are still fresh.")
                         return
                 # We get here if credentials are missing or expired
-                log.debug('Racing to create %s.', tmp_path)
+                log.debug("Racing to create %s.", tmp_path)
                 # Only one process, the winner, will succeed
                 try:
                     fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                 except OSError as e:
                     if e.errno == errno.EEXIST:
-                        log.debug('Lost the race to create %s. Waiting on winner to remove it.', tmp_path)
+                        log.debug(
+                            "Lost the race to create %s. Waiting on winner to remove it.",
+                            tmp_path,
+                        )
                         while os.path.exists(tmp_path):
                             time.sleep(0.1)
-                        log.debug('Winner removed %s. Trying from the top.', tmp_path)
+                        log.debug("Winner removed %s. Trying from the top.", tmp_path)
                     else:
                         raise
                 else:
                     try:
-                        log.debug('Won the race to create %s.  Requesting credentials from backend.', tmp_path)
+                        log.debug(
+                            "Won the race to create %s.  Requesting credentials from backend.",
+                            tmp_path,
+                        )
                         self._obtain_credentials_from_boto3()
                     except:
                         os.close(fd)
                         fd = None
-                        log.debug('Failed to obtain credentials, removing %s.', tmp_path)
+                        log.debug(
+                            "Failed to obtain credentials, removing %s.", tmp_path
+                        )
                         # This unblocks the losers.
                         os.unlink(tmp_path)
                         # Bail out. It's too likely to happen repeatedly
@@ -683,28 +767,41 @@ try:
                         if self._credential_expiry_time is None:
                             os.close(fd)
                             fd = None
-                            log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.',
-                                      tmp_path, path)
+                            log.debug(
+                                "Credentials are not temporary.  Leaving %s empty and renaming it to %s.",
+                                tmp_path,
+                                path,
+                            )
                             # No need to actually cache permanent credentials,
                             # because we know we aren't getting them from the
                             # metadata server or by assuming a role. Those both
                             # give temporary credentials.
                         else:
-                            log.debug('Writing credentials to %s.', tmp_path)
-                            with os.fdopen(fd, 'w') as fh:
+                            log.debug("Writing credentials to %s.", tmp_path)
+                            with os.fdopen(fd, "w") as fh:
                                 fd = None
-                                fh.write('\n'.join([
-                                    self._access_key,
-                                    self._secret_key,
-                                    self._security_token,
-                                    datetime_to_str(self._credential_expiry_time)]))
-                            log.debug('Wrote credentials to %s. Renaming to %s.', tmp_path, path)
+                                fh.write(
+                                    "\n".join(
+                                        [
+                                            self._access_key,
+                                            self._secret_key,
+                                            self._security_token,
+                                            datetime_to_str(
+                                                self._credential_expiry_time
+                                            ),
+                                        ]
+                                    )
+                                )
+                            log.debug(
+                                "Wrote credentials to %s. Renaming to %s.",
+                                tmp_path,
+                                path,
+                            )
                         os.rename(tmp_path, path)
                         return
                     finally:
                         if fd is not None:
                             os.close(fd)
-
 
     provider.Provider = BotoCredentialAdapter
 

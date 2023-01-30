@@ -33,9 +33,11 @@ import tes
 from requests.exceptions import HTTPError
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   BatchJobExitReason,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE,
+    BatchJobExitReason,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
@@ -49,11 +51,11 @@ logger = logging.getLogger(__name__)
 
 # Map from TES terminal states to Toil batch job exit reasons
 STATE_TO_EXIT_REASON: Dict[str, BatchJobExitReason] = {
-    'COMPLETE': BatchJobExitReason.FINISHED,
-    'CANCELED': BatchJobExitReason.KILLED,
-    'EXECUTOR_ERROR': BatchJobExitReason.FAILED,
-    'SYSTEM_ERROR': BatchJobExitReason.ERROR,
-    'UNKNOWN': BatchJobExitReason.ERROR
+    "COMPLETE": BatchJobExitReason.FINISHED,
+    "CANCELED": BatchJobExitReason.KILLED,
+    "EXECUTOR_ERROR": BatchJobExitReason.FAILED,
+    "SYSTEM_ERROR": BatchJobExitReason.ERROR,
+    "UNKNOWN": BatchJobExitReason.ERROR,
 }
 
 
@@ -69,15 +71,19 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         (unless overridden by an option or environment variable)
         """
-        return f'http://{get_public_ip()}:8000'
+        return f"http://{get_public_ip()}:8000"
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
-        self.tes = tes.HTTPClient(config.tes_endpoint,
-                                  user=config.tes_user,
-                                  password=config.tes_password,
-                                  token=config.tes_bearer_token)
+        self.tes = tes.HTTPClient(
+            config.tes_endpoint,
+            user=config.tes_user,
+            password=config.tes_password,
+            token=config.tes_bearer_token,
+        )
 
         # Get service info from the TES server and pull out supported storages.
         # We need this so we can tell if the server is likely to be able to
@@ -92,14 +98,14 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
         if config.jobStore:
             job_store_type, job_store_path = Toil.parseLocator(config.jobStore)
-            if job_store_type == 'file':
+            if job_store_type == "file":
                 # If we have a file job store, we want to mount it at the same path, if we can
                 self._mount_local_path_if_possible(job_store_path, job_store_path)
 
         # If we have AWS credentials, we want to mount them in our home directory if we can.
-        aws_credentials_path = os.path.join(os.path.expanduser("~"), '.aws')
+        aws_credentials_path = os.path.join(os.path.expanduser("~"), ".aws")
         if os.path.isdir(aws_credentials_path):
-            self._mount_local_path_if_possible(aws_credentials_path, '/root/.aws')
+            self._mount_local_path_if_possible(aws_credentials_path, "/root/.aws")
 
         # We assign job names based on a numerical job ID. This functionality
         # is managed by the BatchSystemLocalSupport.
@@ -129,7 +135,9 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 return True
         return False
 
-    def _mount_local_path_if_possible(self, local_path: str, container_path: str) -> None:
+    def _mount_local_path_if_possible(
+        self, local_path: str, container_path: str
+    ) -> None:
         """
         Internal function. Should not be called outside this class.
 
@@ -138,20 +146,26 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         """
         # TODO: We aren't going to work well with linked imports if we're mounting the job store into the container...
 
-        path_url = 'file://' + os.path.abspath(local_path)
+        path_url = "file://" + os.path.abspath(local_path)
         if os.path.exists(local_path) and self._server_can_mount(path_url):
             # We can access this file from the server. Probably.
-            self.mounts.append(tes.Input(url=path_url,
-                                         path=container_path,
-                                         type="DIRECTORY" if os.path.isdir(local_path) else "FILE"))
+            self.mounts.append(
+                tes.Input(
+                    url=path_url,
+                    path=container_path,
+                    type="DIRECTORY" if os.path.isdir(local_path) else "FILE",
+                )
+            )
 
     def setUserScript(self, user_script: Resource) -> None:
-        logger.debug(f'Setting user script for deployment: {user_script}')
+        logger.debug(f"Setting user script for deployment: {user_script}")
         self.user_script = user_script
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
-    def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(
+        self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None
+    ) -> int:
         # TODO: get a sensible self.maxCores, etc. so we can check_resource_request.
         # How do we know if the cluster will autoscale?
 
@@ -181,12 +195,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             environment = self.environment.copy()
             if job_environment:
                 environment.update(job_environment)
-            if 'TOIL_WORKDIR' not in environment:
+            if "TOIL_WORKDIR" not in environment:
                 # The appliance container defaults TOIL_WORKDIR to
                 # /var/lib/toil, but TES doesn't (always?) give us a writable
                 # /, so we need to use the writable space in /tmp by default
                 # instead when running on TES.
-                environment['TOIL_WORKDIR'] = '/tmp'
+                environment["TOIL_WORKDIR"] = "/tmp"
 
             # Make a command to run it in the executor
             command_list = pack_job(job_desc, self.user_script)
@@ -194,27 +208,32 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             # Make the sequence of TES containers ("executors") to run.
             # We just run one which is the Toil executor to grab the user
             # script and do the job.
-            task_executors = [tes.Executor(image=self.docker_image,
-                command=command_list,
-                env=environment
-            )]
+            task_executors = [
+                tes.Executor(
+                    image=self.docker_image, command=command_list, env=environment
+                )
+            ]
 
             # Prepare inputs.
             task_inputs = list(self.mounts)
             # If we had any per-job input files they would come in here.
 
             # Prepare resource requirements
-            task_resources = tes.Resources(cpu_cores=math.ceil(job_desc.cores),
-                                           ram_gb=job_desc.memory / (1024**3),
-                                           disk_gb=job_desc.disk / (1024**3),
-                                           # TODO: py-tes spells this differently than Toil
-                                           preemptible=job_desc.preemptable)
+            task_resources = tes.Resources(
+                cpu_cores=math.ceil(job_desc.cores),
+                ram_gb=job_desc.memory / (1024**3),
+                disk_gb=job_desc.disk / (1024**3),
+                # TODO: py-tes spells this differently than Toil
+                preemptible=job_desc.preemptable,
+            )
 
             # Package into a TES Task
-            task = tes.Task(name=job_name,
-                            executors=task_executors,
-                            inputs=task_inputs,
-                            resources=task_resources)
+            task = tes.Task(
+                name=job_name,
+                executors=task_executors,
+                inputs=task_inputs,
+                resources=task_resources,
+            )
 
             # Launch it and get back the TES ID that we can use to poll the task
             tes_id = self.tes.create_task(task)
@@ -223,7 +242,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             self.bs_id_to_tes_id[bs_id] = tes_id
             self.tes_id_to_bs_id[tes_id] = bs_id
 
-            logger.debug('Launched job: %s', job_name)
+            logger.debug("Launched job: %s", job_name)
 
             return bs_id
 
@@ -236,7 +255,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         """
         start_time = None
         end_time = utc_now()
-        for log in (task.logs or []):
+        for log in task.logs or []:
             if log.start_time:
                 # Find the first start time that is set
                 start_time = log.start_time
@@ -247,7 +266,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
             return None
 
         for log in reversed(task.logs or []):
-             if log.end_time:
+            if log.end_time:
                 # Find the last end time that is set, and override now
                 end_time = log.end_time
                 break
@@ -263,12 +282,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         EXIT_STATUS_UNAVAILABLE_VALUE if no executor has a log.
         """
         for task_log in reversed(task.logs or []):
-             for executor_log in reversed(task_log.logs or []):
-                 if isinstance(executor_log.exit_code, int):
+            for executor_log in reversed(task_log.logs or []):
+                if isinstance(executor_log.exit_code, int):
                     # Find the last executor exit code that is a number and return it
                     return executor_log.exit_code
 
-        if task.state == 'COMPLETE':
+        if task.state == "COMPLETE":
             # If the task completes without error but has no code logged, the
             # code must be 0.
             return 0
@@ -296,7 +315,9 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         entry = datetime.datetime.now()
         # This is the updated job we have found, if any
         result = None
-        while result is None and ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
+        while result is None and (
+            (datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait
+        ):
             result = self.getUpdatedLocalJob(0)
 
             if result:
@@ -311,7 +332,12 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # TODO: There's no way to acknowledge a finished job, so there's no
                 # faster way to find the newly finished jobs than polling
                 task = self.tes.get_task(tes_id, view="MINIMAL")
-                if task.state in ["COMPLETE", "CANCELED", "EXECUTOR_ERROR", "SYSTEM_ERROR"]:
+                if task.state in [
+                    "COMPLETE",
+                    "CANCELED",
+                    "EXECUTOR_ERROR",
+                    "SYSTEM_ERROR",
+                ]:
                     # This task is done!
                     logger.debug("Found stopped task: %s", task)
 
@@ -338,10 +364,17 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
                     if task.state == "EXECUTOR_ERROR":
                         # The task failed, so report executor logs.
-                        logger.warning('Log from failed executor: %s', self.__get_log_text(task))
+                        logger.warning(
+                            "Log from failed executor: %s", self.__get_log_text(task)
+                        )
 
                     # Compose a result
-                    result = UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
+                    result = UpdatedBatchJobInfo(
+                        jobID=bs_id,
+                        exitStatus=exit_code,
+                        wallTime=runtime,
+                        exitReason=exit_reason,
+                    )
 
                     # No more iteration needed, we found a result.
                     break
@@ -356,7 +389,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 break
             elif result is None:
                 # Wait a bit and poll again
-                time.sleep(min(maxWait/2, 1.0))
+                time.sleep(min(maxWait / 2, 1.0))
 
         # When we get here we have all the result we can get
         return result
@@ -387,7 +420,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
                 # TODO: This is what we probably get when trying to cancel
                 # something that is actually done. But can we rely on that?
                 pass
-            elif '500' in str(e) or '409' in str(e):
+            elif "500" in str(e) or "409" in str(e):
                 # TODO: drop this after <https://github.com/ohsu-comp-bio/py-tes/pull/36> merges.
                 # py-tes might be hiding the actual code and just putting it in a string
                 pass
@@ -439,21 +472,41 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=cls.get_default_tes_endpoint(),
-                            help="The http(s) URL of the TES server.  (default: %(default)s)")
-        parser.add_argument("--tesUser", dest="tes_user", default=None,
-                            help="User name to use for basic authentication to TES server.")
-        parser.add_argument("--tesPassword", dest="tes_password", default=None,
-                            help="Password to use for basic authentication to TES server.")
-        parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
-                            help="Bearer token to use for authentication to TES server.")
+        parser.add_argument(
+            "--tesEndpoint",
+            dest="tes_endpoint",
+            default=cls.get_default_tes_endpoint(),
+            help="The http(s) URL of the TES server.  (default: %(default)s)",
+        )
+        parser.add_argument(
+            "--tesUser",
+            dest="tes_user",
+            default=None,
+            help="User name to use for basic authentication to TES server.",
+        )
+        parser.add_argument(
+            "--tesPassword",
+            dest="tes_password",
+            default=None,
+            help="Password to use for basic authentication to TES server.",
+        )
+        parser.add_argument(
+            "--tesBearerToken",
+            dest="tes_bearer_token",
+            default=None,
+            help="Bearer token to use for authentication to TES server.",
+        )
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         # Because we use the keyword arguments, we can't specify a type for setOption without using Protocols.
         # TODO: start using Protocols, or just start returning objects to represent the options.
         # When actually parsing options, remember to check the environment variables
-        setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
+        setOption(
+            "tes_endpoint",
+            default=cls.get_default_tes_endpoint(),
+            env=["TOIL_TES_ENDPOINT"],
+        )
         setOption("tes_user", default=None, env=["TOIL_TES_USER"])
         setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD"])
         setOption("tes_bearer_token", default=None, env=["TOIL_TES_BEARER_TOKEN"])

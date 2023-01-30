@@ -64,6 +64,7 @@ class ExceptionalThread(threading.Thread):
     AssertionError
 
     """
+
     exc_info = None
 
     def run(self) -> None:
@@ -102,7 +103,7 @@ def cpu_count() -> int:
     :rtype: int
     """
 
-    cached = getattr(cpu_count, 'result', None)
+    cached = getattr(cpu_count, "result", None)
     if cached is not None:
         # We already got a CPU count.
         return cast(int, cached)
@@ -110,10 +111,10 @@ def cpu_count() -> int:
     # Get the fallback answer of all the CPUs on the machine
     total_machine_size = cast(int, psutil.cpu_count(logical=True))
 
-    logger.debug('Total machine size: %d cores', total_machine_size)
+    logger.debug("Total machine size: %d cores", total_machine_size)
 
     # cgroups may limit the size
-    cgroup_size: Union[float, int] = float('inf')
+    cgroup_size: Union[float, int] = float("inf")
 
     try:
         # See if we can fetch these and use them
@@ -121,13 +122,13 @@ def cpu_count() -> int:
         period: Optional[int] = None
 
         # CGroups v1 keeps quota and period separate
-        CGROUP1_QUOTA_FILE = '/sys/fs/cgroup/cpu/cpu.cfs_quota_us'
-        CGROUP1_PERIOD_FILE = '/sys/fs/cgroup/cpu/cpu.cfs_period_us'
+        CGROUP1_QUOTA_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_quota_us"
+        CGROUP1_PERIOD_FILE = "/sys/fs/cgroup/cpu/cpu.cfs_period_us"
         # CGroups v2 keeps both in one file, space-separated, quota first
-        CGROUP2_COMBINED_FILE = '/sys/fs/cgroup/cpu.max'
+        CGROUP2_COMBINED_FILE = "/sys/fs/cgroup/cpu.max"
 
         if os.path.exists(CGROUP1_QUOTA_FILE) and os.path.exists(CGROUP1_PERIOD_FILE):
-            logger.debug('CPU quota and period available from cgroups v1')
+            logger.debug("CPU quota and period available from cgroups v1")
             with open(CGROUP1_QUOTA_FILE) as stream:
                 # Read the quota
                 quota = int(stream.read())
@@ -136,16 +137,16 @@ def cpu_count() -> int:
                 # Read the period in which we are allowed to burn the quota
                 period = int(stream.read())
         elif os.path.exists(CGROUP2_COMBINED_FILE):
-            logger.debug('CPU quota and period available from cgroups v2')
+            logger.debug("CPU quota and period available from cgroups v2")
             with open(CGROUP2_COMBINED_FILE) as stream:
                 # Read the quota and the period together
-                quota, period = (int(part) for part in stream.read().split(' '))
+                quota, period = (int(part) for part in stream.read().split(" "))
         else:
-            logger.debug('CPU quota/period not available from cgroups v1 or cgroups v2')
+            logger.debug("CPU quota/period not available from cgroups v1 or cgroups v2")
 
         if quota is not None and period is not None:
             # We got a quota and a period.
-            logger.debug('CPU quota: %d period: %d', quota, period)
+            logger.debug("CPU quota: %d period: %d", quota, period)
 
             if quota == -1:
                 # But the quota can be -1 for unset.
@@ -154,31 +155,33 @@ def cpu_count() -> int:
 
             # The thread count is how many multiples of a wall clock period we
             # can burn in that period.
-            cgroup_size = int(math.ceil(float(quota)/float(period)))
+            cgroup_size = int(math.ceil(float(quota) / float(period)))
 
-            logger.debug('Control group size in cores: %d', cgroup_size)
+            logger.debug("Control group size in cores: %d", cgroup_size)
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
-        logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
+        logger.debug("Could not inspect cgroup: %s", traceback.format_exc())
 
     # CPU affinity may limit the size
-    affinity_size: Union[float, int] = float('inf')
-    if hasattr(os, 'sched_getaffinity'):
+    affinity_size: Union[float, int] = float("inf")
+    if hasattr(os, "sched_getaffinity"):
         try:
-            logger.debug('CPU affinity available')
+            logger.debug("CPU affinity available")
             affinity_size = len(os.sched_getaffinity(0))
-            logger.debug('CPU affinity is restricted to %d cores', affinity_size)
+            logger.debug("CPU affinity is restricted to %d cores", affinity_size)
         except:
-             # We can't actually read this even though it exists.
-            logger.debug('Could not inspect scheduling affinity: %s', traceback.format_exc())
+            # We can't actually read this even though it exists.
+            logger.debug(
+                "Could not inspect scheduling affinity: %s", traceback.format_exc()
+            )
     else:
-        logger.debug('CPU affinity not available')
+        logger.debug("CPU affinity not available")
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
     result = cast(int, max(1, min(min(affinity_size, cgroup_size), total_machine_size)))
-    logger.debug('cpu_count: %s', str(result))
+    logger.debug("cpu_count: %s", str(result))
     # Make sure to remember it for the next call
-    setattr(cpu_count, 'result', result)
+    setattr(cpu_count, "result", result)
     return result
 
 
@@ -202,6 +205,7 @@ current_process_name_lock = threading.Lock()
 # We also have a file descriptor per work directory but it is just leaked.
 current_process_name_for: Dict[str, str] = {}
 
+
 def collect_process_name_garbage() -> None:
     """
     Delete all the process names that point to files that don't exist anymore
@@ -224,6 +228,7 @@ def collect_process_name_garbage() -> None:
     for base_dir in missing:
         del current_process_name_for[base_dir]
 
+
 def destroy_all_process_names() -> None:
     """
     Delete all our process name files because our process is going away.
@@ -238,8 +243,10 @@ def destroy_all_process_names() -> None:
     for base_dir, name in current_process_name_for.items():
         robust_rmtree(os.path.join(base_dir, name))
 
+
 # Run the cleanup at exit
 atexit.register(destroy_all_process_names)
+
 
 def get_process_name(base_dir: str) -> str:
     """
@@ -272,7 +279,9 @@ def get_process_name(base_dir: str) -> str:
             fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError(f"Could not lock process name file {nameFileName}: {str(e)}")
+            raise RuntimeError(
+                f"Could not lock process name file {nameFileName}: {str(e)}"
+            )
 
         # Save the basename
         current_process_name_for[base_dir] = os.path.basename(nameFileName)
@@ -310,7 +319,6 @@ def process_name_exists(base_dir: str, name: str) -> bool:
         # If the file is gone, the process can't exist.
         return False
 
-
     nameFD = None
     try:
         # Otherwise see if we can lock it shared, for which we need an FD, but
@@ -339,6 +347,7 @@ def process_name_exists(base_dir: str, name: str) -> bool:
             except:
                 pass
 
+
 # Similar to the process naming system above, we define a global mutex system
 # for critical sections, based just around file locks.
 @contextmanager
@@ -356,9 +365,9 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
     """
 
     # Define a filename
-    lock_filename = os.path.join(base_dir, 'toil-mutex-' + mutex)
+    lock_filename = os.path.join(base_dir, "toil-mutex-" + mutex)
 
-    logger.debug('PID %d acquiring mutex %s', os.getpid(), lock_filename)
+    logger.debug("PID %d acquiring mutex %s", os.getpid(), lock_filename)
 
     # We can't just create/open and lock a file, because when we clean up
     # there's a race where someone can open the file before we unlink it and
@@ -378,7 +387,11 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         except FileNotFoundError:
             path_stats = None
 
-        if path_stats is None or fd_stats.st_dev != path_stats.st_dev or fd_stats.st_ino != path_stats.st_ino:
+        if (
+            path_stats is None
+            or fd_stats.st_dev != path_stats.st_dev
+            or fd_stats.st_ino != path_stats.st_ino
+        ):
             # The file we have a lock on is not the file linked to the name (if
             # any). This usually happens, because before someone releases a
             # lock, they delete the file. Go back and contend again. TODO: This
@@ -394,12 +407,12 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
 
     try:
         # When we have it, do the thing we are protecting.
-        logger.debug('PID %d now holds mutex %s', os.getpid(), lock_filename)
+        logger.debug("PID %d now holds mutex %s", os.getpid(), lock_filename)
         yield
     finally:
         # Delete it while we still own it, so we can't delete it from out from
         # under someone else who thinks they are holding it.
-        logger.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
+        logger.debug("PID %d releasing mutex %s", os.getpid(), lock_filename)
         os.unlink(lock_filename)
         fcntl.lockf(fd, fcntl.LOCK_UN)
         # Note that we are unlinking it and then unlocking it; a lot of people
@@ -442,13 +455,13 @@ class LastProcessStandingArena:
 
         # We need a mutex name to allow only one process to be entering or
         # leaving at a time.
-        self.mutex = name + '-arena-lock'
+        self.mutex = name + "-arena-lock"
 
         # We need a way to track who is actually in, and who was in but died.
         # So everybody gets a locked file (again).
         # TODO: deduplicate with the similar logic for process names, and also
         # deferred functions.
-        self.lockfileDir = os.path.join(base_dir, name + '-arena-members')
+        self.lockfileDir = os.path.join(base_dir, name + "-arena-members")
 
         # When we enter the arena, we fill this in with the FD of the locked
         # file that represents our presence.
@@ -464,7 +477,7 @@ class LastProcessStandingArena:
         You may not enter the arena again before leaving it.
         """
 
-        logger.debug('Joining arena %s', self.lockfileDir)
+        logger.debug("Joining arena %s", self.lockfileDir)
 
         # Make sure we're not in it already.
         assert self.lockfileName is None
@@ -480,13 +493,13 @@ class LastProcessStandingArena:
                 pass
 
             # Make ourselves a file in it and lock it to prove we are alive.
-            self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir) # type: ignore
+            self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir)  # type: ignore
             # Nobody can see it yet, so lock it right away
-            fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX) # type: ignore
+            fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX)  # type: ignore
 
             # Now we're properly in, so release the global mutex
 
-        logger.debug('Now in arena %s', self.lockfileDir)
+        logger.debug("Now in arena %s", self.lockfileDir)
 
     def leave(self) -> Iterator[bool]:
         """
@@ -506,7 +519,7 @@ class LastProcessStandingArena:
         assert self.lockfileName is not None
         assert self.lockfileFD is not None
 
-        logger.debug('Leaving arena %s', self.lockfileDir)
+        logger.debug("Leaving arena %s", self.lockfileDir)
 
         with global_mutex(self.base_dir, self.mutex):
             # Now nobody else should also be trying to join or leave.
@@ -542,17 +555,22 @@ class LastProcessStandingArena:
             else:
                 # Nothing alive was found. Nobody will come in while we hold
                 # the global mutex, so we are the Last Process Standing.
-                logger.debug('We are the Last Process Standing in arena %s', self.lockfileDir)
+                logger.debug(
+                    "We are the Last Process Standing in arena %s", self.lockfileDir
+                )
                 yield True
 
                 try:
                     # Delete the arena directory so as to leave nothing behind.
                     os.rmdir(self.lockfileDir)
                 except:
-                    logger.warning('Could not clean up arena %s completely: %s',
-                                   self.lockfileDir, traceback.format_exc())
+                    logger.warning(
+                        "Could not clean up arena %s completely: %s",
+                        self.lockfileDir,
+                        traceback.format_exc(),
+                    )
 
             # Now we're done, whether we were the last one or not, and can
             # release the mutex.
 
-        logger.debug('Now out of arena %s', self.lockfileDir)
+        logger.debug("Now out of arena %s", self.lockfileDir)

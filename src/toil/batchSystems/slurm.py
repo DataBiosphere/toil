@@ -18,8 +18,9 @@ from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
 from typing import Callable, Dict, List, Optional, TypeVar, Union
 
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
 from toil.batchSystems.options import OptionSetter
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
@@ -27,9 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
-
     class Worker(AbstractGridEngineBatchSystem.Worker):
-
         def getRunningJobIDs(self):
             # Should return a dictionary of Job IDs and number of seconds
             times = {}
@@ -40,29 +39,33 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = call_command(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+            lines = call_command(["squeue", "-h", "--format", "%i %t %M"]).split("\n")
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
                     continue
                 slurm_jobid, state, elapsed_time = values
-                if slurm_jobid in currentjobs and state == 'R':
+                if slurm_jobid in currentjobs and state == "R":
                     seconds_running = self.parse_elapsed(elapsed_time)
                     times[currentjobs[slurm_jobid]] = seconds_running
 
             return times
 
         def killJob(self, jobID):
-            call_command(['scancel', self.getBatchSystemID(jobID)])
+            call_command(["scancel", self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self,
-                              cpu: int,
-                              memory: int,
-                              jobID: int,
-                              command: str,
-                              jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
-            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + [f'--wrap={command}']
+        def prepareSubmission(
+            self,
+            cpu: int,
+            memory: int,
+            jobID: int,
+            command: str,
+            jobName: str,
+            job_environment: Optional[Dict[str, str]] = None,
+        ) -> List[str]:
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment) + [
+                f"--wrap={command}"
+            ]
 
         def submitJob(self, subLine):
             try:
@@ -84,7 +87,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
             logger.debug("Getting exit codes for slurm jobs: %s", batch_job_id_list)
             # Convert batch_job_id_list to list of integer job IDs.
-            job_id_list = [int(id.split('.')[0]) for id in batch_job_id_list]
+            job_id_list = [int(id.split(".")[0]) for id in batch_job_id_list]
             status_dict = self._get_job_details(job_id_list)
             exit_codes = []
             for _, status in status_dict.items():
@@ -99,7 +102,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
             logger.debug("Getting exit code for slurm job: %s", batchJobID)
             # Convert batchJobID to an integer job ID.
-            job_id = int(batchJobID.split('.')[0])
+            job_id = int(batchJobID.split(".")[0])
             status_dict = self._get_job_details([job_id])
             status = status_dict[job_id]
             return self._get_job_return_code(status)
@@ -127,7 +130,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             state, rc = status
             # If job is in a running state, set return code to None to indicate we don't have
             # an update.
-            if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
+            if state in (
+                "PENDING",
+                "RUNNING",
+                "CONFIGURING",
+                "COMPLETING",
+                "RESIZING",
+                "SUSPENDED",
+            ):
                 rc = None
             return rc
 
@@ -139,12 +149,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             containing the job's state and exit code.
             """
             job_ids = ",".join(str(id) for id in job_id_list)
-            args = ['sacct',
-                    '-n',  # no header
-                    '-j', job_ids,  # job
-                    '--format', 'JobIDRaw,State,ExitCode',  # specify output columns
-                    '-P',  # separate columns with pipes
-                    '-S', '1970-01-01']  # override start time limit
+            args = [
+                "sacct",
+                "-n",  # no header
+                "-j",
+                job_ids,  # job
+                "--format",
+                "JobIDRaw,State,ExitCode",  # specify output columns
+                "-P",  # separate columns with pipes
+                "-S",
+                "1970-01-01",
+            ]  # override start time limit
             stdout = call_command(args)
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
@@ -154,8 +169,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 job_statuses[job_id] = (None, None)
 
             for line in stdout.splitlines():
-                #logger.debug("%s output %s", args[0], line)
-                values = line.strip().split('|')
+                # logger.debug("%s output %s", args[0], line)
+                values = line.strip().split("|")
                 if len(values) < 3:
                     continue
                 job_id_raw, state, exitcode = values
@@ -165,12 +180,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if len(job_id_parts) > 1:
                     continue
                 job_id = int(job_id_parts[0])
-                status, signal = (int(n) for n in exitcode.split(':'))
+                status, signal = (int(n) for n in exitcode.split(":"))
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
-                logger.debug("%s exit code of job %d is %s, return status %d",
-                             args[0], job_id, exitcode, status)
+                logger.debug(
+                    "%s exit code of job %d is %s, return status %d",
+                    args[0],
+                    job_id,
+                    exitcode,
+                    status,
+                )
                 job_statuses[job_id] = state, status
             logger.debug("%s returning job statuses: %s", args[0], job_statuses)
             return job_statuses
@@ -182,9 +202,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :return: dict of job statuses, where key is the job-id, and value is a tuple
             containing the job's state and exit code.
             """
-            args = ['scontrol',
-                    'show',
-                    'job']
+            args = ["scontrol", "show", "job"]
             # `scontrol` can only return information about a single job,
             # or all the jobs it knows about.
             if len(job_id_list) == 1:
@@ -194,9 +212,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Job records are separated by a blank line.
             if isinstance(stdout, str):
-                job_records = stdout.strip().split('\n\n')
+                job_records = stdout.strip().split("\n\n")
             elif isinstance(stdout, bytes):
-                job_records = stdout.decode('utf-8').strip().split('\n\n')
+                job_records = stdout.decode("utf-8").strip().split("\n\n")
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `scontrol`.
@@ -213,37 +231,42 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 job = {}
                 for line in record.splitlines():
                     for item in line.split():
-                        #logger.debug("%s output %s", args[0], item)
+                        # logger.debug("%s output %s", args[0], item)
                         # Output is in the form of many key=value pairs, multiple pairs on each line
                         # and multiple lines in the output. Each pair is pulled out of each line and
                         # added to a dictionary.
                         # Note: In some cases, the value itself may contain white-space. So, if we find
                         # a key without a value, we consider that key part of the previous value.
-                        bits = item.split('=', 1)
+                        bits = item.split("=", 1)
                         if len(bits) == 1:
-                            job[key] += ' ' + bits[0]
+                            job[key] += " " + bits[0]
                         else:
                             key = bits[0]
                             job[key] = bits[1]
                     # The first line of the record contains the JobId. Stop processing the remainder
                     # of this record, if we're not interested in this job.
-                    job_id = int(job['JobId'])
+                    job_id = int(job["JobId"])
                     if job_id not in job_id_list:
                         logger.debug("%s job %d is not in the list", args[0], job_id)
                         break
                 if job_id not in job_id_list:
                     continue
-                state = job['JobState']
+                state = job["JobState"]
                 logger.debug("%s state of job %s is %s", args[0], job_id, state)
                 try:
-                    exitcode = job['ExitCode']
+                    exitcode = job["ExitCode"]
                     if exitcode is not None:
-                        status, signal = (int(n) for n in exitcode.split(':'))
+                        status, signal = (int(n) for n in exitcode.split(":"))
                         if signal > 0:
                             # A non-zero signal may indicate e.g. an out-of-memory killed job
                             status = 128 + signal
-                        logger.debug("%s exit code of job %d is %s, return status %d",
-                                     args[0], job_id, exitcode, status)
+                        logger.debug(
+                            "%s exit code of job %d is %s, return status %d",
+                            args[0],
+                            job_id,
+                            exitcode,
+                            status,
+                        )
                         rc = status
                     else:
                         rc = None
@@ -257,15 +280,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         ### Implementation-specific helper methods
         ###
 
-        def prepareSbatch(self,
-                          cpu: int,
-                          mem: int,
-                          jobID: int,
-                          jobName: str,
-                          job_environment: Optional[Dict[str, str]]) -> List[str]:
+        def prepareSbatch(
+            self,
+            cpu: int,
+            mem: int,
+            jobID: int,
+            jobName: str,
+            job_environment: Optional[Dict[str, str]],
+        ) -> List[str]:
 
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
+            sbatch_line = ["sbatch", "-J", f"toil_job_{jobID}_{jobName}"]
 
             environment = {}
             environment.update(self.boss.environment)
@@ -273,17 +298,22 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 environment.update(job_environment)
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
-            nativeConfig = os.getenv('TOIL_SLURM_ARGS')
+            nativeConfig = os.getenv("TOIL_SLURM_ARGS")
 
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
 
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
+                logger.debug(
+                    "Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s",
+                    nativeConfig,
+                )
 
                 for arg in nativeConfig.split():
                     if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
-                        raise ValueError(f"Some resource arguments are incompatible: {nativeConfig}")
+                        raise ValueError(
+                            f"Some resource arguments are incompatible: {nativeConfig}"
+                        )
                     # repleace default behaviour by the one stated at TOIL_SLURM_ARGS
                     if arg.startswith("--export"):
                         set_exports = arg
@@ -294,26 +324,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
                 for k, v in environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
-                    argList.append(f'{k}={quoted_value}')
+                    argList.append(f"{k}={quoted_value}")
 
-                set_exports += ',' + ','.join(argList)
+                set_exports += "," + ",".join(argList)
 
             # add --export to the sbatch
             sbatch_line.append(set_exports)
 
-            parallel_env = os.getenv('TOIL_SLURM_PE')
+            parallel_env = os.getenv("TOIL_SLURM_PE")
             if cpu and cpu > 1 and parallel_env:
-                sbatch_line.append(f'--partition={parallel_env}')
+                sbatch_line.append(f"--partition={parallel_env}")
 
             if mem is not None and self.boss.config.allocate_mem:
                 # memory passed in is in bytes, but slurm expects megabytes
-                sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
+                sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
             if cpu is not None:
-                sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
+                sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
 
-            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'out')
-            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'err')
-            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
+            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, "%j", "out")
+            stderrfile: str = self.boss.formatStdOutErrPath(jobID, "%j", "err")
+            sbatch_line.extend(["-o", stdoutfile, "-e", stderrfile])
 
             return sbatch_line
 
@@ -324,7 +354,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
             total_seconds = 0
             try:
-                elapsed = elapsed.replace('-', ':').split(':')
+                elapsed = elapsed.replace("-", ":").split(":")
                 elapsed.reverse()
                 seconds_per_unit = [1, 60, 3600, 86400]
                 for index, multiplier in enumerate(seconds_per_unit):
@@ -341,31 +371,45 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def getWaitDuration(cls):
         # Extract the slurm batchsystem config for the appropriate value
-        lines = call_command(['scontrol', 'show', 'config']).split('\n')
+        lines = call_command(["scontrol", "show", "config"]).split("\n")
         time_value_list = []
         for line in lines:
             values = line.split()
-            if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):
-                time_name = values[values.index('=')+1:][1]
-                time_value = int(values[values.index('=')+1:][0])
-                if time_name == 'min':
+            if len(values) > 0 and (
+                values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"
+            ):
+                time_name = values[values.index("=") + 1 :][1]
+                time_value = int(values[values.index("=") + 1 :][0])
+                if time_name == "min":
                     time_value *= 60
                 # Add a 20% ceiling on the wait duration relative to the scheduler update duration
-                time_value_list.append(math.ceil(time_value*1.2))
+                time_value_list.append(math.ceil(time_value * 1.2))
         return max(time_value_list)
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]):
         allocate_mem = parser.add_mutually_exclusive_group()
-        allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
-                             "on SLURM since some system servers may reject any job request that "
-                             "explicitly specifies the memory allocation.  The default is to always allocate memory.")
-        allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
-        allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
+        allocate_mem_help = (
+            "A flag that can block allocating memory with '--mem' for job submissions "
+            "on SLURM since some system servers may reject any job request that "
+            "explicitly specifies the memory allocation.  The default is to always allocate memory."
+        )
+        allocate_mem.add_argument(
+            "--dont_allocate_mem",
+            action="store_false",
+            dest="allocate_mem",
+            help=allocate_mem_help,
+        )
+        allocate_mem.add_argument(
+            "--allocate_mem",
+            action="store_true",
+            dest="allocate_mem",
+            help=allocate_mem_help,
+        )
         allocate_mem.set_defaults(allocate_mem=True)
 
-    OptionType = TypeVar('OptionType')
+    OptionType = TypeVar("OptionType")
+
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("allocate_mem", bool, default=False)
-

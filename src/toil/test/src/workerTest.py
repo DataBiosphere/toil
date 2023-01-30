@@ -21,27 +21,37 @@ from toil.worker import nextChainable
 
 class WorkerTests(ToilTest):
     """Test miscellaneous units of the worker."""
+
     def setUp(self):
         super().setUp()
         path = self._getTestJobStorePath()
         self.jobStore = FileJobStore(path)
         self.config = Config()
-        self.config.jobStore = 'file:%s' % path
+        self.config.jobStore = "file:%s" % path
         self.jobStore.initialize(self.config)
         self.jobNumber = 0
 
     def testNextChainable(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
+
         def createTestJobDesc(memory, cores, disk, preemptable, checkpoint):
             """
             Create a JobDescription with no command (representing a Job that
             has already run) and return the JobDescription.
             """
-            name = 'job%d' % self.jobNumber
+            name = "job%d" % self.jobNumber
             self.jobNumber += 1
 
             descClass = CheckpointJobDescription if checkpoint else JobDescription
-            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, jobName=name)
+            jobDesc = descClass(
+                requirements={
+                    "memory": memory,
+                    "cores": cores,
+                    "disk": disk,
+                    "preemptable": preemptable,
+                },
+                jobName=name,
+            )
 
             # Assign an ID
             self.jobStore.assign_job_id(jobDesc)
@@ -49,7 +59,7 @@ class WorkerTests(ToilTest):
             # Save and return the JobDescription
             return self.jobStore.create_job(jobDesc)
 
-        for successorType in ['addChild', 'addFollowOn']:
+        for successorType in ["addChild", "addFollowOn"]:
             # Try with the branch point at both child and follow-on stages
 
             # Identical non-checkpoint jobs should be chainable.
@@ -79,13 +89,21 @@ class WorkerTests(ToilTest):
             self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # If there is an increase in resource requirements we should get nothing to chain.
-            reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
-            for increased_attribute in ('memory', 'cores', 'disk'):
+            reqs = {
+                "memory": 1,
+                "cores": 2,
+                "disk": 3,
+                "preemptable": True,
+                "checkpoint": False,
+            }
+            for increased_attribute in ("memory", "cores", "disk"):
                 jobDesc1 = createTestJobDesc(**reqs)
                 reqs[increased_attribute] += 1
                 jobDesc2 = createTestJobDesc(**reqs)
                 getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
-                self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
+                self.assertEqual(
+                    None, nextChainable(jobDesc1, self.jobStore, self.config)
+                )
 
             # A change in preemptability from True to False should be disallowed.
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)

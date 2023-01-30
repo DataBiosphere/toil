@@ -21,8 +21,8 @@ def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
     options.clean = "always"
 
-    job1 = discoverFiles(path="/sys/", displayName='sysFiles')
-    job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')
+    job1 = discoverFiles(path="/sys/", displayName="sysFiles")
+    job2 = discoverFiles(path=os.path.expanduser("~"), displayName="userFiles")
     job3 = discoverFiles(path="/tmp/")
 
     job1.addChild(job2)
@@ -35,5 +35,5 @@ def main():
             toil.restart()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

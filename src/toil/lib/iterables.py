@@ -102,7 +102,7 @@ class concat:
                 try:
                     i = x.__iter__()
                 except AttributeError:
-                    i = x,
+                    i = (x,)
             else:
                 i = x
             return i

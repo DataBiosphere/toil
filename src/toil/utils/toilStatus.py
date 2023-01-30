@@ -23,8 +23,7 @@ from typing import Any, Dict, List, Optional, Set
 from toil.bus import replay_message_bus
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import JobDescription, JobException, ServiceJobDescription
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.statsAndLogging import StatsAndLogging, set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -39,12 +38,15 @@ class ToilStatus:
 
         if specifiedJobs is None:
             rootJob = self.fetchRootJob()
-            logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
+            logger.info(
+                "Traversing the job graph gathering jobs. This may take a couple of minutes."
+            )
             self.jobsToReport = self.traverseJobGraph(rootJob)
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
         self.message_bus_path = self.jobStore.config.write_messages
+
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
@@ -86,7 +88,11 @@ class ToilStatus:
                 with job.getLogFileHandle(self.jobStore) as fH:
                     # TODO: This looks intended to be machine-readable, but the format is
                     #  unspecified and no escaping is done. But keep these tags around.
-                    print(StatsAndLogging.formatLogStream(fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
+                    print(
+                        StatsAndLogging.formatLogStream(
+                            fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"
+                        )
+                    )
             else:
                 print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
@@ -105,12 +111,21 @@ class ToilStatus:
 
             def lf(x: str) -> str:
                 return f"{x}:{str(x in properties)}"
-            print("\t".join(("JOB:%s" % job,
-                             "LOG_FILE:%s" % job.logJobStoreFileID,
-                             "TRYS_REMAINING:%i" % job.remainingTryCount,
-                             "CHILD_NUMBER:%s" % childNumber,
-                             lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
-                             lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+
+            print(
+                "\t".join(
+                    (
+                        "JOB:%s" % job,
+                        "LOG_FILE:%s" % job.logJobStoreFileID,
+                        "TRYS_REMAINING:%i" % job.remainingTryCount,
+                        "CHILD_NUMBER:%s" % childNumber,
+                        lf("READY_TO_RUN"),
+                        lf("IS_ZOMBIE"),
+                        lf("HAS_SERVICES"),
+                        lf("IS_SERVICE"),
+                    )
+                )
+            )
 
     def report_on_jobs(self) -> Dict[str, Any]:
         """
@@ -150,14 +165,16 @@ class ToilStatus:
                 services.append(job)
                 properties.add("IS_SERVICE")
 
-        jobStats = {'hasChildren': hasChildren,
-                    'readyToRun': readyToRun,
-                    'zombies': zombies,
-                    'hasServices': hasServices,
-                    'services': services,
-                    'hasLogFile': hasLogFile,
-                    'properties': properties,
-                    'childNumber': childNumber}
+        jobStats = {
+            "hasChildren": hasChildren,
+            "readyToRun": readyToRun,
+            "zombies": zombies,
+            "hasServices": hasServices,
+            "services": services,
+            "hasLogFile": hasLogFile,
+            "properties": properties,
+            "childNumber": childNumber,
+        }
         return jobStats
 
     @staticmethod
@@ -173,21 +190,21 @@ class ToilStatus:
         try:
             jobstore = Toil.resumeJobStore(jobStoreName)
         except NoSuchJobStoreException:
-            return 'QUEUED'
+            return "QUEUED"
         except NoSuchFileException:
-            return 'QUEUED'
+            return "QUEUED"
 
         try:
             pid = jobstore.read_leader_pid()
             try:
                 os.kill(pid, 0)  # Does not kill process when 0 is passed.
             except OSError:  # Process not found, must be done.
-                return 'COMPLETED'
+                return "COMPLETED"
             else:
-                return 'RUNNING'
+                return "RUNNING"
         except NoSuchFileException:
             pass
-        return 'QUEUED'
+        return "QUEUED"
 
     @staticmethod
     def getStatus(jobStoreName: str) -> str:
@@ -206,22 +223,22 @@ class ToilStatus:
         try:
             jobstore = Toil.resumeJobStore(jobStoreName)
         except NoSuchJobStoreException:
-            return 'QUEUED'
+            return "QUEUED"
         except NoSuchFileException:
-            return 'QUEUED'
+            return "QUEUED"
 
         try:
-            with jobstore.read_shared_file_stream('succeeded.log') as successful:
+            with jobstore.read_shared_file_stream("succeeded.log") as successful:
                 pass
-            return 'COMPLETED'
+            return "COMPLETED"
         except NoSuchFileException:
             try:
-                with jobstore.read_shared_file_stream('failed.log') as failed:
+                with jobstore.read_shared_file_stream("failed.log") as failed:
                     pass
-                return 'ERROR'
+                return "ERROR"
             except NoSuchFileException:
                 pass
-        return 'RUNNING'
+        return "RUNNING"
 
     def print_bus_messages(self) -> None:
         """
@@ -254,7 +271,10 @@ class ToilStatus:
         try:
             return self.jobStore.load_root_job()
         except JobException:
-            print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
+            print(
+                "Root job is absent. The workflow has may have completed successfully.",
+                file=sys.stderr,
+            )
             raise
 
     def fetchUserJobs(self, jobs: List[str]) -> List[JobDescription]:
@@ -270,7 +290,7 @@ class ToilStatus:
             try:
                 jobsToReport.append(self.jobStore.load_job(jobID))
             except JobException:
-                print('The job %s could not be found.' % jobID, file=sys.stderr)
+                print("The job %s could not be found." % jobID, file=sys.stderr)
                 raise
         return jobsToReport
 
@@ -303,15 +323,24 @@ class ToilStatus:
         # Traverse jobs in stack
         for jobs in rootJob.stack:
             for successorJobStoreID in jobs:
-                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
-                    self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+                if (
+                    successorJobStoreID not in foundJobStoreIDs
+                    and self.jobStore.job_exists(successorJobStoreID)
+                ):
+                    self.traverseJobGraph(
+                        self.jobStore.load_job(successorJobStoreID),
+                        jobsToReport,
+                        foundJobStoreIDs,
+                    )
 
         # Traverse service jobs
         for jobs in rootJob.services:
             for serviceJobStoreID in jobs:
                 if self.jobStore.job_exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
-                        raise RuntimeError('Service job was unexpectedly found while traversing ')
+                        raise RuntimeError(
+                            "Service job was unexpectedly found while traversing "
+                        )
                     foundJobStoreIDs.add(serviceJobStoreID)
                     jobsToReport.append(self.jobStore.load_job(serviceJobStoreID))
 
@@ -321,37 +350,62 @@ class ToilStatus:
 def main() -> None:
     """Reports the state of a Toil workflow."""
     parser = parser_with_common_options()
-    parser.add_argument("--failIfNotComplete", action="store_true",
-                        help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
-                        default=False)
+    parser.add_argument(
+        "--failIfNotComplete",
+        action="store_true",
+        help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
+        default=False,
+    )
 
-    parser.add_argument("--noAggStats", dest="stats", action="store_false",
-                        help="Do not print overall, aggregate status of workflow.",
-                        default=True)
+    parser.add_argument(
+        "--noAggStats",
+        dest="stats",
+        action="store_false",
+        help="Do not print overall, aggregate status of workflow.",
+        default=True,
+    )
 
-    parser.add_argument("--printDot", action="store_true",
-                        help="Print dot formatted description of the graph. If using --jobs will "
-                             "restrict to subgraph including only those jobs. default=%(default)s",
-                        default=False)
+    parser.add_argument(
+        "--printDot",
+        action="store_true",
+        help="Print dot formatted description of the graph. If using --jobs will "
+        "restrict to subgraph including only those jobs. default=%(default)s",
+        default=False,
+    )
 
-    parser.add_argument("--jobs", nargs='+',
-                        help="Restrict reporting to the following jobs (allows subsetting of the report).",
-                        default=None)
+    parser.add_argument(
+        "--jobs",
+        nargs="+",
+        help="Restrict reporting to the following jobs (allows subsetting of the report).",
+        default=None,
+    )
 
-    parser.add_argument("--printPerJobStats", action="store_true",
-                        help="Print info about each job. default=%(default)s",
-                        default=False)
+    parser.add_argument(
+        "--printPerJobStats",
+        action="store_true",
+        help="Print info about each job. default=%(default)s",
+        default=False,
+    )
 
-    parser.add_argument("--printLogs", action="store_true",
-                        help="Print the log files of jobs (if they exist). default=%(default)s",
-                        default=False)
+    parser.add_argument(
+        "--printLogs",
+        action="store_true",
+        help="Print the log files of jobs (if they exist). default=%(default)s",
+        default=False,
+    )
 
-    parser.add_argument("--printChildren", action="store_true",
-                        help="Print children of each job. default=%(default)s",
-                        default=False)
+    parser.add_argument(
+        "--printChildren",
+        action="store_true",
+        help="Print children of each job. default=%(default)s",
+        default=False,
+    )
 
-    parser.add_argument("--printStatus", action="store_true",
-                        help="Determine which jobs are currently running and the associated batch system ID")
+    parser.add_argument(
+        "--printStatus",
+        action="store_true",
+        help="Determine which jobs are currently running and the associated batch system ID",
+    )
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -365,7 +419,7 @@ def main() -> None:
     try:
         status = ToilStatus(config.jobStore, options.jobs)
     except NoSuchJobStoreException:
-        print('No job store found.')
+        print("No job store found.")
         return
     except JobException:  # Workflow likely complete, user informed in ToilStatus()
         return
@@ -373,14 +427,14 @@ def main() -> None:
     jobStats = status.report_on_jobs()
 
     # Info to be reported.
-    hasChildren = jobStats['hasChildren']
-    readyToRun = jobStats['readyToRun']
-    zombies = jobStats['zombies']
-    hasServices = jobStats['hasServices']
-    services = jobStats['services']
-    hasLogFile = jobStats['hasLogFile']
-    properties = jobStats['properties']
-    childNumber = jobStats['childNumber']
+    hasChildren = jobStats["hasChildren"]
+    readyToRun = jobStats["readyToRun"]
+    zombies = jobStats["zombies"]
+    hasServices = jobStats["hasServices"]
+    services = jobStats["services"]
+    hasLogFile = jobStats["hasLogFile"]
+    properties = jobStats["properties"]
+    childNumber = jobStats["childNumber"]
 
     if options.printPerJobStats:
         status.printAggregateJobStats(properties, childNumber)
@@ -391,18 +445,27 @@ def main() -> None:
     if options.printDot:
         status.print_dot_chart()
     if options.stats:
-        print('Of the %i jobs considered, '
-              'there are %i jobs with children, '
-              '%i jobs ready to run, '
-              '%i zombie jobs, '
-              '%i jobs with services, '
-              '%i services, '
-              'and %i jobs with log files currently in %s.' %
-              (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
-               len(hasServices), len(services), len(hasLogFile), status.jobStore))
+        print(
+            "Of the %i jobs considered, "
+            "there are %i jobs with children, "
+            "%i jobs ready to run, "
+            "%i zombie jobs, "
+            "%i jobs with services, "
+            "%i services, "
+            "and %i jobs with log files currently in %s."
+            % (
+                len(status.jobsToReport),
+                len(hasChildren),
+                len(readyToRun),
+                len(zombies),
+                len(hasServices),
+                len(services),
+                len(hasLogFile),
+                status.jobStore,
+            )
+        )
     if options.printStatus:
         status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)
-

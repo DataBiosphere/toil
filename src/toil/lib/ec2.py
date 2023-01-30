@@ -12,11 +12,13 @@ from botocore.client import BaseClient
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (ErrorCondition,
-                            get_error_code,
-                            get_error_message,
-                            old_retry,
-                            retry)
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_code,
+    get_error_message,
+    old_retry,
+    retry,
+)
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -27,44 +29,47 @@ class UserError(RuntimeError):
     def __init__(self, message=None, cause=None):
         if (message is None) == (cause is None):
             raise RuntimeError("Must pass either message or cause.")
-        super().__init__(
-            message if cause is None else cause.message)
+        super().__init__(message if cause is None else cause.message)
 
 
 def not_found(e):
     try:
-        return get_error_code(e).endswith('.NotFound')
+        return get_error_code(e).endswith(".NotFound")
     except ValueError:
         # Not the right kind of error
         return False
 
+
 def inconsistencies_detected(e):
-    if get_error_code(e) == 'InvalidGroup.NotFound':
+    if get_error_code(e) == "InvalidGroup.NotFound":
         return True
     m = get_error_message(e).lower()
-    matches = ('invalid iam instance profile' in m) or ('no associated iam roles' in m)
+    matches = ("invalid iam instance profile" in m) or ("no associated iam roles" in m)
     return matches
 
+
 # We also define these error categories for the new retry decorator
-INCONSISTENCY_ERRORS = [ErrorCondition(boto_error_codes=['InvalidGroup.NotFound']),
-                        ErrorCondition(error_message_must_include='Invalid IAM Instance Profile'),
-                        ErrorCondition(error_message_must_include='no associated IAM Roles')]
+INCONSISTENCY_ERRORS = [
+    ErrorCondition(boto_error_codes=["InvalidGroup.NotFound"]),
+    ErrorCondition(error_message_must_include="Invalid IAM Instance Profile"),
+    ErrorCondition(error_message_must_include="no associated IAM Roles"),
+]
 
 
 def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found):
-    return old_retry(delays=(t, t, t * 2, t * 4),
-                     timeout=retry_for,
-                     predicate=retry_while)
+    return old_retry(
+        delays=(t, t, t * 2, t * 4), timeout=retry_for, predicate=retry_while
+    )
 
 
 class UnexpectedResourceState(Exception):
     def __init__(self, resource, to_state, state):
         super().__init__(
-            "Expected state of %s to be '%s' but got '%s'" %
-            (resource, to_state, state))
-            
-def wait_transition(resource, from_states, to_state,
-                    state_getter=attrgetter('state')):
+            "Expected state of %s to be '%s' but got '%s'" % (resource, to_state, state)
+        )
+
+
+def wait_transition(resource, from_states, to_state, state_getter=attrgetter("state")):
     """
     Wait until the specified EC2 resource (instance, image, volume, ...) transitions from any
     of the given 'from' states to the specified 'to' state. If the instance is found in a state
@@ -86,7 +91,9 @@ def wait_transition(resource, from_states, to_state,
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[Boto2Instance]:
+def wait_instances_running(
+    ec2, instances: Iterable[Boto2Instance]
+) -> Iterable[Boto2Instance]:
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
     entered the running state as soon as it does.
@@ -100,9 +107,9 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
     while True:
         pending_ids = set()
         for i in instances:
-            if i.state == 'pending':
+            if i.state == "pending":
                 pending_ids.add(i.id)
-            elif i.state == 'running':
+            elif i.state == "running":
                 assert i.id not in running_ids
                 running_ids.add(i.id)
                 yield i
@@ -110,19 +117,26 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
                 assert i.id not in other_ids
                 other_ids.add(i.id)
                 yield i
-        logger.info('%i instance(s) pending, %i running, %i other.',
-                    *list(map(len, (pending_ids, running_ids, other_ids))))
+        logger.info(
+            "%i instance(s) pending, %i running, %i other.",
+            *list(map(len, (pending_ids, running_ids, other_ids))),
+        )
         if not pending_ids:
             break
         seconds = max(a_short_time, min(len(pending_ids), 10 * a_short_time))
-        logger.info('Sleeping for %is', seconds)
+        logger.info("Sleeping for %is", seconds)
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
                 instances = ec2.get_only_instances(list(pending_ids))
 
 
-def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequest]]:
+def wait_spot_requests_active(
+    ec2,
+    requests: Iterable[SpotInstanceRequest],
+    timeout: float = None,
+    tentative: bool = False,
+) -> Iterable[List[SpotInstanceRequest]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
@@ -144,28 +158,31 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     open_ids = None
 
     def cancel():
-        logger.warning('Cancelling remaining %i spot requests.', len(open_ids))
+        logger.warning("Cancelling remaining %i spot requests.", len(open_ids))
         ec2.cancel_spot_instance_requests(list(open_ids))
 
     def spot_request_not_found(e):
-        return get_error_code(e) == 'InvalidSpotInstanceRequestID.NotFound'
+        return get_error_code(e) == "InvalidSpotInstanceRequestID.NotFound"
 
     try:
         while True:
             open_ids, eval_ids, fulfill_ids = set(), set(), set()
             batch = []
             for r in requests:
-                if r.state == 'open':
+                if r.state == "open":
                     open_ids.add(r.id)
-                    if r.status.code == 'pending-evaluation':
+                    if r.status.code == "pending-evaluation":
                         eval_ids.add(r.id)
-                    elif r.status.code == 'pending-fulfillment':
+                    elif r.status.code == "pending-fulfillment":
                         fulfill_ids.add(r.id)
                     else:
                         logger.info(
-                            'Request %s entered status %s indicating that it will not be '
-                            'fulfilled anytime soon.', r.id, r.status.code)
-                elif r.state == 'active':
+                            "Request %s entered status %s indicating that it will not be "
+                            "fulfilled anytime soon.",
+                            r.id,
+                            r.status.code,
+                        )
+                elif r.state == "active":
                     assert r.id not in active_ids
                     active_ids.add(r.id)
                     batch.append(r)
@@ -175,21 +192,24 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                     batch.append(r)
             if batch:
                 yield batch
-            logger.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
-                     'are pending fulfillment), %i are active and %i are in another state.',
-                        *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
+            logger.info(
+                "%i spot requests(s) are open (%i of which are pending evaluation and %i "
+                "are pending fulfillment), %i are active and %i are in another state.",
+                *list(
+                    map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))
+                ),
+            )
             if not open_ids or tentative and not eval_ids and not fulfill_ids:
                 break
             sleep_time = 2 * a_short_time
             if timeout is not None and time.time() + sleep_time >= timeout:
-                logger.warning('Timed out waiting for spot requests.')
+                logger.warning("Timed out waiting for spot requests.")
                 break
-            logger.info('Sleeping for %is', sleep_time)
+            logger.info("Sleeping for %is", sleep_time)
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
-                    requests = ec2.get_all_spot_instance_requests(
-                        list(open_ids))
+                    requests = ec2.get_all_spot_instance_requests(list(open_ids))
     except BaseException:
         if open_ids:
             with panic(logger):
@@ -200,18 +220,30 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
             cancel()
 
 
-def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Iterable[List[Boto2Instance]]:
+def create_spot_instances(
+    ec2,
+    price,
+    image_id,
+    spec,
+    num_instances=1,
+    timeout=None,
+    tentative=False,
+    tags=None,
+) -> Iterable[List[Boto2Instance]]:
     """
     Create instances on the spot market.
     """
-    def spotRequestNotFound(e):
-        return getattr(e, 'error_code', None) == "InvalidSpotInstanceRequestID.NotFound"
 
-    for attempt in retry_ec2(retry_for=a_long_time,
-                             retry_while=inconsistencies_detected):
+    def spotRequestNotFound(e):
+        return getattr(e, "error_code", None) == "InvalidSpotInstanceRequestID.NotFound"
+
+    for attempt in retry_ec2(
+        retry_for=a_long_time, retry_while=inconsistencies_detected
+    ):
         with attempt:
             requests = ec2.request_spot_instances(
-                price, image_id, count=num_instances, **spec)
+                price, image_id, count=num_instances, **spec
+            )
 
     if tags is not None:
         for requestID in (request.id for request in requests):
@@ -222,51 +254,51 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker
     # request_spot_instances's type annotation is wrong
-    for batch in wait_spot_requests_active(ec2,
-                                           requests,
-                                           timeout=timeout,
-                                           tentative=tentative):
+    for batch in wait_spot_requests_active(
+        ec2, requests, timeout=timeout, tentative=tentative
+    ):
         instance_ids = []
         for request in batch:
-            if request.state == 'active':
+            if request.state == "active":
                 instance_ids.append(request.instance_id)
                 num_active += 1
             else:
                 logger.info(
-                    'Request %s in unexpected state %s.',
-                    request.id,
-                    request.state)
+                    "Request %s in unexpected state %s.", request.id, request.state
+                )
                 num_other += 1
         if instance_ids:
             # This next line is the reason we batch. It's so we can get multiple instances in
             # a single request.
             yield ec2.get_only_instances(instance_ids)
     if not num_active:
-        message = 'None of the spot requests entered the active state'
+        message = "None of the spot requests entered the active state"
         if tentative:
-            logger.warning(message + '.')
+            logger.warning(message + ".")
         else:
             raise RuntimeError(message)
     if num_other:
-        logger.warning('%i request(s) entered a state other than active.', num_other)
+        logger.warning("%i request(s) entered a state other than active.", num_other)
 
 
-def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto2Instance]:
+def create_ondemand_instances(
+    ec2, image_id, spec, num_instances=1
+) -> List[Boto2Instance]:
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
 
     :rtype: List[Boto2Instance]
     """
-    instance_type = spec['instance_type']
-    logger.info('Creating %s instance(s) ... ', instance_type)
-    for attempt in retry_ec2(retry_for=a_long_time,
-                             retry_while=inconsistencies_detected):
+    instance_type = spec["instance_type"]
+    logger.info("Creating %s instance(s) ... ", instance_type)
+    for attempt in retry_ec2(
+        retry_for=a_long_time, retry_while=inconsistencies_detected
+    ):
         with attempt:
-            return ec2.run_instances(image_id,
-                                     min_count=num_instances,
-                                     max_count=num_instances,
-                                     **spec).instances
+            return ec2.run_instances(
+                image_id, min_count=num_instances, max_count=num_instances, **spec
+            ).instances
 
 
 def prune(bushy: dict) -> dict:
@@ -283,32 +315,36 @@ def prune(bushy: dict) -> dict:
 
 # We need a module-level client to get the dynamically-generated error types to
 # catch, and to wait on IAM items.
-iam_client = establish_boto3_session().client('iam')
+iam_client = establish_boto3_session().client("iam")
 
 # exception is generated by a factory so we weirdly need a client instance to reference it
-@retry(errors=[iam_client.exceptions.NoSuchEntityException],
-       intervals=[1, 1, 2, 4, 8, 16, 32, 64])
+@retry(
+    errors=[iam_client.exceptions.NoSuchEntityException],
+    intervals=[1, 1, 2, 4, 8, 16, 32, 64],
+)
 def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
     # TODO: We have no guarantee that the ARN contains the name.
-    instance_profile_name = instance_profile_arn.split(':instance-profile/')[-1]
+    instance_profile_name = instance_profile_arn.split(":instance-profile/")[-1]
     logger.debug("Checking for instance profile %s...", instance_profile_name)
     iam_client.get_instance_profile(InstanceProfileName=instance_profile_name)
     logger.debug("Instance profile found")
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_instances(ec2_resource: ServiceResource,
-                     image_id: str,
-                     key_name: str,
-                     instance_type: str,
-                     num_instances: int = 1,
-                     security_group_ids: Optional[List] = None,
-                     user_data: Optional[Union[str, bytes]] = None,
-                     block_device_map: Optional[List[Dict]] = None,
-                     instance_profile_arn: Optional[str] = None,
-                     placement_az: Optional[str] = None,
-                     subnet_id: str = None,
-                     tags: Optional[Dict[str, str]] = None) -> List[dict]:
+def create_instances(
+    ec2_resource: ServiceResource,
+    image_id: str,
+    key_name: str,
+    instance_type: str,
+    num_instances: int = 1,
+    security_group_ids: Optional[List] = None,
+    user_data: Optional[Union[str, bytes]] = None,
+    block_device_map: Optional[List[Dict]] = None,
+    instance_profile_arn: Optional[str] = None,
+    placement_az: Optional[str] = None,
+    subnet_id: str = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> List[dict]:
     """
     Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
 
@@ -319,20 +355,22 @@ def create_instances(ec2_resource: ServiceResource,
 
     Tags, if given, are applied to the instances, and all volumes.
     """
-    logger.info('Creating %s instance(s) ... ', instance_type)
+    logger.info("Creating %s instance(s) ... ", instance_type)
 
     if isinstance(user_data, str):
-        user_data = user_data.encode('utf-8')
+        user_data = user_data.encode("utf-8")
 
-    request = {'ImageId': image_id,
-               'MinCount': num_instances,
-               'MaxCount': num_instances,
-               'KeyName': key_name,
-               'SecurityGroupIds': security_group_ids,
-               'InstanceType': instance_type,
-               'UserData': user_data,
-               'BlockDeviceMappings': block_device_map,
-               'SubnetId': subnet_id}
+    request = {
+        "ImageId": image_id,
+        "MinCount": num_instances,
+        "MaxCount": num_instances,
+        "KeyName": key_name,
+        "SecurityGroupIds": security_group_ids,
+        "InstanceType": instance_type,
+        "UserData": user_data,
+        "BlockDeviceMappings": block_device_map,
+        "SubnetId": subnet_id,
+    }
 
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
@@ -340,32 +378,37 @@ def create_instances(ec2_resource: ServiceResource,
         wait_until_instance_profile_arn_exists(instance_profile_arn)
 
         # Add it to the request
-        request['IamInstanceProfile'] = {'Arn': instance_profile_arn}
+        request["IamInstanceProfile"] = {"Arn": instance_profile_arn}
 
     if placement_az:
-        request['Placement'] = {'AvailabilityZone': placement_az}
+        request["Placement"] = {"AvailabilityZone": placement_az}
 
     if tags:
         # Tag everything when we make it.
         flat_tags = flatten_tags(tags)
-        request['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': flat_tags},
-                                        {'ResourceType': 'volume', 'Tags': flat_tags}]
+        request["TagSpecifications"] = [
+            {"ResourceType": "instance", "Tags": flat_tags},
+            {"ResourceType": "volume", "Tags": flat_tags},
+        ]
 
     return ec2_resource.create_instances(**prune(request))
 
+
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_launch_template(ec2_client: BaseClient,
-                           template_name: str,
-                           image_id: str,
-                           key_name: str,
-                           instance_type: str,
-                           security_group_ids: Optional[List] = None,
-                           user_data: Optional[Union[str, bytes]] = None,
-                           block_device_map: Optional[List[Dict]] = None,
-                           instance_profile_arn: Optional[str] = None,
-                           placement_az: Optional[str] = None,
-                           subnet_id: Optional[str] = None,
-                           tags: Optional[Dict[str, str]] = None) -> str:
+def create_launch_template(
+    ec2_client: BaseClient,
+    template_name: str,
+    image_id: str,
+    key_name: str,
+    instance_type: str,
+    security_group_ids: Optional[List] = None,
+    user_data: Optional[Union[str, bytes]] = None,
+    block_device_map: Optional[List[Dict]] = None,
+    instance_profile_arn: Optional[str] = None,
+    placement_az: Optional[str] = None,
+    subnet_id: Optional[str] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
 
@@ -381,22 +424,24 @@ def create_launch_template(ec2_client: BaseClient,
 
 
     """
-    logger.info('Creating launch template for %s instances ... ', instance_type)
+    logger.info("Creating launch template for %s instances ... ", instance_type)
 
     if isinstance(user_data, str):
         # Make sure we have bytes
-        user_data = user_data.encode('utf-8')
+        user_data = user_data.encode("utf-8")
 
     # Then base64 and decode back to str.
-    user_data = b64encode(user_data).decode('utf-8')
+    user_data = b64encode(user_data).decode("utf-8")
 
-    template = {'ImageId': image_id,
-                'KeyName': key_name,
-                'SecurityGroupIds': security_group_ids,
-                'InstanceType': instance_type,
-                'UserData': user_data,
-                'BlockDeviceMappings': block_device_map,
-                'SubnetId': subnet_id}
+    template = {
+        "ImageId": image_id,
+        "KeyName": key_name,
+        "SecurityGroupIds": security_group_ids,
+        "InstanceType": instance_type,
+        "UserData": user_data,
+        "BlockDeviceMappings": block_device_map,
+        "SubnetId": subnet_id,
+    }
 
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
@@ -404,37 +449,47 @@ def create_launch_template(ec2_client: BaseClient,
         wait_until_instance_profile_arn_exists(instance_profile_arn)
 
         # Add it to the request
-        template['IamInstanceProfile'] = {'Arn': instance_profile_arn}
+        template["IamInstanceProfile"] = {"Arn": instance_profile_arn}
 
     if placement_az:
-        template['Placement'] = {'AvailabilityZone': placement_az}
+        template["Placement"] = {"AvailabilityZone": placement_az}
 
     if tags:
         # Tag everything when we make it.
         flat_tags = flatten_tags(tags)
-        template['TagSpecifications'] = [{'ResourceType': 'instance', 'Tags': flat_tags},
-                                         {'ResourceType': 'volume', 'Tags': flat_tags}]
+        template["TagSpecifications"] = [
+            {"ResourceType": "instance", "Tags": flat_tags},
+            {"ResourceType": "volume", "Tags": flat_tags},
+        ]
 
-    request = {'LaunchTemplateData': prune(template),
-               'LaunchTemplateName': template_name}
+    request = {
+        "LaunchTemplateData": prune(template),
+        "LaunchTemplateName": template_name,
+    }
 
     if tags:
-        request['TagSpecifications'] = [{'ResourceType': 'launch-template', 'Tags': flat_tags}]
+        request["TagSpecifications"] = [
+            {"ResourceType": "launch-template", "Tags": flat_tags}
+        ]
 
-    return ec2_client.create_launch_template(**request)['LaunchTemplate']['LaunchTemplateId']
+    return ec2_client.create_launch_template(**request)["LaunchTemplate"][
+        "LaunchTemplateId"
+    ]
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_auto_scaling_group(autoscaling_client: BaseClient,
-                              asg_name: str,
-                              launch_template_ids: Dict[str, str],
-                              vpc_subnets: List[str],
-                              min_size: int,
-                              max_size: int,
-                              instance_types: Optional[List[str]] = None,
-                              spot_bid: Optional[float] = None,
-                              spot_cheapest: bool = False,
-                              tags: Optional[Dict[str, str]] = None) -> None:
+def create_auto_scaling_group(
+    autoscaling_client: BaseClient,
+    asg_name: str,
+    launch_template_ids: Dict[str, str],
+    vpc_subnets: List[str],
+    min_size: int,
+    max_size: int,
+    instance_types: Optional[List[str]] = None,
+    spot_bid: Optional[float] = None,
+    spot_cheapest: bool = False,
+    tags: Optional[Dict[str, str]] = None,
+) -> None:
 
     """
     Create a new Auto Scaling Group with the given name (which is also its
@@ -471,16 +526,23 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
         instance_types = []
 
     if instance_types is not None and len(instance_types) > 20:
-        raise RuntimeError(f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20.")
+        raise RuntimeError(
+            f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20."
+        )
 
     if len(vpc_subnets) == 0:
-        raise RuntimeError("No VPC subnets specified to launch into; not clear where to put instances")
+        raise RuntimeError(
+            "No VPC subnets specified to launch into; not clear where to put instances"
+        )
 
     def get_launch_template_spec(instance_type):
         """
         Get a LaunchTemplateSpecification for the given instance type.
         """
-        return {'LaunchTemplateId': launch_template_ids[instance_type], 'Version': '$Default'}
+        return {
+            "LaunchTemplateId": launch_template_ids[instance_type],
+            "Version": "$Default",
+        }
 
     # We always write the ASG with a MixedInstancesPolicy even when we have only one type.
     # And we use a separate launch template for every instance type, and apply it as an override.
@@ -489,24 +551,42 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
     # We need to use a launch template per instance type so that different
     # instance types with specified EBS storage size overrides will get their
     # storage.
-    mip = {'LaunchTemplate': {'LaunchTemplateSpecification': get_launch_template_spec(next(iter(instance_types))),
-                              'Overrides': [{'InstanceType': t, 'LaunchTemplateSpecification': get_launch_template_spec(t)} for t in instance_types]}}
+    mip = {
+        "LaunchTemplate": {
+            "LaunchTemplateSpecification": get_launch_template_spec(
+                next(iter(instance_types))
+            ),
+            "Overrides": [
+                {
+                    "InstanceType": t,
+                    "LaunchTemplateSpecification": get_launch_template_spec(t),
+                }
+                for t in instance_types
+            ],
+        }
+    }
 
     if spot_bid is not None:
         # Ask for spot instances by saying everything above base capacity of 0 should be spot.
-        mip['InstancesDistribution'] = {'OnDemandPercentageAboveBaseCapacity': 0,
-                                        'SpotAllocationStrategy': 'capacity-optimized' if not spot_cheapest else 'lowest-price',
-                                        'SpotMaxPrice': str(spot_bid)}
+        mip["InstancesDistribution"] = {
+            "OnDemandPercentageAboveBaseCapacity": 0,
+            "SpotAllocationStrategy": "capacity-optimized"
+            if not spot_cheapest
+            else "lowest-price",
+            "SpotMaxPrice": str(spot_bid),
+        }
 
-    asg = {'AutoScalingGroupName': asg_name,
-           'MixedInstancesPolicy': prune(mip),
-           'MinSize': min_size,
-           'MaxSize': max_size,
-           'VPCZoneIdentifier': ','.join(vpc_subnets)}
+    asg = {
+        "AutoScalingGroupName": asg_name,
+        "MixedInstancesPolicy": prune(mip),
+        "MinSize": min_size,
+        "MaxSize": max_size,
+        "VPCZoneIdentifier": ",".join(vpc_subnets),
+    }
 
     if tags:
         # Tag the ASG itself.
-        asg['Tags'] = flatten_tags(tags)
+        asg["Tags"] = flatten_tags(tags)
 
     logger.debug("Creating Autoscaling Group across subnets: %s", vpc_subnets)
 

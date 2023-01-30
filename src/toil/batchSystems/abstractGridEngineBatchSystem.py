@@ -19,8 +19,10 @@ from queue import Empty, Queue
 from threading import Lock, Thread
 from typing import Any, Dict, List, Optional, Union
 
-from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    BatchJobExitReason,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage
 from toil.lib.misc import CalledProcessErrorStderr
@@ -35,8 +37,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
 
     class Worker(Thread, metaclass=ABCMeta):
-
-        def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
+        def __init__(
+            self,
+            newJobsQueue: Queue,
+            updatedJobsQueue: Queue,
+            killQueue: Queue,
+            killedJobsQueue: Queue,
+            boss: "AbstractGridEngineBatchSystem",
+        ) -> None:
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
@@ -51,8 +59,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             """
             Thread.__init__(self)
             self.boss = boss
-            self.boss.config.statePollingWait = \
+            self.boss.config.statePollingWait = (
                 self.boss.config.statePollingWait or self.boss.getWaitDuration()
+            )
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
@@ -105,18 +114,32 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if newJob is not None:
                 self.waitingJobs.append(newJob)
             # Launch jobs as necessary:
-            while len(self.waitingJobs) > 0 and \
-                    len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(
+                self.boss.config.maxLocalJobs
+            ):
                 activity = True
-                jobID, cpu, memory, command, jobName, environment = self.waitingJobs.pop(0)
+                (
+                    jobID,
+                    cpu,
+                    memory,
+                    command,
+                    jobName,
+                    environment,
+                ) = self.waitingJobs.pop(0)
 
                 # prepare job submission command
-                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
+                subLine = self.prepareSubmission(
+                    cpu, memory, jobID, command, jobName, environment
+                )
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 if self.boss._outbox is not None:
-                    #JobID corresponds to the toil version of the jobID, dif from jobstore idea of the id, batchjobid is what we get from slurm
-                    self.boss._outbox.publish(ExternalBatchIdMessage(jobID, batchJobID, self.boss.__class__.__name__))
+                    # JobID corresponds to the toil version of the jobID, dif from jobstore idea of the id, batchjobid is what we get from slurm
+                    self.boss._outbox.publish(
+                        ExternalBatchIdMessage(
+                            jobID, batchJobID, self.boss.__class__.__name__
+                        )
+                    )
 
                 logger.debug("Submitted job %s", str(batchJobID))
 
@@ -151,7 +174,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             # Do the dirty job
             for jobID in list(killList):
                 if jobID in self.runningJobs:
-                    logger.debug('Killing job: %s', jobID)
+                    logger.debug("Killing job: %s", jobID)
 
                     # this call should be implementation-specific, all other
                     # code is redundant w/ other implementations
@@ -166,13 +189,19 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.boss.with_retries(self.getJobExitCode, batchJobID) is not None:
-                        logger.debug('Adding jobID %s to killedJobsQueue', jobID)
+                    if (
+                        self.boss.with_retries(self.getJobExitCode, batchJobID)
+                        is not None
+                    ):
+                        logger.debug("Adding jobID %s to killedJobsQueue", jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
                         self.forgetJob(jobID)
                 if len(killList) > 0:
-                    logger.warning("Some jobs weren't killed, trying again in %is.", self.boss.sleepSeconds())
+                    logger.warning(
+                        "Some jobs weren't killed, trying again in %is.",
+                        self.boss.sleepSeconds(),
+                    )
 
             return True
 
@@ -182,8 +211,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             Respects statePollingWait and will return cached results if not within
             time period to talk with the scheduler.
             """
-            if (self._checkOnJobsTimestamp and
-                 (datetime.now() - self._checkOnJobsTimestamp).total_seconds() < self.boss.config.statePollingWait):
+            if (
+                self._checkOnJobsTimestamp
+                and (datetime.now() - self._checkOnJobsTimestamp).total_seconds()
+                < self.boss.config.statePollingWait
+            ):
                 return self._checkOnJobsCache
 
             activity = False
@@ -240,13 +272,13 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 activity = True
                 newJob = self.newJobsQueue.get()
                 if newJob is None:
-                    logger.debug('Received queue sentinel.')
+                    logger.debug("Received queue sentinel.")
                     return False
             activity |= self.killJobs()
             activity |= self.createJobs(newJob)
             activity |= self.checkOnJobs()
             if not activity:
-                logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())
+                logger.debug("No activity, sleeping for %is", self.boss.sleepSeconds())
             return True
 
         def run(self):
@@ -270,13 +302,15 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
         @abstractmethod
-        def prepareSubmission(self,
-                              cpu: int,
-                              memory: int,
-                              jobID: int,
-                              command: str,
-                              jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+        def prepareSubmission(
+            self,
+            cpu: int,
+            memory: int,
+            jobID: int,
+            command: str,
+            jobName: str,
+            job_environment: Optional[Dict[str, str]] = None,
+        ) -> List[str]:
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
@@ -340,8 +374,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super().__init__(
-            config, maxCores, maxMemory, maxDisk)
+        super().__init__(config, maxCores, maxMemory, maxDisk)
         self.config = config
 
         self.currentJobs = set()
@@ -351,8 +384,13 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self.killQueue = Queue()
         self.killedJobsQueue = Queue()
         # get the associated worker class here
-        self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue,
-                                  self.killQueue, self.killedJobsQueue, self)
+        self.worker = self.Worker(
+            self.newJobsQueue,
+            self.updatedJobsQueue,
+            self.killQueue,
+            self.killedJobsQueue,
+            self,
+        )
         self.worker.start()
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
@@ -374,10 +412,22 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.check_resource_request(jobDesc)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
-                                   job_environment))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.unitName)
+            self.newJobsQueue.put(
+                (
+                    jobID,
+                    jobDesc.cores,
+                    jobDesc.memory,
+                    jobDesc.command,
+                    jobDesc.unitName,
+                    job_environment,
+                )
+            )
+            logger.debug(
+                "Issued the job command: %s with job id: %s and job name %s",
+                jobDesc.command,
+                str(jobID),
+                jobDesc.unitName,
+            )
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -387,7 +437,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         """
         self.killLocalJobs(jobIDs)
         jobIDs = set(jobIDs)
-        logger.debug('Jobs to be killed: %r', jobIDs)
+        logger.debug("Jobs to be killed: %r", jobIDs)
         for jobID in jobIDs:
             self.killQueue.put(jobID)
         while jobIDs:
@@ -401,8 +451,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if killedJobId in self.currentJobs:
                 self.currentJobs.remove(killedJobId)
             if jobIDs:
-                logger.debug('Some kills (%s) still pending, sleeping %is', len(jobIDs),
-                             self.sleepSeconds())
+                logger.debug(
+                    "Some kills (%s) still pending, sleeping %is",
+                    len(jobIDs),
+                    self.sleepSeconds(),
+                )
 
     def getIssuedBatchJobIDs(self):
         """
@@ -417,10 +470,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         Respects statePollingWait and will return cached results if not within
         time period to talk with the scheduler.
         """
-        if (self._getRunningBatchJobIDsTimestamp and (
-                datetime.now() -
-                self._getRunningBatchJobIDsTimestamp).total_seconds() <
-                self.config.statePollingWait):
+        if (
+            self._getRunningBatchJobIDsTimestamp
+            and (datetime.now() - self._getRunningBatchJobIDsTimestamp).total_seconds()
+            < self.config.statePollingWait
+        ):
             batchIds = self._getRunningBatchJobIDsCache
         else:
             batchIds = self.with_retries(self.worker.getRunningJobIDs)
@@ -438,7 +492,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 item = self.updatedJobsQueue.get(timeout=maxWait)
             except Empty:
                 return None
-            logger.debug('UpdatedJobsQueue Item: %s', item)
+            logger.debug("UpdatedJobsQueue Item: %s", item)
             self.currentJobs.remove(item.jobID)
             return item
 
@@ -454,8 +508,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self.worker.join()
 
     def setEnv(self, name, value=None):
-        if value and ',' in value:
-            raise ValueError(type(self).__name__ + " does not support commata in environment variable values")
+        if value and "," in value:
+            raise ValueError(
+                type(self).__name__
+                + " does not support commata in environment variable values"
+            )
         return super().setEnv(name, value)
 
     @classmethod
@@ -463,8 +520,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         return 1
 
     def sleepSeconds(self, sleeptime=1):
-        """ Helper function to drop on all state-querying functions to avoid over-querying.
-        """
+        """Helper function to drop on all state-querying functions to avoid over-querying."""
         time.sleep(sleeptime)
         return sleeptime
 
@@ -481,10 +537,18 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 return operation(*args, **kwargs)
             except CalledProcessErrorStderr as err:
                 if tries < maxTries:
-                    logger.error("Will retry errored operation %s, code %d: %s",
-                                 operation.__name__, err.returncode, err.stderr)
+                    logger.error(
+                        "Will retry errored operation %s, code %d: %s",
+                        operation.__name__,
+                        err.returncode,
+                        err.stderr,
+                    )
                     time.sleep(self.config.statePollingWait)
                 else:
-                    logger.error("Failed operation %s, code %d: %s",
-                                 operation.__name__, err.returncode, err.stderr)
+                    logger.error(
+                        "Failed operation %s, code %d: %s",
+                        operation.__name__,
+                        err.returncode,
+                        err.stderr,
+                    )
                     raise err

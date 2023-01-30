@@ -25,6 +25,7 @@ class ResumabilityTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/808
     """
+
     def test(self):
         """
         Tests that a toil workflow that fails once can be resumed without a NoSuchJobException.
@@ -53,6 +54,7 @@ class ResumabilityTest(ToilTest):
             # store ID: n/t/jobwbijqL failed with exit value 1"
             self.assertTrue("failed with exit value" not in logString)
 
+
 def parent(job):
     """
     Set up a bunch of dummy child jobs, and a bad job that needs to be
@@ -62,11 +64,13 @@ def parent(job):
         job.addChildJobFn(goodChild)
     job.addFollowOnJobFn(badChild)
 
+
 def goodChild(job):
     """
     Does nothing.
     """
     return
+
 
 def badChild(job):
     """
@@ -76,6 +80,8 @@ def badChild(job):
         with job.fileStore.jobStore.read_shared_file_stream("alreadyRun") as fileHandle:
             fileHandle.read()
     except NoSuchFileException as ex:
-        with job.fileStore.jobStore.write_shared_file_stream("alreadyRun", encrypted=False) as fileHandle:
+        with job.fileStore.jobStore.write_shared_file_stream(
+            "alreadyRun", encrypted=False
+        ) as fileHandle:
             fileHandle.write(b"failed once\n")
         raise RuntimeError(f"this is an expected error: {str(ex)}")

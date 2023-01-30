@@ -22,12 +22,15 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Protocol
 
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        DEFAULT_BATCH_SYSTEM)
+from toil.batchSystems.registry import (
+    BATCH_SYSTEM_FACTORY_REGISTRY,
+    BATCH_SYSTEMS,
+    DEFAULT_BATCH_SYSTEM,
+)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
+
 
 class OptionSetter(Protocol):
     """
@@ -37,7 +40,8 @@ class OptionSetter(Protocol):
     Actual functionality is defined in the Config class.
     """
 
-    OptionType = TypeVar('OptionType')
+    OptionType = TypeVar("OptionType")
+
     def __call__(
         self,
         option_name: str,
@@ -45,11 +49,14 @@ class OptionSetter(Protocol):
         check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
         default: Optional[OptionType] = None,
         env: Optional[List[str]] = None,
-        old_names: Optional[List[str]] = None
+        old_names: Optional[List[str]] = None,
     ) -> bool:
         ...
 
-def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSetter) -> None:
+
+def set_batchsystem_options(
+    batch_system: Optional[str], set_option: OptionSetter
+) -> None:
     """
     Call set_option for all the options for the given named batch system, or
     all batch systems if no name is provided.
@@ -150,8 +157,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         type=int,
         default=None,
         help="Time, in seconds, to wait before doing a scheduler query for job state.  "
-             "Return cached results if within the waiting period. Only works for grid "
-             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+        "Return cached results if within the waiting period. Only works for grid "
+        "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf.",
     )
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
@@ -163,8 +170,9 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
             # Skip anything we can't import
             continue
         # Ask the batch system to create its options in the parser
-        logger.debug('Add options for %s', batch_system_type)
+        logger.debug("Add options for %s", batch_system_type)
         batch_system_type.add_options(parser)
+
 
 def set_batchsystem_config_defaults(config) -> None:
     """
@@ -178,15 +186,20 @@ def set_batchsystem_config_defaults(config) -> None:
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
     config.coalesceStatusCalls = False
-    config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
+    config.statePollingWait: Optional[
+        Union[float, int]
+    ] = None  # Number of seconds to wait before querying job state
 
-    OptionType = TypeVar('OptionType')
-    def set_option(option_name: str,
-                   parsing_function: Optional[Callable[[Any], OptionType]] = None,
-                   check_function: Optional[Callable[[OptionType], None]] = None,
-                   default: Optional[OptionType] = None,
-                   env: Optional[List[str]] = None,
-                   old_names: Optional[List[str]] = None) -> None:
+    OptionType = TypeVar("OptionType")
+
+    def set_option(
+        option_name: str,
+        parsing_function: Optional[Callable[[Any], OptionType]] = None,
+        check_function: Optional[Callable[[OptionType], None]] = None,
+        default: Optional[OptionType] = None,
+        env: Optional[List[str]] = None,
+        old_names: Optional[List[str]] = None,
+    ) -> None:
         """
         Function to set a batch-system-defined option to its default value, or
         one from the environment.
@@ -211,11 +224,10 @@ def set_batchsystem_config_defaults(config) -> None:
                 try:
                     check_function(option_value)
                 except AssertionError:
-                    raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
+                    raise RuntimeError(
+                        f"The {option_name} option has an invalid value: {option_value}"
+                    )
             setattr(config, option_name, option_value)
 
     # Set up defaults from all the batch systems
     set_batchsystem_options(None, cast(OptionSetter, set_option))
-
-
-

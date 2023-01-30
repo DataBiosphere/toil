@@ -27,7 +27,9 @@ from toil.resource import ModuleDescriptor
 logger = logging.getLogger(__name__)
 
 
-class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
+class DeferredFunction(
+    namedtuple("DeferredFunction", "function args kwargs name module")
+):
     """
     >>> from collections import defaultdict
     >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
@@ -36,6 +38,7 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
     >>> df.invoke() == defaultdict(None, x=1, y=2)
     True
     """
+
     @classmethod
     def create(cls, function, *args, **kwargs):
         """
@@ -50,21 +53,25 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
         # concurrently running jobs when the cache state is loaded from disk. By implication we
         # should serialize as early as possible. We need to serialize the function as well as its
         # arguments.
-        return cls(*list(map(dill.dumps, (function, args, kwargs))),
-                   name=function.__name__,
-                   module=ModuleDescriptor.forModule(function.__module__).globalize())
+        return cls(
+            *list(map(dill.dumps, (function, args, kwargs))),
+            name=function.__name__,
+            module=ModuleDescriptor.forModule(function.__module__).globalize(),
+        )
 
     def invoke(self):
         """
         Invoke the captured function with the captured arguments.
         """
-        logger.debug('Running deferred function %s.', self)
+        logger.debug("Running deferred function %s.", self)
         self.module.makeLoadable()
-        function, args, kwargs = list(map(dill.loads, (self.function, self.args, self.kwargs)))
+        function, args, kwargs = list(
+            map(dill.loads, (self.function, self.args, self.kwargs))
+        )
         return function(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.__class__.__name__}({self.name}, ...)'
+        return f"{self.__class__.__name__}({self.name}, ...)"
 
     __repr__ = __str__
 
@@ -93,13 +100,13 @@ class DeferredFunctionManager:
     """
 
     # Define what directory the state directory should actaully be, under the base
-    STATE_DIR_STEM = 'deferred'
+    STATE_DIR_STEM = "deferred"
     # Have a prefix to distinguish our deferred functions from e.g. NFS
     # "silly rename" files, or other garbage that people put in our
     # directory
-    PREFIX = 'func'
+    PREFIX = "func"
     # And a suffix to distinguish in-progress from completed files
-    WIP_SUFFIX = '.tmp'
+    WIP_SUFFIX = ".tmp"
 
     def __init__(self, stateDirBase: str) -> None:
         """
@@ -122,25 +129,27 @@ class DeferredFunctionManager:
 
         # We need to get a state file, locked by us and not somebody scanning for abandoned state files.
         # So we suffix not-yet-ready ones with our suffix
-        self.stateFD, self.stateFileName = tempfile.mkstemp(dir=self.stateDir,
-                                                            prefix=self.PREFIX,
-                                                            suffix=self.WIP_SUFFIX)
+        self.stateFD, self.stateFileName = tempfile.mkstemp(
+            dir=self.stateDir, prefix=self.PREFIX, suffix=self.WIP_SUFFIX
+        )
 
         # Lock the state file. The lock will automatically go away if our process does.
         try:
             fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError(f"Could not lock deferred function state file {self.stateFileName}: {str(e)}")
+            raise RuntimeError(
+                f"Could not lock deferred function state file {self.stateFileName}: {str(e)}"
+            )
 
         # Rename it to remove the suffix
-        os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
-        self.stateFileName = self.stateFileName[:-len(self.WIP_SUFFIX)]
+        os.rename(self.stateFileName, self.stateFileName[: -len(self.WIP_SUFFIX)])
+        self.stateFileName = self.stateFileName[: -len(self.WIP_SUFFIX)]
 
         # Wrap the FD in a Python file object, which we will use to actually use it.
         # Problem: we can't be readable and writable at the same time. So we need two file objects.
-        self.stateFileOut = os.fdopen(self.stateFD, 'wb')
-        self.stateFileIn = open(self.stateFileName, 'rb')
+        self.stateFileOut = os.fdopen(self.stateFD, "wb")
+        self.stateFileIn = open(self.stateFileName, "rb")
 
         logger.debug("Opened with own state file %s" % self.stateFileName)
 
@@ -177,6 +186,7 @@ class DeferredFunctionManager:
         self._runOrphanedDeferredFunctions()
 
         try:
+
             def defer(deferredFunction):
                 # Just serialize defered functions one after the other.
                 # If serializing later ones fails, eariler ones will still be intact.
@@ -216,7 +226,6 @@ class DeferredFunctionManager:
             logger.exception(err)
             # we tried, lets move on
 
-
     def _runDeferredFunction(self, deferredFunction):
         """
         Run a deferred function (either our own or someone else's).
@@ -228,9 +237,15 @@ class DeferredFunctionManager:
             deferredFunction.invoke()
         except Exception as err:
             # Report this in real time, if enabled. Otherwise the only place it ends up is the worker log.
-            RealtimeLogger.error("Failed to run deferred function %s: %s", repr(deferredFunction), str(err))
+            RealtimeLogger.error(
+                "Failed to run deferred function %s: %s",
+                repr(deferredFunction),
+                str(err),
+            )
         except:
-            RealtimeLogger.error("Failed to run deferred function %s", repr(deferredFunction))
+            RealtimeLogger.error(
+                "Failed to run deferred function %s", repr(deferredFunction)
+            )
 
     def _runAllDeferredFunctions(self, fileObj):
         """
@@ -326,7 +341,7 @@ class DeferredFunctionManager:
                 foundFiles = True
 
                 # Actually run all the stored deferred functions
-                fileObj = os.fdopen(fd, 'rb')
+                fileObj = os.fdopen(fd, "rb")
                 self._runAllDeferredFunctions(fileObj)
                 states_handled += 1
 
@@ -344,4 +359,7 @@ class DeferredFunctionManager:
                 # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
 
-        logger.debug("Ran orphaned deferred functions from %d abandoned state files", states_handled)
+        logger.debug(
+            "Ran orphaned deferred functions from %d abandoned state files",
+            states_handled,
+        )

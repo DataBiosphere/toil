@@ -17,21 +17,23 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from threading import Event, Semaphore
-from typing import (IO,
-                    TYPE_CHECKING,
-                    Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    Generator,
-                    Iterator,
-                    List,
-                    Optional,
-                    Set,
-                    Tuple,
-                    Type,
-                    Union,
-                    cast)
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 
 import dill
 
@@ -73,6 +75,7 @@ class AbstractFileStore(ABC):
     Also responsible for committing completed jobs back to the job store with
     an update operation, and allowing that commit operation to be waited for.
     """
+
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
     _pendingFileWrites: Set[str] = set()
@@ -108,8 +111,14 @@ class AbstractFileStore(ABC):
         # This gets replaced with a subdirectory of itself on open()
         self.localTempDir: str = os.path.abspath(file_store_dir)
         assert self.jobStore.config.workflowID is not None
-        self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
-        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
+        self.workflow_dir: str = Toil.getLocalWorkflowDir(
+            self.jobStore.config.workflowID, self.jobStore.config.workDir
+        )
+        self.coordination_dir: str = Toil.get_local_workflow_coordination_dir(
+            self.jobStore.config.workflowID,
+            self.jobStore.config.workDir,
+            self.jobStore.config.coordination_dir,
+        )
         self.jobName: str = (
             self.jobDesc.command.split()[1] if self.jobDesc.command else ""
         )
@@ -147,7 +156,11 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> None:
+    def shutdownFileStore(
+        workflowID: str,
+        config_work_dir: Optional[str],
+        config_coordination_dir: Optional[str],
+    ) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -167,7 +180,9 @@ class AbstractFileStore(ABC):
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
         workflowDir = Toil.getLocalWorkflowDir(workflowID, config_work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir, config_coordination_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(
+            workflowID, config_work_dir, config_coordination_dir
+        )
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
             # The presence of the cacheDir suggests this was a cached run. We don't need
@@ -213,7 +228,9 @@ class AbstractFileStore(ABC):
         """
         return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
+    def getLocalTempFile(
+        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+    ) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
 
@@ -230,12 +247,14 @@ class AbstractFileStore(ABC):
         handle, tmpFile = tempfile.mkstemp(
             suffix=".tmp" if suffix is None else suffix,
             prefix="tmp" if prefix is None else prefix,
-            dir=self.localTempDir
+            dir=self.localTempDir,
         )
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
+    def getLocalTempFileName(
+        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+    ) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
 
@@ -329,6 +348,7 @@ class AbstractFileStore(ABC):
             def handle(numBytes: int) -> None:
                 # No scope problem here, because we don't assign to a fileID local
                 fileID.size += numBytes
+
             wrappedStream.onWrite(handle)
 
             yield wrappedStream, fileID
@@ -340,16 +360,16 @@ class AbstractFileStore(ABC):
         Includes the files that were accessed while the file store was open.
         """
         if len(self._accessLog) > 0:
-            logger.warning('Failed job accessed files:')
+            logger.warning("Failed job accessed files:")
 
             for item in self._accessLog:
                 # For each access record
                 if len(item) == 2:
                     # If it has a name, dump wit the name
-                    logger.warning('Downloaded file \'%s\' to path \'%s\'', *item)
+                    logger.warning("Downloaded file '%s' to path '%s'", *item)
                 else:
                     # Otherwise dump without the name
-                    logger.warning('Streamed file \'%s\'', *item)
+                    logger.warning("Streamed file '%s'", *item)
 
     def logAccess(
         self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None
@@ -451,7 +471,7 @@ class AbstractFileStore(ABC):
         :return: File's size in bytes, as stored in the job store
         """
         # First try and see if the size is still attached
-        size = getattr(fileStoreID, 'size', None)
+        size = getattr(fileStoreID, "size", None)
 
         if size is None:
             # It fell off
@@ -504,7 +524,7 @@ class AbstractFileStore(ABC):
     ) -> Optional[FileID]:
         return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
 
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
@@ -561,7 +581,7 @@ class AbstractFileStore(ABC):
             """
             # Read the value from the cache state file then initialize and instance of
             # _CacheState with it.
-            with open(fileName, 'rb') as fH:
+            with open(fileName, "rb") as fH:
                 infoDict = dill.load(fH)
             return cls(infoDict)
 
@@ -571,14 +591,14 @@ class AbstractFileStore(ABC):
 
             :param fileName: Path to the state file.
             """
-            with open(fileName + '.tmp', 'wb') as fH:
+            with open(fileName + ".tmp", "wb") as fH:
                 # Based on answer by user "Mark" at:
                 # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                 # We can't pickle nested classes. So we have to pickle the variables
                 # of the class.
                 # If we ever change this, we need to ensure it doesn't break FileID
                 dill.dump(self.__dict__, fH)
-            os.rename(fileName + '.tmp', fileName)
+            os.rename(fileName + ".tmp", fileName)
 
     # Functions related to logging
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:
