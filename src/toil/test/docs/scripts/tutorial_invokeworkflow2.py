@@ -1,6 +1,8 @@
+import os
+import tempfile
+
 from toil.common import Toil
 from toil.job import Job
-
 
 class HelloWorld(Job):
     def __init__(self, message):
@@ -12,7 +14,9 @@ class HelloWorld(Job):
 
 
 if __name__ == "__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+    jobstore: str = tempfile.mkdtemp("tutorial_invokeworkflow2")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 
