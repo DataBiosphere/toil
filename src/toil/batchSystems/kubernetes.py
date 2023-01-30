@@ -548,10 +548,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         Similar to the "daddy" thread in the single machine batch system. 
         """
-        with self._work_available:
-            while True:
+        while True:
+            with self._work_available:
                 # Wait until we get notified to do work and release lock.
+                logger.debug("!! waiting for work")
                 self._work_available.wait()
+                logger.debug("!! new work!")
 
                 if self.shutting_down.is_set():
                     # We're shutting down.
@@ -568,6 +570,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     try:
                         job = self._jobs_queue.get_nowait()
                         job_id, job_desc, spec = job
+                        logger.debug(f"!! processing job id: {job_id}")
 
                         # Check if this job has been previously killed.
                         if job_id in self._killed_queue_jobs:
@@ -578,7 +581,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         result = self._launch_job(job_id, job_desc, spec)
                         if result is False:
                             # Not enough resources to launch this job.
+                            logger.debug(f"!! not enough resources to run job id: {job_id}")
                             jobs.put(job)
+                        else:
+                            logger.debug(f"!! acquired resources and launched job id: {job_id}")
 
                     except Empty:
                         break
@@ -1664,7 +1670,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Shutdown scheduling thread
         self.shutting_down.set()
-        self._work_available.notify_all()   # Wake it up.
+        try:
+            self._work_available.notify_all()   # Wake it up.
+        except RuntimeError as e:
+            # TODO: fix this
+            logging.warning("error when calling notify_all() on condition", e)
 
         self.schedulingThread.join()
 
