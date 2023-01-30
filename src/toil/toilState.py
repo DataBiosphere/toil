@@ -53,7 +53,6 @@ class ToilState:
 
         :param jobStore: The job store to use.
         """
-
         # We have a public bus for messages about job state changes.
         self.bus = MessageBus()
 
@@ -119,7 +118,6 @@ class ToilState:
 
         :param jobCache: A dict to cache downloaded job descriptions in, keyed by ID.
         """
-
         if jobCache is not None:
             # Load any pre-cached JobDescriptions we were given
             self.__job_database.update(jobCache)
@@ -161,7 +159,6 @@ class ToilState:
         May raise an exception if the job could not be cleaned up (i.e. files
         belonging to it failed to delete).
         """
-
         # Do the backing delete first
         self.__job_store.delete_job(job_id)
         # If that succeeds, drop from cache
@@ -196,8 +193,9 @@ class ToilState:
     # TODO: turn these into messages?
     def successors_pending(self, predecessor_id: str, count: int) -> None:
         """
-        Remember that the given job has the given number more pending
-        successors, that have not yet succeeded or failed.
+        Remember that the given job has the given number more pending successors.
+
+        (that have not yet succeeded or failed.)
         """
         if predecessor_id not in self.successorCounts:
             self.successorCounts[predecessor_id] = count
@@ -213,7 +211,9 @@ class ToilState:
 
     def successor_returned(self, predecessor_id: str) -> None:
         """
-        Remember that the given job has one fewer pending successors, because one has succeeded or failed.
+        Remember that the given job has one fewer pending successors.
+
+        (because one has succeeded or failed.)
         """
         if predecessor_id not in self.successorCounts:
             raise RuntimeError(
@@ -227,8 +227,9 @@ class ToilState:
 
     def count_pending_successors(self, predecessor_id: str) -> int:
         """
-        Get the number of pending successors of the given job, which have not
-        yet succeeded or failed.
+        Count number of pending successors of the given job.
+
+        (Those which have not yet succeeded or failed)
         """
         if predecessor_id not in self.successorCounts:
             return 0
@@ -238,15 +239,13 @@ class ToilState:
 
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
-        Traverses tree of jobs down from the subtree root JobDescription
-        (jobDesc), building the ToilState class.
+        Build the ToilState class from the subtree root JobDescription.
 
         Updated jobs that the leader needs to deal with will have messages sent
         to the message bus.
 
         :param jobDesc: The description for the root job of the workflow being run.
         """
-
         # If the job description has a command, is a checkpoint, has services
         # or is ready to be deleted it is ready to be processed (i.e. it is updated)
         if (

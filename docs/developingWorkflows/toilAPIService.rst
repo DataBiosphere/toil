@@ -7,3 +7,4 @@ The Service class allows databases and servers to be spawned within a Toil workf
 
 .. autoclass:: toil.job::Job.Service
    :members:
+   :noindex:

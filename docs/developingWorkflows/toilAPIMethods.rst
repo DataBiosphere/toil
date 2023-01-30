@@ -7,6 +7,7 @@ Jobs are the units of work in Toil which are composed into workflows.
 
 .. autoclass:: toil.job.Job
    :members:
+   :noindex:
 
 JobDescription
 --------------
@@ -16,3 +17,4 @@ know about a Job.
 
 .. autoclass:: toil.job.JobDescription
    :members:
+   :noindex:

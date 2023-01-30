@@ -9,3 +9,4 @@ API is implemented to support a give file store, e.g. S3. Implement this API to 
 
 .. autoclass:: toil.jobStores.abstractJobStore::AbstractJobStore
    :members:
+   :noindex:

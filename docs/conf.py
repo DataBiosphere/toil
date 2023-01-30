@@ -54,6 +54,11 @@ toilVersion = toil.version.baseVersion
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.doctest',
+    "sphinx.ext.autosummary",
+    "sphinx.ext.inheritance_diagram",
+    "autoapi.extension",
+    "sphinx_autodoc_typehints",
+    "sphinxcontrib.autoprogram",
     'sphinx.ext.todo',
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
@@ -121,6 +126,13 @@ todo_include_todos = True
 # Include doc string for __init__ method in the documentation
 autoclass_content = 'class'
 autodoc_member_order = 'bysource'
+
+autoapi_dirs = ['../src/toil']
+autodoc_typehints = 'description'
+autoapi_keep_files = True
+autoapi_ignore = ['*.pyi']
+autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-inheritance-diagram', 'show-module-summary', 'imported-members', 'special-members' ]
+always_document_param_types = True
 
 # -- Options for HTML output ----------------------------------------------
 

@@ -44,12 +44,18 @@ logger = logging.getLogger(__name__)
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
 class BatchJobExitReason(enum.IntEnum):
-    FINISHED: int = 1  # Successfully finished.
-    FAILED: int = 2  # Job finished, but failed.
-    LOST: int = 3  # Preemptable failure (job's executing host went away).
-    KILLED: int = 4  # Job killed before finishing.
-    ERROR: int = 5  # Internal error.
-    MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
+    FINISHED: int = 1
+    """Successfully finished."""
+    FAILED: int = 2
+    """Job finished, but failed."""
+    LOST: int = 3
+    """Preemptable failure (job's executing host went away)."""
+    KILLED: int = 4
+    """Job killed before finishing."""
+    ERROR: int = 5
+    """Internal error."""
+    MEMLIMIT: int = 6
+    """Job hit batch system imposed memory limit."""
 
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: int
@@ -88,7 +94,7 @@ class AbstractBatchSystem(ABC):
         """
         Whether this batch system supports auto-deployment of the user script itself.
 
-        If it does, the :meth:`.setUserScript` can be invoked to set the resource
+        If it does, the :meth:`setUserScript` can be invoked to set the resource
         object representing the user script.
 
         Note to implementors: If your implementation returns True here, it should also override
@@ -227,13 +233,15 @@ class AbstractBatchSystem(ABC):
 
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
-        Set an environment variable for the worker process before it is launched. The worker
-        process will typically inherit the environment of the machine it is running on but this
-        method makes it possible to override specific variables in that inherited environment
-        before the worker is launched. Note that this mechanism is different to the one used by
-        the worker internally to set up the environment of a job. A call to this method affects
-        all jobs issued after this method returns. Note to implementors: This means that you
-        would typically need to copy the variables before enqueuing a job.
+        Set an environment variable for the worker process before it is launched.
+
+        The worker process will typically inherit the environment of the machine
+        it is running on but this method makes it possible to override specific
+        variables in that inherited environment before the worker is launched.
+        Note that this mechanism is different to the one used by the worker
+        internally to set up the environment of a job. A call to this method affects
+        all jobs issued after this method returns. Note to implementors: This
+        means that you would typically need to copy the variables before enqueuing a job.
 
         If no value is provided it will be looked up from the current environment.
         """
@@ -360,10 +368,10 @@ class BatchSystemSupport(AbstractBatchSystem):
 
         If no value is provided it will be looked up from the current environment.
 
-        :param str name: the environment variable to be set on the worker.
+        :param name: the environment variable to be set on the worker.
 
-        :param str value: if given, the environment variable given by name will be set to this value.
-               if None, the variable's current value will be used as the value on the worker
+        :param value: if given, the environment variable given by name will be set to this value.
+        if None, the variable's current value will be used as the value on the worker
 
         :raise RuntimeError: if value is None and the name cannot be found in the environment
         """

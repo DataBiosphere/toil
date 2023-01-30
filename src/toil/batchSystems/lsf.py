@@ -326,8 +326,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def parseBjobs(self, bjobs_output_str):
             """
             Parse records from bjobs json type output
-            params:
-                bjobs_output_str: stdout of bjobs json type output
+
+            :params bjobs_output_str: stdout of bjobs json type output
             """
             bjobs_dict = None
             bjobs_records = None

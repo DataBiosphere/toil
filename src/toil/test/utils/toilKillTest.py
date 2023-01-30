@@ -14,18 +14,17 @@
 
 import os
 import shutil
+import subprocess
 import sys
 import time
 import unittest
 
-from toil import subprocess
 from toil.common import Toil
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.jobStores.utils import generate_locator
 from toil.test import ToilTest, needs_aws_s3, needs_cwl
 
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
 
@@ -34,28 +33,28 @@ class ToilKillTest(ToilTest):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.job_store = os.path.join(os.getcwd(), 'testkill')
+        self.job_store = os.path.join(os.getcwd(), "testkill")
 
     def setUp(self):
         """Shared test variables."""
-        self.cwl = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/sleep.cwl')
-        self.yaml = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/sleep.yaml')
+        self.cwl = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.cwl")
+        self.yaml = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.yaml")
 
     def tearDown(self):
         """Default tearDown for unittest."""
-        cmd = ['toil', 'clean', self.job_store]
+        cmd = ["toil", "clean", self.job_store]
         subprocess.check_call(cmd)
 
-        if os.path.exists('tmp'):
-            shutil.rmtree('tmp')
+        if os.path.exists("tmp"):
+            shutil.rmtree("tmp")
         unittest.TestCase.tearDown(self)
 
     @needs_cwl
     def test_cwl_toil_kill(self):
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
 
-        run_cmd = ['toil-cwl-runner', '--jobStore', self.job_store, self.cwl, self.yaml]
-        kill_cmd = ['toil', 'kill', self.job_store]
+        run_cmd = ["toil-cwl-runner", "--jobStore", self.job_store, self.cwl, self.yaml]
+        kill_cmd = ["toil", "kill", self.job_store]
 
         # run the sleep workflow
         cwl_process = subprocess.Popen(run_cmd)
