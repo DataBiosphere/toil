@@ -41,7 +41,7 @@ The 'docs' target uses Sphinx to create HTML documentation in the docs/_build di
 Targets are provided to run Toil's tests. Note that these targets do *not* automatically install
 Toil's dependencies; it is recommended to 'make develop' before running any of them.
 
-The 'test' target runs Toil's unit tests serially with pytest. It will run some docker tests and
+The 'test' target runs Toil's unit tests in parallel with pytest. It will run some docker tests and
 setup. Note: this target does not capture output from the terminal. For any of the test targets,
 set the 'tests' variable to run a particular test, e.g.
 
@@ -127,14 +127,15 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) $(tests)
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n auto --dist loadscope $(tests)
 
 
 # This target will skip building docker and all docker based tests
+# these are our travis tests; rename?
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) $(tests)
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n auto --dist loadscope $(tests)
 
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
@@ -270,6 +271,9 @@ format: $(wildcard src/toil/cwl/*.py)
 	black $^ contrib/mypy-stubs
 
 mypy:
+	mypy --ignore-missing-imports --no-strict-optional \
+		--warn-redundant-casts --warn-unused-ignores \
+		$(CURDIR)/src/toil/cwl/cwltoil.py
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 	
 # This target will check any modified files for pylint errors.
