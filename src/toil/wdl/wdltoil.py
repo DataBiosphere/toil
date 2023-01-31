@@ -13,9 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+import asyncio
 import collections
 import copy
+import errno
 import glob
+import io
 import itertools
 import json
 import logging
@@ -27,6 +30,7 @@ import tempfile
 import uuid
 
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, TypeVar, Iterator
+from urllib.parse import urljoin
 
 import WDL
 
@@ -34,8 +38,97 @@ from toil.common import Config, Toil, addOptions
 from toil.job import Job, JobFunctionWrappingJob, Promise, Promised, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
+
+async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Document]) -> WDL.ReadSourceResult:
+    """
+    Implementation of a MiniWDL read_source function that can use any
+    filename or URL supported by Toil.
+    
+    Needs to be async because MiniWDL will await its result.
+    """
+    
+    # We need to brute-force find this URI relative to:
+    #
+    # 1. Itself if a full URI.
+    #
+    # 2. Importer's URL, if importer is a URL and this is a 
+    #    host-root-relative URL starting with / or scheme-relative
+    #    starting with //, or just plain relative.
+    #
+    # 3. Current directory, if a relative path.
+    #
+    # 4. All the prefixes in "path".
+    #
+    # If it can't be found anywhere, we ought to (probably) throw
+    # FileNotFoundError like the MiniWDL implementation does, with a
+    # correct errno.
+    #
+    # To do this, we have AbstractFileStore.read_from_url, which can read a
+    # URL into a binary-mode writable, or throw some kind of unspecified
+    # exception if the source doesn't exist or can't be fetched.
+    
+    # This holds scheme-applied full URIs for all the places to search.
+    full_path_list = []
+    
+    if importer is not None:
+        # Add the place the imported file came form, to search first.
+        full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
+    
+    # Then the current directory
+    full_path_list.append(Toil.normalize_uri('.'))
+    
+    # Then the specified paths.
+    # TODO:
+    # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1479-L1482
+    # seems backward actually and might do these first!
+    full_path_list += [Toil.normalize_uri(p) for p in path]
+    
+    # This holds all the URIs we tried and failed with.
+    failures: Set[str] = set()
+    
+    for candidate_base in full_path_list:
+        # Try fetching based off each base URI
+        candidate_uri = urljoin(candidate_base, uri)
+        
+        if candidate_uri in failures:
+            # Already tried this one, maybe we have an absolute uri input.
+            continue
+        
+        destination_buffer = io.BytesIO()
+        logger.debug('Fetching %s', candidate_uri)
+        try:
+            # TODO: this is probably sync work that would be better as async work here
+            AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
+        except Exception as e:
+            # TODO: we need to assume any error is just a not-found,
+            # because the exceptions thrown by read_from_url()
+            # implementations are not specified.
+            logger.debug('Tried to fetch %s from %s based off of %s but got %s', uri, candidate_uri, candidate_base, e)
+            failures.add(candidate_uri)
+            continue
+        # If we get here, we got it probably.
+        try:
+            string_data = destination_buffer.getvalue().decode('utf-8')
+        except UnicodeDecodeError:
+            # But if it isn't actually unicode text, pretend it doesn't exist.
+            logger.warning('Data at %s is not text; skipping!', candidate_uri)
+            continue
+        
+        # Return our result and its URI. TODO: Should we de-URI files? 
+        return WDL.ReadSourceResult(string_data, candidate_uri)
+        
+    # If we get here we could not find it anywhere. Do exactly what MiniWDL
+    # does:
+    # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1493
+    # TODO: Make a more informative message?
+    logger.error('Could not find %s at any of: %s', uri, failures)
+    raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
+        
+        
+        
 
 # Bindings have a long type name
 WDLBindings = WDL.Env.Bindings[WDL.Value.Base]
@@ -1076,16 +1169,23 @@ def main() -> None:
             output_bindings = toil.restart()
         else:
             # Load the WDL document
-            document: WDL.Tree.Document = WDL.load(options.wdl_uri)
+            document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
             if document.workflow is None:
                 logger.critical("No workflow in document!")
                 sys.exit(1)
-
-            # Load the inputs.
-            # TODO: Implement URLs
-            # TODO: Report good errors
-            inputs = json.load(open(options.inputs_uri)) if options.inputs_uri else {}
+            
+            if options.inputs_uri:
+                # Load the inputs. Use the same loading mechanism, which means we
+                # have to break into async temporarily.
+                downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
+                try:
+                    inputs = json.loads(downloaded.source_text)
+                except json.JSONDecodeError as e:
+                    logger.critical('Cannot parse JSON at %s: %s', downloaded.abspath, e)
+                    sys.exit(1)
+            else:
+                inputs = {}
             # Parse out the available and required inputs. Each key in the
             # JSON ought to start with the workflow's name and then a .
             # TODO: WDL's Bindings[] isn't variant in the right way, so we
