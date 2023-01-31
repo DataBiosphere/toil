@@ -35,7 +35,7 @@ from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
-from toil.common import build_tag_dict_from_env
+from toil.lib.aws import build_tag_dict_from_env
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,

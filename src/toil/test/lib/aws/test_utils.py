@@ -18,7 +18,7 @@ from typing import Optional
 
 import pytest
 
-from toil.common import build_tag_dict_from_env
+from toil.lib.aws import build_tag_dict_from_env
 from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)

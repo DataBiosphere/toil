@@ -69,7 +69,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       QueueSizeMessage,
                       gen_message_bus_path)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
@@ -1816,23 +1816,3 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
 def safeUnpickleFromStream(stream: IO[Any]) -> Any:
     string = stream.read()
     return pickle.loads(string)
-
-def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> Dict[str, str]:
-    tags = dict()
-    owner_tag = environment.get('TOIL_OWNER_TAG')
-    if owner_tag:
-        tags.update({'Owner': owner_tag})
-
-    user_tags = environment.get('TOIL_AWS_TAGS')
-    if user_tags:
-        try:
-            json_user_tags = json.loads(user_tags)
-            if isinstance(json_user_tags, dict):
-                tags.update(json.loads(user_tags))
-            else:
-                logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
-                exit(1)
-        except json.decoder.JSONDecodeError:
-            logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
-            exit(1)
-    return tags

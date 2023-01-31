@@ -28,7 +28,8 @@ from typing import (Any,
                     Optional,
                     Set,
                     Union,
-                    cast)
+                    cast,
+                    MutableMapping)
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session
