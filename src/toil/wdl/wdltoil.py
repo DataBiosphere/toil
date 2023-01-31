@@ -42,7 +42,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 
-async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Document]) -> WDL.ReadSourceResult:
+async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> WDL.ReadSourceResult:
     """
     Implementation of a MiniWDL read_source function that can use any
     filename or URL supported by Toil.
