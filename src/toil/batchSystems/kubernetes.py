@@ -246,16 +246,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ResourcePool(self.maxDisk, 'disk'),
         ]
 
-        # A set of batch system IDs of submitted jobs
+        # A set of job IDs that are queued
         self._queued_job_ids: Set[int] = set()
 
-        # Keep track of the acquired resources for each job.
+        # Keep track of the acquired resources for each job
         self._acquired_resources: Dict[str, List[int]] = {}
 
-        # Queue for jobs to be submitted to the Kubernetes cluster.
+        # Queue for jobs to be submitted to the Kubernetes cluster
         self._jobs_queue: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
 
-        # A set of job IDs that should be killed.
+        # A set of job IDs that should be killed
         self._killed_queue_jobs: Set[int] = set()
 
         # We use this event to signal shutdown
@@ -556,9 +556,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         while True:
             with self._work_available:
                 # Wait until we get notified to do work and release lock.
-                logger.debug("!! [scheduler] waiting for work to do")
                 self._work_available.wait()
-                logger.debug("!! [scheduler] more work")
 
                 if self.shutting_down.is_set():
                     # We're shutting down.
@@ -600,6 +598,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         self._jobs_queue.put(jobs.get_nowait())
                     except Empty:
                         break
+                logger.debug(f"Roughly {self._jobs_queue.qsize} jobs in the queue")
 
     def setUserScript(self, userScript: Resource) -> None:
         logger.info(f'Setting user script for deployment: {userScript}')
@@ -938,7 +937,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                logger.warning(f"Not enough {source.resource_type} to run job {job_name}")
                 self._release_acquired_resources(acquired, notify=False)
                 return False
 
