@@ -159,8 +159,9 @@ def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPol
     for policy in attached_policies:
         policy_desc = iam.get_policy(PolicyArn=policy['PolicyArn'])
         policy_ver = iam.get_policy_version(PolicyArn=policy_desc['Policy']['Arn'], VersionId=policy_desc['Policy']['DefaultVersionId'])
-        policy_document = json.loads(policy_ver['PolicyVersion']['Document'])
-        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
+        policy_document = policy_ver['PolicyVersion']['Document']
+        #TODO whenever boto fixes the typing, stop ignoring this line in typecheck
+        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document)) # type: ignore
 
     return allowed_actions
 

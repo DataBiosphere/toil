@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 
 from toil.common import Toil
 from toil.job import Job
@@ -25,7 +26,9 @@ def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, outp
 
 
 if __name__ == "__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+    jobstore: str = tempfile.mkdtemp("tutorial_cwlexample")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
     with Toil(options) as toil:
