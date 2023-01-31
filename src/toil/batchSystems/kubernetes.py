@@ -246,7 +246,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ResourcePool(self.maxDisk, 'disk'),
         ]
 
-        # A set of job IDs that are queued
+        # A set of job IDs that are queued (useful for getIssuedBatchJobIDs())
         self._queued_job_ids: Set[int] = set()
 
         # Keep track of the acquired resources for each job
@@ -548,14 +548,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def _scheduler(self) -> None:
         """
-        The schedular thread looks at jobs from the input queue, and submit
-        jobs to the Kubernetes cluster when there are available resources.
-
-        Similar to the "daddy" thread in the single machine batch system. 
+        The scheduler thread looks at jobs from the input queue, and submits
+        them to the Kubernetes cluster when there are resources available.
         """
         while True:
             with self._work_available:
-                # Wait until we get notified to do work and release lock.
+                # Wait until we get notified to do work.
                 self._work_available.wait()
 
                 if self.shutting_down.is_set():
@@ -919,14 +917,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         pod_spec: V1PodSpec
     ) -> bool:
         """
-        Create and launch the given job to the Kubernetes cluster.
-
-        Return False if we can't launch the job.
+        Try to launch the given job to the Kubernetes cluster. Return False if
+        we don't have enough resources to submit the job.
         """
 
-        # Limit the amount of resources requested at a time. Put this job
-        # into the backlog queue if it will use more than the currently
-        # available resources.
+        # Limit the amount of resources requested at a time.
         resource_requests: List[int] = [int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
 
         acquired = []
@@ -937,10 +932,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                self._release_acquired_resources(acquired, notify=False)
+                self._release_acquired_resources(acquired,
+                    # Put it back quietly.
+                    notify=False)
                 return False
 
         self._acquired_resources[job_name] = acquired
+
         # We have all the resources we need; submit it to the cluster.
 
         # Make metadata to label the job/pod with info.
@@ -1002,7 +1000,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if not resources:
                 logger.warning(f"Cannot get the acquired resources from {job_name}")
                 return
-            # Release the acquired resource and notify our schedulers that we have more resources avaiable.
             self._release_acquired_resources(resources, notify=resource_notify)
 
 
@@ -1026,9 +1023,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Put job inside queue to be launched to the cluster
         self._queued_job_ids.add(job_id)
+
+        # Also keep track of the ID for getIssuedBatchJobIDs()
         self._jobs_queue.put((job_id, job_desc, pod_spec))
 
-        # Let schedular know that there is work to do.
+        # Let scheduler know that there is work to do.
         with self._work_available:
             self._work_available.notify_all()
 
@@ -1759,9 +1758,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return start_time
 
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
-        # TODO: verify that this should just return the running jobs, not the ones
-        #   that are pending to be launched.
-
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObject():
