@@ -23,7 +23,6 @@ import itertools
 import json
 import logging
 import os
-import pickle
 import shlex
 import subprocess
 import sys
@@ -550,6 +549,8 @@ class WDLBaseJob(Job):
         
         # The jobs can't pickle under the default Python recursion limit of
         # 1000 because MiniWDL data structures are very deep.
+        # TODO: Dynamically determine how high this needs to be to serialize the structures we actually have.
+        # TODO: Make sure C-level stack size is also big enough for this.
         sys.setrecursionlimit(10000)
 
 class WDLInputJob(WDLBaseJob):
@@ -561,8 +562,6 @@ class WDLInputJob(WDLBaseJob):
 
         self._node = node
         self._prev_node_results = prev_node_results
-        
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         logger.info("Running node %s", self._node.workflow_node_id)
@@ -590,8 +589,6 @@ class WDLTaskJob(WDLBaseJob):
 
         self._task = task
         self._prev_node_results = prev_node_results
-        
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         logger.info("Running task %s", self._task.name)
@@ -662,8 +659,6 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
         self._node = node
         self._prev_node_results = prev_node_results
-        
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         logger.info("Running node %s", self._node.workflow_node_id)
@@ -744,8 +739,6 @@ class WDLCombineBindingsJob(WDLBaseJob):
 
         self._prev_node_results = prev_node_results
         self._remove = remove
-        
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -771,8 +764,6 @@ class WDLNamespaceBindingsJob(WDLBaseJob):
         self._namespace = namespace
         self._prev_node_results = prev_node_results
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Apply the namespace
@@ -915,8 +906,6 @@ class WDLScatterJob(WDLSectionJob):
         self._scatter = scatter
         self._prev_node_results = prev_node_results
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the scatter.
@@ -974,8 +963,6 @@ class WDLArrayBindingsJob(WDLBaseJob):
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_sore: AbstractFileStore) -> WDLBindings:
         """
         Actually produce the array-ified bindings now that promised values are available.
@@ -1026,8 +1013,6 @@ class WDLConditionalJob(WDLSectionJob):
         self._conditional = conditional
         self._prev_node_results = prev_node_results
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the scatter.
@@ -1080,8 +1065,6 @@ class WDLWorkflowJob(WDLSectionJob):
         self._workflow = workflow
         self._prev_node_results = prev_node_results
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the workflow. Return the result of the workflow.
@@ -1129,8 +1112,6 @@ class WDLOutputsJob(WDLBaseJob):
         self._outputs = outputs
         self._bindings = bindings
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Make bindings for the outputs.
@@ -1160,8 +1141,6 @@ class WDLRootJob(WDLSectionJob):
         self._workflow = workflow
         self._inputs = inputs
         
-        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
-
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually build the subgraph.
