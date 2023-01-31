@@ -23,6 +23,7 @@ import itertools
 import json
 import logging
 import os
+import pickle
 import shlex
 import subprocess
 import sys
@@ -530,8 +531,28 @@ def map_over_files_in_value(value: WDL.Value.Base, transform: Callable[[str], Op
     else:
         # All other kinds of value can be passed through unmodified.
         return value
+        
+class WDLBaseJob(Job):
+    """
+    Base job class for all WDL-related jobs.
+    """
+    
+    def __init__(self, **kwargs: Any) -> None:
+        """
+        Make a WDL-related job.
+        
+        Makes sure the global recursive call limit is high enough to allow
+        MiniWDL's extremely deep WDL structures to be pickled. We handle this
+        in the constructor because it needs to happen in the leader and the
+        worker before a job body containing MiniWDL structures can be saved.
+        """
+        super().__init__(**kwargs)
+        
+        # The jobs can't pickle under the default Python recursion limit of
+        # 1000 because MiniWDL data structures are very deep.
+        sys.setrecursionlimit(10000)
 
-class WDLInputJob(Job):
+class WDLInputJob(WDLBaseJob):
     """
     Job that evaluates a WDL input, or sources it from the workflow inputs.
     """
@@ -540,6 +561,8 @@ class WDLInputJob(Job):
 
         self._node = node
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         logger.info("Running node %s", self._node.workflow_node_id)
@@ -551,7 +574,7 @@ class WDLInputJob(Job):
 
         return incoming_bindings.bind(self._node.name, evaluate_defaultable_decl(self._node, incoming_bindings, standard_library))
 
-class WDLTaskJob(Job):
+class WDLTaskJob(WDLBaseJob):
     """
     Job that runs a WDL task.
 
@@ -567,6 +590,8 @@ class WDLTaskJob(Job):
 
         self._task = task
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         logger.info("Running task %s", self._task.name)
@@ -627,7 +652,7 @@ class WDLTaskJob(Job):
 
         return output_bindings
 
-class WDLWorkflowNodeJob(Job):
+class WDLWorkflowNodeJob(WDLBaseJob):
     """
     Job that evaluates a WDL workflow node.
     """
@@ -637,6 +662,8 @@ class WDLWorkflowNodeJob(Job):
 
         self._node = node
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         logger.info("Running node %s", self._node.workflow_node_id)
@@ -701,7 +728,7 @@ class WDLWorkflowNodeJob(Job):
         else:
             raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
 
-class WDLCombineBindingsJob(Job):
+class WDLCombineBindingsJob(WDLBaseJob):
     """
     Job that collects the results from WDL workflow nodes and combines their
     environment changes.
@@ -717,6 +744,8 @@ class WDLCombineBindingsJob(Job):
 
         self._prev_node_results = prev_node_results
         self._remove = remove
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -728,7 +757,7 @@ class WDLCombineBindingsJob(Job):
             combined = combined.subtract(unwrap(self._remove))
         return combined
 
-class WDLNamespaceBindingsJob(Job):
+class WDLNamespaceBindingsJob(WDLBaseJob):
     """
     Job that puts a set of bindings into a namespace.
     """
@@ -741,6 +770,8 @@ class WDLNamespaceBindingsJob(Job):
 
         self._namespace = namespace
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -748,7 +779,7 @@ class WDLNamespaceBindingsJob(Job):
         """
         return combine_bindings(unwrap_all(self._prev_node_results)).wrap_namespace(self._namespace)
 
-class WDLSectionJob(Job):
+class WDLSectionJob(WDLBaseJob):
     """
     Job that can create more graph for a section of the wrokflow.
     """
@@ -883,6 +914,8 @@ class WDLScatterJob(WDLSectionJob):
 
         self._scatter = scatter
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -919,9 +952,12 @@ class WDLScatterJob(WDLSectionJob):
             j.addFollowOn(gather_job)
         return gather_job.rv()
 
-class WDLArrayBindingsJob(Job):
+class WDLArrayBindingsJob(WDLBaseJob):
     """
-    Job that takes all new bindings created in an array of input environments, relative to a base environment, and produces bindings where each new binding name is bound to an array of the values in all the input environments.
+    Job that takes all new bindings created in an array of input environments,
+    relative to a base environment, and produces bindings where each new
+    binding name is bound to an array of the values in all the input
+    environments.
 
     Useful for producing the results of a scatter.
     """
@@ -937,6 +973,8 @@ class WDLArrayBindingsJob(Job):
 
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_sore: AbstractFileStore) -> WDLBindings:
         """
@@ -987,6 +1025,8 @@ class WDLConditionalJob(WDLSectionJob):
 
         self._conditional = conditional
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1039,6 +1079,8 @@ class WDLWorkflowJob(WDLSectionJob):
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1071,7 +1113,7 @@ class WDLWorkflowJob(WDLSectionJob):
             # No outputs from this workflow.
             return WDL.Env.Bindings()
 
-class WDLOutputsJob(Job):
+class WDLOutputsJob(WDLBaseJob):
     """
     Job which evaluates an outputs section (such as for a workflow).
 
@@ -1086,6 +1128,8 @@ class WDLOutputsJob(Job):
 
         self._outputs = outputs
         self._bindings = bindings
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -1115,6 +1159,8 @@ class WDLRootJob(WDLSectionJob):
 
         self._workflow = workflow
         self._inputs = inputs
+        
+        logger.info('Made %s of %s bytes', type(self), len(pickle.dumps(self)))
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1199,7 +1245,7 @@ def main() -> None:
                 cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
                 document.workflow.name
             )
-
+            
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
