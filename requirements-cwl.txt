@@ -1,5 +1,5 @@
 cwltool==3.1.20221201130942
-schema-salad==8.3.20221028160159
+schema-salad>=8.4.20230128170514,<9
 galaxy-tool-util
 ruamel.yaml>=0.15,<=0.17.21
 ruamel.yaml.clib>=0.2.6

@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 from toil.common import Toil
 from toil.job import Job
 
@@ -12,7 +15,9 @@ class LocalFileStoreJob(Job):
 
 
 if __name__ == "__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+    jobstore: str = tempfile.mkdtemp("tutorial_managing")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 
