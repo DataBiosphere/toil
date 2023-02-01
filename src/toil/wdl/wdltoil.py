@@ -47,7 +47,7 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     """
     Given a URI or bare path, yield in turn all the URIs, with schemes, where we should actually try to find it, given that we want to search under/against the given paths or URIs, the current directory, and the given importing WDL document if any.
     """
-    
+
     # We need to brute-force find this URI relative to:
     #
     # 1. Itself if a full URI.
@@ -75,8 +75,8 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
         # Add the place the imported file came form, to search first.
         full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
 
-    # Then the current directory
-    full_path_list.append(Toil.normalize_uri('.'))
+    # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
+    full_path_list.append(Toil.normalize_uri('.') + '/.')
 
     # Then the specified paths.
     # TODO:
@@ -94,6 +94,7 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
         if candidate_uri in failures:
             # Already tried this one, maybe we have an absolute uri input.
             continue
+        logger.debug('Consider %s which is %s off of %s', candidate_uri, uri, candidate_base)
 
         # Try it
         yield candidate_uri
@@ -107,10 +108,10 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
 
     Needs to be async because MiniWDL will await its result.
     """
-    
+
     # We track our own failures for debugging
     tried = []
-    
+
     for candidate_uri in potential_absolute_uris(uri, path, importer):
         # For each place to try in order
         destination_buffer = io.BytesIO()
@@ -215,27 +216,27 @@ def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode
         if isinstance(child_node, WDL.Tree.WorkflowNode):
             for result in for_each_node(child_node):
                 yield result
-                
+
 def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
     """
     Get the combined workflow_node_dependencies of root and everything under
     it, which are not on anything in that subtree.
-    
+
     Useful because section nodes can have internal nodes with dependencies not
     reflected in those of the section node itself.
     """
-    
+
     # What are all dependencies?
     needed: Set[str] = set()
     # And what dependencies are provided internally?
     provided: Set[str] = set()
-    
+
     for node in for_each_node(root):
         # Record everything each node needs
         needed |= node.workflow_node_dependencies
         # And the ID it makes
         provided.add(node.workflow_node_id)
-    
+
     # And produce the diff
     return needed - provided
 
@@ -294,7 +295,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = filename
 
         logger.info('Devirtualized %s as openable file %s', filename, result)
-        assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!" 
+        assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!"
         return result
 
     def _virtualize_filename(self, filename: str) -> str:
@@ -484,12 +485,12 @@ def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBi
     """
 
     return map_over_files_in_bindings(environment, stdlib._virtualize_filename)
-    
+
 def import_files(environment: WDLBindings, toil: Toil, path: List[str] = None) -> WDLBindings:
     """
     Make sure all File values embedded in the given bindings are imported,
     using the given Toil object.
-    
+
     :param path: If set, try resolving input location relative to the URLs or
                  directories in this list.
     """
@@ -498,21 +499,28 @@ def import_files(environment: WDLBindings, toil: Toil, path: List[str] = None) -
         """
         Import a file from a URI and return a virtualized filename for it.
         """
-        
+
+        tried = []
         for candidate_uri in potential_absolute_uris(uri, path if path is not None else []):
             # Try each place it could be according to WDL finding logic.
+            tried.append(candidate_uri)
             try:
-                imported = toil.import_file(uri)
+                imported = toil.import_file(candidate_uri)
             except Exception:
                 # We couldn't try the import. Try the next URL
                 continue
             if imported is None:
                 # Wasn't found there
                 continue
-            logger.info('Imported %s', uri)
+            logger.info('Imported %s', candidate_uri)
             # Was actually found
             return 'toilfile:' + imported.pack()
-        
+
+        # If we get here we tried all the candidates
+        # TODO: Make a more informative message?
+        logger.error('Could not find %s at any of: %s', uri, tried)
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
+
     return map_over_files_in_bindings(environment, import_file_from_uri)
 
 def drop_missing_files(environment: WDLBindings) -> WDLBindings:
@@ -614,7 +622,7 @@ class WDLBaseJob(Job):
         # TODO: Dynamically determine how high this needs to be to serialize the structures we actually have.
         # TODO: Make sure C-level stack size is also big enough for this.
         sys.setrecursionlimit(10000)
-        
+
     def run(self, file_store: AbstractFileStore) -> None:
         """
         Run a WDL-related job.
@@ -642,7 +650,7 @@ class WDLInputJob(WDLBaseJob):
         Evaluate the input.
         """
         super().run(file_store)
-        
+
         logger.info("Running node %s", self._node.workflow_node_id)
 
         # Combine the bindings we get from previous jobs
@@ -667,7 +675,7 @@ class WDLTaskJob(WDLBaseJob):
         """
         Make a new job to run a task.
         """
-        
+
         super().__init__(unitName=task.name, displayName=task.name, **kwargs)
 
         self._task = task
@@ -846,7 +854,7 @@ class WDLCombineBindingsJob(WDLBaseJob):
         combined = combine_bindings(unwrap_all(self._prev_node_results))
         if self._underlay is not None:
             # Fill in from the underlay anything not defined in anything else.
-            combined = combine_bindings([combined, unwrap(underlay).subtract(combined)])
+            combined = combine_bindings([combined, unwrap(self._underlay).subtract(combined)])
         if self._remove is not None:
             # We need to take stuff out of scope
             combined = combined.subtract(unwrap(self._remove))
@@ -895,7 +903,7 @@ class WDLSectionJob(WDLBaseJob):
                used to evaluate the subgraph but will go out of scope
                at the end of the section.
         """
-        
+
         # We need to track the dependency universe; some of our child nodes may
         # depend on nodes that are e.g. inputs to the workflow that encloses
         # the section that encloses this section, and we need to just assume
@@ -907,11 +915,11 @@ class WDLSectionJob(WDLBaseJob):
         if local_environment is not None:
             # Bring local environment into scope
             environment = combine_bindings([environment, local_environment])
-            
+
         # What nodes exist, under their IDs?
         wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if isinstance(node, WDL.Tree.WorkflowNode)}
         dependabes |= set(wdl_id_to_wdl_node.keys())
-        
+
         # That doesn't include gather nodes, which in the Toil interpreter we
         # handle as part of their enclosing section, without individual Toil
         # jobs for each. So make a map from gather ID to the section node ID.
@@ -921,11 +929,11 @@ class WDLSectionJob(WDLBaseJob):
                 for gather_node in node.gathers.values():
                     gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
         dependabes |= set(gather_to_section.keys())
-        
+
         # To make Toil jobs, we need all the jobs they depend on made so we can
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
-        
+
         # We also need to make sure to bubble up dependencies from inside
         # sections. A conditional might only appear to depend on the variables
         # in the conditional expression, but its body can depend on other
@@ -964,7 +972,7 @@ class WDLSectionJob(WDLBaseJob):
 
         # What nodes are ready?
         ready_node_ids = {node_id for node_id, dependencies in wdl_id_to_outstanding_dependency_ids.items() if len(dependencies) == 0}
-        
+
         while len(wdl_id_to_outstanding_dependency_ids) > 0:
             logger.debug('Ready nodes: %s', ready_node_ids)
             logger.debug('Waiting nodes: %s', wdl_id_to_outstanding_dependency_ids)
@@ -1104,7 +1112,7 @@ class WDLScatterJob(WDLSectionJob):
         Run the scatter.
         """
         super().run(file_store)
-        
+
         logger.info("Running scatter on %s", self._scatter.variable)
 
         # Combine the bindings we get from previous jobs.
@@ -1443,21 +1451,22 @@ def main() -> None:
                 cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
                 document.workflow.name
             )
-            
+
             # Determine where to look for files referenced in the inputs, in addition to here.
             inputs_search_path = []
             if options.inputs_uri:
                 inputs_search_path.append(options.inputs_uri)
-                match = re.match("https://raw.githubusercontent.com/[^/]/[^/]/[^/]/", options.inputs_uri)
+                match = re.match("https://raw.githubusercontent.com/[^/]*/[^/]*/[^/]*/", options.inputs_uri)
                 if match:
                     # Special magic for Github repos to make e.g.
                     # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
                     # work when it references things relative to repo root.
-                    inputs_search_path.append(m.group(0))
-                
+                    logger.info("Inputs appear to come from a Github repository; adding repository root to file search path")
+                    inputs_search_path.append(match.group(0))
+
             # Import any files in the bindings
             input_bindings = import_files(input_bindings, toil, inputs_search_path)
-            
+
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
