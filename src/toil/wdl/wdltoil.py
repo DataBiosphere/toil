@@ -46,15 +46,15 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
     """
     Implementation of a MiniWDL read_source function that can use any
     filename or URL supported by Toil.
-    
+
     Needs to be async because MiniWDL will await its result.
     """
-    
+
     # We need to brute-force find this URI relative to:
     #
     # 1. Itself if a full URI.
     #
-    # 2. Importer's URL, if importer is a URL and this is a 
+    # 2. Importer's URL, if importer is a URL and this is a
     #    host-root-relative URL starting with / or scheme-relative
     #    starting with //, or just plain relative.
     #
@@ -69,34 +69,34 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
     # To do this, we have AbstractFileStore.read_from_url, which can read a
     # URL into a binary-mode writable, or throw some kind of unspecified
     # exception if the source doesn't exist or can't be fetched.
-    
+
     # This holds scheme-applied full URIs for all the places to search.
     full_path_list = []
-    
+
     if importer is not None:
         # Add the place the imported file came form, to search first.
         full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
-    
+
     # Then the current directory
     full_path_list.append(Toil.normalize_uri('.'))
-    
+
     # Then the specified paths.
     # TODO:
     # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1479-L1482
     # seems backward actually and might do these first!
     full_path_list += [Toil.normalize_uri(p) for p in path]
-    
+
     # This holds all the URIs we tried and failed with.
     failures: Set[str] = set()
-    
+
     for candidate_base in full_path_list:
         # Try fetching based off each base URI
         candidate_uri = urljoin(candidate_base, uri)
-        
+
         if candidate_uri in failures:
             # Already tried this one, maybe we have an absolute uri input.
             continue
-        
+
         destination_buffer = io.BytesIO()
         logger.debug('Fetching %s', candidate_uri)
         try:
@@ -116,19 +116,19 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
             # But if it isn't actually unicode text, pretend it doesn't exist.
             logger.warning('Data at %s is not text; skipping!', candidate_uri)
             continue
-        
-        # Return our result and its URI. TODO: Should we de-URI files? 
+
+        # Return our result and its URI. TODO: Should we de-URI files?
         return WDL.ReadSourceResult(string_data, candidate_uri)
-        
+
     # If we get here we could not find it anywhere. Do exactly what MiniWDL
     # does:
     # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1493
     # TODO: Make a more informative message?
     logger.error('Could not find %s at any of: %s', uri, failures)
     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
-        
-        
-        
+
+
+
 
 # Bindings have a long type name
 WDLBindings = WDL.Env.Bindings[WDL.Value.Base]
@@ -530,23 +530,23 @@ def map_over_files_in_value(value: WDL.Value.Base, transform: Callable[[str], Op
     else:
         # All other kinds of value can be passed through unmodified.
         return value
-        
+
 class WDLBaseJob(Job):
     """
     Base job class for all WDL-related jobs.
     """
-    
+
     def __init__(self, **kwargs: Any) -> None:
         """
         Make a WDL-related job.
-        
+
         Makes sure the global recursive call limit is high enough to allow
         MiniWDL's extremely deep WDL structures to be pickled. We handle this
         in the constructor because it needs to happen in the leader and the
         worker before a job body containing MiniWDL structures can be saved.
         """
         super().__init__(**kwargs)
-        
+
         # The jobs can't pickle under the default Python recursion limit of
         # 1000 because MiniWDL data structures are very deep.
         # TODO: Dynamically determine how high this needs to be to serialize the structures we actually have.
@@ -732,7 +732,7 @@ class WDLCombineBindingsJob(WDLBaseJob):
     def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], underlay: Optional[Promised[WDLBindings]] = None, remove: Optional[Promised[WDLBindings]] = None, **kwargs: Any) -> None:
         """
         Make a new job to combine the results of previous jobs.
-        
+
         If underlay is set, those bindings will be injected to be overridden by other bindings.
 
         If remove is set, bindings there will be subtracted out of the result.
@@ -769,7 +769,7 @@ class WDLNamespaceBindingsJob(WDLBaseJob):
 
         self._namespace = namespace
         self._prev_node_results = prev_node_results
-        
+
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Apply the namespace
@@ -788,7 +788,7 @@ class WDLSectionJob(WDLBaseJob):
 
         :returns: a child Job that will return the aggregated environment
                   after running all the things in the section.
-        
+
         :param gather_nodes: Names exposed by these will always be defined
                with something, even if the code that defines them does
                not actually run.
@@ -897,29 +897,29 @@ class WDLSectionJob(WDLBaseJob):
             wdl_id_to_toil_job[node_id].addFollowOn(sink)
 
         return sink
-        
+
     def make_gather_bindings(self, gathers: Sequence[WDL.Tree.Gather], undefined: WDL.Value.Base) -> WDLBindings:
         """
         Given a collection of Gathers, create bindings from every identifier
         gathered, to the given "undefined" placeholder (which would be Null for
         a single execution of the body, or an empty array for a completely
         unexecuted scatter).
-        
+
         These bindings can be overlaid with bindings from the actual execution,
         so that references to names defined in unexecuted code get a proper
         default undefined value, and not a KeyError at runtime.
-        
+
         The information to do this comes from MiniWDL's "gathers" system:
         <https://miniwdl.readthedocs.io/en/latest/WDL.html#WDL.Tree.WorkflowSection.gathers>
-        
+
         TODO: This approach will scale O(n^2) when run on n nested
         conditionals, because generating these bindings for the outer
         conditional will visit all the bindings from the inner ones.
         """
-        
+
         # We can just directly compose our bindings.
         new_bindings: WDLBindings = WDL.Env.Bindings()
-        
+
         for gather_node in node.gathers.values():
             bindings_source = gather_node.final_referee
             # Since there's no namespacing to be done at intermediate Gather
@@ -938,7 +938,7 @@ class WDLSectionJob(WDLBaseJob):
             else:
                 # Either something unrecognized or final_referee lied and gave us a Gather.
                 raise TypeError(f"Cannot generate bindings for a gather over a {type(bindings_source)}")
-        
+
         return new_bindings
 
 class WDLScatterJob(WDLSectionJob):
@@ -966,7 +966,7 @@ class WDLScatterJob(WDLSectionJob):
 
         self._scatter = scatter
         self._prev_node_results = prev_node_results
-        
+
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the scatter.
@@ -993,20 +993,20 @@ class WDLScatterJob(WDLSectionJob):
             local_bindings: WDLBindings = WDL.Env.Bindings()
             local_bindings = local_bindings.bind(self._scatter.variable, item)
             scatter_jobs.append(self.create_subgraph(self._scatter.body, self._scatter.gathers.values(), bindings, local_bindings))
-            
+
         if len(scatter_jobs) == 0:
             # No scattering is needed. We just need to bind all the names.
-            
+
             logger.info("No scattering is needed. Binding all scatter results to [].")
-            
+
             # Define the value that should be seen for a name bound in the scatter
             # if nothing in the scatter actually runs. This should be some kind of
             # empty array.
             empty_array = WDL.Value.Array(WDL.Type.Any(optional=True, null=True), [])
             return self.make_gather_bindings(self._scatter.gathers.values(), empty_array)
-            
+
         # Otherwise we actually have some scatter jobs.
-        
+
         # Make a job at the end to aggregate.
         # Turn all the bindings created inside the scatter bodies into arrays
         # of maybe-optional values. Each body execution will define names it
@@ -1031,7 +1031,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
     def __init__(self, input_bindings: Sequence[Promised[WDLBindings]], base_bindings: WDLBindings, **kwargs: Any) -> None:
         """
         Make a new job to array-ify the given input bindings.
-        
+
         :param input_bindings: bindings visible to each evaluated iteration.
         :param base_bindings: bindings visible to *all* evaluated iterations,
                which should be constant across all of them and not made into
@@ -1041,7 +1041,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
 
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
-        
+
     def run(self, file_sore: AbstractFileStore) -> WDLBindings:
         """
         Actually produce the array-ified bindings now that promised values are available.
@@ -1091,7 +1091,7 @@ class WDLConditionalJob(WDLSectionJob):
 
         self._conditional = conditional
         self._prev_node_results = prev_node_results
-        
+
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the scatter.
@@ -1143,7 +1143,7 @@ class WDLWorkflowJob(WDLSectionJob):
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
-        
+
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the workflow. Return the result of the workflow.
@@ -1190,7 +1190,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         self._outputs = outputs
         self._bindings = bindings
-        
+
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Make bindings for the outputs.
@@ -1219,7 +1219,7 @@ class WDLRootJob(WDLSectionJob):
 
         self._workflow = workflow
         self._inputs = inputs
-        
+
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually build the subgraph.
@@ -1258,7 +1258,7 @@ def main() -> None:
     # Make sure we have a jobStore
     if options.jobStore is None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
-        options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree') 
+        options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree')
 
     # Make sure we have an output directory and we don't need to ever worry
     # about a None, and MyPy knows it.
@@ -1278,7 +1278,7 @@ def main() -> None:
             if document.workflow is None:
                 logger.critical("No workflow in document!")
                 sys.exit(1)
-            
+
             if options.inputs_uri:
                 # Load the inputs. Use the same loading mechanism, which means we
                 # have to break into async temporarily.
@@ -1303,7 +1303,7 @@ def main() -> None:
                 cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
                 document.workflow.name
             )
-            
+
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
