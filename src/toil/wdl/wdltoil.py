@@ -993,18 +993,26 @@ class WDLScatterJob(WDLSectionJob):
             local_bindings: WDLBindings = WDL.Env.Bindings()
             local_bindings = local_bindings.bind(self._scatter.variable, item)
             scatter_jobs.append(self.create_subgraph(self._scatter.body, self._scatter.gathers.values(), bindings, local_bindings))
-
-        # Define the value that should be seen for a name bound in the scatter
-        # if nothing in the scatter actually runs. This should be some kind of
-        # empty array.
-        empty_array = WDL.Value.Array(WDL.Type.Any(optional=True, null=True), [])
+            
+        if len(scatter_jobs) == 0:
+            # No scattering is needed. We just need to bind all the names.
+            
+            logger.info("No scattering is needed. Binding all scatter results to [].")
+            
+            # Define the value that should be seen for a name bound in the scatter
+            # if nothing in the scatter actually runs. This should be some kind of
+            # empty array.
+            empty_array = WDL.Value.Array(WDL.Type.Any(optional=True, null=True), [])
+            return self.make_gather_bindings(self._scatter.gathers.values(), empty_array)
+            
+        # Otherwise we actually have some scatter jobs.
         
         # Make a job at the end to aggregate.
         # Turn all the bindings created inside the scatter bodies into arrays
         # of maybe-optional values. Each body execution will define names it
-        # doesn't make as nulls. If no bodies execute, bind names to empty
-        # arrays via the underlay.
-        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings, underlay=self.make_gather_bindings(self._scatter.gathers.values(), empty_array))
+        # doesn't make as nulls, so we don't have to worry about
+        # totally-missing names.
+        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings)
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
@@ -1020,7 +1028,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
     Useful for producing the results of a scatter.
     """
 
-    def __init__(self, input_bindings: Sequence[Promised[WDLBindings]], base_bindings: WDLBindings, underlay: Optional[WDLBindings] = None, **kwargs: Any) -> None:
+    def __init__(self, input_bindings: Sequence[Promised[WDLBindings]], base_bindings: WDLBindings, **kwargs: Any) -> None:
         """
         Make a new job to array-ify the given input bindings.
         
@@ -1028,17 +1036,11 @@ class WDLArrayBindingsJob(WDLBaseJob):
         :param base_bindings: bindings visible to *all* evaluated iterations,
                which should be constant across all of them and not made into
                arrays but instead passed through unchanged.
-        :param underlay: bindings from each possible bind-able name to
-               (probably) a default empty array. If passed, will be underlaid
-               under the result, to ensure that even if input_bindings is
-               empty, references to bindings created in a scatter can be
-               resolved to something.
         """
         super().__init__(**kwargs)
 
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
-        self._underlay = underlay
         
     def run(self, file_sore: AbstractFileStore) -> WDLBindings:
         """
@@ -1067,10 +1069,6 @@ class WDLArrayBindingsJob(WDLBaseJob):
             supertype: WDL.Type.Base = get_supertype(observed_types)
             # Bind an array of the values
             result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
-        if self._underlay is not None:
-            # Apply the underlay under all the bindings we made, to make sure
-            # nothing escapes while still undefined.
-            result = combine_bindings([result, self._underlay.subtract(result)])
 
         # Base bindings are already included so return the result
         return result
