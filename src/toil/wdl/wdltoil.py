@@ -920,7 +920,7 @@ class WDLSectionJob(WDLBaseJob):
         # We can just directly compose our bindings.
         new_bindings: WDLBindings = WDL.Env.Bindings()
 
-        for gather_node in node.gathers.values():
+        for gather_node in gathers:
             bindings_source = gather_node.final_referee
             # Since there's no namespacing to be done at intermediate Gather
             # nodes (we can't refer via a gather referee chain to the inside of
@@ -1163,7 +1163,7 @@ class WDLWorkflowJob(WDLSectionJob):
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
 
         # Make jobs to run all the parts of the workflow
-        sink = self.create_subgraph(self._workflow.body, bindings)
+        sink = self.create_subgraph(self._workflow.body, [], bindings)
 
         if self._workflow.outputs:
             # Add evaluating the outputs after the sink
