@@ -34,6 +34,9 @@ from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequen
 from urllib.parse import urljoin
 
 import WDL
+from WDL.runtime.task_container import TaskContainer
+from WDL.runtime.backend.singularity import SingularityContainer
+import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
 from toil.job import Job, JobFunctionWrappingJob, Promise, Promised, unwrap, unwrap_all
@@ -542,11 +545,26 @@ def drop_missing_files(environment: WDLBindings) -> WDLBindings:
         return None
 
     return map_over_files_in_bindings(environment, drop_if_missing)
+    
+def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
+    """
+    Get the paths of all files in the bindings. Doesn't guarantee that
+    duplicates are removed.
+    
+    TODO: Duplicative with WDL.runtime.task._fspaths, except that is internal
+    and supports Direcotry objects.
+    """
+    
+    paths = []
+    map_over_files_in_bindings(environment, lambda x: paths.append(x))
+    return paths
 
 def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[str], Optional[str]]) -> WDLBindings:
     """
     Run all File values embedded in the given bindings through the given
     transformation function.
+    
+    TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
     """
 
     return environment.map(lambda b: map_over_files_in_binding(b, transform))
@@ -706,10 +724,37 @@ class WDLTaskJob(WDLBaseJob):
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
         # TODO: Re-schedule if we need more resources
-
-        # Make standard output and error files
-        stdout_path = file_store.getLocalTempFile(prefix='stdout', suffix='.txt')
-        stderr_path = file_store.getLocalTempFile(prefix='stderr', suffix='.txt')
+        
+        # Set up the MiniWDL container running stuff
+        TaskContainerImplementation = SingularityContainer
+        miniwdl_logger = logging.getLogger("MiniWDLContainers")
+        miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+        if not getattr(TaskContainerImplementation, 'toil_initialized__', False):
+            # Initialize the cointainer system
+            TaskContainerImplementation.global_init(miniwdl_config, miniwdl_logger)
+            
+            # TODO: We don't want to use MiniWDL's resource limit logic, but
+            # we'd have to get at the _SubprocessScheduler that is internal to
+            # the WDL.runtime.backend.cli_subprocess.SubprocessBase class to
+            # hack it out of e.g. SingularityContainer, so for now we bring it
+            # up. If we don't do this, we error out trying to make
+            # _SubprocessScheduler instances because its class-level condition
+            # variable doesn't exist.
+            TaskContainerImplementation.detect_resource_limits(miniwdl_config, miniwdl_logger)
+            
+            # And remember we did it
+            setattr(TaskContainerImplementation, 'toil_initialized__', True)
+            # TODO: not thread safe!
+        
+        # Make the container object
+        # TODO: What is this?
+        run_id = str(uuid.uuid4())
+        # TODO: What is this?
+        host_dir = os.path.abspath('.')
+        task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
+        
+        # Show the runtime info to the container
+        task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
 
         if self._task.command:
             # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
@@ -717,21 +762,34 @@ class WDLTaskJob(WDLBaseJob):
             # For now we just grab all the File values in the inside-the-task environment, since any of them *might* be used.
             # TODO: MiniWDL can parallelize the fetch
             bindings = devirtualize_files(bindings, standard_library)
+            
+            # Tell the container to take up all these files. It will assign
+            # them all new paths in task_container.input_path_map which we can
+            # read. We also get a task_container.host_path() to go the other way.
+            task_container.add_paths(get_file_paths_in_bindings(bindings))
+            logger.info("Using container path map: %s", task_container.input_path_map)
+            
+            # Replace everything with in-container paths for the command.
+            # TODO: MiniWDL deals with directory paths specially here.
+            # TODO: Do we have to make the *entire* task appear to run in the container if we do things like read files from the container in the inputs with the read functions and absolute paths? MiniWDL does.
+            contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
             # Work out the command string, and unwrap it
-            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library).coerce(WDL.Type.String()).value
-
-            # And run it in a Bash shell, capturing output to files
-            logger.info('Executing command: %s', command_string)
+            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, standard_library).coerce(WDL.Type.String()).value
+            
+            # Run the command in the container
+            logger.info('Executing command in %s: %s', task_container, command_string)
             try:
-                subprocess.check_call(command_string, shell=True, executable="/bin/bash", stdout=open(stdout_path, 'wb'), stderr=open(stderr_path, 'wb'))
-                # TODO: Accept nonzero exit codes when requested.
+                task_container.run(miniwdl_logger, command_string)
             finally:
-                logger.info('Standard output: %s', open(stdout_path).read())
-                logger.info('Standard error: %s', open(stderr_path).read())
+                if os.path.exists(task_container.host_stderr_txt()):
+                    logger.info('Standard error at %s: %s', task_container.host_stderr_txt(), open(task_container.host_stderr_txt()).read())
+                if os.path.exists(task_container.host_stdout_txt()):
+                    logger.info('Standard output at %s: %s', task_container.host_stdout_txt(), open(task_container.host_stdout_txt()).read())
 
         # Evaluate all the outputs in their special library context
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, stdout_path, stderr_path)
+        # TODO: Don't we need to map from container paths back to ours somehow?
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, task_container.host_stdout_txt(), task_container.host_stderr_txt())
         output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
