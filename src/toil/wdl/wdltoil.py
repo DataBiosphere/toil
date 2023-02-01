@@ -23,6 +23,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -42,14 +43,11 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 
-async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> WDL.ReadSourceResult:
+def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
     """
-    Implementation of a MiniWDL read_source function that can use any
-    filename or URL supported by Toil.
-
-    Needs to be async because MiniWDL will await its result.
+    Given a URI or bare path, yield in turn all the URIs, with schemes, where we should actually try to find it, given that we want to search under/against the given paths or URIs, the current directory, and the given importing WDL document if any.
     """
-
+    
     # We need to brute-force find this URI relative to:
     #
     # 1. Itself if a full URI.
@@ -97,8 +95,27 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
             # Already tried this one, maybe we have an absolute uri input.
             continue
 
+        # Try it
+        yield candidate_uri
+        # If we come back it didn't work
+        failures.add(candidate_uri)
+
+async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> WDL.ReadSourceResult:
+    """
+    Implementation of a MiniWDL read_source function that can use any
+    filename or URL supported by Toil.
+
+    Needs to be async because MiniWDL will await its result.
+    """
+    
+    # We track our own failures for debugging
+    tried = []
+    
+    for candidate_uri in potential_absolute_uris(uri, path, importer):
+        # For each place to try in order
         destination_buffer = io.BytesIO()
         logger.debug('Fetching %s', candidate_uri)
+        tried.append(candidate_uri)
         try:
             # TODO: this is probably sync work that would be better as async work here
             AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
@@ -107,7 +124,6 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
             # because the exceptions thrown by read_from_url()
             # implementations are not specified.
             logger.debug('Tried to fetch %s from %s based off of %s but got %s', uri, candidate_uri, candidate_base, e)
-            failures.add(candidate_uri)
             continue
         # If we get here, we got it probably.
         try:
@@ -124,7 +140,7 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
     # does:
     # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1493
     # TODO: Make a more informative message?
-    logger.error('Could not find %s at any of: %s', uri, failures)
+    logger.error('Could not find %s at any of: %s', uri, tried)
     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
 
 
@@ -278,6 +294,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = filename
 
         logger.info('Devirtualized %s as openable file %s', filename, result)
+        assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!" 
         return result
 
     def _virtualize_filename(self, filename: str) -> str:
@@ -467,6 +484,36 @@ def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBi
     """
 
     return map_over_files_in_bindings(environment, stdlib._virtualize_filename)
+    
+def import_files(environment: WDLBindings, toil: Toil, path: List[str] = None) -> WDLBindings:
+    """
+    Make sure all File values embedded in the given bindings are imported,
+    using the given Toil object.
+    
+    :param path: If set, try resolving input location relative to the URLs or
+                 directories in this list.
+    """
+
+    def import_file_from_uri(uri: str) -> str:
+        """
+        Import a file from a URI and return a virtualized filename for it.
+        """
+        
+        for candidate_uri in potential_absolute_uris(uri, path if path is not None else []):
+            # Try each place it could be according to WDL finding logic.
+            try:
+                imported = toil.import_file(uri)
+            except Exception:
+                # We couldn't try the import. Try the next URL
+                continue
+            if imported is None:
+                # Wasn't found there
+                continue
+            logger.info('Imported %s', uri)
+            # Was actually found
+            return 'toilfile:' + imported.pack()
+        
+    return map_over_files_in_bindings(environment, import_file_from_uri)
 
 def drop_missing_files(environment: WDLBindings) -> WDLBindings:
     """
@@ -666,13 +713,14 @@ class WDLTaskJob(WDLBaseJob):
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, bindings, standard_library).coerce(WDL.Type.String()).value
 
-            # And run it, capturing output to files
+            # And run it in a Bash shell, capturing output to files
             logger.info('Executing command: %s', command_string)
-            subprocess.check_call(command_string, shell=True, stdout=open(stdout_path, 'wb'), stderr=open(stderr_path, 'wb'))
-            # TODO: Accept nonzero exit codes when requested.
-
-            logger.info('Standard output: %s', open(stdout_path).read())
-            logger.info('Standard error: %s', open(stderr_path).read())
+            try:
+                subprocess.check_call(command_string, shell=True, executable="/bin/bash", stdout=open(stdout_path, 'wb'), stderr=open(stderr_path, 'wb'))
+                # TODO: Accept nonzero exit codes when requested.
+            finally:
+                logger.info('Standard output: %s', open(stdout_path).read())
+                logger.info('Standard error: %s', open(stderr_path).read())
 
         # Evaluate all the outputs in their special library context
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, stdout_path, stderr_path)
@@ -1395,7 +1443,21 @@ def main() -> None:
                 cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
                 document.workflow.name
             )
-
+            
+            # Determine where to look for files referenced in the inputs, in addition to here.
+            inputs_search_path = []
+            if options.inputs_uri:
+                inputs_search_path.append(options.inputs_uri)
+                match = re.match("https://raw.githubusercontent.com/[^/]/[^/]/[^/]/", options.inputs_uri)
+                if match:
+                    # Special magic for Github repos to make e.g.
+                    # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
+                    # work when it references things relative to repo root.
+                    inputs_search_path.append(m.group(0))
+                
+            # Import any files in the bindings
+            input_bindings = import_files(input_bindings, toil, inputs_search_path)
+            
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
