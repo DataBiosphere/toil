@@ -729,15 +729,18 @@ class WDLCombineBindingsJob(WDLBaseJob):
     environment changes.
     """
 
-    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], remove: Optional[Promised[WDLBindings]] = None, **kwargs: Any) -> None:
+    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], underlay: Optional[Promised[WDLBindings]] = None, remove: Optional[Promised[WDLBindings]] = None, **kwargs: Any) -> None:
         """
         Make a new job to combine the results of previous jobs.
+        
+        If underlay is set, those bindings will be injected to be overridden by other bindings.
 
         If remove is set, bindings there will be subtracted out of the result.
         """
         super().__init__(**kwargs)
 
         self._prev_node_results = prev_node_results
+        self._underlay = underlay
         self._remove = remove
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
@@ -745,6 +748,9 @@ class WDLCombineBindingsJob(WDLBaseJob):
         Aggregate incoming results.
         """
         combined = combine_bindings(unwrap_all(self._prev_node_results))
+        if self._underlay is not None:
+            # Fill in from the underlay anything not defined in anything else.
+            combined = combine_bindings([combined, unwrap(underlay).subtract(combined)])
         if self._remove is not None:
             # We need to take stuff out of scope
             combined = combined.subtract(unwrap(self._remove))
@@ -775,15 +781,22 @@ class WDLSectionJob(WDLBaseJob):
     Job that can create more graph for a section of the wrokflow.
     """
 
-    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
+    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
         """
-        Make a Toil job to evaluate a subgraph inside a workflow or workflow section.
+        Make a Toil job to evaluate a subgraph inside a workflow or workflow
+        section.
 
-        Returns a child Job that will return the aggregated environment after
-        running all the things in the section.
-
-        Bindings in environment will be passed through, but bindings in
-        local_environment will go out of scope at the end of the section.
+        :returns: a child Job that will return the aggregated environment
+                  after running all the things in the section.
+        
+        :param gather_nodes: Names exposed by these will always be defined
+               with something, even if the code that defines them does
+               not actually run.
+        :param environment: Bindings in this environment will be used
+               to evaluate the subgraph and will be passed through.
+        :param local_environment: Bindings in this environment will be
+               used to evaluate the subgraph but will go out of scope
+               at the end of the section.
         """
 
         if local_environment is not None:
@@ -870,8 +883,13 @@ class WDLSectionJob(WDLBaseJob):
         leaf_rvs: List[Union[WDLBindings, Promise]] = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
         # Make sure to also send the section-level bindings
         leaf_rvs.append(environment)
-        # And to filter out stuff that should leave scope
-        sink = WDLCombineBindingsJob(leaf_rvs, remove=local_environment)
+        # And to fill in bindings from code not executed in this instantiation
+        # with Null, and filter out stuff that should leave scope.
+        sink = WDLCombineBindingsJob(
+            leaf_rvs,
+            underlay=self.make_gather_bindings(gather_nodes, WDL.Value.Null()),
+            remove=local_environment
+        )
         # It runs inside us
         self.addChild(sink)
         for node_id in leaf_ids:
@@ -879,6 +897,49 @@ class WDLSectionJob(WDLBaseJob):
             wdl_id_to_toil_job[node_id].addFollowOn(sink)
 
         return sink
+        
+    def make_gather_bindings(self, gathers: Sequence[WDL.Tree.Gather], undefined: WDL.Value.Base) -> WDLBindings:
+        """
+        Given a collection of Gathers, create bindings from every identifier
+        gathered, to the given "undefined" placeholder (which would be Null for
+        a single execution of the body, or an empty array for a completely
+        unexecuted scatter).
+        
+        These bindings can be overlaid with bindings from the actual execution,
+        so that references to names defined in unexecuted code get a proper
+        default undefined value, and not a KeyError at runtime.
+        
+        The information to do this comes from MiniWDL's "gathers" system:
+        <https://miniwdl.readthedocs.io/en/latest/WDL.html#WDL.Tree.WorkflowSection.gathers>
+        
+        TODO: This approach will scale O(n^2) when run on n nested
+        conditionals, because generating these bindings for the outer
+        conditional will visit all the bindings from the inner ones.
+        """
+        
+        # We can just directly compose our bindings.
+        new_bindings: WDLBindings = WDL.Env.Bindings()
+        
+        for gather_node in node.gathers.values():
+            bindings_source = gather_node.final_referee
+            # Since there's no namespacing to be done at intermediate Gather
+            # nodes (we can't refer via a gather referee chain to the inside of
+            # a Call), we can just jump to the end here.
+            bindings_source = gather_node.final_referee
+            if isinstance(bindings_source, WDL.Tree.Decl):
+                # Bind the decl's name
+                new_bindings = new_bindings.bind(bindings_source.name, undefined)
+            elif isinstance(bindings_source, WDL.Tree.Call):
+                # Bind each of the call's outputs, namespaced with the call.
+                # The call already has a bindings for these to expressions.
+                for call_binding in bindings_source.effective_outputs:
+                    # TODO: We could try and map here instead
+                    new_bindings = new_bindings.bind(call_binding.name, undefined)
+            else:
+                # Either something unrecognized or final_referee lied and gave us a Gather.
+                raise TypeError(f"Cannot generate bindings for a gather over a {type(bindings_source)}")
+        
+        return new_bindings
 
 class WDLScatterJob(WDLSectionJob):
     """
@@ -914,7 +975,7 @@ class WDLScatterJob(WDLSectionJob):
         logger.info("Running scatter on %s", self._scatter.variable)
 
         # Combine the bindings we get from previous jobs.
-        # For a task we only see the insode-the-task namespace.
+        # For a task we only see the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
@@ -931,11 +992,19 @@ class WDLScatterJob(WDLSectionJob):
             # duration of the body.
             local_bindings: WDLBindings = WDL.Env.Bindings()
             local_bindings = local_bindings.bind(self._scatter.variable, item)
-            scatter_jobs.append(self.create_subgraph(self._scatter.body, bindings, local_bindings))
+            scatter_jobs.append(self.create_subgraph(self._scatter.body, self._scatter.gathers.values(), bindings, local_bindings))
 
-        # Make a job at the end to aggregate
-        # Turn all the bindings created inside the scatter bodies into arrays of maybe-optional values
-        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings)
+        # Define the value that should be seen for a name bound in the scatter
+        # if nothing in the scatter actually runs. This should be some kind of
+        # empty array.
+        empty_array = WDL.Value.Array(WDL.Type.Any(optional=True, null=True), [])
+        
+        # Make a job at the end to aggregate.
+        # Turn all the bindings created inside the scatter bodies into arrays
+        # of maybe-optional values. Each body execution will define names it
+        # doesn't make as nulls. If no bodies execute, bind names to empty
+        # arrays via the underlay.
+        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings, underlay=self.make_gather_bindings(self._scatter.gathers.values(), empty_array))
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
@@ -951,17 +1020,25 @@ class WDLArrayBindingsJob(WDLBaseJob):
     Useful for producing the results of a scatter.
     """
 
-    def __init__(self, input_bindings: Sequence[Promised[WDLBindings]], base_bindings: WDLBindings, **kwargs: Any) -> None:
+    def __init__(self, input_bindings: Sequence[Promised[WDLBindings]], base_bindings: WDLBindings, underlay: Optional[WDLBindings] = None, **kwargs: Any) -> None:
         """
-        Make a new job to array-ify the given input bindings against the given base bindings.
+        Make a new job to array-ify the given input bindings.
+        
+        :param input_bindings: bindings visible to each evaluated iteration.
+        :param base_bindings: bindings visible to *all* evaluated iterations,
+               which should be constant across all of them and not made into
+               arrays but instead passed through unchanged.
+        :param underlay: bindings from each possible bind-able name to
+               (probably) a default empty array. If passed, will be underlaid
+               under the result, to ensure that even if input_bindings is
+               empty, references to bindings created in a scatter can be
+               resolved to something.
         """
         super().__init__(**kwargs)
 
-        # Everything might still be promises so just save it.
-        # TODO: Allow promises in type signature???
-
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
+        self._underlay = underlay
         
     def run(self, file_sore: AbstractFileStore) -> WDLBindings:
         """
@@ -990,6 +1067,10 @@ class WDLArrayBindingsJob(WDLBaseJob):
             supertype: WDL.Type.Base = get_supertype(observed_types)
             # Bind an array of the values
             result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
+        if self._underlay is not None:
+            # Apply the underlay under all the bindings we made, to make sure
+            # nothing escapes while still undefined.
+            result = combine_bindings([result, self._underlay.subtract(result)])
 
         # Base bindings are already included so return the result
         return result
@@ -1033,7 +1114,7 @@ class WDLConditionalJob(WDLSectionJob):
             # Evaluated to true!
             logger.info('Condition is true')
             # Run the body and return its effects
-            body_job = self.create_subgraph(self._conditional.body, bindings)
+            body_job = self.create_subgraph(self._conditional.body, self._conditional.gathers.values(), bindings)
             return body_job.rv()
         else:
             logger.info('Condition is false')
