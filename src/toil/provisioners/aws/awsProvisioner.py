@@ -418,7 +418,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time,
-                          nodeType=leader_type.name, preemptable=False,
+                          nodeType=leader_type.name, preemptible=False,
                           tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
@@ -580,7 +580,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         return 'aws'
 
-    def getNodeShape(self, instance_type: str, preemptable=False) -> Shape:
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         """
         Get the Shape for the given instance type (e.g. 't2.medium').
         """
@@ -600,7 +600,7 @@ class AWSProvisioner(AbstractProvisioner):
                      memory=memory,
                      cores=type_info.cores,
                      disk=disk,
-                     preemptable=preemptable)
+                     preemptible=preemptible)
 
     @staticmethod
     def retryPredicate(e):
@@ -765,19 +765,19 @@ class AWSProvisioner(AbstractProvisioner):
                         break
                 if spot_bid is None:
                     # We didn't bid on any class including this type either
-                    raise RuntimeError("No spot bid given for a preemptable node request.")
+                    raise RuntimeError("No spot bid given for a preemptible node request.")
             else:
-                raise RuntimeError("No spot bid given for a preemptable node request.")
+                raise RuntimeError("No spot bid given for a preemptible node request.")
 
         return spot_bid
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible, spotBid=None) -> int:
         # Grab the AWS connection we need
         ec2 = self.aws.boto2(self._region, 'ec2')
 
         assert self._leaderPrivateIP
 
-        if preemptable:
+        if preemptible:
             # May need to provide a spot bid
             spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
@@ -790,8 +790,8 @@ class AWSProvisioner(AbstractProvisioner):
                                                rootVolSize=root_vol_size)
 
         # Pick a zone and subnet_id to launch into
-        if preemptable:
-            # We may need to balance preemptable instances across zones, which
+        if preemptible:
+            # We may need to balance preemptible instances across zones, which
             # then affects the subnets they can use.
 
             # We're allowed to pick from any of these zones.
@@ -816,7 +816,7 @@ class AWSProvisioner(AbstractProvisioner):
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptible, self._architecture)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -837,13 +837,13 @@ class AWSProvisioner(AbstractProvisioner):
                 # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
-                if not preemptable:
-                    logger.debug('Launching %s non-preemptable nodes', numNodes)
+                if not preemptible:
+                    logger.debug('Launching %s non-preemptible nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(ec2,
                                                                   image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
-                    logger.debug('Launching %s preemptable nodes', numNodes)
+                    logger.debug('Launching %s preemptible nodes', numNodes)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=ec2,
                                                                    price=spotBid,
@@ -866,21 +866,21 @@ class AWSProvisioner(AbstractProvisioner):
             for i in instancesLaunched:
                 self._waitForIP(i)
                 node = Node(publicIP=i.ip_address, privateIP=i.private_ip_address, name=i.id,
-                            launchTime=i.launch_time, nodeType=i.instance_type, preemptable=preemptable,
+                            launchTime=i.launch_time, nodeType=i.instance_type, preemptible=preemptible,
                             tags=i.tags)
                 node.waitForNode('toil_worker')
                 node.coreRsync([self._sseKey, ':' + self._sseKey], applianceName='toil_worker')
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
-    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
 
         if self.clusterType != 'kubernetes':
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
 
         assert self._leaderPrivateIP
 
-        if preemptable:
+        if preemptible:
             # May need to provide a spot bid
             spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
@@ -888,24 +888,24 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Make one template per node type, so we can apply storage overrides correctly
         # TODO: deduplicate these if the same instance type appears in multiple sets?
-        launch_template_ids = {n: self._get_worker_launch_template(n, preemptable=preemptable) for n in nodeTypes}
+        launch_template_ids = {n: self._get_worker_launch_template(n, preemptible=preemptible) for n in nodeTypes}
         # Make the ASG across all of them
         self._createWorkerAutoScalingGroup(launch_template_ids, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
 
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._get_nodes_in_cluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self._leaderPrivateIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
-        if preemptable is not None:
-            workerInstances = [i for i in workerInstances if preemptable == (i.spot_instance_request_id is not None)]
-            logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
+        if preemptible is not None:
+            workerInstances = [i for i in workerInstances if preemptible == (i.spot_instance_request_id is not None)]
+            logger.debug('%spreemptible workers found in cluster: %s', 'non-' if not preemptible else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.aws.boto2(self._region, 'ec2'))
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
-                     preemptable=i.spot_instance_request_id is not None, tags=i.tags)
+                     preemptible=i.spot_instance_request_id is not None, tags=i.tags)
                 for i in workerInstances]
 
     @memoize
@@ -973,7 +973,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
-                          preemptable=False, tags=leader.tags)
+                          preemptible=False, tags=leader.tags)
         if wait:
             logger.debug("Waiting for toil_leader to enter 'running' state...")
             wait_instances_running(self.aws.boto2(self._region, 'ec2'), [leader])
@@ -1132,14 +1132,14 @@ class AWSProvisioner(AbstractProvisioner):
 
         return [i for i in all_instances if instanceFilter(i)]
 
-    def _filter_nodes_in_cluster(self, instance_type: Optional[str] = None, preemptable: bool = False) -> List[Boto2Instance]:
+    def _filter_nodes_in_cluster(self, instance_type: Optional[str] = None, preemptible: bool = False) -> List[Boto2Instance]:
         """
         Get Boto2 instance objects for the nodes in the cluster filtered by preemptability.
         """
 
         instances = self._get_nodes_in_cluster(instance_type, include_stopped_nodes=False)
 
-        if preemptable:
+        if preemptible:
             return [i for i in instances if i.spot_instance_request_id is not None]
 
         return [i for i in instances if i.spot_instance_request_id is None]
@@ -1258,7 +1258,7 @@ class AWSProvisioner(AbstractProvisioner):
         return allTemplateIDs
 
     @awsRetry
-    def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False, backoff: float = 1.0) -> str:
+    def _get_worker_launch_template(self, instance_type: str, preemptible: bool = False, backoff: float = 1.0) -> str:
         """
         Get a launch template for instances with the given parameters. Only one
         such launch template will be created, no matter how many times the
@@ -1269,7 +1269,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
 
         :param backoff: How long to wait if it seems like we aren't reading our
                         own writes before trying again.
@@ -1277,7 +1277,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The ID of the template.
         """
 
-        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
+        lt_name = self._name_worker_launch_template(instance_type, preemptible=preemptible)
 
         # How do we match the right templates?
         filters = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
@@ -1292,45 +1292,45 @@ class AWSProvisioner(AbstractProvisioner):
         elif len(templates) == 0:
             # Template doesn't exist so we can create it.
             try:
-                return self._create_worker_launch_template(instance_type, preemptable=preemptable)
+                return self._create_worker_launch_template(instance_type, preemptible=preemptible)
             except ClientError as e:
                 if get_error_code(e) == 'InvalidLaunchTemplateName.AlreadyExistsException':
                     # Someone got to it before us (or we couldn't read our own
                     # writes). Recurse to try again, because now it exists.
                     logger.info('Waiting %f seconds for template %s to be available', backoff, lt_name)
                     time.sleep(backoff)
-                    return self._get_worker_launch_template(instance_type, preemptable=preemptable, backoff=backoff*2)
+                    return self._get_worker_launch_template(instance_type, preemptible=preemptible, backoff=backoff*2)
                 else:
                     raise
         else:
             # There must be exactly one template
             return templates[0]
 
-    def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+    def _name_worker_launch_template(self, instance_type: str, preemptible: bool = False) -> str:
         """
         Get the name we should use for the launch template with the given parameters.
 
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
         """
 
         # The name has the cluster name in it
         lt_name = f'{self.clusterName}-lt-{instance_type}'
-        if preemptable:
+        if preemptible:
             lt_name += '-spot'
 
         return lt_name
 
-    def _create_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+    def _create_worker_launch_template(self, instance_type: str, preemptible: bool = False) -> str:
         """
         Create the launch template for launching worker instances for the cluster.
 
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
 
         :return: The ID of the template created.
         """
@@ -1343,9 +1343,9 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable, self._architecture)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptible, self._architecture)
 
-        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
+        lt_name = self._name_worker_launch_template(instance_type, preemptible=preemptible)
 
         # But really we find it by tag
         tags = dict(self._tags)

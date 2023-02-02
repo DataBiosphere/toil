@@ -62,25 +62,25 @@ class Shape:
         memory: int,
         cores: Union[int, float],
         disk: int,
-        preemptable: bool,
+        preemptible: bool,
     ) -> None:
         self.wallTime = wallTime
         self.memory = memory
         self.cores = cores
         self.disk = disk
-        self.preemptable = preemptable
+        self.preemptible = preemptible
 
     def __eq__(self, other: Any) -> bool:
         return (self.wallTime == other.wallTime and
                 self.memory == other.memory and
                 self.cores == other.cores and
                 self.disk == other.disk and
-                self.preemptable == other.preemptable)
+                self.preemptible == other.preemptible)
 
     def greater_than(self, other: Any) -> bool:
-        if self.preemptable < other.preemptable:
+        if self.preemptible < other.preemptible:
             return True
-        elif self.preemptable > other.preemptable:
+        elif self.preemptible > other.preemptible:
             return False
         elif self.memory > other.memory:
             return True
@@ -105,12 +105,12 @@ class Shape:
         return self.greater_than(other)
 
     def __repr__(self) -> str:
-        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
+        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptible=%s)" % \
                (self.wallTime,
                 self.memory,
                 self.cores,
                 self.disk,
-                self.preemptable)
+                self.preemptible)
 
     def __str__(self) -> str:
         return self.__repr__()
@@ -122,7 +122,7 @@ class Shape:
              self.memory,
              self.cores,
              self.disk,
-             self.preemptable))
+             self.preemptible))
 
 
 class AbstractProvisioner(ABC):
@@ -353,13 +353,13 @@ class AbstractProvisioner(ABC):
         self._shape_to_instance_type = {}
 
         for node_type in nodeTypes:
-            preemptable = node_type[1] is not None
-            if preemptable:
+            preemptible = node_type[1] is not None
+            if preemptible:
                 # Record the spot bid for the whole equivalence class
                 self._spotBidsMap[frozenset(node_type[0])] = node_type[1]
             for instance_type_name in node_type[0]:
                 # Record the instance shape and associated type.
-                shape = self.getNodeShape(instance_type_name, preemptable)
+                shape = self.getNodeShape(instance_type_name, preemptible)
                 self._shape_to_instance_type[shape] = instance_type_name
 
     def hasAutoscaledNodeTypes(self) -> bool:
@@ -417,20 +417,20 @@ class AbstractProvisioner(ABC):
         self,
         nodeTypes: Set[str],
         numNodes: int,
-        preemptable: bool,
+        preemptible: bool,
         spotBid: Optional[float] = None,
     ) -> int:
         """
         Used to add worker nodes to the cluster
 
         :param numNodes: The number of nodes to add
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :param preemptible: whether or not the nodes will be preemptible
+        :param spotBid: The bid for preemptible nodes if applicable (this can be set in config, also).
         :return: number of nodes successfully added
         """
         raise NotImplementedError
 
-    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and terminated depending on cluster load.
@@ -440,8 +440,8 @@ class AbstractProvisioner(ABC):
 
         :param minNodes: The minimum number of nodes to scale to
         :param maxNodes: The maximum number of nodes to scale to
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :param preemptible: whether or not the nodes will be preemptible
+        :param spotBid: The bid for preemptible nodes if applicable (this can be set in config, also).
         """
 
         # Not available by default
@@ -464,22 +464,22 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
         """
         Gets all nodes, optionally of the given instance type or
         preemptability, from the provisioner. Includes both static and
         autoscaled nodes.
 
-        :param preemptable: Boolean value to restrict to preemptable
-               nodes or non-preemptable nodes
+        :param preemptible: Boolean value to restrict to preemptible
+               nodes or non-preemptible nodes
         :return: list of Node objects
         """
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, instance_type: str, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptible=False):
         """
-        The shape of a preemptable or non-preemptable node managed by this provisioner. The node
+        The shape of a preemptible or non-preemptible node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
@@ -732,7 +732,7 @@ class AbstractProvisioner(ABC):
     def toil_service_env_options(self) -> str:
         return "-e TMPDIR=/var/tmp"
 
-    def add_toil_service(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+    def add_toil_service(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptible: bool = False):
         """
         Add the Toil leader or worker service to an instance configuration.
 
@@ -742,7 +742,7 @@ class AbstractProvisioner(ABC):
 
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
-        :param preemptable: Whether a worker should identify itself as preemptable or not to the scheduler.
+        :param preemptible: Whether a worker should identify itself as preemptible or not to the scheduler.
         """
 
         # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
@@ -753,7 +753,7 @@ class AbstractProvisioner(ABC):
         LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
         # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
         # Mesos attempts to contact systemd but can't find its run file)
-        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptible:{preemptible} --no-hostname_lookup --no-systemd_enable_support'
 
         if self.clusterType == 'mesos':
             if role == 'leader':
@@ -762,7 +762,7 @@ class AbstractProvisioner(ABC):
             elif role == 'worker':
                 entryPoint = 'mesos-agent'
                 entryPointArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
-                                                                           preemptable=preemptable)
+                                                                           preemptible=preemptible)
             else:
                 raise RuntimeError("Unknown role %s" % role)
         elif self.clusterType == 'kubernetes':
@@ -1149,7 +1149,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptable: bool = False):
+    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptible: bool = False):
         """
         Add services to configure as a Kubernetes worker, if Kubernetes is
         already set to be installed.
@@ -1159,17 +1159,17 @@ class AbstractProvisioner(ABC):
 
         :param config: The configuration to add services to
         :param authVars: Dict with authentication info
-        :param preemptable: Whether the worker should be labeled as preemptable or not
+        :param preemptible: Whether the worker should be labeled as preemptible or not
         """
 
         # Collect one combined set of auth and general settings.
         values = dict(**self.getKubernetesValues(), **authVars)
 
-        # Mark the node as preemptable if it is.
+        # Mark the node as preemptible if it is.
         # TODO: We use the same label that EKS uses here, because nothing is standardized.
         # This won't be quite appropriate as we aren't on EKS and we might not
         # even be on AWS, but the batch system should understand it.
-        values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
+        values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptible else ''
 
         # Kubeadm worker configuration
         config.addFile("/home/core/kubernetes-worker.yml", mode='0644', contents=textwrap.dedent('''\
@@ -1230,7 +1230,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             ''').format(**values))
 
-    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False, architecture='amd64'):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptible=False, architecture='amd64'):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1238,7 +1238,7 @@ class AbstractProvisioner(ABC):
         the worker to the leader.
 
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
-        :param bool preemptable: Set to true for a worker node to identify itself as preemptable in the cluster.
+        :param bool preemptible: Set to true for a worker node to identify itself as preemptible in the cluster.
         """
 
         # Start with a base config
@@ -1257,7 +1257,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
-            self.add_toil_service(config, role, keyPath, preemptable)
+            self.add_toil_service(config, role, keyPath, preemptible)
 
         if role == 'worker' and self._leaderWorkerAuthentication is not None:
             # We need to connect the worker to the leader.
@@ -1270,7 +1270,7 @@ class AbstractProvisioner(ABC):
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by
                 # anyone in the cloud account.
-                self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
+                self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptible=preemptible)
 
         # Make it into a string for Ignition
         user_data = config.toIgnitionConfig()

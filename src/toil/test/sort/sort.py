@@ -39,7 +39,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
                              inputFile, N, 'root',
                              downCheckpoints,
                              options = options,
-                             preemptable=True,
+                             preemptible=True,
                              memory=sortMemory).rv()
 
 
@@ -73,11 +73,11 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
         result = job.addFollowOnJobFn(up,
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, path + '/0',
                                                       downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptable=True, memory=options.sortMemory).rv(),
+                                                      preemptible=True, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, path + '/1',
                                                       downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptable=True, memory=options.mergeMemory).rv(),
-                                    path + '/up', preemptable=True, options=options, memory=options.sortMemory).rv()
+                                                      preemptible=True, memory=options.mergeMemory).rv(),
+                                    path + '/up', preemptible=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         RealtimeLogger.critical("Sorting file: %s of size: %s"

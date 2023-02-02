@@ -155,7 +155,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         """
         raise NotImplementedError()
 
-    def _test(self, preemptableJobs=False):
+    def _test(self, preemptibleJobs=False):
         """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
         # Make a cluster
         self.launchCluster()
@@ -185,8 +185,8 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
                        '--logFile=' + os.path.join(self.scriptDir, 'sort.log')
                        ]
 
-        if preemptableJobs:
-            toilOptions.extend(['--defaultPreemptable'])
+        if preemptibleJobs:
+            toilOptions.extend(['--defaultPreemptible'])
 
         log.info('Run script...')
         self._runScript(toilOptions)
@@ -271,14 +271,14 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self.instanceTypes = ["m5a.large:%f" % self.spotBid]
         self.numWorkers = ['2']
-        self._test(preemptableJobs=True)
+        self._test(preemptibleJobs=True)
 
     @integrative
     @needs_aws_ec2
     def testSpotAutoScaleBalancingTypes(self):
         self.instanceTypes = ["m5.large/m5a.large:%f" % self.spotBid]
         self.numWorkers = ['2']
-        self._test(preemptableJobs=True)
+        self._test(preemptibleJobs=True)
 
 
 @integrative
@@ -459,7 +459,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
 @integrative
 @pytest.mark.timeout(1200)
-class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
+class PreemptibleDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super().__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
@@ -472,21 +472,21 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         self.jobStore = f'aws:{self.awsRegion()}:deficit-{uuid4()}'
 
     def test(self):
-        self._test(preemptableJobs=True)
+        self._test(preemptibleJobs=True)
 
     def _getScript(self):
         def userScript():
             from toil.common import Toil
             from toil.job import Job
 
-            # Because this is the only job in the pipeline and because it is preemptable,
-            # there will be no non-preemptable jobs. The non-preemptable scaler will therefore
+            # Because this is the only job in the pipeline and because it is preemptible,
+            # there will be no non-preemptible jobs. The non-preemptible scaler will therefore
             # not request any nodes initially. And since we made it impossible for the
-            # preemptable scaler to allocate any nodes (using an abnormally low spot bid),
-            # we will observe a deficit of preemptable nodes that the non-preemptable scaler will
-            # compensate for by spinning up non-preemptable nodes instead.
+            # preemptible scaler to allocate any nodes (using an abnormally low spot bid),
+            # we will observe a deficit of preemptible nodes that the non-preemptible scaler will
+            # compensate for by spinning up non-preemptible nodes instead.
             #
-            def job(job, disk='10M', cores=1, memory='10M', preemptable=True):
+            def job(job, disk='10M', cores=1, memory='10M', preemptible=True):
                 pass
 
             if __name__ == '__main__':
@@ -504,7 +504,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         toilOptions.extend(['--provisioner=aws', '--batchSystem=mesos',
                             '--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=' + ",".join(self.numWorkers)])
-        toilOptions.extend(['--preemptableCompensation=1.0'])
+        toilOptions.extend(['--preemptibleCompensation=1.0'])
         command = [self.python(), self.script()]
         command.extend(toilOptions)
         self.sshUtil(command)

@@ -47,7 +47,7 @@ EXIT_STATUS_UNAVAILABLE_VALUE = 255
 class BatchJobExitReason(enum.IntEnum):
     FINISHED: int = 1  # Successfully finished.
     FAILED: int = 2  # Job finished, but failed.
-    LOST: int = 3  # Preemptable failure (job's executing host went away).
+    LOST: int = 3  # Preemptible failure (job's executing host went away).
     KILLED: int = 4  # Job killed before finishing.
     ERROR: int = 5  # Internal error.
     MEMLIMIT: int = 6  # Job hit batch system imposed memory limit
@@ -477,12 +477,12 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptable: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
+    def getNodes(self, preemptible: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
         """
-        Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
+        Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
 
-        :param preemptable: If True (False) only (non-)preemptable nodes will be returned.
+        :param preemptible: If True (False) only (non-)preemptible nodes will be returned.
                If None, all nodes will be returned.
         """
         raise NotImplementedError()
