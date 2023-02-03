@@ -137,11 +137,7 @@ def visit_cwl_class_and_reduce(
     return results
 
 
-# Define a recursive type to represent a directory structure.
-# The only problem is that MyPy can't yet type check recursive types like this.
-# See: https://github.com/python/mypy/issues/731
-# So we have to tell MyPy to ignore it.
-DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]  # type: ignore
+DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]
 
 
 def download_structure(
