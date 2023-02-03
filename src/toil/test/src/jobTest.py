@@ -683,7 +683,7 @@ def child(job):
     assert job.cores is not None
     assert job.disk is not None
     assert job.memory is not None
-    assert job.preemptable is not None
+    assert job.preemptible is not None
 
 
 def errorChild(job):

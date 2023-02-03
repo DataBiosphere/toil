@@ -127,15 +127,15 @@ class AbstractJobStoreTest:
             self.jobstore_resumed_noconfig.resume()
 
             # Requirements for jobs to be created.
-            self.arbitraryRequirements = {'memory': 1, 'disk': 2, 'cores': 1, 'preemptable': False}
+            self.arbitraryRequirements = {'memory': 1, 'disk': 2, 'cores': 1, 'preemptible': False}
             # Function to make an arbitrary new job
             self.arbitraryJob = lambda: JobDescription(command='command',
                                                        jobName='arbitrary',
                                                        requirements=self.arbitraryRequirements)
 
-            self.parentJobReqs = dict(memory=12, cores=34, disk=35, preemptable=True)
-            self.childJobReqs1 = dict(memory=23, cores=45, disk=46, preemptable=True)
-            self.childJobReqs2 = dict(memory=34, cores=56, disk=57, preemptable=False)
+            self.parentJobReqs = dict(memory=12, cores=34, disk=35, preemptible=True)
+            self.childJobReqs1 = dict(memory=23, cores=45, disk=46, preemptible=True)
+            self.childJobReqs2 = dict(memory=34, cores=56, disk=57, preemptible=False)
 
         def tearDown(self):
             self.jobstore_initialized.destroy()
@@ -173,7 +173,7 @@ class AbstractJobStoreTest:
             self.assertEqual(job.memory, self.parentJobReqs['memory'])
             self.assertEqual(job.cores, self.parentJobReqs['cores'])
             self.assertEqual(job.disk, self.parentJobReqs['disk'])
-            self.assertEqual(job.preemptable, self.parentJobReqs['preemptable'])
+            self.assertEqual(job.preemptible, self.parentJobReqs['preemptible'])
             self.assertEqual(job.jobName, 'test1')
             self.assertEqual(job.unitName, 'onParent')
 
@@ -556,7 +556,7 @@ class AbstractJobStoreTest:
         def testBatchCreate(self):
             """Test creation of many jobs."""
             jobstore = self.jobstore_initialized
-            jobRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobRequirements = dict(memory=12, cores=34, disk=35, preemptible=True)
             jobs = []
             with jobstore.batch():
                 for i in range(100):
@@ -1361,7 +1361,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized
-        jobRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+        jobRequirements = dict(memory=12, cores=34, disk=35, preemptible=True)
         overlargeJob = JobDescription(command='overlarge',
                                       requirements=jobRequirements,
                                       jobName='test-overlarge', unitName='onJobStore')

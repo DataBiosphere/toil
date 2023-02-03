@@ -66,11 +66,11 @@ logger = logging.getLogger(__name__)
 
 numCores = 2
 
-preemptable = False
+preemptible = False
 
 # Since we aren't always attaching the config to the jobs for these tests, we
 # need to use fully specified requirements.
-defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptable=preemptable, accelerators=[])
+defaultRequirements = dict(memory=int(100e6), cores=1, disk=1000, preemptible=preemptible, accelerators=[])
 
 class BatchSystemPluginTest(ToilTest):
     """
@@ -495,7 +495,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
 
         normal_spec = V1PodSpec(containers=[])
         constraints = KubernetesBatchSystem.Placement()
-        constraints.set_preemptable(False)
+        constraints.set_preemptible(False)
         constraints.apply(normal_spec)
         self.assertEqual(textwrap.dedent("""
         {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': None,
@@ -513,7 +513,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
 
         spot_spec = V1PodSpec(containers=[])
         constraints = KubernetesBatchSystem.Placement()
-        constraints.set_preemptable(True)
+        constraints.set_preemptible(True)
         constraints.apply(spot_spec)
         self.assertEqual(textwrap.dedent("""
         {'node_affinity': {'preferred_during_scheduling_ignored_during_execution': [{'preference': {'match_expressions': [{'key': 'eks.amazonaws.com/capacityType',
@@ -893,7 +893,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                                                                cores=float(coresPerJob),
                                                                                memory=1, disk=1,
                                                                                accelerators=[],
-                                                                               preemptable=preemptable),
+                                                                               preemptible=preemptible),
                                                                            jobName=str(i), unitName='')))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
@@ -998,14 +998,14 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         jobDesc1 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=1 << 30, cores=1,
                                                     disk=1000, accelerators=[],
-                                                    preemptable=preemptable),
+                                                    preemptible=preemptible),
                                   jobName='testResourceLimits')
         job1 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job1)
         jobDesc2 = JobDescription(command="sleep 1000",
                                   requirements=dict(memory=2 << 30, cores=1,
                                                     disk=1000, accelerators=[],
-                                                    preemptable=preemptable),
+                                                    preemptible=preemptible),
                                   jobName='testResourceLimits')
         job2 = self.batchSystem.issueBatchJob(jobDesc2)
         self.assertIsNotNone(job2)

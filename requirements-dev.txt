@@ -9,13 +9,13 @@ sphinx-autoapi
 sphinx-autodoc-typehints
 sphinxcontrib-autoprogram
 cwltest>=2.2.20211116163652
-mypy==0.982
+mypy==0.991
 types-requests
 types-setuptools
 types-boto
 types-pytz
 flake8>=3.8.4,<7
-flake8-bugbear>=20.11.1,<21
+flake8-bugbear>=20.11.1,<24
 black
 isort
 pydocstyle

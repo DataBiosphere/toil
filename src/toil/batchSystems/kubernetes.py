@@ -538,37 +538,37 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             Taints which are allowed to be present (with these values).
             """
 
-        def set_preemptable(self, preemptable: bool) -> None:
+        def set_preemptible(self, preemptible: bool) -> None:
             """
             Add constraints for a job being preemptible or not.
 
-            Preemptable jobs will be able to run on preemptable or non-preemptable
-            nodes, and will prefer preemptable nodes if available.
+            Preemptible jobs will be able to run on preemptible or non-preemptible
+            nodes, and will prefer preemptible nodes if available.
 
-            Non-preemptable jobs will not be allowed to run on nodes that are
-            marked as preemptable.
+            Non-preemptible jobs will not be allowed to run on nodes that are
+            marked as preemptible.
 
             Understands the labeling scheme used by EKS, and the taint scheme used
             by GCE. The Toil-managed Kubernetes setup will mimic at least one of
             these.
             """
 
-            # We consider nodes preemptable if they have any of these label or taint values.
+            # We consider nodes preemptible if they have any of these label or taint values.
             # We tolerate all effects of specified taints.
             # Amazon just uses a label, while Google
             # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
             # uses a label and a taint.
-            PREEMPTABLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
+            PREEMPTIBLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
                                               ('cloud.google.com/gke-preemptible', ['true'])],
                                    'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
 
-            if preemptable:
-                # We want to seek preemptable labels and tolerate preemptable taints.
-                self.desired_labels += PREEMPTABLE_SCHEMES['labels']
-                self.tolerated_taints += PREEMPTABLE_SCHEMES['taints']
+            if preemptible:
+                # We want to seek preemptible labels and tolerate preemptible taints.
+                self.desired_labels += PREEMPTIBLE_SCHEMES['labels']
+                self.tolerated_taints += PREEMPTIBLE_SCHEMES['taints']
             else:
-                # We want to prohibit preemptable labels
-                self.prohibited_labels += PREEMPTABLE_SCHEMES['labels']
+                # We want to prohibit preemptible labels
+                self.prohibited_labels += PREEMPTIBLE_SCHEMES['labels']
 
 
         def apply(self, pod_spec: V1PodSpec) -> None:
@@ -695,7 +695,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Also start on the placement constraints
         placement = KubernetesBatchSystem.Placement()
-        placement.set_preemptable(job_desc.preemptable)
+        placement.set_preemptible(job_desc.preemptible)
 
         for accelerator in job_desc.accelerators:
             # Add in requirements for accelerators (GPUs).

@@ -971,21 +971,21 @@ class Leader:
             self.issueJob(self.toilState.get_job(self.preemptableServiceJobsToBeIssued.pop()))
             self.preemptableServiceJobsIssued += 1
 
-    def getNumberOfJobsIssued(self, preemptable: Optional[bool]=None) -> int:
+    def getNumberOfJobsIssued(self, preemptible: Optional[bool]=None) -> int:
         """
         Get number of jobs that have been added by issueJob(s) and not removed by removeJob.
 
-        :param preemptable: If none, return all types of jobs.
-          If true, return just the number of preemptable jobs. If false, return
-          just the number of non-preemptable jobs.
+        :param preemptible: If none, return all types of jobs.
+          If true, return just the number of preemptible jobs. If false, return
+          just the number of non-preemptible jobs.
         """
-        if preemptable is None:
+        if preemptible is None:
             return len(self.issued_jobs_by_batch_system_id)
-        elif preemptable:
-            return self.preemptableJobsIssued
+        elif preemptible:
+            return self.preemptibleJobsIssued
         else:
-            assert len(self.issued_jobs_by_batch_system_id) >= self.preemptableJobsIssued
-            return len(self.issued_jobs_by_batch_system_id) - self.preemptableJobsIssued
+            assert len(self.issued_jobs_by_batch_system_id) >= self.preemptibleJobsIssued
+            return len(self.issued_jobs_by_batch_system_id) - self.preemptibleJobsIssued
 
     def _getStatusHint(self) -> str:
         """

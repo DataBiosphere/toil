@@ -42,6 +42,8 @@ from typing import (TYPE_CHECKING,
                     cast,
                     overload)
 
+from toil.lib.compatibility import deprecated
+
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
@@ -1438,12 +1440,16 @@ class Job:
          self.description.accelerators = val
 
     @property
-    def preemptable(self) -> bool:
-        """Whether the job can be run on a preemptable node."""
-        return self.description.preemptable
-    @preemptable.setter
-    def preemptable(self, val: bool) -> None:
-         self.description.preemptable = val
+    def preemptible(self) -> bool:
+        """Whether the job can be run on a preemptible node."""
+        return self.description.preemptible
+
+    @deprecated(new_function_name="preemptible")
+    def preemptable(self):
+        return self.description.preemptible
+    @preemptible.setter
+    def preemptible(self, val):
+         self.description.preemptible = val
 
     @property
     def checkpoint(self) -> bool:
@@ -2084,7 +2090,7 @@ class Job:
         Is not executed as a job; runs within a ServiceHostJob.
         """
 
-        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptable=None, unitName=None):
+        def __init__(self, memory=None, cores=None, disk=None, accelerators=None, preemptible=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -2095,7 +2101,7 @@ class Job:
                 'cores': cores,
                 'disk': disk,
                 'accelerators': accelerators,
-                'preemptable': preemptable
+                'preemptible': preemptible
             })
 
             # And the unit name
