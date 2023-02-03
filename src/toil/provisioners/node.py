@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class Node:
     maxWaitTime = 7 * 60
 
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None, use_private_ip=None):
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptible, tags=None, use_private_ip=None):
         self.publicIP = publicIP
         self.privateIP = privateIP
         if use_private_ip:
@@ -39,7 +39,7 @@ class Node:
         self.name = name
         self.launchTime = launchTime
         self.nodeType = nodeType
-        self.preemptable = preemptable
+        self.preemptible = preemptible
         self.tags = tags
 
     def __str__(self):
