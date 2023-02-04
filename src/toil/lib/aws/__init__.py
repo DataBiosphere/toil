@@ -25,6 +25,7 @@ from typing import (Any,
                     Dict,
                     Iterable,
                     List,
+                    MutableMapping,
                     Optional,
                     TypeVar,
                     Union)
@@ -172,3 +173,23 @@ def running_on_ecs() -> bool:
     """
     # We only care about relatively current ECS
     return 'ECS_CONTAINER_METADATA_URI_V4' in os.environ
+
+def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> Dict[str, str]:
+    tags = dict()
+    owner_tag = environment.get('TOIL_OWNER_TAG')
+    if owner_tag:
+        tags.update({'Owner': owner_tag})
+
+    user_tags = environment.get('TOIL_AWS_TAGS')
+    if user_tags:
+        try:
+            json_user_tags = json.loads(user_tags)
+            if isinstance(json_user_tags, dict):
+                tags.update(json.loads(user_tags))
+            else:
+                logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+                exit(1)
+        except json.decoder.JSONDecodeError:
+            logger.error('TOIL_AWS_TAGS must be in JSON format: {"key" : "value", ...}')
+            exit(1)
+    return tags
