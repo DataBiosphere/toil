@@ -31,6 +31,7 @@ from typing import (Any,
                     Union)
 from urllib.error import URLError
 from urllib.request import urlopen
+from http.client import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ def running_on_ec2() -> bool:
     try:
         urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
         return True
-    except (URLError, socket.timeout):
+    except (URLError, socket.timeout, HTTPException):
         return False
 
 def running_on_ecs() -> bool:
