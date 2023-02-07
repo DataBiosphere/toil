@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import os
 import pickle
@@ -36,6 +37,7 @@ from typing import (IO,
                     ContextManager,
                     Dict,
                     List,
+                    MutableMapping,
                     Optional,
                     Set,
                     Tuple,
@@ -67,7 +69,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       QueueSizeMessage,
                       gen_message_bus_path)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
