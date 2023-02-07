@@ -318,6 +318,9 @@ def process_name_exists(base_dir: str, name: str) -> bool:
             # only for reading.
             nameFD = os.open(nameFileName, os.O_RDONLY)
             fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except FileNotFoundError as e:
+            # File has vanished
+            return False
         except OSError as e:
             # Could not lock. Process is alive.
             return True
