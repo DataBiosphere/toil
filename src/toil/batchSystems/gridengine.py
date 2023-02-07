@@ -145,7 +145,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if sgeArgs:
                 sgeArgs = sgeArgs.split()
                 for arg in sgeArgs:
-                    if arg.startswith(("vf=", "hvmem=", "-pe")):
+                    if arg.startswith(("vf=", "h_vmem=", "-pe")):
                         raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
                 qsubline.extend(sgeArgs)
             # If cpu == 1 (or None) then don't add PE env variable to the qsub command.
