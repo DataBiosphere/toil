@@ -749,7 +749,7 @@ class JobDescription(Requirer):
         # Set scheduling properties that the leader read to think about scheduling.
 
         # The number of times the job should be attempted. Includes the initial
-        # try, plus the nu,ber of times to retry if the job fails. This number
+        # try, plus the number of times to retry if the job fails. This number
         # is reduced each time the job is run, until it is zero, and then no
         # further attempts to run the job are made. If None, taken as the
         # default value for this workflow execution.
