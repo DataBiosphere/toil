@@ -61,6 +61,7 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
+from toil.exceptions import FailedJobsException
 from toil.test.provisioners.aws.awsProvisionerTest import \
     AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
@@ -446,7 +447,6 @@ class CWLWorkflowTest(ToilTest):
         log.info("Running CWL Test Restart.  Expecting failure, then success.")
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
-        from toil.leader import FailedJobsException
 
         outDir = self._createTempDir()
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")

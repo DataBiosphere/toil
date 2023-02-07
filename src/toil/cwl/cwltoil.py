@@ -116,6 +116,7 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
+from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -3570,10 +3571,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         if options.restart:
             try:
                 outobj = toil.restart()
-            except Exception as err:
-                # TODO: We can't import FailedJobsException due to a circular
-                # import but that's what we'd expect here.
-                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+            except FailedJobsException as err:
+                if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(
@@ -3792,13 +3791,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             wf1.cwljob = initialized_job_order
             try:
                 outobj = toil.start(wf1)
-            except Exception as err:
-                # TODO: We can't import FailedJobsException due to a circular
-                # import but that's what we'd expect here.
-                if (
-                    getattr(err, "exit_code", None)
-                    == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-                ):
+            except FailedJobsException as err:
+                if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(

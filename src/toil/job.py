@@ -2120,8 +2120,8 @@ class Job:
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
             job.
             :param toil.job.Job job: root job of the workflow
-            :raises: toil.leader.FailedJobsException if at the end of function \
-            their remain failed jobs.
+            :raises toil.exceptions.FailedJobsException: if at the end of function \
+            there remain failed jobs.
             :return: The return value of the root job's run function.
             :rtype: Any
             """
