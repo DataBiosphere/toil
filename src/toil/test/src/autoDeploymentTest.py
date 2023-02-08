@@ -9,6 +9,7 @@ from toil.test import (ApplianceTestSupport,
                        needs_mesos,
                        slow)
 from toil.version import exactPython
+from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +354,6 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
                 from toil.common import Toil
                 from toil.job import Job
-                from toil.leader import FailedJobsException
 
                 TIMEOUT = 10
 
