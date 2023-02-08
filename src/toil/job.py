@@ -3288,7 +3288,8 @@ def unwrap(p: Promised[T]) -> T:
 
     The "unwrap" terminology is borrowed from Rust.
     """
-    assert not isinstance(p, Promise)
+    if isinstance(p, Promise):
+        raise TypeError(f'Attempted to unwrap a value that is still a Promise: {p}')
     return p
 
 def unwrap_all(p: Sequence[Promised[T]]) -> Sequence[T]:
@@ -3298,8 +3299,9 @@ def unwrap_all(p: Sequence[Promised[T]]) -> Sequence[T]:
 
     The "unwrap" terminology is borrowed from Rust.
     """
-    for item in p:
-        assert not isinstance(item, Promise)
+    for i, item in enumerate(p):
+        if isinstance(item, Promise):
+            raise TypeError(f'Attempted to unwrap a value at index {i} that is still a Promise: {item}')
     return p
 
 class PromisedRequirement:
