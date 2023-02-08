@@ -1,2 +1,5 @@
-miniwdl==1.8.0
+# TODO: Not released yet
+#miniwdl>1.9.0
+# TODO: Switch back from this to released miniwdl
+git+https://github.com/chanzuckerberg/miniwdl.git@b3fd76c4cd031f22d03021eed7a233db87acf78b
 wdlparse==0.1.0
