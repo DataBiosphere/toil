@@ -405,6 +405,10 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         for filename in os.listdir('.'):
             logger.info('I see file: %s', filename)
+            
+        # Right now we want to ban empty globs for testing.
+        if len(results) == 0:
+            raise RuntimeError("Empty glob detected!")
 
         # Just turn them all into WDL File objects with virtualized names.
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results])
@@ -536,15 +540,18 @@ def drop_missing_files(environment: WDLBindings) -> WDLBindings:
 
     # TODO: How do we know all the missing files are actually `File?`?
 
-    def drop_if_missing(filename: str) -> Optional[str]:
+    def drop_if_missing(value_type: WDL.Type.Base, filename: str) -> Optional[str]:
         """
         Return None if a file doesn't exist, or its path if it does.
         """
         if os.path.exists(filename):
             return filename
+        if not value_type.optional:
+            # File needs to exist but doesn't
+            raise FileNotFoundError(filename)
         return None
 
-    return map_over_files_in_bindings(environment, drop_if_missing)
+    return map_over_typed_files_in_bindings(environment, drop_if_missing)
     
 def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     """
@@ -559,7 +566,7 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     map_over_files_in_bindings(environment, lambda x: paths.append(x))
     return paths
 
-def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[str], Optional[str]]) -> WDLBindings:
+def map_over_typed_files_in_bindings(environment: WDLBindings, transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDLBindings:
     """
     Run all File values embedded in the given bindings through the given
     transformation function.
@@ -567,17 +574,27 @@ def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[st
     TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
     """
 
-    return environment.map(lambda b: map_over_files_in_binding(b, transform))
-
-
-def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
+    return environment.map(lambda b: map_over_typed_files_in_binding(b, transform))
+    
+def map_over_files_in_bindings(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
     """
-    Run all File values embedded in the given binding's value through the given
+    Run all File values' types and values embedded in the given bindings
+    through the given transformation function.
+    
+    TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
+    """
+
+    return map_over_typed_files_in_bindings(binding, lambda _, x: transform(x)) 
+
+
+def map_over_typed_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
+    """
+    Run all File values' types and values embedded in the given binding's value through the given
     transformation function.
     """
 
-    return WDL.Env.Binding(binding.name, map_over_files_in_value(binding.value, transform), binding.info)
-
+    return WDL.Env.Binding(binding.name, map_over_typed_files_in_value(binding.value, transform), binding.info)
+    
 # TODO: We want to type this to say, for anything descended from a WDL type, we
 # return something descended from the same WDL type or a null. But I can't
 # quite do that with generics, since you could pass in some extended WDL value
@@ -585,18 +602,25 @@ def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transfor
 #
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
-def map_over_files_in_value(value: WDL.Value.Base, transform: Callable[[str], Optional[str]]) -> WDL.Value.Base:
+def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDL.Value.Base:
     """
     Run all File values embedded in the given value through the given
     transformation function.
 
     If the transform returns None, the file value is changed to Null.
+    
+    The transform has access to the type information for the value, so it knows
+    if it may return None, depending on if the value is optional or not.
     """
 
     if isinstance(value, WDL.Value.File):
         # This is a file so we need to process it
-        new_path = transform(value.value)
+        new_path = transform(value.type, value.value)
         if new_path is None:
+            # We want to drop the value. Make sure that is allowed.
+            if not value.type.optional:
+                # We are trying to drop a file that really needs to exist.
+                raise WDL.Error.NullValue(value.expr)
             return WDL.Value.Null()
         else:
             # Make whatever the value is around the new path.
