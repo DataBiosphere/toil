@@ -243,86 +243,6 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
     # And produce the diff
     return needed - provided
     
-class PathTranslator:
-    """
-    Class for translating paths into and out of a MiniWDL container setup.
-    """
-    
-    def __init__(self, mounts: List[Tuple[str, str, bool]], inside_current_directory: str) -> None:
-        """
-        Given mounts from MiniWDL's prepare_mounts(), in the form of inside
-        path, outside path, r/w flag, create a PathTranslator that can
-        translate paths in and out of the container.
-        
-        Assumes relative paths inside are relative to the provided absolute
-        inside-container current directory.
-        """
-        
-        # Inside to outside is one to one
-        self._inside_to_outside: Dict[str, str] = {}
-        # Outside to inside can be many to one
-        self._outside_to_inside: Dict[str, List[str]] = collections.defaultdict(list)
-        
-        self._inside_current_directory = inside_current_directory
-        
-        for inside, outside, _ in mounts:
-            # Populate with trailing-slash-free, absolute paths.
-            if not inside.startswith('/'):
-                inside = os.path.join(self._inside_current_directory, inside)
-            inside = inside.rstrip('/')
-            outside = os.path.abspath(outside).rstrip('/')
-            self._outside_to_inside[outside].append(inside)
-            self._inside_to_outside[indside] = outside
-        
-    def translate_in(self, outside_path: str) -> str:
-        """
-        Translate a path outside the container to a path inside the container.
-        Throws an error if the path is not going to be mounted into the container.
-        Assumes relative paths are relative to process's current directory.
-        """
-        
-        outside_path = os.path.abspath(outside_path)
-        
-        if outside_path in self._outside_to_inside:
-            # Use any mount point if this file directly
-            return self._outside_to_inside[outside_path][0]
-        
-        for outside_prefix, inside_prefixes in self._outside_to_inside.items():
-            # TODO: Can we use a real prefix data structure to avoid this scan?
-            common_outside_path = os.path.commonpath([outside_prefix, outside_path])
-            if common_outside_path == outside_prefix:
-                # Use any mountpoint of a prefix path
-                return os.path.join(inside_prefixes[0], os.path.relpath(outside_path, outside_prefix))
-        
-        # If we get here it's not mounted
-        raise RuntimeError(f"No mount found for {outside_path} in {list(self._outside_to_inside.keys()}")
-        
-    def translate_out(self, inside_path: str) -> str:
-        """
-        Translate a path inside the container to a path outside the container.
-        Throws an error in the path was not mounted into the container.
-        """
-        
-        if not inside_path.startswith('/'):
-            # This is a relative path and needs to be made absolute by joining
-            # on the inside container working directory.
-            inside_path = os.path.join(self._inside_current_directory, inside_path)
-        
-        if inside_path in self._inside_to_outside:
-            # Use where this was mounted from explicitly
-            return self._inside_to_outside[inside_path]
-        
-        for inside_prefix, outside_prefix= in self._inside_to_outside.items():
-            # TODO: Can we use a real prefix data structure to avoid this scan?
-            common_inside_path = os.path.commonpath([inside_prefix, inside_path])
-            if common_inside_path == inside_prefix:
-                # Use the mountpoint of the prefix path
-                return os.path.join(outside_prefix, os.path.relpath(inside_path, inside_prefix))
-        
-        # If we get here it's not mounted
-        raise RuntimeError(f"No mount found for {inside_path} in {list(self._inside_to_outside.keys()}")
-        
-
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
@@ -349,6 +269,15 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     # Command Section, the fully qualified, localized path to the file is
     # substituted when that declaration is referenced in the command template."
 
+    def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', 'toilfile:']) -> bool:
+        """
+        Decide if a filename is a known kind of URL
+        """
+        for scheme in schemes:
+            if filename.startswith(scheme):
+                return True
+        return False
+    
     def _devirtualize_filename(self, filename: str) -> str:
         """
         'devirtualize' filename passed to a read_* function: return a filename that can be open()ed
@@ -364,8 +293,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_id = FileID.unpack(filename[len("toilfile:") :])
             # And get a local path to the file
             result = self._file_store.readGlobalFile(file_id)
-        elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
-            # This is a URL that we think Toil knows how to read.
+        elif self._is_url(filename):
+            # This is some other URL that we think Toil knows how to read.
             # Import into the job store from here and then download to the node.
             # TODO: Can we predict all the URLs that can be used up front and do them all on the leader, where imports are meant to happen?
             imported = self._file_store.import_file(filename)
@@ -387,12 +316,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         File value
         """
 
-        VIRTUAL_SCHEMES = ['http:', 'https:', 's3:', 'gs:', 'toilfile:']
-        for scheme in VIRTUAL_SCHEMES:
-            if filename.startswith(scheme):
-                # Already virtual
-                logger.info('Virtualized %s as WDL file %s', filename, filename)
-                return filename
+        
+        if self._is_url(filename):
+            # Already virtual
+            logger.info('Virtualized %s as WDL file %s', filename, filename)
+            return filename
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
@@ -406,11 +334,13 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     functions only allowed in task output sections.
     """
 
-    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, translator: Optional[PathTranslator]):
+    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None):
         """
         Set up the standard library for a task output section. Needs to know
-        where standard output and error from the task have been stored, and
-        path translations in and out of the relevant container.
+        where standard output and error from the task have been stored.
+        
+        If current_directory_override is set, resolves relative paths and globs
+        from there instead of from the real current directory.
         """
 
         # Just set up as ToilWDLStdLibBase, but it will call into
@@ -421,8 +351,8 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         self._stdout_path = stdout_path
         self._stderr_path = stderr_path
         
-        # Remember translation
-        self._translator = translator
+        # Remember current directory
+        self._current_directory_override = current_directory_override
 
         # We need to attach implementations for WDL's stdout(), stderr(), and glob().
         # TODO: Can we use the fancy decorators instead of this wizardry?
@@ -472,9 +402,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # So we send a little Bash script that can delimit the files with something, and assume the Bash really is a Bash.
         
         # This needs to run in the work directory that the container used, if any.
-        # TODO: Actually run in the container to support absolute-path globs.
-        # TODO: translate the globs?
-        work_dir = '.' if not self._translator else self._translator.translate_out('')
+        work_dir = '.' if not self._current_directory_override else self._current_directory_override
 
         # TODO: get this to run in the right container if there is one
         # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quotes string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
@@ -500,9 +428,35 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results])
         
     def _devirtualize_filename(self, filename: str) -> str:
+        """
+        Go from a virtualized WDL-side filename to a local disk filename.
+        
+        Any WDL-side filenames which are relative will be relative to the
+        current directory override, if set.
+        """
+        if not self._is_url(filename) and not filename.startswith('/'):
+            # We are getting a bare relative path from the WDL side.
+            # Find a real path to it relative to the current directory override.
+            work_dir = '.' if not self._current_directory_override else self._current_directory_override
+            filename = os.path.join(work_dir, filename)
+            
         return super()._devirtualize_filename(filename)
         
     def _virtualize_filename(self, filename: str) -> str:
+        """
+        Go from a local disk filename to a virtualized WDL-side filename.
+        
+        Any relative paths will be relative to the current directory override,
+        if set, to account for how they might not be *real* devirtualized
+        filenames.
+        """
+    
+        if not self._is_url(filename) and not filename.startswith('/'):
+            # We are getting a bare relative path the supposedly devirtualized side.
+            # Find a real path to it relative to the current directory override.
+            work_dir = '.' if not self._current_directory_override else self._current_directory_override
+            filename = os.path.join(work_dir, filename)
+        
         return super()._virtualize_filename(filename)
 
 def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -622,7 +576,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: List[str] = None) -
 
     return map_over_files_in_bindings(environment, import_file_from_uri)
 
-def drop_missing_files(environment: WDLBindings) -> WDLBindings:
+def drop_missing_files(environment: WDLBindings, current_directory_override: Optional[str] = None) -> WDLBindings:
     """
     Make sure all the File values embedded in the given bindings point to files
     that exist, or are null.
@@ -630,22 +584,20 @@ def drop_missing_files(environment: WDLBindings) -> WDLBindings:
     Files must not be virtualized.
     """
 
-    # TODO: How do we know all the missing files are actually `File?`?
-
+    # Determine where to evaluate relative paths relative to
+    work_dir = '.' if not current_directory_override else current_directory_override
+        
     def drop_if_missing(value_type: WDL.Type.Base, filename: str) -> Optional[str]:
         """
         Return None if a file doesn't exist, or its path if it does.
         """
-        if os.path.exists(filename):
+        effective_path = os.path.abspath(os.path.join(work_dir, filename))
+        if os.path.exists(effective_path):
             return filename
-        logger.debug('File %s with type %s does not actually exist', filename, value_type)
+        logger.debug('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
         if not value_type.optional:
-            # File needs to exist but doesn't
-            # See what does exist
-            tree_results = subprocess.check_output(["tree"]).decode('utf-8')
-            logger.error("Could not find file %s in tree: %s", filename, tree_results)
             # Complain
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), filename)
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), effective_path)
         return None
 
     return map_over_typed_files_in_bindings(environment, drop_if_missing)
@@ -727,17 +679,17 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
             return WDL.Value.File(new_path, value.expr)
     elif isinstance(value, WDL.Value.Array):
         # This is an array, so recurse on the items
-        return WDL.Value.Array(value.type.item_type, [map_over_files_in_value(v, transform) for v in value.value], value.expr)
+        return WDL.Value.Array(value.type.item_type, [map_over_typed_files_in_value(v, transform) for v in value.value], value.expr)
     elif isinstance(value, WDL.Value.Map):
         # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
         # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
-        return WDL.Value.Map(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr)
+        return WDL.Value.Map(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_typed_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr)
     elif isinstance(value, WDL.Value.Pair):
         # This is a pair, so recurse on the left and right items
-        return WDL.Value.Pair(value.type.left_type, value.type.right_type, cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_files_in_value(v, transform) for v in value.value))), value.expr)
+        return WDL.Value.Pair(value.type.left_type, value.type.right_type, cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_typed_files_in_value(v, transform) for v in value.value))), value.expr)
     elif isinstance(value, WDL.Value.Struct):
         # This is a struct, so recurse on the values in the backing dict
-        return WDL.Value.Struct(cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type), {k: map_over_files_in_value(v, transform) for k, v in value.value.items()}, value.expr)
+        return WDL.Value.Struct(cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type), {k: map_over_typed_files_in_value(v, transform) for k, v in value.value.items()}, value.expr)
     else:
         # All other kinds of value can be passed through unmodified.
         return value
@@ -869,18 +821,10 @@ class WDLTaskJob(WDLBaseJob):
             setattr(TaskContainerImplementation, 'toil_initialized__', True)
             # TODO: not thread safe!
         
-        # Make the container object
-        # TODO: What is this?
-        run_id = str(uuid.uuid4())
-        # TODO: What is this?
-        host_dir = os.path.abspath('.')
-        task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
-        
-        # Show the runtime info to the container
-        task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
-        
-        # We might need to translate paths at the output stage in and out of the container.
-        translator: Optional[PathTranslator] = None
+        # Records, if we use a container, where its workdir is on our
+        # filesystem, so we can interpret file anmes and globs relative to
+        # there.
+        workdir_in_container: Optional[str] = None
         
         if self._task.command:
             # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
@@ -889,30 +833,26 @@ class WDLTaskJob(WDLBaseJob):
             # TODO: MiniWDL can parallelize the fetch
             bindings = devirtualize_files(bindings, standard_library)
             
+            # Make the container object
+            # TODO: What is this?
+            run_id = str(uuid.uuid4())
+            # Directory on the host where the conteiner is allowed to put files.
+            host_dir = os.path.abspath('.')
+            # Container working directory is guaranteed (?) to be at "work" inside there
+            workdir_in_container = os.path.join(host_dir, "work")
+            task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
+            
+            # Show the runtime info to the container
+            task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
+            
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             task_container.add_paths(get_file_paths_in_bindings(bindings))
             logger.info("Using container path map: %s", task_container.input_path_map)
             
-            # Get the mounts that will be used for the container, including the working directory.
-            # These are (container path, host path, r/w flag)
-            container_mounts  = task_container.prepare_mounts()
-            # Find the mount of the working directory
-            workdir_in_container: Optional[str] = None
-            for inside, outside, _ in container_mounts:
-                if outside == host_dir:
-                    workdir_in_container = inside
-            if workdir_in_container is None:
-                # We need to be able to find this or we can't translate paths.
-                raise RuntimeError(f"Could not find host workdir {host_dir} in container mounts {container_mounts}")
-            # Get the cointainer path translator widget
-            translator = PathTranslator(container_mounts, workdir_in_container)
-            
-            
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
-            # TODO: Do we have to make the *entire* task appear to run in the container if we do things like read files from the container in the inputs with the read functions and absolute paths? MiniWDL does.
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
             
             # Work out the command string, and unwrap it
@@ -929,17 +869,21 @@ class WDLTaskJob(WDLBaseJob):
                     logger.info('Standard output at %s: %s', task_container.host_stdout_txt(), open(task_container.host_stdout_txt()).read())
 
         # Evaluate all the outputs in their special library context
-        # TODO: Don't we need to map from container paths back to ours somehow?
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, task_container.host_stdout_txt(), task_container.host_stderr_txt(), translator)
+        # We need to evaluate globs and relative paths relative to the
+        # container's workdir if any, but everything else doesn't need to seem
+        # to run in the container; there's no way to go from
+        # container-determined strings that are absolute paths to WDL File
+        # objects, and like MiniWDL we can say we only support
+        # working-directory-based relative paths for globs.
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, task_container.host_stdout_txt(), task_container.host_stderr_txt(), current_directory_override=workdir_in_container)
         output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
+            
+        # Drop any files from the output which don't actually exist, if they are allowed to not exist
+        output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
 
-        # Drop any files from the output which don't actually exist
-        # TODO: Check if the type allows the file not to exist!
-        output_bindings = drop_missing_files(output_bindings)
-
-        # Upload any files in the outputs if not uploaded already
+        # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
 
         return output_bindings
