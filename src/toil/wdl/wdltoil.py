@@ -160,12 +160,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_id = FileID.unpack(filename[len("toilfile:") :])
             # And get a local path to the file
             result = self._file_store.readGlobalFile(file_id)
-        elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:'):
+        elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
             # This is a URL that we think Toil knows how to read.
             # Import into the job store from here and then download to the node.
             # TODO: Can we predict all the URLs that can be used up front and do them all on the leader, where imports are meant to happen?
             imported = self._file_store.import_file(filename)
-            assert imported is not None
+            if imported is None:
+                raise FileNotFoundError(f"Could not import URL {filename}")
             # And get a local path to the file
             result = self._file_store.readGlobalFile(imported)
         else:
@@ -367,7 +368,7 @@ def drop_missing_files(environment: WDLBindings) -> WDLBindings:
     Files must not be virtualized.
     """
 
-    # TODO: Howe do we know all the missing files are actually `File?`?
+    # TODO: How do we know all the missing files are actually `File?`?
 
     def drop_if_missing(filename: str) -> Optional[str]:
         """
@@ -1122,10 +1123,11 @@ def main() -> None:
                 toil.exportFile(file_id, dest_name)
                 # And return where we put it
                 return dest_name
-            elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:'):
+            elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
                 # This is a URL that we think Toil knows how to read.
                 imported = toil.import_file(filename)
-                assert imported is not None
+                if imported is None:
+                    raise FileNotFoundError(f"Could not import URL {filename}")
                 # Do the same as we do for files we actually made.
                 dest_name = os.path.join(output_directory, str(uuid.uuid4()))
                 toil.exportFile(file_id, dest_name)
