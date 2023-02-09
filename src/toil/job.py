@@ -750,7 +750,7 @@ class JobDescription(Requirer):
         # Set scheduling properties that the leader read to think about scheduling.
 
         # The number of times the job should be attempted. Includes the initial
-        # try, plus the nu,ber of times to retry if the job fails. This number
+        # try, plus the number of times to retry if the job fails. This number
         # is reduced each time the job is run, until it is zero, and then no
         # further attempts to run the job are made. If None, taken as the
         # default value for this workflow execution.
@@ -2121,8 +2121,8 @@ class Job:
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
             job.
             :param toil.job.Job job: root job of the workflow
-            :raises: toil.leader.FailedJobsException if at the end of function \
-            their remain failed jobs.
+            :raises toil.exceptions.FailedJobsException: if at the end of function \
+            there remain failed jobs.
             :return: The return value of the root job's run function.
             :rtype: Any
             """

@@ -142,7 +142,7 @@ rerun a job retryCount number of times before marking it fully failed.
 In the common scenario that a small subset of jobs fail (including retry
 attempts) within a workflow Toil will continue to run other jobs until it can
 do no more, at which point :func:`toil.common.Toil.start` will raise a
-:exc:`toil.leader.FailedJobsException` exception. Typically at this point
+:exc:`toil.exceptions.FailedJobsException` exception. Typically at this point
 the user can decide to fix the script and resume the workflow or delete the
 job-store manually and rerun the complete workflow.
 
