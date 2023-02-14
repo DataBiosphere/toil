@@ -20,7 +20,7 @@ import signal
 
 from toil.common import Toil
 from toil.job import Job
-from toil.leader import FailedJobsException
+from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
