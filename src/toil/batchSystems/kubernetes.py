@@ -1798,9 +1798,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # it is not reliable to loop through the queue and try to
                 # delete it. Instead, let's keep track of it and don't submit
                 # when we encounter it.
-                # TODO: this could get arbitrarily big if we kill a lot of jobs
-                # that aren't actually running or in the queue (maybe because
-                # they finished?)
                 with self._work_available:
                     self._killed_queue_jobs.add(job_id)
 
