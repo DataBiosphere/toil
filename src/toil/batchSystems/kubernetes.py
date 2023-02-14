@@ -259,7 +259,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self._killed_queue_jobs: Set[int] = set()
 
         # We use this event to signal shutdown
-        self.shutting_down = Event()
+        self._shutting_down = Event()
 
         # A condition set to true when there is more work to do. e.g.: new job
         # in the queue or any resource becomes available.
@@ -267,9 +267,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         self.schedulingThread = Thread(target=self._scheduler, daemon=True)
         self.schedulingThread.start()
-
-        logger.warning("On branch issues/2864-k8s-queue-jobs")
-        logger.warning(f"available resources: {maxMillicores} cores, {self.maxMemory} memory, {self.maxDisk} disk")
 
     def _pretty_print(self, kubernetes_object: Any) -> str:
         """
@@ -556,7 +553,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Wait until we get notified to do work.
                 self._work_available.wait()
 
-                if self.shutting_down.is_set():
+                if self._shutting_down.is_set():
                     # We're shutting down.
                     logger.info("Shutting down scheduler thread.")
                     break
@@ -900,8 +897,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         # TODO: accelerators?
 
-        # What pools and sets do we want resources from
-
         for resource, request in zip(self.resource_sources, resources):
             assert isinstance(resource, ResourcePool) and isinstance(request, int)
             resource.release(request)
@@ -1001,7 +996,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 logger.warning(f"Cannot get the acquired resources from {job_name}")
                 return
             self._release_acquired_resources(resources, notify=resource_notify)
-
+            del self._acquired_resources[job_name]
 
     def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
@@ -1672,7 +1667,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.shutdownLocal()
 
         # Shutdown scheduling thread
-        self.shutting_down.set()
+        self._shutting_down.set()
         with self._work_available:
             self._work_available.notify_all()   # Wake it up.
 
@@ -1739,7 +1734,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def getIssuedBatchJobIDs(self) -> List[int]:
         # Make sure to send the local jobs and queued jobs also
-        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + list(self._queued_job_ids)
+        with self._work_available:
+            return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + list(self._queued_job_ids)
 
     def _get_start_time(self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None) -> datetime.datetime:
         """
@@ -1802,11 +1798,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # it is not reliable to loop through the queue and try to
                 # delete it. Instead, let's keep track of it and don't submit
                 # when we encounter it.
-                self._killed_queue_jobs.add(job_id)
+                # TODO: this could get arbitrarily big if we kill a lot of jobs
+                # that aren't actually running or in the queue (maybe because
+                # they finished?)
+                with self._work_available:
+                    self._killed_queue_jobs.add(job_id)
 
-                # Make sure we don't keep track of it for getIssuedBatchJobIDs().
-                if job_id in self._queued_job_ids:
-                    self._queued_job_ids.remove(job_id)
+                    # Make sure we don't keep track of it for getIssuedBatchJobIDs().
+                    if job_id in self._queued_job_ids:
+                        self._queued_job_ids.remove(job_id)
 
                 continue
             # Work out what the job would be named
