@@ -28,7 +28,7 @@ from queue import Empty, Queue
 import string
 import sys
 import tempfile
-from threading import Event, Thread, Condition
+from threading import Event, Thread, Condition, RLock
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
@@ -261,9 +261,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # We use this event to signal shutdown
         self._shutting_down = Event()
 
+        # A lock to protect critical regions when working with queued jobs.
+        self._mutex = RLock()
+
         # A condition set to true when there is more work to do. e.g.: new job
         # in the queue or any resource becomes available.
-        self._work_available = Condition()
+        self._work_available = Condition(lock=self._mutex)
 
         self.schedulingThread = Thread(target=self._scheduler, daemon=True)
         self.schedulingThread.start()
@@ -1726,16 +1729,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Get the issued batch job IDs that are not for local jobs.
         """
         jobIDs = []
-        got_list = self._ourJobObject()
-        for job in got_list:
-            # Get the ID for each job
-            jobIDs.append(self._getIDForOurJob(job))
+        with self._mutex:
+            got_list = self._ourJobObject()
+            for job in got_list:
+                # Get the ID for each job
+                jobIDs.append(self._getIDForOurJob(job))
         return jobIDs
 
     def getIssuedBatchJobIDs(self) -> List[int]:
         # Make sure to send the local jobs and queued jobs also
-        with self._work_available:
-            return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + list(self._queued_job_ids)
+        with self._mutex:
+            queued_jobs = list(self._queued_job_ids)
+        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + queued_jobs
 
     def _get_start_time(self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None) -> datetime.datetime:
         """
@@ -1798,7 +1803,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # it is not reliable to loop through the queue and try to
                 # delete it. Instead, let's keep track of it and don't submit
                 # when we encounter it.
-                with self._work_available:
+                with self._mutex:
                     self._killed_queue_jobs.add(job_id)
 
                     # Make sure we don't keep track of it for getIssuedBatchJobIDs().
