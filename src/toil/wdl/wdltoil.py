@@ -887,8 +887,8 @@ class WDLTaskJob(WDLBaseJob):
                 # Split up each spec as space-separated. We assume no fields
                 # are empty, and we want to allow people to use spaces after
                 # their commas when separating the list, like in Cromwell's
-                # examples, so we trim.
-                spec_parts = spec.trim().split(' ')
+                # examples, so we strip whitespace.
+                spec_parts = spec.strip().split(' ')
                 if len(spec_parts) != 3:
                     # TODO: Add a WDL line to this error 
                     raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not have 3 space-separated parts")
@@ -907,9 +907,9 @@ class WDLTaskJob(WDLBaseJob):
                 # likely-to-change Cromwell detail.
                 if spec_parts[2] == 'LOCAL':
                     logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-            total_bytes = convert_units(total_gb, 'GB')
+            total_bytes: float = convert_units(total_gb, 'GB')
             if total_bytes > self.disk:
-                runtime_disk = total_bytes
+                runtime_disk = int(total_bytes)
                 logger.info('Need to reschedule to get %s disk, have %s', runtime_disk, self.disk)
             
         if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
@@ -943,7 +943,7 @@ class WDLTaskJob(WDLBaseJob):
             # TODO: What if the runtime section says we need a lot of disk to hold the large files that the inputs section is going to write???
             rescheduled = WDLTaskJob(self._task, self._prev_node_results, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
             # Run that as a child
-            self.addChildJob(rescheduled)
+            self.addChild(rescheduled)
             # And return its result.
             return rescheduled.rv()
             
