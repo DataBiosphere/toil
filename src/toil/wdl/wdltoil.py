@@ -257,12 +257,15 @@ def pack_toil_uri(file_id: FileID, file_basename: str) -> str:
     Encode a Toil file ID and its source path in a URI that starts with the scheme in TOIL_URI_SCHEME.
     """
     
-    # We urlencode everything, including any slashes, and use a fragment for the filename
-    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}#{quote(file_basename, safe='')}"
+    # We urlencode everything, including any slashes. We need to use a slash to
+    # set off the actual filename, so the WDL standard library basename
+    # function works correctly.
+    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(file_basename, safe='')}"
     
 def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
     """
-    Unpack a URI made by make_toil_uri to retrieve the FileID and the basename (no path prefix) that the file is supposed to have.
+    Unpack a URI made by make_toil_uri to retrieve the FileID and the basename
+    (no path prefix) that the file is supposed to have.
     """
     
     # Split out scheme and rest of URL
@@ -272,9 +275,9 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
     if parts[0] + ':' != TOIL_URI_SCHEME:
         raise ValueError(f"URI doesn't start with {TOIL_URI_SCHEME} and should: {toil_uri}")
     # Split encoded file ID from filename
-    parts = parts[1].split('#')
+    parts = parts[1].split('/')
     if len(parts) != 2:
-        raise ValueError(f"Wrong number of fragments in URI: {toil_uri}")
+        raise ValueError(f"Wrong number of path segments in URI: {toil_uri}")
     file_id = FileID.unpack(unquote(parts[0]))
     file_basename = unquote(parts[1])
     
@@ -1373,7 +1376,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
 
-    def run(self, file_sore: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Actually produce the array-ified bindings now that promised values are available.
         """
@@ -1589,7 +1592,7 @@ def main() -> None:
                               "values as JSON, while 'miniwld' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory in which to save output files."))
+                        help=("Directory in which to save output files. By default a new directory is created in the current directory."))
 
     options = parser.parse_args(sys.argv[1:])
 
@@ -1600,7 +1603,8 @@ def main() -> None:
 
     # Make sure we have an output directory and we don't need to ever worry
     # about a None, and MyPy knows it.
-    output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp()
+    # If we don't have a directory assigned, make one in the current directory.
+    output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp(prefix='wdl-out-', dir=os.getcwd())
     if not os.path.isdir(output_directory):
         # Make sure it exists
         os.mkdir(output_directory)
