@@ -20,14 +20,18 @@ import subprocess
 import time
 import traceback
 from argparse import ArgumentParser, _ArgumentGroup
-from contextlib import contextmanager
 from queue import Empty, Queue
-from threading import Condition, Event, Lock, Thread
+from threading import Event, Lock, Thread
 from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
-from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE, BatchSystemSupport, UpdatedBatchJobInfo, InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchSystemSupport,
+                                                   ResourcePool,
+                                                   ResourceSet,
+                                                   UpdatedBatchJobInfo,
+                                                   InsufficientSystemResources)
 
 from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
@@ -844,184 +848,3 @@ class Info:
         self.popen = popen
         self.resources = resources
         self.killIntended = killIntended
-
-class AcquisitionTimeoutException(Exception):
-    """To be raised when a resource request times out."""
-    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]):
-        """
-        Creates an instance of this exception that indicates which resource is insufficient for
-        current demands, as well as the resources requested and actually available.
-
-        :param str resource: string representing the resource type
-
-        :param requested: the resources requested that resulted in this exception
-
-        :param available: the resources actually available
-        """
-        self.requested = requested
-        self.available = available
-        self.resource = resource
-
-class ResourcePool:
-    """
-    Represents an integral amount of a resource (such as memory bytes).
-
-    Amounts can be acquired immediately or with a timeout, and released.
-
-    Provides a context manager to do something with an amount of resource
-    acquired.
-    """
-    def __init__(self, initial_value: int, resource_type: str, timeout=5):
-        super().__init__()
-        # We use this condition to signal everyone whenever some resource is released.
-        # We use its associated lock to guard value.
-        self.condition = Condition()
-        # This records how much resource is available right now.
-        self.value = initial_value
-        self.resource_type = resource_type
-        self.timeout = timeout
-
-    def acquireNow(self, amount):
-        """
-        Reserve the given amount of the given resource.
-
-        Returns True if successful and False if this is not possible immediately.
-        """
-
-        with self.condition:
-            if amount > self.value:
-                return False
-            self.value -= amount
-            self.__validate()
-            return True
-
-
-    def acquire(self, amount):
-        """
-        Reserve the given amount of the given resource.
-
-        Raises AcquisitionTimeoutException if this is not possible in under
-        self.timeout time.
-        """
-        with self.condition:
-            startTime = time.time()
-            while amount > self.value:
-                if time.time() - startTime >= self.timeout:
-                    # This means the thread timed out waiting for the resource.
-                    raise AcquisitionTimeoutException(resource=self.resource_type,
-                                                      requested=amount, available=self.value)
-                # Allow self.timeout seconds to get the resource, else quit
-                # through the above if condition. This wait + timeout is the
-                # last thing in the loop such that a request that takes longer
-                # than self.timeout due to multiple wakes under the threshold
-                # are still honored.
-                self.condition.wait(timeout=self.timeout)
-            self.value -= amount
-            self.__validate()
-
-    def release(self, amount):
-        with self.condition:
-            self.value += amount
-            self.__validate()
-            self.condition.notify_all()
-
-    def __validate(self):
-        assert 0 <= self.value
-
-    def __str__(self):
-        return str(self.value)
-
-    def __repr__(self):
-        return "ResourcePool(%i)" % self.value
-
-    @contextmanager
-    def acquisitionOf(self, amount):
-        self.acquire(amount)
-        try:
-            yield
-        finally:
-            self.release(amount)
-
-class ResourceSet:
-    """
-    Represents a collection of distinct resources (such as accelerators).
-
-    Subsets can be acquired immediately or with a timeout, and released.
-
-    Provides a context manager to do something with a set of of resources
-    acquired.
-    """
-    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5):
-        super().__init__()
-        # We use this condition to signal everyone whenever some resource is released.
-        # We use its associated lock to guard value.
-        self.condition = Condition()
-        # This records what resources are available right now.
-        self.value = initial_value
-        self.resource_type = resource_type
-        self.timeout = timeout
-
-    def acquireNow(self, subset: Set[int]):
-        """
-        Reserve the given amount of the given resource.
-
-        Returns True if successful and False if this is not possible immediately.
-        """
-
-        with self.condition:
-            if subset > self.value:
-                return False
-            self.value -= subset
-            return True
-
-    def acquire(self, subset: Set[int]):
-        """
-        Reserve the given amount of the given resource.
-
-        Raises AcquisitionTimeoutException if this is not possible in under
-        self.timeout time.
-        """
-        with self.condition:
-            startTime = time.time()
-            while subset > self.value:
-                if time.time() - startTime >= self.timeout:
-                    # This means the thread timed out waiting for the resource.
-                    raise AcquisitionTimeoutException(resource=self.resource_type,
-                                                      requested=subset, available=self.value)
-                # Allow self.timeout seconds to get the resource, else quit
-                # through the above if condition. This wait + timeout is the
-                # last thing in the loop such that a request that takes longer
-                # than self.timeout due to multiple wakes under the threshold
-                # are still honored.
-                self.condition.wait(timeout=self.timeout)
-            self.value -= subset
-
-    def release(self, subset: Set[int]):
-        with self.condition:
-            self.value |= subset
-            self.condition.notify_all()
-
-    def get_free_snapshot(self) -> Set[int]:
-        """
-        Get a snapshot of what items are free right now.
-        May be stale as soon as you get it, but you will need some kind of hint
-        to try and do an acquire.
-        """
-        return set(self.value)
-
-    def __str__(self):
-        return str(self.value)
-
-    def __repr__(self):
-        return "ResourceSet(%s)" % self.value
-
-    @contextmanager
-    def acquisitionOf(self, subset: Set[int]):
-        self.acquire(subset)
-        try:
-            yield
-        finally:
-            self.release(subset)
-
-
-
