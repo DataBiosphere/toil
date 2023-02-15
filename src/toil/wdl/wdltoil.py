@@ -39,10 +39,11 @@ from WDL.runtime.backend.singularity import SingularityContainer
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
-from toil.job import Job, JobFunctionWrappingJob, Promise, Promised, unwrap, unwrap_all
+from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.lib.conversions import convert_units, human2bytes
 
 logger = logging.getLogger(__name__)
 
@@ -847,9 +848,108 @@ class WDLTaskJob(WDLBaseJob):
 
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
-
-        # TODO: Re-schedule if we need more resources
         
+        # Fill these in with not-None if we need to bump up our resources from what we have available.
+        # TODO: Can this break out into a function somehow?
+        runtime_memory: Optional[int] = None
+        runtime_cores: Optional[float] = None
+        runtime_disk: Optional[int] = None
+        runtime_accelerators: Optional[List[AcceleratorRequirement]] = None
+        
+        if runtime_bindings.has_binding('cpu'):
+            cpu_spec: int = runtime_bindings.resolve('cpu').value
+            if cpu_spec > self.cores:
+                # We need to get more cores
+                runtime_cores = float(cpu_spec)
+                logger.info('Need to reschedule to get %s cores; have %s', runtime_cores, self.cores)
+        
+        if runtime_bindings.has_binding('memory'):
+            # Get the memory requirement and convert to bytes
+            memory_spec: Union[int, str] = runtime_bindings.resolve('memory').value
+            if isinstance(memory_spec, str):
+                memory_spec = human2bytes(memory_spec)
+            
+            if memory_spec < self.memory:
+                # We need to go get more memory
+                runtime_memory = memory_spec
+                logger.info('Need to reschedule to get %s memory; have %s', runtime_memory, self.memory)
+                
+        if runtime_bindings.has_binding('disks'):
+            # Miniwdl doesn't have this, but we need to be able to parse things like:
+            # local-disk 5 SSD
+            # which would mean we need 5 GB space. Cromwell docs for this are at https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#disks
+            # We ignore all disk types, and complain if the mount point is not `local-disk`.
+            disks_spec: str = runtime_bindings.resolve('disks').value
+            all_specs = disks_spec.split(',')
+            # Sum up the gigabytes in each disk specification
+            total_gb = 0
+            for spec in all_specs:
+                # Split up each spec as space-separated. We assume no fields
+                # are empty, and we want to allow people to use spaces after
+                # their commas when separating the list, like in Cromwell's
+                # examples, so we trim.
+                spec_parts = spec.trim().split(' ')
+                if len(spec_parts) != 3:
+                    # TODO: Add a WDL line to this error 
+                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not have 3 space-separated parts")
+                if spec_parts[0] != 'local-disk':
+                    # TODO: Add a WDL line to this error
+                    raise NotImplementedError(f"Could not provide disks = {disks_spec} because only the local-disks mount point is implemented")
+                try:
+                    total_gb += int(spec_parts[1])
+                except:
+                    # TODO: Add a WDL line to this error
+                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec_parts[1]} is not an integer")
+                # TODO: we always ignore the disk type and assume we have the right one.
+                # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+                # can't imagine that ever being standardized; just leave it
+                # alone so that the workflow doesn't rely on this weird and
+                # likely-to-change Cromwell detail.
+                if spec_parts[2] == 'LOCAL':
+                    logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
+            total_bytes = convert_units(total_gb, 'GB')
+            if total_bytes > self.disk:
+                runtime_disk = total_bytes
+                logger.info('Need to reschedule to get %s disk, have %s', runtime_disk, self.disk)
+            
+        if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
+            # We want to have GPUs
+            # Get the GPU gount if set, or 1 if not,
+            gpu_count: int = runtime_bindings.get('gpuCount', WDL.Value.Int(1)).value
+            # Get the GPU model constraint if set, or None if not
+            gpu_model: Optional[str] = runtime.bindings.get('gpuType', WDL.Value.Null()).value
+            # We can't enforce a driver version, but if an nvidia driver
+            # version is set, manually set nvidia brand
+            gpu_brand: Optional[str] = 'nvidia' if runtime.bindings.has_binding('nvidiaDriverVersion') else None
+            # Make a dict from this
+            accelerator_spec = {'kind': 'gpu', 'count': gpu_count}
+            if gpu_model:
+                accelerator_spec['model'] = gpu_model
+            if gpu_brand:
+                accelerator_spec['brand'] = gpu_brand
+                
+            accelerator_requirement = AcceleratorRequirement.parse(accelerator_spec)
+            
+            if not accelerator_requirement.fully_satisfied_by(self.accelerators):
+                # We need more accelerators
+                runtime_accelerators = [accelerator_requirement]
+                logger.info('Need to reschedule to get %s accelerators, have %s', runtime_accelerators, self.accelerators)
+                
+        if runtime_cores or runtime_memory or runtime_disk or runtime_accelerators:
+            # We need to reschedule.
+            logger.info('Rescheduling %s with more resources', self)
+            # Make the new copy of this job with more resources.
+            # TODO: We don't pass along the input or runtime bindings, so they need to get re-evaluated. If we did pass them, we'd have to make sure to upload local files made by WDL code in the inputs/runtime sections and pass along that environment. Right now we just re-evaluate that whole section once we have the requested resources.
+            # TODO: What if the runtime section says we need a lot of disk to hold the large files that the inputs section is going to write???
+            rescheduled = WDLTaskJob(self._task, self._prev_node_results, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
+            # Run that as a child
+            self.addChildJob(rescheduled)
+            # And return its result.
+            return rescheduled.rv()
+            
+        # If we get here we have all the resources we need, so run the task
+            
+       
         # Set up the MiniWDL container running stuff
         TaskContainerImplementation = SingularityContainer
         miniwdl_logger = logging.getLogger("MiniWDLContainers")

@@ -314,7 +314,28 @@ class AcceleratorRequirement(TypedDict):
                     return False
         # If all these match or are more specific than required, we match!
         return True
-
+        
+    def fully_satisfied_by(self, candidates: Optional[List['AcceleratorRequirement']]) -> bool:
+        """
+        Return True if this AcceleratorRequirement is fully satisfied by the
+        requirements in the list (i.e. check all fields including count).
+        """
+        
+        count_remaining = self['count']
+        
+        if candidates:
+            for candidate in candidates:
+                if AcceleratorRequirement.satisfies(candidate, self):
+                    if candidate['count'] > count_remaining:
+                        # We found all the matching accelerators we need
+                        count_remaining = 0
+                        break
+                    else:
+                        count_remaining -= candidate['count']
+        
+        # If we have no count left we are fully satisfied
+        return count_remaining == 0
+       
 class RequirementsDict(TypedDict):
     """
     Typed storage for requirements for a job, where requirement values are of
