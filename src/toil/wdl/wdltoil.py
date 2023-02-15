@@ -128,7 +128,7 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
             # TODO: we need to assume any error is just a not-found,
             # because the exceptions thrown by read_from_url()
             # implementations are not specified.
-            logger.debug('Tried to fetch %s from %s based off of %s but got %s', uri, candidate_uri, candidate_base, e)
+            logger.debug('Tried to fetch %s from %s but got %s', uri, candidate_uri, e)
             continue
         # If we get here, we got it probably.
         try:
@@ -586,7 +586,7 @@ def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBi
 
     return map_over_files_in_bindings(environment, stdlib._virtualize_filename)
 
-def import_files(environment: WDLBindings, toil: Toil, path: List[str] = None) -> WDLBindings:
+def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]] = None) -> WDLBindings:
     """
     Make sure all File values embedded in the given bindings are imported,
     using the given Toil object.
@@ -676,7 +676,7 @@ def map_over_typed_files_in_bindings(environment: WDLBindings, transform: Callab
 
     return environment.map(lambda b: map_over_typed_files_in_binding(b, transform))
     
-def map_over_files_in_bindings(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
+def map_over_files_in_bindings(bindings: WDLBindings, transform: Callable[[str], Optional[str]]) -> WDLBindings:
     """
     Run all File values' types and values embedded in the given bindings
     through the given transformation function.
@@ -684,7 +684,7 @@ def map_over_files_in_bindings(binding: WDL.Env.Binding[WDL.Value.Base], transfo
     TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
     """
 
-    return map_over_typed_files_in_bindings(binding, lambda _, x: transform(x)) 
+    return map_over_typed_files_in_bindings(bindings, lambda _, x: transform(x)) 
 
 
 def map_over_typed_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
@@ -767,7 +767,9 @@ class WDLBaseJob(Job):
         # TODO: Make sure C-level stack size is also big enough for this.
         sys.setrecursionlimit(10000)
 
-    def run(self, file_store: AbstractFileStore) -> None:
+    # TODO: We're not allowed by MyPy to override a method and widen the return
+    # type, so this has to be Any.
+    def run(self, file_store: AbstractFileStore) -> Any:
         """
         Run a WDL-related job.
         """
@@ -825,7 +827,7 @@ class WDLTaskJob(WDLBaseJob):
         self._task = task
         self._prev_node_results = prev_node_results
 
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually run the task.
         """
@@ -914,23 +916,28 @@ class WDLTaskJob(WDLBaseJob):
             
         if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
             # We want to have GPUs
+            # TODO: actually coerce types here instead of casting to detect user mistakes
             # Get the GPU gount if set, or 1 if not,
-            gpu_count: int = runtime_bindings.get('gpuCount', WDL.Value.Int(1)).value
+            gpu_count: int = cast(WDL.Value.Int, runtime_bindings.get('gpuCount', WDL.Value.Int(1))).value
             # Get the GPU model constraint if set, or None if not
-            gpu_model: Optional[str] = runtime.bindings.get('gpuType', WDL.Value.Null()).value
+            gpu_model: Optional[str] = cast(Union[WDL.Value.String, WDL.Value.Null], runtime_bindings.get('gpuType', WDL.Value.Null())).value
             # We can't enforce a driver version, but if an nvidia driver
             # version is set, manually set nvidia brand
-            gpu_brand: Optional[str] = 'nvidia' if runtime.bindings.has_binding('nvidiaDriverVersion') else None
+            gpu_brand: Optional[str] = 'nvidia' if runtime_bindings.has_binding('nvidiaDriverVersion') else None
             # Make a dict from this
-            accelerator_spec = {'kind': 'gpu', 'count': gpu_count}
-            if gpu_model:
+            accelerator_spec: Dict[str, Union[str, int]] = {'kind': 'gpu', 'count': gpu_count}
+            if gpu_model is not None:
                 accelerator_spec['model'] = gpu_model
-            if gpu_brand:
+            if gpu_brand is not None:
                 accelerator_spec['brand'] = gpu_brand
                 
-            accelerator_requirement = AcceleratorRequirement.parse(accelerator_spec)
+            # TODO: MyPy thinks this attribute doesn't exist for no good reason.
+            parse_function: Callable[[Union[int, str, Dict[str, Union[str, int]]]], AcceleratorRequirement] = AcceleratorRequirement.parse #  type: ignore
+            accelerator_requirement = parse_function(accelerator_spec)
             
-            if not accelerator_requirement.fully_satisfied_by(self.accelerators):
+            # It also doesn't think we have this check fuunction
+            check_function: Callable[[Optional[List[AcceleratorRequirement]]], bool] = accelerator_requirement.fully_satisfied_by #  type: ignore
+            if not check_function(self.accelerators):
                 # We need more accelerators
                 runtime_accelerators = [accelerator_requirement]
                 logger.info('Need to reschedule to get %s accelerators, have %s', runtime_accelerators, self.accelerators)
@@ -1008,15 +1015,29 @@ class WDLTaskJob(WDLBaseJob):
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, standard_library).coerce(WDL.Type.String()).value
             
+            # Grab the standard out and error paths. MyPy complains if we call
+            # them because in the current MiniWDL version they are untyped.
+            # TODO: MyPy will complain if we accomodate this and they later
+            # become typed.
+            host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
+            host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
+            
+            
             # Run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
             try:
                 task_container.run(miniwdl_logger, command_string)
             finally:
-                if os.path.exists(task_container.host_stderr_txt()):
-                    logger.info('Standard error at %s: %s', task_container.host_stderr_txt(), open(task_container.host_stderr_txt()).read())
-                if os.path.exists(task_container.host_stdout_txt()):
-                    logger.info('Standard output at %s: %s', task_container.host_stdout_txt(), open(task_container.host_stdout_txt()).read())
+                if os.path.exists(host_stderr_txt):
+                    logger.info('Standard error at %s: %s', host_stderr_txt, open(host_stderr_txt).read())
+                if os.path.exists(host_stdout_txt):
+                    logger.info('Standard output at %s: %s', host_stdout_txt, open(host_stdout_txt).read())
+                    
+        else:
+            # We need to fake stdout and stderr, since tnothing ran but the
+            # standard library lets you grab them. TODO: Can these be None?
+            host_stdout_txt = "/dev/null"
+            host_stderr_txt = "/dev/null"
 
         # Evaluate all the outputs in their special library context
         # We need to evaluate globs and relative paths relative to the
@@ -1025,7 +1046,7 @@ class WDLTaskJob(WDLBaseJob):
         # container-determined strings that are absolute paths to WDL File
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, task_container.host_stdout_txt(), task_container.host_stderr_txt(), current_directory_override=workdir_in_container)
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
         output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
@@ -1426,7 +1447,10 @@ class WDLScatterJob(WDLSectionJob):
             # duration of the body.
             local_bindings: WDLBindings = WDL.Env.Bindings()
             local_bindings = local_bindings.bind(self._scatter.variable, item)
-            scatter_jobs.append(self.create_subgraph(self._scatter.body, self._scatter.gathers.values(), bindings, local_bindings))
+            # TODO: We need to turn values() into a list because MyPy seems to
+            # think a dict_values isn't a Sequence. This is a waste of time to
+            # appease MyPy but probably better than a cast?
+            scatter_jobs.append(self.create_subgraph(self._scatter.body, list(self._scatter.gathers.values()), bindings, local_bindings))
 
         if len(scatter_jobs) == 0:
             # No scattering is needed. We just need to bind all the names.
@@ -1437,7 +1461,7 @@ class WDLScatterJob(WDLSectionJob):
             # if nothing in the scatter actually runs. This should be some kind of
             # empty array.
             empty_array = WDL.Value.Array(WDL.Type.Any(optional=True, null=True), [])
-            return self.make_gather_bindings(self._scatter.gathers.values(), empty_array)
+            return self.make_gather_bindings(list(self._scatter.gathers.values()), empty_array)
 
         # Otherwise we actually have some scatter jobs.
 
@@ -1548,13 +1572,13 @@ class WDLConditionalJob(WDLSectionJob):
             # Evaluated to true!
             logger.info('Condition is true')
             # Run the body and return its effects
-            body_job = self.create_subgraph(self._conditional.body, self._conditional.gathers.values(), bindings)
+            body_job = self.create_subgraph(self._conditional.body, list(self._conditional.gathers.values()), bindings)
             return body_job.rv()
         else:
             logger.info('Condition is false')
             # Return the input bindings and null bindings for all our gathers.
             # Should not collide at all.
-            gather_bindings = self.make_gather_bindings(self._conditional.gathers.values(), WDL.Value.Null())
+            gather_bindings = self.make_gather_bindings(list(self._conditional.gathers.values()), WDL.Value.Null())
             return combine_bindings([bindings, gather_bindings])
 
 class WDLWorkflowJob(WDLSectionJob):
@@ -1791,7 +1815,7 @@ def main() -> None:
                     raise FileNotFoundError(f"Could not import URL {filename}")
                 # Get a basename from the URL.
                 # TODO: Deal with name collisions
-                file_basename = os.path.basename(urlsplit(candidate_url).path)
+                file_basename = os.path.basename(urlsplit(filename).path)
                 # Do the same as we do for files we actually made.
                 dest_name = os.path.join(output_directory, file_basename)
                 toil.exportFile(imported, dest_name)
