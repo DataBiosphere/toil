@@ -1130,7 +1130,7 @@ def main() -> None:
                     raise FileNotFoundError(f"Could not import URL {filename}")
                 # Do the same as we do for files we actually made.
                 dest_name = os.path.join(output_directory, str(uuid.uuid4()))
-                toil.exportFile(file_id, dest_name)
+                toil.exportFile(imported, dest_name)
                 return dest_name
             else:
                 # Not a fancy file
