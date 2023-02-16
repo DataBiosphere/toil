@@ -529,6 +529,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         algorithm, so if the job requires different kinds of accelerators, and
         some accelerators available can match multiple requirements, then it is
         possible that a solution will not be found.
+        
+        Ignores accelerator model constraints.
         """
         accelerators_needed: Set[int] = set()
         accelerators_still_available = set(available_accelerator_ids)
@@ -540,8 +542,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # Check all the ones we haven't grabbed yet
                     # TODO: We'll re-check early ones against this requirement if it has a count of more than one.
                     candidate = self.accelerator_identities[candidate_index]
-                    if AcceleratorRequirement.satisfies(candidate, requirement):
-                        # If this accelerator can satisfy one unit of this requirement
+                    if AcceleratorRequirement.satisfies(candidate, requirement, ignore=['model']):
+                        # If this accelerator can satisfy one unit of this requirement.
+                        # We ignore model constraints because as a single
+                        # machine we can't really determine the models of
+                        # installed accelerators in a way consistent with how
+                        # workflows are going to name them, and usually people
+                        # use one model anyway.
+                        
                         # Say we want it
                         accelerators_needed.add(candidate_index)
                         accelerators_still_available.remove(candidate_index)

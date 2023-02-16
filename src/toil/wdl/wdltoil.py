@@ -871,7 +871,7 @@ class WDLTaskJob(WDLBaseJob):
             if isinstance(memory_spec, str):
                 memory_spec = human2bytes(memory_spec)
             
-            if memory_spec < self.memory:
+            if memory_spec > self.memory:
                 # We need to go get more memory
                 runtime_memory = memory_spec
                 logger.info('Need to reschedule to get %s memory; have %s', runtime_memory, self.memory)
@@ -935,10 +935,15 @@ class WDLTaskJob(WDLBaseJob):
             parse_function: Callable[[Union[int, str, Dict[str, Union[str, int]]]], AcceleratorRequirement] = AcceleratorRequirement.parse #  type: ignore
             accelerator_requirement = parse_function(accelerator_spec)
             
-            # It also doesn't think we have this check fuunction
-            check_function: Callable[[Optional[List[AcceleratorRequirement]]], bool] = accelerator_requirement.fully_satisfied_by #  type: ignore
-            if not check_function(self.accelerators):
-                # We need more accelerators
+            # It also doesn't think we have this check function
+            check_function: Callable[[Optional[List[AcceleratorRequirement]], AcceleratorRequirement], bool] = AcceleratorRequirement.together_fully_satisfy #  type: ignore
+            if not check_function(self.accelerators, accelerator_requirement, ignore=['model']):
+                # We don't meet the accelerator requirement.
+                # We are loose on the model here since, really, we *should*
+                # have either no accelerators or the accelerators we asked for.
+                # If the batch system is ignoring the model, we don't want to
+                # loop forever trying for the right model.
+                # TODO: Change models overall to a hint???
                 runtime_accelerators = [accelerator_requirement]
                 logger.info('Need to reschedule to get %s accelerators, have %s', runtime_accelerators, self.accelerators)
                 
@@ -999,6 +1004,50 @@ class WDLTaskJob(WDLBaseJob):
             workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
             
+            # Until miniwdl 1.10+ is released, we need to replace singularity
+            # run with singularity exec to handle overriding container
+            # entrypoints (see
+            # <https://github.com/chanzuckerberg/miniwdl/issues/628>). Also, we
+            # might need to send GPUs and the current miniwdl deosn't do that
+            # for Singularity. So we sneakily monkey patch it here.
+            original_run_invocation = task_container._run_invocation
+            def patched_run_invocation(*args: Any, **kwargs: Any):
+                """
+                Invoke the original _run_invocation to get a base Singularity
+                command line, and then adjust the result to use "exec" and to
+                pass GPUs if needed.
+                """
+                # We are written against https://github.com/chanzuckerberg/miniwdl/blob/d8481a01000118eda76cbbb30df9fa5df493b86f/WDL/runtime/backend/singularity.py#L75
+                command_line: List[str] = original_run_invocation(*args, **kwargs)
+                
+                logger.debug('MiniWDL wants to run command line: %s', command_line)
+                
+                # "run" can be at index 1 or 2 depending on if we have a --verbose. We also might already have just "exec" there.
+                subcommand_index = 2 if command_line[1] == "--verbose" else 1
+                if command_line[subcommand_index] == "run":
+                    command_line[subcommand_index] = "exec"
+                    
+                extra_flags: Set[str] = set()
+                for accelerator in (self.accelerators or []):
+                    if accelerator['kind'] == 'gpu':
+                        if accelerator['brand'] == 'nvidia':
+                            # Tell Singularity to expose nvidia GPUs
+                            extra_flags.add('--nv')
+                        elif accelerator['api'] == 'rocm':
+                            # Tell Singularity to expose ROCm GPUs
+                            extra_flags.add('--nv')
+                        else:
+                            raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
+                
+                for flag in extra_flags:
+                    # Put in all those flags
+                    command_line.insert(subcommand_index + 1, flag)
+                
+                logger.debug('Ammended command line to: %s', command_line)
+                
+                # Return the modified command line
+                return command_line
+                
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
             

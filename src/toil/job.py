@@ -298,13 +298,20 @@ class AcceleratorRequirement(TypedDict):
 
         return parsed
 
+    # We can't put methods on the instances; their runtime type is just a plain dict.
+    
     @staticmethod
-    def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
+    def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement', ignore: List[str] = []) -> bool:
         """
         Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
+        
+        Ignores fields specified in ignore.
         """
 
         for key in ['kind', 'brand', 'api', 'model']:
+            if key in ignore:
+                # Skip this aspect.
+                continue
             if key in requirement:
                 if key not in candidate:
                     logger.debug('Candidate %s does not satisfy requirement %s because it does not have a %s', candidate, requirement, key)
@@ -315,17 +322,21 @@ class AcceleratorRequirement(TypedDict):
         # If all these match or are more specific than required, we match!
         return True
         
-    def fully_satisfied_by(self, candidates: Optional[List['AcceleratorRequirement']]) -> bool:
+    @staticmethod
+    def together_fully_satisfy(candidates: Optional[List['AcceleratorRequirement']], requirement: 'AcceleratorRequirement', ignore: List[str] = []) -> bool:
         """
-        Return True if this AcceleratorRequirement is fully satisfied by the
-        requirements in the list (i.e. check all fields including count).
+        Return True if the requirement AcceleratorRequirement is fully
+        satisfied by the ones in the list, taken together (i.e. check all
+        fields including count).
+        
+        Ignores fields specified in ignore.
         """
         
-        count_remaining = self['count']
+        count_remaining = requirement['count']
         
         if candidates:
             for candidate in candidates:
-                if AcceleratorRequirement.satisfies(candidate, self):
+                if AcceleratorRequirement.satisfies(candidate, requirement, ignore=ignore):
                     if candidate['count'] > count_remaining:
                         # We found all the matching accelerators we need
                         count_remaining = 0
