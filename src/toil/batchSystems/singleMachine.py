@@ -529,7 +529,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         algorithm, so if the job requires different kinds of accelerators, and
         some accelerators available can match multiple requirements, then it is
         possible that a solution will not be found.
-        
+
         Ignores accelerator model constraints.
         """
         accelerators_needed: Set[int] = set()
@@ -549,7 +549,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         # installed accelerators in a way consistent with how
                         # workflows are going to name them, and usually people
                         # use one model anyway.
-                        
+
                         # Say we want it
                         accelerators_needed.add(candidate_index)
                         accelerators_still_available.remove(candidate_index)

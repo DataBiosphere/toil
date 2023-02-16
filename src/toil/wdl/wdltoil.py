@@ -31,7 +31,7 @@ import tempfile
 import uuid
 
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, TypeVar, Iterator
-from urllib.parse import urlsplit, urljoin, quote, unquote 
+from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
 from WDL.runtime.task_container import TaskContainer
@@ -243,7 +243,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
     # And produce the diff
     return needed - provided
-    
+
 # We define a URI scheme kind of like but not actually compatible with the one
 # we use for CWL. CWL brings along the file basename in its file type, but
 # WDL.Value.File doesn't. So we need to maker sure we stash that somewhere in
@@ -257,18 +257,18 @@ def pack_toil_uri(file_id: FileID, file_basename: str) -> str:
     """
     Encode a Toil file ID and its source path in a URI that starts with the scheme in TOIL_URI_SCHEME.
     """
-    
+
     # We urlencode everything, including any slashes. We need to use a slash to
     # set off the actual filename, so the WDL standard library basename
     # function works correctly.
     return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(file_basename, safe='')}"
-    
+
 def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
     """
     Unpack a URI made by make_toil_uri to retrieve the FileID and the basename
     (no path prefix) that the file is supposed to have.
     """
-    
+
     # Split out scheme and rest of URL
     parts = toil_uri.split(':')
     if len(parts) != 2:
@@ -281,9 +281,9 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
         raise ValueError(f"Wrong number of path segments in URI: {toil_uri}")
     file_id = FileID.unpack(unquote(parts[0]))
     file_basename = unquote(parts[1])
-    
+
     return file_id, file_basename
-    
+
 
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
@@ -319,7 +319,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if filename.startswith(scheme):
                 return True
         return False
-    
+
     def _devirtualize_filename(self, filename: str) -> str:
         """
         'devirtualize' filename passed to a read_* function: return a filename that can be open()ed
@@ -333,11 +333,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # This is a reference to the Toil filestore.
             # Deserialize the FileID
             file_id, file_basename = unpack_toil_uri(filename)
-            
+
             # Decide wehre it should be put
             file_dir = self._file_store.getLocalTempDir()
             dest_path = os.path.join(file_dir, file_basename)
-            
+
             # And get a local path to the file
             result = self._file_store.readGlobalFile(file_id, dest_path)
         elif self._is_url(filename):
@@ -363,7 +363,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         File value
         """
 
-        
+
         if self._is_url(filename):
             # Already virtual
             logger.info('Virtualized %s as WDL file %s', filename, filename)
@@ -371,7 +371,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
-        result = pack_toil_uri(file_id, os.path.basename(filename)) 
+        result = pack_toil_uri(file_id, os.path.basename(filename))
         logger.info('Virtualized %s as WDL file %s', filename, result)
         return result
 
@@ -385,7 +385,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         """
         Set up the standard library for a task output section. Needs to know
         where standard output and error from the task have been stored.
-        
+
         If current_directory_override is set, resolves relative paths and globs
         from there instead of from the real current directory.
         """
@@ -397,7 +397,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # Remember task putput files
         self._stdout_path = stdout_path
         self._stderr_path = stderr_path
-        
+
         # Remember current directory
         self._current_directory_override = current_directory_override
 
@@ -447,7 +447,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Problem: `echo <the pattern>` just dumps space-delimited filenames which may themselves contain spaces, so we can't actually correctly recover them, if we need to allow for `echo <the pattern>` being able to do arbitrary things in the container's Bash other than interpreting the pattern
         # So we send a little Bash script that can delimit the files with something, and assume the Bash really is a Bash.
-        
+
         # This needs to run in the work directory that the container used, if any.
         work_dir = '.' if not self._current_directory_override else self._current_directory_override
 
@@ -473,11 +473,11 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Just turn them all into WDL File objects with local disk out-of-container names.
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results])
-        
+
     def _devirtualize_filename(self, filename: str) -> str:
         """
         Go from a virtualized WDL-side filename to a local disk filename.
-        
+
         Any WDL-side filenames which are relative will be relative to the
         current directory override, if set.
         """
@@ -486,24 +486,24 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
             # Find a real path to it relative to the current directory override.
             work_dir = '.' if not self._current_directory_override else self._current_directory_override
             filename = os.path.join(work_dir, filename)
-            
+
         return super()._devirtualize_filename(filename)
-        
+
     def _virtualize_filename(self, filename: str) -> str:
         """
         Go from a local disk filename to a virtualized WDL-side filename.
-        
+
         Any relative paths will be relative to the current directory override,
         if set, to account for how they might not be *real* devirtualized
         filenames.
         """
-    
+
         if not self._is_url(filename) and not filename.startswith('/'):
             # We are getting a bare relative path the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
             work_dir = '.' if not self._current_directory_override else self._current_directory_override
             filename = os.path.join(work_dir, filename)
-        
+
         return super()._virtualize_filename(filename)
 
 def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -613,10 +613,10 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # Wasn't found there
                 continue
             logger.info('Imported %s', candidate_uri)
-            
+
             # Work out what the basename for the file was
             file_basename = os.path.basename(urlsplit(candidate_uri).path)
-            
+
             # Was actually found
             return pack_toil_uri(imported, file_basename)
 
@@ -637,7 +637,7 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
 
     # Determine where to evaluate relative paths relative to
     work_dir = '.' if not current_directory_override else current_directory_override
-        
+
     def drop_if_missing(value_type: WDL.Type.Base, filename: str) -> Optional[str]:
         """
         Return None if a file doesn't exist, or its path if it does.
@@ -652,16 +652,16 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
         return None
 
     return map_over_typed_files_in_bindings(environment, drop_if_missing)
-    
+
 def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     """
     Get the paths of all files in the bindings. Doesn't guarantee that
     duplicates are removed.
-    
+
     TODO: Duplicative with WDL.runtime.task._fspaths, except that is internal
     and supports Direcotry objects.
     """
-    
+
     paths = []
     map_over_files_in_bindings(environment, lambda x: paths.append(x))
     return paths
@@ -670,21 +670,21 @@ def map_over_typed_files_in_bindings(environment: WDLBindings, transform: Callab
     """
     Run all File values embedded in the given bindings through the given
     transformation function.
-    
+
     TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
     """
 
     return environment.map(lambda b: map_over_typed_files_in_binding(b, transform))
-    
+
 def map_over_files_in_bindings(bindings: WDLBindings, transform: Callable[[str], Optional[str]]) -> WDLBindings:
     """
     Run all File values' types and values embedded in the given bindings
     through the given transformation function.
-    
+
     TODO: Replace with WDL.Value.rewrite_env_paths or WDL.Value.rewrite_files
     """
 
-    return map_over_typed_files_in_bindings(bindings, lambda _, x: transform(x)) 
+    return map_over_typed_files_in_bindings(bindings, lambda _, x: transform(x))
 
 
 def map_over_typed_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDL.Env.Binding[WDL.Value.Base]:
@@ -694,7 +694,7 @@ def map_over_typed_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], tr
     """
 
     return WDL.Env.Binding(binding.name, map_over_typed_files_in_value(binding.value, transform), binding.info)
-    
+
 # TODO: We want to type this to say, for anything descended from a WDL type, we
 # return something descended from the same WDL type or a null. But I can't
 # quite do that with generics, since you could pass in some extended WDL value
@@ -708,10 +708,10 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
     transformation function.
 
     If the transform returns None, the file value is changed to Null.
-    
+
     The transform has access to the type information for the value, so it knows
     if it may return None, depending on if the value is optional or not.
-    
+
     The transform is *allowed* to return None only if the mapping result won't
     actually be used, to allow for scans. So error checking needs to be part of
     the transform itself.
@@ -850,32 +850,32 @@ class WDLTaskJob(WDLBaseJob):
 
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
-        
+
         # Fill these in with not-None if we need to bump up our resources from what we have available.
         # TODO: Can this break out into a function somehow?
         runtime_memory: Optional[int] = None
         runtime_cores: Optional[float] = None
         runtime_disk: Optional[int] = None
         runtime_accelerators: Optional[List[AcceleratorRequirement]] = None
-        
+
         if runtime_bindings.has_binding('cpu'):
             cpu_spec: int = runtime_bindings.resolve('cpu').value
             if cpu_spec > self.cores:
                 # We need to get more cores
                 runtime_cores = float(cpu_spec)
                 logger.info('Need to reschedule to get %s cores; have %s', runtime_cores, self.cores)
-        
+
         if runtime_bindings.has_binding('memory'):
             # Get the memory requirement and convert to bytes
             memory_spec: Union[int, str] = runtime_bindings.resolve('memory').value
             if isinstance(memory_spec, str):
                 memory_spec = human2bytes(memory_spec)
-            
+
             if memory_spec > self.memory:
                 # We need to go get more memory
                 runtime_memory = memory_spec
                 logger.info('Need to reschedule to get %s memory; have %s', runtime_memory, self.memory)
-                
+
         if runtime_bindings.has_binding('disks'):
             # Miniwdl doesn't have this, but we need to be able to parse things like:
             # local-disk 5 SSD
@@ -892,7 +892,7 @@ class WDLTaskJob(WDLBaseJob):
                 # examples, so we strip whitespace.
                 spec_parts = spec.strip().split(' ')
                 if len(spec_parts) != 3:
-                    # TODO: Add a WDL line to this error 
+                    # TODO: Add a WDL line to this error
                     raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not have 3 space-separated parts")
                 if spec_parts[0] != 'local-disk':
                     # TODO: Add a WDL line to this error
@@ -913,7 +913,7 @@ class WDLTaskJob(WDLBaseJob):
             if total_bytes > self.disk:
                 runtime_disk = int(total_bytes)
                 logger.info('Need to reschedule to get %s disk, have %s', runtime_disk, self.disk)
-            
+
         if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
@@ -930,11 +930,11 @@ class WDLTaskJob(WDLBaseJob):
                 accelerator_spec['model'] = gpu_model
             if gpu_brand is not None:
                 accelerator_spec['brand'] = gpu_brand
-                
+
             # TODO: MyPy thinks this attribute doesn't exist for no good reason.
             parse_function: Callable[[Union[int, str, Dict[str, Union[str, int]]]], AcceleratorRequirement] = AcceleratorRequirement.parse #  type: ignore
             accelerator_requirement = parse_function(accelerator_spec)
-            
+
             # It also doesn't think we have this check function
             check_function: Callable[[Optional[List[AcceleratorRequirement]], AcceleratorRequirement], bool] = AcceleratorRequirement.together_fully_satisfy #  type: ignore
             if not check_function(self.accelerators, accelerator_requirement, ignore=['model']):
@@ -946,7 +946,7 @@ class WDLTaskJob(WDLBaseJob):
                 # TODO: Change models overall to a hint???
                 runtime_accelerators = [accelerator_requirement]
                 logger.info('Need to reschedule to get %s accelerators, have %s', runtime_accelerators, self.accelerators)
-                
+
         if runtime_cores or runtime_memory or runtime_disk or runtime_accelerators:
             # We need to reschedule.
             logger.info('Rescheduling %s with more resources', self)
@@ -958,10 +958,10 @@ class WDLTaskJob(WDLBaseJob):
             self.addChild(rescheduled)
             # And return its result.
             return rescheduled.rv()
-            
+
         # If we get here we have all the resources we need, so run the task
-            
-       
+
+
         # Set up the MiniWDL container running stuff
         TaskContainerImplementation = SingularityContainer
         miniwdl_logger = logging.getLogger("MiniWDLContainers")
@@ -969,7 +969,7 @@ class WDLTaskJob(WDLBaseJob):
         if not getattr(TaskContainerImplementation, 'toil_initialized__', False):
             # Initialize the cointainer system
             TaskContainerImplementation.global_init(miniwdl_config, miniwdl_logger)
-            
+
             # TODO: We don't want to use MiniWDL's resource limit logic, but
             # we'd have to get at the _SubprocessScheduler that is internal to
             # the WDL.runtime.backend.cli_subprocess.SubprocessBase class to
@@ -978,23 +978,23 @@ class WDLTaskJob(WDLBaseJob):
             # _SubprocessScheduler instances because its class-level condition
             # variable doesn't exist.
             TaskContainerImplementation.detect_resource_limits(miniwdl_config, miniwdl_logger)
-            
+
             # And remember we did it
             setattr(TaskContainerImplementation, 'toil_initialized__', True)
             # TODO: not thread safe!
-        
+
         # Records, if we use a container, where its workdir is on our
         # filesystem, so we can interpret file anmes and globs relative to
         # there.
         workdir_in_container: Optional[str] = None
-        
+
         if self._task.command:
             # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
             # TODO: Figure out whan the command template actually uses File values and lazily download them.
             # For now we just grab all the File values in the inside-the-task environment, since any of them *might* be used.
             # TODO: MiniWDL can parallelize the fetch
             bindings = devirtualize_files(bindings, standard_library)
-            
+
             # Make the container object
             # TODO: What is this?
             run_id = str(uuid.uuid4())
@@ -1003,7 +1003,7 @@ class WDLTaskJob(WDLBaseJob):
             # Container working directory is guaranteed (?) to be at "work" inside there
             workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
-            
+
             # Until miniwdl 1.10+ is released, we need to replace singularity
             # run with singularity exec to handle overriding container
             # entrypoints (see
@@ -1019,14 +1019,14 @@ class WDLTaskJob(WDLBaseJob):
                 """
                 # We are written against https://github.com/chanzuckerberg/miniwdl/blob/d8481a01000118eda76cbbb30df9fa5df493b86f/WDL/runtime/backend/singularity.py#L75
                 command_line: List[str] = original_run_invocation(*args, **kwargs)
-                
+
                 logger.debug('MiniWDL wants to run command line: %s', command_line)
-                
+
                 # "run" can be at index 1 or 2 depending on if we have a --verbose. We also might already have just "exec" there.
                 subcommand_index = 2 if command_line[1] == "--verbose" else 1
                 if command_line[subcommand_index] == "run":
                     command_line[subcommand_index] = "exec"
-                    
+
                 extra_flags: Set[str] = set()
                 for accelerator in (self.accelerators or []):
                     if accelerator['kind'] == 'gpu':
@@ -1038,43 +1038,43 @@ class WDLTaskJob(WDLBaseJob):
                             extra_flags.add('--nv')
                         else:
                             raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
-                
+
                 for flag in extra_flags:
                     # Put in all those flags
                     command_line.insert(subcommand_index + 1, flag)
-                
+
                 logger.debug('Ammended command line to: %s', command_line)
-                
+
                 # Return the modified command line
                 return command_line
-            
+
             # Apply the patch
             task_container._run_invocation = patched_run_invocation
-                
+
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
-            
+
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             task_container.add_paths(get_file_paths_in_bindings(bindings))
             logger.info("Using container path map: %s", task_container.input_path_map)
-            
+
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
-            
+
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, standard_library).coerce(WDL.Type.String()).value
-            
+
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
             # TODO: MyPy will complain if we accomodate this and they later
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
-            
-            
+
+
             # Run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
             try:
@@ -1084,7 +1084,7 @@ class WDLTaskJob(WDLBaseJob):
                     logger.info('Standard error at %s: %s', host_stderr_txt, open(host_stderr_txt).read())
                 if os.path.exists(host_stdout_txt):
                     logger.info('Standard output at %s: %s', host_stdout_txt, open(host_stdout_txt).read())
-                    
+
         else:
             # We need to fake stdout and stderr, since tnothing ran but the
             # standard library lets you grab them. TODO: Can these be None?
@@ -1102,7 +1102,7 @@ class WDLTaskJob(WDLBaseJob):
         output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
-            
+
         # Drop any files from the output which don't actually exist, if they are allowed to not exist
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
 

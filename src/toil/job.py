@@ -299,12 +299,12 @@ class AcceleratorRequirement(TypedDict):
         return parsed
 
     # We can't put methods on the instances; their runtime type is just a plain dict.
-    
+
     @staticmethod
     def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement', ignore: List[str] = []) -> bool:
         """
         Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
-        
+
         Ignores fields specified in ignore.
         """
 
@@ -321,19 +321,19 @@ class AcceleratorRequirement(TypedDict):
                     return False
         # If all these match or are more specific than required, we match!
         return True
-        
+
     @staticmethod
     def together_fully_satisfy(candidates: Optional[List['AcceleratorRequirement']], requirement: 'AcceleratorRequirement', ignore: List[str] = []) -> bool:
         """
         Return True if the requirement AcceleratorRequirement is fully
         satisfied by the ones in the list, taken together (i.e. check all
         fields including count).
-        
+
         Ignores fields specified in ignore.
         """
-        
+
         count_remaining = requirement['count']
-        
+
         if candidates:
             for candidate in candidates:
                 if AcceleratorRequirement.satisfies(candidate, requirement, ignore=ignore):
@@ -343,10 +343,10 @@ class AcceleratorRequirement(TypedDict):
                         break
                     else:
                         count_remaining -= candidate['count']
-        
+
         # If we have no count left we are fully satisfied
         return count_remaining == 0
-       
+
 class RequirementsDict(TypedDict):
     """
     Typed storage for requirements for a job, where requirement values are of
