@@ -1047,6 +1047,9 @@ class WDLTaskJob(WDLBaseJob):
                 
                 # Return the modified command line
                 return command_line
+            
+            # Apply the patch
+            task_container._run_invocation = patched_run_invocation
                 
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
