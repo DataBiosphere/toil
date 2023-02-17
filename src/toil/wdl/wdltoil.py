@@ -44,6 +44,7 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.conversions import convert_units, human2bytes
+from toil.lib.misc import get_user_name
 
 logger = logging.getLogger(__name__)
 
@@ -826,6 +827,26 @@ class WDLTaskJob(WDLBaseJob):
 
         self._task = task
         self._prev_node_results = prev_node_results
+        
+    def can_fake_root(self) -> bool:
+        """
+        Determie if --fakeroot is likely to work for Singularity.
+        """
+        
+        # We need to have an entry for our user in /etc/subuid to grant us a range of UIDs to use, for fakeroot to work.
+        try:
+            subuid_file = open('/etc/subuid')
+        except OSError as e:
+            logger.warning('Cannot open /etc/subuid due to %s; assuming no subuids available', e)
+            return False
+        username = get_user_name()
+        for line in subuid_file:
+            if line.split(':')[0].strip() == username:
+                # We have a line assigning subuids
+                return True
+        # If there is no line, we have no subuids
+        logger.warning('No subuids are assigned to %s; cannot fake root.', username)
+        return False
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1009,7 +1030,9 @@ class WDLTaskJob(WDLBaseJob):
             # entrypoints (see
             # <https://github.com/chanzuckerberg/miniwdl/issues/628>). Also, we
             # might need to send GPUs and the current miniwdl deosn't do that
-            # for Singularity. So we sneakily monkey patch it here.
+            # for Singularity. And we might need to *not* try and use
+            # --fakeroot if we lack sub-UIDs. So we sneakily monkey patch it
+            # here.
             original_run_invocation = task_container._run_invocation
             def patched_run_invocation(*args: Any, **kwargs: Any):
                 """
@@ -1026,6 +1049,10 @@ class WDLTaskJob(WDLBaseJob):
                 subcommand_index = 2 if command_line[1] == "--verbose" else 1
                 if command_line[subcommand_index] == "run":
                     command_line[subcommand_index] = "exec"
+                    
+                if '--fakeroot' in command_line and not self.can_fake_root():
+                    # We can't fake root so don't try.
+                    command_line.remove('--fakeroot')
 
                 extra_flags: Set[str] = set()
                 for accelerator in (self.accelerators or []):
