@@ -988,7 +988,7 @@ class WDLTaskJob(WDLBaseJob):
         # download images.
         if 'SINGULARITY_CACHEDIR' not in os.environ:
             # Cache Singularity's layers somehwere known to have space, not in home
-            os.environ['SINGULARITY_CACHEDIR'] = file_store.getLocalTempDir()
+            os.environ['SINGULARITY_CACHEDIR'] = os.path.join(file_store.workflow_dir, 'singularity_cache')
             
         if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
             # Cache Singularity images for the workflow on this machine.
