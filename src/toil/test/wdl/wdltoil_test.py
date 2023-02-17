@@ -11,9 +11,10 @@ import pytest
 
 from toil.test import ToilTest, needs_docker, needs_docker_cuda, needs_java, needs_singularity, slow
 from toil.version import exactPython
-from toil.test.wdl.toilwdlTest import ToilWdlTest
+# Don't import the test case directly or pytest will test it again.
+import toil.test.wdl.toilwdlTest
 
-class WdlToilTest(ToilWdlTest):
+class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     """
     Version of the old Toil WDL tests that tests the new MiniWDL-based implementation.
     """
