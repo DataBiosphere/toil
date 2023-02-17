@@ -648,11 +648,9 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
         effective_path = os.path.abspath(os.path.join(work_dir, filename))
         if os.path.exists(effective_path):
             return filename
-        logger.debug('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
-        if not value_type.optional:
-            # Complain
-            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), effective_path)
-        return None
+        else:
+            logger.debug('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
+            return None
 
     return map_over_typed_files_in_bindings(environment, drop_if_missing)
 
@@ -1154,8 +1152,13 @@ class WDLTaskJob(WDLBaseJob):
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
 
-        # Drop any files from the output which don't actually exist, if they are allowed to not exist
+        # Drop any files from the output which don't actually exist
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
+
+        # TODO: Check the output bindings against the types of the decls so we
+        # can tell if we have a null in a value that is supposed to not be
+        # nullable. We can't just look at the types on the values themselves
+        # because those are all the non-nullable versions.
 
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
