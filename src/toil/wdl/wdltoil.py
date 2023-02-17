@@ -1877,7 +1877,7 @@ def main() -> None:
             inputs_search_path = []
             if options.inputs_uri:
                 inputs_search_path.append(options.inputs_uri)
-                match = re.match("https://raw.githubusercontent.com/[^/]*/[^/]*/[^/]*/", options.inputs_uri)
+                match = re.match('https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/', options.inputs_uri)
                 if match:
                     # Special magic for Github repos to make e.g.
                     # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
