@@ -955,12 +955,9 @@ class WDLTaskJob(WDLBaseJob):
                 accelerator_spec['brand'] = gpu_brand
 
             # TODO: MyPy thinks this attribute doesn't exist for no good reason.
-            parse_function: Callable[[Union[int, str, Dict[str, Union[str, int]]]], AcceleratorRequirement] = AcceleratorRequirement.parse #  type: ignore
-            accelerator_requirement = parse_function(accelerator_spec)
-
+            accelerator_requirement = AcceleratorRequirement.parse(accelerator_spec) #  type: ignore
             # It also doesn't think we have this check function
-            check_function: Callable[[Optional[List[AcceleratorRequirement]], AcceleratorRequirement], bool] = AcceleratorRequirement.together_fully_satisfy #  type: ignore
-            if not check_function(self.accelerators, accelerator_requirement, ignore=['model']):
+            if not AcceleratorRequirement.together_fully_satisfy(self.accelerators, accelerator_requirement, ignore=['model']): #  type: ignore
                 # We don't meet the accelerator requirement.
                 # We are loose on the model here since, really, we *should*
                 # have either no accelerators or the accelerators we asked for.
@@ -974,8 +971,14 @@ class WDLTaskJob(WDLBaseJob):
             # We need to reschedule.
             logger.info('Rescheduling %s with more resources', self)
             # Make the new copy of this job with more resources.
-            # TODO: We don't pass along the input or runtime bindings, so they need to get re-evaluated. If we did pass them, we'd have to make sure to upload local files made by WDL code in the inputs/runtime sections and pass along that environment. Right now we just re-evaluate that whole section once we have the requested resources.
-            # TODO: What if the runtime section says we need a lot of disk to hold the large files that the inputs section is going to write???
+            # TODO: We don't pass along the input or runtime bindings, so they
+            # need to get re-evaluated. If we did pass them, we'd have to make
+            # sure to upload local files made by WDL code in the inputs/runtime
+            # sections and pass along that environment. Right now we just
+            # re-evaluate that whole section once we have the requested
+            # resources.
+            # TODO: What if the runtime section says we need a lot of disk to
+            # hold the large files that the inputs section is going to write???
             rescheduled = WDLTaskJob(self._task, self._prev_node_results, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
             # Run that as a child
             self.addChild(rescheduled)
@@ -1047,7 +1050,7 @@ class WDLTaskJob(WDLBaseJob):
             # --fakeroot if we lack sub-UIDs. So we sneakily monkey patch it
             # here.
             original_run_invocation = task_container._run_invocation
-            def patched_run_invocation(*args: Any, **kwargs: Any):
+            def patched_run_invocation(*args: Any, **kwargs: Any) -> List[str]:
                 """
                 Invoke the original _run_invocation to get a base Singularity
                 command line, and then adjust the result to use "exec" and to
@@ -1089,7 +1092,7 @@ class WDLTaskJob(WDLBaseJob):
                 return command_line
 
             # Apply the patch
-            task_container._run_invocation = patched_run_invocation
+            task_container._run_invocation = patched_run_invocation #  type: ignore
 
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
