@@ -30,6 +30,7 @@ import sys
 import tempfile
 import uuid
 
+from contextlib import ExitStack
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, TypeVar, Iterator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
@@ -45,6 +46,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
+from toil.lib.threading import global_mutex
 
 logger = logging.getLogger(__name__)
 
@@ -981,7 +983,18 @@ class WDLTaskJob(WDLBaseJob):
             return rescheduled.rv()
 
         # If we get here we have all the resources we need, so run the task
-
+        
+        # Prepare to use Singularity. Make sure that we have plenty of space to
+        # download images.
+        if 'SINGULARITY_CACHEDIR' not in os.environ:
+            # Cache Singularity's layers somehwere known to have space, not in home
+            os.environ['SINGULARITY_CACHEDIR'] = file_store.getLocalTempDir()
+            
+        if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
+            # Cache Singularity images for the workflow on this machine.
+            # Since MiniWDL does only within-process synchronization for pulls,
+            # we also will need to pre-pull one image into here at a time.
+            os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.path.join(file_store.workflow_dir, 'miniwdl_sif_cache')
 
         # Set up the MiniWDL container running stuff
         TaskContainerImplementation = SingularityContainer
@@ -1080,7 +1093,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
-
+            
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
@@ -1100,7 +1113,15 @@ class WDLTaskJob(WDLBaseJob):
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
-
+            
+            # Before running the command, we need to make sure the container's
+            # image is already pulled, so MiniWDL doesn't try and pull it.
+            # MiniWDL only locks its cache directory within a process, and we
+            # need to coordinate with other processes sharing the cache.
+            # TODO: We assume that if we share the cache, we share the coordination directory!
+            with global_mutex(file_store.coordination_dir, 'miniwdl_sif_cache_mutex'):
+                with ExitStack() as cleanup:
+                    task_container._pull(miniwdl_logger, cleanup)
 
             # Run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
@@ -1863,7 +1884,9 @@ def main() -> None:
 
             # Import any files in the bindings
             input_bindings = import_files(input_bindings, toil, inputs_search_path)
-
+            
+            # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
+            
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
