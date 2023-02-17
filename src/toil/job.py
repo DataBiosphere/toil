@@ -38,6 +38,7 @@ from typing import (TYPE_CHECKING,
                     Sequence,
                     Set,
                     Tuple,
+                    TypeVar,
                     Union,
                     cast,
                     overload)
@@ -1308,7 +1309,7 @@ class Job:
         unitName: Optional[str] = "",
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
-        descriptionClass: Optional[str] = None,
+        descriptionClass: Optional[type] = None,
     ) -> None:
         """
         Job initializer.
@@ -1800,7 +1801,7 @@ class Job:
     # job run functions
     ####################################################
 
-    def rv(self, *path) -> Any:
+    def rv(self, *path) -> "Promise":
         """
         Create a *promise* (:class:`toil.job.Promise`).
 
@@ -2287,7 +2288,11 @@ class Job:
                 if jobStore.file_exists(promiseFileStoreID):
                     logger.debug("Resolve promise %s from %s with a %s", promiseFileStoreID, self, type(promisedValue))
                     with jobStore.update_file_stream(promiseFileStoreID) as fileHandle:
-                        pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
+                        try:
+                            pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
+                        except AttributeError:
+                            logger.exception("Could not pickle promise result %s", promisedValue)
+                            raise
                 else:
                     logger.debug("Do not resolve promise %s from %s because it is no longer needed", promiseFileStoreID, self)
 
@@ -3263,6 +3268,41 @@ class Promise:
             value = safeUnpickleFromStream(fileHandle)
             return value
 
+# Machinery for type-safe-ish Toil Python workflows.
+#
+# TODO: Until we make Promise generic on the promised type, and work out how to
+# tell MyPy that rv() returns a Promise for whatever type that object's run()
+# method returns, this won't actually be type-safe, because any Promise will be
+# a Promised[] for any type.
+
+T = TypeVar('T')
+# We have type shorthand for a promised value.
+# Uses a generic type alias, so you can have a Promised[T]. See <https://github.com/python/mypy/pull/2378>.
+
+Promised = Union[Promise, T]
+
+def unwrap(p: Promised[T]) -> T:
+    """
+    Function for ensuring you actually have a promised value, and not just a promise.
+    Mostly useful for satisfying type-checking.
+
+    The "unwrap" terminology is borrowed from Rust.
+    """
+    if isinstance(p, Promise):
+        raise TypeError(f'Attempted to unwrap a value that is still a Promise: {p}')
+    return p
+
+def unwrap_all(p: Sequence[Promised[T]]) -> Sequence[T]:
+    """
+    Function for ensuring you actually have a collection of promised values,
+    and not any remaining promises. Mostly useful for satisfying type-checking.
+
+    The "unwrap" terminology is borrowed from Rust.
+    """
+    for i, item in enumerate(p):
+        if isinstance(item, Promise):
+            raise TypeError(f'Attempted to unwrap a value at index {i} that is still a Promise: {item}')
+    return p
 
 class PromisedRequirement:
     """
