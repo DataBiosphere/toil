@@ -572,10 +572,21 @@ def needs_docker(test_item: MT) -> MT:
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
         
+def needs_singularity(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to only run them if
+    singularity is installed.
+    """
+    test_item = _mark_test('singularity', test_item)
+    if which('singularity'):
+        return test_item
+    else:
+        return unittest.skip("Install singularity to include this test.")(test_item)
+        
 def needs_local_cuda(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
-    a CUDA setup legible to cwltool (i.e. providing userspace nvidia_smi) is present.
+    a CUDA setup legible to cwltool (i.e. providing userspace nvidia-smi) is present.
     """
     test_item = _mark_test('local_cuda', test_item)
     if have_working_nvidia_smi():
