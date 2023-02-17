@@ -829,12 +829,12 @@ class WDLTaskJob(WDLBaseJob):
 
         self._task = task
         self._prev_node_results = prev_node_results
-        
+
     def can_fake_root(self) -> bool:
         """
         Determie if --fakeroot is likely to work for Singularity.
         """
-        
+
         # We need to have an entry for our user in /etc/subuid to grant us a range of UIDs to use, for fakeroot to work.
         try:
             subuid_file = open('/etc/subuid')
@@ -983,13 +983,13 @@ class WDLTaskJob(WDLBaseJob):
             return rescheduled.rv()
 
         # If we get here we have all the resources we need, so run the task
-        
+
         # Prepare to use Singularity. Make sure that we have plenty of space to
         # download images.
         if 'SINGULARITY_CACHEDIR' not in os.environ:
             # Cache Singularity's layers somehwere known to have space, not in home
             os.environ['SINGULARITY_CACHEDIR'] = os.path.join(file_store.workflow_dir, 'singularity_cache')
-            
+
         if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
             # Cache Singularity images for the workflow on this machine.
             # Since MiniWDL does only within-process synchronization for pulls,
@@ -1062,7 +1062,7 @@ class WDLTaskJob(WDLBaseJob):
                 subcommand_index = 2 if command_line[1] == "--verbose" else 1
                 if command_line[subcommand_index] == "run":
                     command_line[subcommand_index] = "exec"
-                    
+
                 if '--fakeroot' in command_line and not self.can_fake_root():
                     # We can't fake root so don't try.
                     command_line.remove('--fakeroot')
@@ -1093,7 +1093,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
-            
+
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
@@ -1113,7 +1113,7 @@ class WDLTaskJob(WDLBaseJob):
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
-            
+
             # Before running the command, we need to make sure the container's
             # image is already pulled, so MiniWDL doesn't try and pull it.
             # MiniWDL only locks its cache directory within a process, and we
@@ -1884,9 +1884,9 @@ def main() -> None:
 
             # Import any files in the bindings
             input_bindings = import_files(input_bindings, toil, inputs_search_path)
-            
+
             # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
-            
+
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
