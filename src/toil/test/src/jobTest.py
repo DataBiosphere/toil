@@ -21,7 +21,7 @@ import pytest
 
 from toil.common import Toil
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
-from toil.leader import FailedJobsException
+from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
@@ -683,7 +683,7 @@ def child(job):
     assert job.cores is not None
     assert job.disk is not None
     assert job.memory is not None
-    assert job.preemptable is not None
+    assert job.preemptible is not None
 
 
 def errorChild(job):

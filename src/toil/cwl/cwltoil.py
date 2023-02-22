@@ -98,6 +98,7 @@ from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
+from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
@@ -109,13 +110,14 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import AcceleratorRequirement, Job, Promise
+from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
+from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -1858,14 +1860,14 @@ class ResolveIndirect(CWLNamedJob):
     of actual values.
     """
 
-    def __init__(self, cwljob: CWLObjectType, parent_name: Optional[str] = None):
+    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
         """Store the dictionary of promises for later resolution."""
         super().__init__(parent_name=parent_name, subjob_name="_resolve")
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
         """Evaluate the promises and return their values."""
-        return resolve_dict_w_promises(self.cwljob)
+        return resolve_dict_w_promises(unwrap(self.cwljob))
 
 
 def toilStageFiles(
@@ -2435,7 +2437,7 @@ class CWLScatter(Job):
         self,
         joborder: CWLObjectType,
         scatter_keys: List[str],
-        outputs: List[CWLObjectType],
+        outputs: List[Promised[CWLObjectType]],
         postScatterEval: Callable[[CWLObjectType], CWLObjectType],
     ) -> None:
         """Cartesian product of the inputs, then flattened."""
@@ -2466,10 +2468,10 @@ class CWLScatter(Job):
         joborder: CWLObjectType,
         scatter_keys: List[str],
         postScatterEval: Callable[[CWLObjectType], CWLObjectType],
-    ) -> List[CWLObjectType]:
+    ) -> List[Promised[CWLObjectType]]:
         """Cartesian product of the inputs."""
         scatter_key = shortname(scatter_keys[0])
-        outputs: List[CWLObjectType] = []
+        outputs: List[Promised[CWLObjectType]] = []
         for n in range(0, len(cast(List[CWLObjectType], joborder[scatter_key]))):
             updated_joborder = copy.copy(joborder)
             updated_joborder[scatter_key] = cast(
@@ -2494,7 +2496,7 @@ class CWLScatter(Job):
                 )
         return outputs
 
-    def run(self, file_store: AbstractFileStore) -> List[CWLObjectType]:
+    def run(self, file_store: AbstractFileStore) -> List[Promised[CWLObjectType]]:
         """Generate the follow on scatter jobs."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -2506,7 +2508,7 @@ class CWLScatter(Job):
         scatterMethod = self.step.tool.get("scatterMethod", None)
         if len(scatter) == 1:
             scatterMethod = "dotproduct"
-        outputs = []
+        outputs: List[Promised[CWLObjectType]] = []
 
         valueFrom = {
             shortname(i["id"]): i["valueFrom"]
@@ -2581,7 +2583,7 @@ class CWLGather(Job):
     def __init__(
         self,
         step: cwltool.workflow.WorkflowStep,
-        outputs: Union[CWLObjectType, List[CWLObjectType]],
+        outputs: Promised[Union[CWLObjectType, List[CWLObjectType]]],
     ):
         """Collect our context for later gathering."""
         super().__init__(cores=1, memory="1GiB", disk="1MiB")
@@ -2616,9 +2618,11 @@ class CWLGather(Job):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
-
+        
+        # TODO: MyPy can't understand that this is the type we should get by unwrapping the promise
+        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs))
         for k in [sn(i) for i in self.step.tool["out"]]:
-            outobj[k] = self.extract(self.outputs, k)
+            outobj[k] = self.extract(outputs, k)
 
         return outobj
 
@@ -2991,7 +2995,10 @@ def scan_for_unsupported_requirements(
                 # The hint cannot be fulfilled. Issue a warning.
                 logger.warning(msg)
 
-def determine_load_listing(tool: Process) -> str:
+
+def determine_load_listing(
+    tool: Process,
+) -> Literal["no_listing", "shallow_listing", "deep_listing"]:
     """
     Determine the directory.listing feature in CWL.
 
@@ -3036,9 +3043,9 @@ def determine_load_listing(tool: Process) -> str:
     listing_choices = ("no_listing", "shallow_listing", "deep_listing")
     if load_listing not in listing_choices:
         raise ValueError(
-            f'Unknown loadListing specified: "{load_listing}".  Valid choices: {listing_choices}'
+            f"Unknown loadListing specified: {load_listing!r}.  Valid choices: {listing_choices}"
         )
-    return load_listing
+    return cast(Literal["no_listing", "shallow_listing", "deep_listing"], load_listing)
 
 
 class NoAvailableJobStoreException(Exception):
@@ -3141,13 +3148,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     config.disableChaining = True
     config.cwl = True
     parser = argparse.ArgumentParser()
-    addOptions(parser, config)
+    addOptions(parser, config, jobstore_as_flag=True)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
-    # Will override the "jobStore" positional argument, enables
-    # user to select jobStore or get a default from logic one below.
-    parser.add_argument("--jobStore", "--jobstore", dest="jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3448,45 +3452,32 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
     )
-    # Problem: we want to keep our job store somewhere auto-generated based on
-    # our options, unless overridden by... an option. So we will need to parse
-    # options twice, because we need to feed the parser a job store.
-
-    # Propose a local workdir, probably under /tmp.
-    # mkdtemp actually creates the directory, but
-    # toil requires that the directory not exist,
-    # since it might become our jobstore,
-    # so make it and delete it and allow
-    # toil to create it again (!)
-    workdir = tempfile.mkdtemp()
-    os.rmdir(workdir)
-
-    # we use the workdir as the default jobStore for the first parsing pass:
-    options = parser.parse_args([workdir] + args)
+    
+    # Parse all the options once.
+    options = parser.parse_args(args)
+    
+    # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-
-    # Determine if our default will actually be in use
-    using_default_job_store = options.jobStore == workdir
-
-    # if tmpdir_prefix is not the default value, set workDir if unset, and move
-    # workdir and the job store under it
+    
+    # We need a workdir for the CWL runtime contexts.
     if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
+        # if tmpdir_prefix is not the default value, move
+        # workdir and the default job store under it
         workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
-        os.rmdir(workdir)
-
-    if using_default_job_store:
+    else:
+        # Use a directory in the default tmpdir
+        workdir = tempfile.mkdtemp()
+    # Make sure workdir doesn't exist so it can be a job store
+    os.rmdir(workdir) 
+    
+    if options.jobStore is None:
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
-        chosen_job_store = generate_default_job_store(
+        options.jobStore = generate_default_job_store(
             options.batchSystem, options.provisioner, workdir
         )
-    else:
-        # Since the default won't be used, just pass through the user's choice
-        chosen_job_store = options.jobStore
 
-    # Re-parse arguments with the new selected jobstore.
-    options = parser.parse_args([chosen_job_store] + args)
     options.doc_cache = True
     options.disable_js_validation = False
     options.do_validate = True
@@ -3513,9 +3504,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Applies only on the leader.
         cwllogger.setLevel(options.logLevel.upper())
 
-    logger.debug(
-        f"Using job store {chosen_job_store} from workdir {workdir} with default status {using_default_job_store}"
-    )
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
     outdir = os.path.abspath(options.outdir)
@@ -3570,10 +3558,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         if options.restart:
             try:
                 outobj = toil.restart()
-            except Exception as err:
-                # TODO: We can't import FailedJobsException due to a circular
-                # import but that's what we'd expect here.
-                if getattr(err, "exit_code") == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
+            except FailedJobsException as err:
+                if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(
@@ -3792,13 +3778,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             wf1.cwljob = initialized_job_order
             try:
                 outobj = toil.start(wf1)
-            except Exception as err:
-                # TODO: We can't import FailedJobsException due to a circular
-                # import but that's what we'd expect here.
-                if (
-                    getattr(err, "exit_code", None)
-                    == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-                ):
+            except FailedJobsException as err:
+                if err.exit_code == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # We figured out that we can't support this workflow.
                     logging.error(err)
                     logging.error(

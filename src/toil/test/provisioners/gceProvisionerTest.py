@@ -117,7 +117,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, preemptableJobs=False):
+    def _test(self, preemptibleJobs=False):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
@@ -154,8 +154,8 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=%s' % ",".join(self.numWorkers)])
-        if preemptableJobs:
-            toilOptions.extend(['--defaultPreemptable'])
+        if preemptibleJobs:
+            toilOptions.extend(['--defaultPreemptible'])
 
         self._runScript(toilOptions)
 
@@ -223,7 +223,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         # Some spot workers have a stopped state after being started, strangely.
         # This could be the natural preemption process, but it seems too rapid.
         self.numWorkers = ['3'] # Try 3 to account for a stopped node.
-        self._test(preemptableJobs=True)
+        self._test(preemptibleJobs=True)
 
 
 @pytest.mark.timeout(1600)

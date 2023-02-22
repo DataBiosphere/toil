@@ -46,9 +46,9 @@ class JobDescriptionTest(ToilTest):
         memory = 2^32
         disk = 2^32
         cores = "1"
-        preemptable = 1
+        preemptible = 1
 
-        j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
+        j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                            jobName='testJobGraph', unitName='noName')
 
         #Check attributes
@@ -56,7 +56,7 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.memory, memory)
         self.assertEqual(j.disk, disk)
         self.assertEqual(j.cores, int(cores))
-        self.assertEqual(j.preemptable, bool(preemptable))
+        self.assertEqual(j.preemptible, bool(preemptible))
         self.assertEqual(type(j.jobStoreID), TemporaryID)
         self.assertEqual(list(j.successorsAndServiceHosts()), [])
         self.assertEqual(list(j.allSuccessors()), [])
@@ -68,7 +68,7 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.logJobStoreFileID, None)
 
         #Check equals function (should be based on object identity and not contents)
-        j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
+        j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                             jobName='testJobGraph', unitName='noName')
         self.assertNotEqual(j, j2)
         ###TODO test other functionality

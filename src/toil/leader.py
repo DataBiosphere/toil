@@ -54,6 +54,7 @@ from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
+from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -71,48 +72,6 @@ logger = logging.getLogger(__name__)
 #   special-cases handling unnecessary and simplify the leader.
 #   Issue #2136
 ###############################################################################
-
-
-class FailedJobsException(Exception):
-    def __init__(
-        self,
-        job_store: AbstractJobStore,
-        failed_jobs: List[JobDescription],
-        exit_code: int = 1,
-    ):
-        """
-        Make an exception to report failed jobs.
-
-        :param job_store: The job store with the failed jobs in it.
-        :param failed_jobs: All the failed jobs.
-        :param exit_code: Recommended process exit code.
-        """
-        self.msg = (
-            f"The job store '{job_store.locator}' contains "
-            f"{len(failed_jobs)} failed jobs"
-        )
-        self.exit_code = exit_code
-        try:
-            self.msg += ": %s" % ", ".join(str(failedJob) for failedJob in failed_jobs)
-            for job_desc in failed_jobs:
-                if job_desc.logJobStoreFileID:
-                    with job_desc.getLogFileHandle(job_store) as f:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, job_desc)
-        # catch failures to prepare more complex details and only return the basics
-        except Exception:
-            logger.exception("Exception when compiling information about failed jobs")
-        self.msg = self.msg.rstrip("\n")
-        super().__init__()
-
-        # Save fields that catchers can look at
-        self.jobStoreLocator = job_store.locator
-        self.numberOfFailedJobs = len(failed_jobs)
-
-    def __str__(self):
-        """
-        Stringify the exception, including the message.
-        """
-        return self.msg
 
 
 class Leader:
@@ -186,15 +145,15 @@ class Leader:
         self.issued_jobs_by_batch_system_id: Dict[int, str] = {}
 
         # Number of preemptible jobs currently being run by batch system
-        self.preemptableJobsIssued = 0
+        self.preemptibleJobsIssued = 0
 
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
         self.serviceJobsToBeIssued: List[str] = [] # A queue of IDs of service jobs that await scheduling
         # Equivalents for service jobs to be run on preemptible nodes
-        self.preemptableServiceJobsIssued = 0
-        self.preemptableServiceJobsToBeIssued: List[str] = []
+        self.preemptibleServiceJobsIssued = 0
+        self.preemptibleServiceJobsToBeIssued: List[str] = []
 
         # Timing of the rescuing method
         self.timeSinceJobsLastRescued = None
@@ -260,7 +219,7 @@ class Leader:
         """
         This runs the leader process to issue and manage jobs.
 
-        :raises: toil.leader.FailedJobsException if failed jobs remain after running.
+        :raises: toil.exceptions.FailedJobsException if failed jobs remain after running.
 
         :return: The return value of the root job's run function.
         """
@@ -835,7 +794,7 @@ class Leader:
         """
 
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
-        totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
+        totalServicesIssued = self.serviceJobsIssued + self.preemptibleServiceJobsIssued
 
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
@@ -941,10 +900,10 @@ class Leader:
         self.issued_jobs_by_batch_system_id[jobBatchSystemID] = jobNode.jobStoreID
         # Record that this job is issued right now and shouldn't e.g. be issued again.
         self.toilState.jobs_issued.add(jobNode.jobStoreID)
-        if jobNode.preemptable:
-            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptableJobsIssued,
+        if jobNode.preemptible:
+            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptibleJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
-            self.preemptableJobsIssued += 1
+            self.preemptibleJobsIssued += 1
         cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and %s",
@@ -971,8 +930,8 @@ class Leader:
         service = self.toilState.get_job(service_id)
         assert isinstance(service, ServiceJobDescription)
 
-        if service.preemptable:
-            self.preemptableServiceJobsToBeIssued.append(service_id)
+        if service.preemptible:
+            self.preemptibleServiceJobsToBeIssued.append(service_id)
         else:
             self.serviceJobsToBeIssued.append(service_id)
         self.issueQueingServiceJobs()
@@ -982,26 +941,26 @@ class Leader:
         while len(self.serviceJobsToBeIssued) > 0 and self.serviceJobsIssued < self.config.maxServiceJobs:
             self.issueJob(self.toilState.get_job(self.serviceJobsToBeIssued.pop()))
             self.serviceJobsIssued += 1
-        while len(self.preemptableServiceJobsToBeIssued) > 0 and self.preemptableServiceJobsIssued < self.config.maxPreemptableServiceJobs:
-            self.issueJob(self.toilState.get_job(self.preemptableServiceJobsToBeIssued.pop()))
-            self.preemptableServiceJobsIssued += 1
+        while len(self.preemptibleServiceJobsToBeIssued) > 0 and self.preemptibleServiceJobsIssued < self.config.maxPreemptibleServiceJobs:
+            self.issueJob(self.toilState.get_job(self.preemptibleServiceJobsToBeIssued.pop()))
+            self.preemptibleServiceJobsIssued += 1
 
-    def getNumberOfJobsIssued(self, preemptable=None):
+    def getNumberOfJobsIssued(self, preemptible=None):
         """
         Gets number of jobs that have been added by issueJob(s) and not
         removed by removeJob
 
-        :param None or boolean preemptable: If none, return all types of jobs.
-          If true, return just the number of preemptable jobs. If false, return
-          just the number of non-preemptable jobs.
+        :param None or boolean preemptible: If none, return all types of jobs.
+          If true, return just the number of preemptible jobs. If false, return
+          just the number of non-preemptible jobs.
         """
-        if preemptable is None:
+        if preemptible is None:
             return len(self.issued_jobs_by_batch_system_id)
-        elif preemptable:
-            return self.preemptableJobsIssued
+        elif preemptible:
+            return self.preemptibleJobsIssued
         else:
-            assert len(self.issued_jobs_by_batch_system_id) >= self.preemptableJobsIssued
-            return len(self.issued_jobs_by_batch_system_id) - self.preemptableJobsIssued
+            assert len(self.issued_jobs_by_batch_system_id) >= self.preemptibleJobsIssued
+            return len(self.issued_jobs_by_batch_system_id) - self.preemptibleJobsIssued
 
     def _getStatusHint(self):
         """
@@ -1041,11 +1000,11 @@ class Leader:
         """
         assert jobBatchSystemID in self.issued_jobs_by_batch_system_id
         issuedDesc = self.toilState.get_job(self.issued_jobs_by_batch_system_id[jobBatchSystemID])
-        if issuedDesc.preemptable:
-            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptableJobsIssued,
+        if issuedDesc.preemptible:
+            # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptibleJobsIssued,
             # so decrement this value before removing the job from the issuedJob map
-            assert self.preemptableJobsIssued > 0
-            self.preemptableJobsIssued -= 1
+            assert self.preemptibleJobsIssued > 0
+            self.preemptibleJobsIssued -= 1
         # It's not issued anymore.
         del self.issued_jobs_by_batch_system_id[jobBatchSystemID]
         assert issuedDesc.jobStoreID in self.toilState.jobs_issued, f"Job {issuedDesc} came back without being issued"
@@ -1053,8 +1012,8 @@ class Leader:
         # If service job
         if issuedDesc.jobStoreID in self.toilState.service_to_client:
             # Decrement the number of services
-            if issuedDesc.preemptable:
-                self.preemptableServiceJobsIssued -= 1
+            if issuedDesc.preemptible:
+                self.preemptibleServiceJobsIssued -= 1
             else:
                 self.serviceJobsIssued -= 1
 
@@ -1063,16 +1022,16 @@ class Leader:
 
         return issuedDesc
 
-    def getJobs(self, preemptable: Optional[bool] = None) -> List[JobDescription]:
+    def getJobs(self, preemptible: Optional[bool] = None) -> List[JobDescription]:
         """
         Get all issued jobs.
 
-        :param preemptable: If specified, select only preemptable or only non-preemptable jobs.
+        :param preemptible: If specified, select only preemptible or only non-preemptible jobs.
         """
 
         jobs = [self.toilState.get_job(job_store_id) for job_store_id in self.issued_jobs_by_batch_system_id.values()]
-        if preemptable is not None:
-            jobs = [job for job in jobs if job.preemptable == preemptable]
+        if preemptible is not None:
+            jobs = [job for job in jobs if job.preemptible == preemptible]
         return jobs
 
     def killJobs(self, jobsToKill):

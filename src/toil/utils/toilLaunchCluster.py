@@ -19,7 +19,7 @@ from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.lib.aws.utils import build_tag_dict_from_env
+from toil.lib.aws import build_tag_dict_from_env
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
                                parse_node_types)
@@ -42,7 +42,7 @@ def main() -> None:
                         choices=['mesos', 'kubernetes'], default='mesos',
                         help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
-                        help="Non-preemptable node type to use for the cluster leader.")
+                        help="Non-preemptible node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
                         help="On AWS, the name of the AWS key pair to include on the instance."
                         " On Google/GCE, this is the ssh key pair.")
@@ -74,9 +74,9 @@ def main() -> None:
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
                         help="Specifies a list of comma-separated node types, each of which is "
                              "composed of slash-separated instance types, and an optional spot "
-                             "bid set off by a colon, making the node type preemptable. Instance "
+                             "bid set off by a colon, making the node type preemptible. Instance "
                              "types may appear in multiple node types, and the same node type "
-                             "may appear as both preemptable and non-preemptable.\n"
+                             "may appear as both preemptible and non-preemptible.\n"
                              "Valid argument specifying two node types:\n"
                              "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
                              "Node types:\n"
@@ -193,10 +193,10 @@ def main() -> None:
 
             if wanted[1] is None:
                 # Make non-spot instances
-                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=False)
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptible=False)
             else:
                 # We have a spot bid
-                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=True,
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptible=True,
                                  spotBid=wanted[1])
 
         elif isinstance(spec, tuple):
@@ -215,10 +215,10 @@ def main() -> None:
             if wanted[1] is None:
                 # Make non-spot instances
                 cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                        preemptable=False)
+                                        preemptible=False)
             else:
                 # Bid at the given price.
                 cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                        preemptable=True, spotBid=wanted[1])
+                                        preemptible=True, spotBid=wanted[1])
 
     logger.info('Cluster created successfully.')

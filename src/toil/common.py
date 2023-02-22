@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import os
 import pickle
@@ -36,6 +37,7 @@ from typing import (IO,
                     ContextManager,
                     Dict,
                     List,
+                    MutableMapping,
                     Optional,
                     Set,
                     Tuple,
@@ -67,7 +69,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       QueueSizeMessage,
                       gen_message_bus_path)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
@@ -156,14 +158,14 @@ class Config:
         self.targetTime: float = defaultTargetTime
         self.betaInertia: float = 0.1
         self.scaleInterval: int = 60
-        self.preemptableCompensation: float = 0.0
+        self.preemptibleCompensation: float = 0.0
         self.nodeStorage: int = 50
         self.nodeStorageOverrides: List[str] = []
         self.metrics: bool = False
         self.assume_zero_overhead: bool = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs: int = sys.maxsize
+        self.maxPreemptibleServiceJobs: int = sys.maxsize
         self.maxServiceJobs: int = sys.maxsize
         self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
         self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
@@ -172,7 +174,7 @@ class Config:
         self.defaultMemory: int = 2147483648
         self.defaultCores: Union[float, int] = 1
         self.defaultDisk: int = 2147483648
-        self.defaultPreemptable: bool = False
+        self.defaultPreemptible: bool = False
         # TODO: These names are generated programmatically in
         # Requirer._fetchRequirement so we can't use snake_case until we fix
         # that (and add compatibility getters/setters?)
@@ -183,7 +185,7 @@ class Config:
 
         # Retrying/rescuing jobs
         self.retryCount: int = 1
-        self.enableUnlimitedPreemptableRetries: bool = False
+        self.enableUnlimitedPreemptibleRetries: bool = False
         self.doubleMem: bool = False
         self.maxJobDuration: int = sys.maxsize
         self.rescueJobsFrequency: int = 60
@@ -353,9 +355,9 @@ class Config:
         set_option("scaleInterval", float)
         set_option("metrics")
         set_option("assume_zero_overhead")
-        set_option("preemptableCompensation", float)
-        if not 0.0 <= self.preemptableCompensation <= 1.0:
-            raise RuntimeError(f'preemptableCompensation ({self.preemptableCompensation}) must be between 0.0 and 1.0!')
+        set_option("preemptibleCompensation", float)
+        if not 0.0 <= self.preemptibleCompensation <= 1.0:
+            raise RuntimeError(f'preemptibleCompensation ({self.preemptibleCompensation}) must be between 0.0 and 1.0!')
         set_option("nodeStorage", int)
 
         def check_nodestoreage_overrides(overrides: List[str]) -> bool:
@@ -372,7 +374,7 @@ class Config:
 
         # Parameters to limit service jobs / detect deadlocks
         set_option("maxServiceJobs", int)
-        set_option("maxPreemptableServiceJobs", int)
+        set_option("maxPreemptibleServiceJobs", int)
         set_option("deadlockWait", int)
         set_option("deadlockCheckInterval", int)
 
@@ -385,11 +387,11 @@ class Config:
         set_option("maxCores", int, iC(1))
         set_option("maxMemory", h2b, iC(1))
         set_option("maxDisk", h2b, iC(1))
-        set_option("defaultPreemptable")
+        set_option("defaultPreemptible")
 
         # Retrying/rescuing jobs
         set_option("retryCount", int, iC(1))
-        set_option("enableUnlimitedPreemptableRetries")
+        set_option("enableUnlimitedPreemptibleRetries")
         set_option("doubleMem")
         set_option("maxJobDuration", int, iC(1))
         set_option("rescueJobsFrequency", int, iC(1))
@@ -473,7 +475,15 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
+def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False) -> None:
+    """
+    Add Toil command line options to a parser.
+
+    :param config: If specified, take defaults from the given Config.
+
+    :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+    """
+
     if config is None:
         config = Config()
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
@@ -488,7 +498,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         description="Options to specify the location of the Toil workflow and "
                     "turn on stats collation about the performance of jobs."
     )
-    core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+    if jobstore_as_flag:
+        core_options.add_argument('--jobStore', '--jobstore', dest='jobStore', type=str, default=None, help=JOBSTORE_HELP)
+    else:
+        core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
     core_options.add_argument("--workDir", dest="workDir", default=None,
                               help="Absolute path to directory where temporary files generated during the Toil "
                                    "run should be placed. Standard output and error from batch system jobs "
@@ -590,9 +603,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     autoscaling_options.add_argument('--nodeTypes', default=None,
                                      help="Specifies a list of comma-separated node types, each of which is "
                                           "composed of slash-separated instance types, and an optional spot "
-                                          "bid set off by a colon, making the node type preemptable. Instance "
+                                          "bid set off by a colon, making the node type preemptible. Instance "
                                           "types may appear in multiple node types, and the same node type "
-                                          "may appear as both preemptable and non-preemptable.\n"
+                                          "may appear as both preemptible and non-preemptible.\n"
                                           "Valid argument specifying two node types:\n"
                                           "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
                                           "Node types:\n"
@@ -626,14 +639,14 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     autoscaling_options.add_argument("--scaleInterval", dest="scaleInterval", default=None,
                                      help=f"The interval (seconds) between assessing if the scale of "
                                           f"the cluster needs to change. default={config.scaleInterval}")
-    autoscaling_options.add_argument("--preemptableCompensation", dest="preemptableCompensation", default=None,
-                                     help=f"The preference of the autoscaler to replace preemptable nodes with "
-                                          f"non-preemptable nodes, when preemptable nodes cannot be started for some "
-                                          f"reason. Defaults to {config.preemptableCompensation}. This value must be "
+    autoscaling_options.add_argument("--preemptibleCompensation", "--preemptableCompensation", dest="preemptibleCompensation", default=None,
+                                     help=f"The preference of the autoscaler to replace preemptible nodes with "
+                                          f"non-preemptible nodes, when preemptible nodes cannot be started for some "
+                                          f"reason. Defaults to {config.preemptibleCompensation}. This value must be "
                                           f"between 0.0 and 1.0, inclusive.  A value of 0.0 disables such "
-                                          f"compensation, a value of 0.5 compensates two missing preemptable nodes "
-                                          f"with a non-preemptable one. A value of 1.0 replaces every missing "
-                                          f"pre-emptable node with a non-preemptable one.")
+                                          f"compensation, a value of 0.5 compensates two missing preemptible nodes "
+                                          f"with a non-preemptible one. A value of 1.0 replaces every missing "
+                                          f"pre-emptable node with a non-preemptible one.")
     autoscaling_options.add_argument("--nodeStorage", dest="nodeStorage", default=50,
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
@@ -659,12 +672,12 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         )
         service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
                                      help=f"The maximum number of service jobs that can be run concurrently, "
-                                          f"excluding service jobs running on preemptable nodes.  "
+                                          f"excluding service jobs running on preemptible nodes.  "
                                           f"default={config.maxServiceJobs}")
-        service_options.add_argument("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+        service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs", default=None,
                                      type=int,
                                      help=f"The maximum number of service jobs that can run concurrently on "
-                                          f"preemptable nodes.  default={config.maxPreemptableServiceJobs}")
+                                          f"preemptible nodes.  default={config.maxPreemptibleServiceJobs}")
         service_options.add_argument("--deadlockWait", dest="deadlockWait", default=None, type=int,
                                      help=f"Time, in seconds, to tolerate the workflow running only the same service "
                                           f"jobs, with no jobs to use them, before declaring the workflow to be "
@@ -701,9 +714,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
     resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None, metavar='ACCELERATOR[,ACCELERATOR...]',
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
-    resource_options.add_argument('--defaultPreemptable', dest='defaultPreemptable', metavar='BOOL',
+    resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible', metavar='BOOL',
                                   type=bool, nargs='?', const=True, default=False,
-                                  help='Make all jobs able to run on preemptable (spot) nodes by default.')
+                                  help='Make all jobs able to run on preemptible (spot) nodes by default.')
     resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
                                   help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
     resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
@@ -719,9 +732,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
     job_options.add_argument("--retryCount", dest="retryCount", default=None,
                              help=f"Number of times to retry a failing job before giving up and "
                                   f"labeling job failed. default={config.retryCount}")
-    job_options.add_argument("--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptableRetries",
+    job_options.add_argument("--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptibleRetries",
                              action='store_true', default=False,
-                             help="If set, preemptable failures (or any failure due to an instance getting "
+                             help="If set, preemptible failures (or any failure due to an instance getting "
                                   "unexpectedly terminated) will not count towards job failures and --retryCount.")
     job_options.add_argument("--doubleMem", dest="doubleMem", action='store_true', default=False,
                              help="If set, batch jobs which die to reaching memory limit on batch schedulers "
@@ -1740,12 +1753,12 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
-    
+
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
     """
     Parse a string description of one or more accelerator requirements.
     """
-    
+
     if specs is None or len(specs) == 0:
         # Not specified, so the default default is to not need any.
         return []
