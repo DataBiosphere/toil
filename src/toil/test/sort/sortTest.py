@@ -26,7 +26,7 @@ from toil.common import Toil
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.leader import FailedJobsException
+from toil.exceptions import FailedJobsException
 from toil.lib.bioio import root_logger
 from toil.test import (ToilTest,
                        needs_aws_ec2,

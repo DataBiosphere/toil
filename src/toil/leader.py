@@ -52,6 +52,7 @@ from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.toilState import ToilState
+from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -69,46 +70,6 @@ logger = logging.getLogger(__name__)
 #   special-cases handling unnecessary and simplify the leader.
 #   Issue #2136
 ###############################################################################
-
-
-class FailedJobsException(Exception):
-    def __init__(
-        self,
-        job_store: AbstractJobStore,
-        failed_jobs: List[JobDescription],
-        exit_code: int = 1,
-    ):
-        """
-        Make an exception to report failed jobs.
-
-        :param job_store: The job store with the failed jobs in it.
-        :param failed_jobs: All the failed jobs.
-        :param exit_code: Recommended process exit code.
-        """
-        self.msg = (
-            f"The job store '{job_store.locator}' contains "
-            f"{len(failed_jobs)} failed jobs"
-        )
-        self.exit_code = exit_code
-        try:
-            self.msg += ": %s" % ", ".join(str(failedJob) for failedJob in failed_jobs)
-            for job_desc in failed_jobs:
-                if job_desc.logJobStoreFileID:
-                    with job_desc.getLogFileHandle(job_store) as f:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, job_desc)
-        # catch failures to prepare more complex details and only return the basics
-        except Exception:
-            logger.exception("Exception when compiling information about failed jobs")
-        self.msg = self.msg.rstrip("\n")
-        super().__init__()
-
-        # Save fields that catchers can look at
-        self.jobStoreLocator = job_store.locator
-        self.numberOfFailedJobs = len(failed_jobs)
-
-    def __str__(self) -> str:
-        """Stringify the exception, including the message."""
-        return self.msg
 
 
 class Leader:
@@ -259,7 +220,7 @@ class Leader:
         """
         Run the leader process to issue and manage jobs.
 
-        :raises: toil.leader.FailedJobsException if failed jobs remain after running.
+        :raises: toil.exceptions.FailedJobsException if failed jobs remain after running.
 
         :return: The return value of the root job's run function.
         """

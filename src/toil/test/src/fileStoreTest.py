@@ -34,7 +34,7 @@ from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.leader import FailedJobsException
+from toil.exceptions import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
 from toil.test import ToilTest, needs_aws_ec2, needs_google, slow
 

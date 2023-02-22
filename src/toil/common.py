@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import os
 import pickle
@@ -36,6 +37,7 @@ from typing import (IO,
                     ContextManager,
                     Dict,
                     List,
+                    MutableMapping,
                     Optional,
                     Set,
                     Tuple,
@@ -67,7 +69,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       QueueSizeMessage,
                       gen_message_bus_path)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
@@ -473,7 +475,15 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
+def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False) -> None:
+    """
+    Add Toil command line options to a parser.
+
+    :param config: If specified, take defaults from the given Config.
+
+    :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+    """
+
     if config is None:
         config = Config()
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
@@ -488,7 +498,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None) -> None:
         description="Options to specify the location of the Toil workflow and "
                     "turn on stats collation about the performance of jobs."
     )
-    core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+    if jobstore_as_flag:
+        core_options.add_argument('--jobStore', '--jobstore', dest='jobStore', type=str, default=None, help=JOBSTORE_HELP)
+    else:
+        core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
     core_options.add_argument("--workDir", dest="workDir", default=None,
                               help="Absolute path to directory where temporary files generated during the Toil "
                                    "run should be placed. Standard output and error from batch system jobs "
@@ -1740,12 +1753,12 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
-    
+
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
     """
     Parse a string description of one or more accelerator requirements.
     """
-    
+
     if specs is None or len(specs) == 0:
         # Not specified, so the default default is to not need any.
         return []
