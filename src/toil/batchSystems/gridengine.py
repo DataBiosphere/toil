@@ -57,7 +57,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None):
+                              job_environment: Optional[Dict[str, str]] = None,
+                              gpus: Optional[int] = None):
             # POSIX qsub
             # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
             # expects a single script argument, which is supposed to be a file.

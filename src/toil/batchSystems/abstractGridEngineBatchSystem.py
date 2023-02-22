@@ -108,10 +108,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while len(self.waitingJobs) > 0 and \
                     len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
-                jobID, cpu, memory, command, jobName, environment = self.waitingJobs.pop(0)
+                jobID, cpu, memory, command, jobName, environment, gpus = self.waitingJobs.pop(0)
 
                 # prepare job submission command
-                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment)
+                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment, gpus)
                 logger.debug("Running %r", subLine)
                 batchJobID = self.boss.with_retries(self.submitJob, subLine)
                 if self.boss._outbox is not None:
@@ -276,7 +276,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+                              job_environment: Optional[Dict[str, str]] = None,
+                              gpus: Optional[int] = None) -> List[str]:
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
@@ -374,8 +375,16 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.check_resource_request(jobDesc)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
+            gpus = 0
+            if isinstance(jobDesc.accelerators, list):
+                for accelerator in jobDesc.accelerators:
+                    if accelerator['kind'] == 'gpu':
+                        gpus = accelerator['count']
+            else:
+                gpus = jobDesc.accelerators
+
             self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
-                                   job_environment))
+                                   job_environment, gpus))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
                          jobDesc.unitName)
         return jobID
