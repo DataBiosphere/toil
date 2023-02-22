@@ -229,7 +229,7 @@ class ToilState:
         """
         Count number of pending successors of the given job.
 
-        (Those which have not yet succeeded or failed)
+        Pending successors are those which have not yet succeeded or failed.
         """
         if predecessor_id not in self.successorCounts:
             return 0
