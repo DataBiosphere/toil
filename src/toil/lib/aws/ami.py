@@ -3,7 +3,8 @@ import logging
 import os
 import time
 import urllib.request
-from typing import Dict, Optional
+from urllib.error import HTTPError
+from typing import Dict, Optional, Iterator
 
 from botocore.client import BaseClient
 
@@ -51,6 +52,51 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = 'amd64') -> str:
     logger.info('Selected Flatcar AMI: %s', ami)
     return ami
 
+@retry(errors=[HTTPError])
+def _fetch_flatcar_feed(architecture: str = 'amd64') -> bytes:
+    """
+    Get the binary data of the Flatcar release feed for the given architecture.
+    
+    :raises HTTPError: if the feed cannot be fetched.
+    """
+    
+    JSON_FEED_URL = f'https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json'
+    return urllib.request.urlopen(JSON_FEED_URL).read()
+
+def flatcar_release_feed_amis(region: str, architecture: str = 'amd64') -> Iterator[str]:
+    """
+    Yield AMI IDs for the given architecture from the Flatcar release feed.
+    
+    Retries if the release feed cannot be fetched. If the release feed has a
+    permanent error, yields nothing. If some entries in the release feed are
+    unparseable, yields the others.
+    """
+    
+    try:
+        feed = json.loads(_fetch_flatcar_feed())
+    except HTTPError:
+        # Flatcar servers did not return the feed
+        logger.exception('Could not retrieve Flatcar release feed JSON')
+        logger.warning('Continuing without release feed AMIs!')
+        return
+    except json.JSONDecodeError:
+        # Feed is not JSON
+        logger.exception('Could not decode Flatcar release feed JSON')
+        logger.warning('Continuing without release feed AMIs!')
+        return
+
+    for ami_record in feed.get('amis', []):
+        # Scan the list of regions
+        if ami_record.get('name', None) == region:
+            # When we find ours, return the AMI ID
+            if 'hvm' in ami_record:
+                yield ami_record['hvm']
+            # And stop, there should be one per region.
+            return
+    # We didn't find our region
+    logger.warning(f'Flatcar release feed does not have an image for region {region}')
+    
+    
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'amd64') -> Optional[str]:
@@ -64,25 +110,17 @@ def official_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'am
     # Rather than hardcode a list of AMIs by region that will die, we use
     # their JSON feed of the current ones.
 
-    JSON_FEED_URL = f'https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json'
     region = ec2_client._client_config.region_name  # type: ignore
-    feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
-
-    try:
-        for ami_record in feed['amis']:
-            # Scan the list of regions
-            if ami_record['name'] == region:
-                # When we find ours, return the AMI ID
-                ami = ami_record['hvm']
-                # verify it exists on AWS
-                response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])  # type: ignore
-                if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
-                    return ami  # type: ignore
-        # We didn't find it
-        logger.warning(f'Flatcar release feed at {JSON_FEED_URL} does not have an image for region {region}')
-    except KeyError:
-        # We didn't see a field we need
-        logger.warning(f'Flatcar release feed at {JSON_FEED_URL} does not have expected format')
+                
+    for ami in flatcar_release_feed_amis(region, architecture):
+        # verify it exists on AWS
+        response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])  # type: ignore
+        if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
+            return ami  # type: ignore
+        else:
+            logger.warning(f'Flatcar release feed suggests image {ami} which does not exist on AWS in {region}')
+    # We didn't find it
+    logger.warning(f'Flatcar release feed does not have an image for region {region} that exists on AWS')
     return None
 
 

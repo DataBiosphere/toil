@@ -16,13 +16,25 @@ import os
 
 from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
                               get_flatcar_ami,
-                              official_flatcar_ami_release)
+                              official_flatcar_ami_release,
+                              flatcar_release_feed_amis)
 from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+
+class FlatcarFeedTest(ToilTest):
+    """Test accessing the FLatcar AMI release feed, independent of the AWS API"""
+    
+    def test_parse_feed(self):
+        """Make sure we can parse the Flatcvar release feed and get an AMI."""
+        amis = list(flatcar_release_feed_amis('us-west-2', 'amd64'))
+        self.assertTrue(len(amis) > 0)
+        for ami in amis:
+            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
+            self.assertTrue(ami.startswith('ami-'))
 
 @needs_aws_ec2
 class AMITest(ToilTest):
