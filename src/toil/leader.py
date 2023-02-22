@@ -439,8 +439,12 @@ class Leader:
         self.issueJobs(successors)
 
     def _processFailedSuccessors(self, predecessor_id: str):
-        # Some of the jobs successors failed then either fail the job
-        # or restart it if it has retries left and is a checkpoint job
+        """
+        Deal with some of a job's successors having failed.
+        
+        Either fail the job, or restart it if it has retries left and is a checkpoint
+        job.
+        """
 
         # Get the description
         predecessor = self.toilState.get_job(predecessor_id)
