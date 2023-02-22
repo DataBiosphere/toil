@@ -546,9 +546,9 @@ class Requirer:
             # The type checking for this is delegated to the
             # AcceleratorRequirement class.
             if isinstance(value, list):
-                return [AcceleratorRequirement.parse(v) for v in value]
+                return [AcceleratorRequirement.parse(v) for v in value] #accelerators={'kind': 'gpu', 'brand': 'nvidia', 'count': 2}
             else:
-                return [AcceleratorRequirement.parse(value)]
+                return [AcceleratorRequirement.parse(value)] #accelerators=1
         else:
             # Anything else we just pass along without opinons
             return cast(ParsedRequirement, value)
