@@ -723,7 +723,11 @@ class Leader:
                 self.timeSinceJobsLastRescued += 60
 
     def innerLoop(self):
-        """Process jobs by the leader."""
+        """
+        Process jobs.
+        
+        This is the leader's main loop.
+        """
         self.timeSinceJobsLastRescued = time.time()
 
         while self._messages.count(JobUpdatedMessage) > 0 or \
