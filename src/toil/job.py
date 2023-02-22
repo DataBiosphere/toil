@@ -1100,7 +1100,7 @@ class JobDescription(Requirer):
 
     def getLogFileHandle(self, jobStore):
         """
-        Create a a context manager that yields a file handle to the log file.
+        Create a context manager that yields a file handle to the log file.
 
         Assumes logJobStoreFileID is set.
         """
@@ -2083,7 +2083,7 @@ class Job:
             job.
             :param job: root job of the workflow
             :raises: toil.exceptions.FailedJobsException if at the end of function \
-            their remain failed jobs.
+            there remain failed jobs.
             :return: The return value of the root job's run function.
             """
             set_logging_from_options(options)
