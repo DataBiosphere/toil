@@ -1100,7 +1100,7 @@ class JobDescription(Requirer):
 
     def getLogFileHandle(self, jobStore):
         """
-        Create a a context manager that yields a file handle to the log file.
+        Create a context manager that yields a file handle to the log file.
 
         Assumes logJobStoreFileID is set.
         """
