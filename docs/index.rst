@@ -29,14 +29,12 @@ If using Toil for your research, please cite
 
 .. toctree::
    :caption: Getting Started
-   :maxdepth: 2
 
    gettingStarted/install
    gettingStarted/quickStart
 
 .. toctree::
    :caption: Running Toil
-   :maxdepth: 2
 
    running/introduction
    running/cliOptions
@@ -49,7 +47,6 @@ If using Toil for your research, please cite
 
 .. toctree::
    :caption: Developing Toil Workflows
-   :maxdepth: 2
 
    developingWorkflows/developing
    developingWorkflows/toilAPI
@@ -64,19 +61,18 @@ If using Toil for your research, please cite
 
 .. toctree::
    :caption: Contributing to Toil
-   :maxdepth: 2
 
    contributing/contributing
    contributing/checklists
 
 .. toctree::
    :caption: Appendices
-   :maxdepth: 2
 
    appendices/architecture
    appendices/aws_min_permissions
    appendices/deploy
    appendices/environment_vars
+
 
 * :ref:`genindex`
 * :ref:`search`

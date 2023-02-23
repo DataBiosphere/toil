@@ -20,11 +20,11 @@ from setuptools import find_packages, setup
 
 def get_requirements(extra=None):
     """
-    Load the requirements for the given extra from the appropriate
-    requirements-extra.txt, or the main requirements.txt if no extra is
-    specified.
-    """
+    Load the requirements for the given extra.
 
+    Uses the appropriate requirements-extra.txt, or the main requirements.txt
+    if no extra is specified.
+    """
     filename = f"requirements-{extra}.txt" if extra else "requirements.txt"
 
     with open(filename) as fp:
@@ -34,10 +34,11 @@ def get_requirements(extra=None):
 
 def run_setup():
     """
-    Calls setup(). This function exists so the setup() invocation preceded more internal
-    functionality. The `version` module is imported dynamically by import_version() below.
-    """
+    Call setup().
 
+    This function exists so the setup() invocation preceded more internal functionality.
+    The `version` module is imported dynamically by import_version() below.
+    """
     install_requires = get_requirements()
 
     extras_require = {}

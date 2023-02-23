@@ -87,7 +87,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None):
+                              job_environment: Optional[Dict[str, str]] = None,
+                              gpus: Optional[int] = None):
             return (self.prepareBsub(cpu, memory, jobID) + [command],
                     job_environment)  # pass job_environment to .submitJob()
 
@@ -326,8 +327,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def parseBjobs(self, bjobs_output_str):
             """
             Parse records from bjobs json type output
-            params:
-                bjobs_output_str: stdout of bjobs json type output
+
+            :params bjobs_output_str: stdout of bjobs json type output
             """
             bjobs_dict = None
             bjobs_records = None

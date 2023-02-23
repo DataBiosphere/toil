@@ -15,9 +15,8 @@ log = logging.getLogger(__name__)
 
 
 class MesosTestSupport:
-    """
-    A mixin for test cases that need a running Mesos master and agent on the local host
-    """
+    """Mixin for test cases that need a running Mesos master and agent on the local host."""
+
     @retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
            log_message=(log.info, 'Checking if Mesos is ready...'))
     def wait_for_master(self):
@@ -38,10 +37,8 @@ class MesosTestSupport:
 
         log.info('Mesos is ready! Running test.')
 
-    def _stopProcess(self, process, timeout=10):
-        """
-        Gracefully stop a process on a timeout, given the Popen object for the process.
-        """
+    def _stopProcess(self, process, timeout=10) -> None:
+        """Gracefully stop a process on a timeout, given the Popen object for the process."""
 
         process.terminate()
         waited = 0
