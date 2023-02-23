@@ -68,13 +68,17 @@ class ServiceManager:
 
     def services_are_starting(self, job_id: str) -> bool:
         """
-        Return True if the services for the given job are currently being started, and False otherwise.
+        Check if services are being started.
+
+        :return: True if the services for the given job are currently being started, and False otherwise.
         """
         return job_id in self.__waiting_clients
 
     def get_job_count(self) -> int:
         """
-        Get the total number of jobs we are working on (services and their parent non-service jobs).
+        Get the total number of jobs we are working on.
+
+        (services and their parent non-service jobs)
         """
         return self.__service_manager_jobs
 
@@ -109,6 +113,8 @@ class ServiceManager:
 
     def get_ready_client(self, maxWait: float) -> Optional[str]:
         """
+        Fetch a ready client, waiting as needed.
+
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
         :return: the ID of a client whose services are running, or None if no
                  such job is available.
@@ -124,6 +130,8 @@ class ServiceManager:
 
     def get_unservable_client(self, maxWait: float) -> Optional[str]:
         """
+        Fetch a client whos services failed to start.
+
         :param float maxWait: Time in seconds to wait to get a JobDescription before returning
         :return: the ID of a client whose services failed to start, or None if
                  no such job is available.
@@ -139,6 +147,8 @@ class ServiceManager:
 
     def get_startable_service(self, maxWait: float) -> Optional[str]:
         """
+        Fetch a service job that is ready to start.
+
         :param maxWait: Time in seconds to wait to get a job before returning.
         :return: the ID of a service job that the leader can start, or None if no such job exists.
         """
@@ -321,8 +331,9 @@ class ServiceManager:
 
     def __start_batches_blocking(self, client_id: str) -> None:
         """
-        Wait until all the services for the given job are started, starting
-        them in batches that are all issued together.
+        Wait until all the services for the given job are started.
+
+        (Starting them in batches that are all issued together)
         """
         # Keep the user informed, but not too informed, as services start up
         log_limiter = LocalThrottle(60)

@@ -45,3 +45,4 @@ Batch System API
 
 .. autoclass:: toil.batchSystems.abstractBatchSystem::AbstractBatchSystem
    :members:
+   :noindex:

@@ -48,7 +48,5 @@ class FailedJobsException(Exception):
         self.numberOfFailedJobs = len(failed_jobs)
 
     def __str__(self) -> str:
-        """
-        Stringify the exception, including the message.
-        """
+        """Stringify the exception, including the message."""
         return self.msg

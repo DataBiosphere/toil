@@ -218,10 +218,10 @@ endif
 
 docs: check_venv check_build_reqs
 	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
-	cd docs && make html
+	cd docs && ${MAKE} html
 
 clean_docs: check_venv
-	- cd docs && make clean
+	- cd docs && ${MAKE} clean
 
 clean: clean_develop clean_sdist clean_docs
 
@@ -258,11 +258,11 @@ PYSOURCES=$(shell find src -name '*.py') setup.py version_template.py
 ## sorting imports using isort: https://github.com/timothycrosley/isort
 sort_imports: $(PYSOURCES)
 	isort -m VERTICAL $^ contrib/mypy-stubs
-	make format
+	${MAKE} format
 
 remove_unused_imports: $(PYSOURCES)
 	autoflake --in-place --remove-all-unused-imports $^
-	make format
+	${MAKE} format
 
 remove_trailing_whitespace:
 	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
@@ -282,6 +282,9 @@ mypy:
 # Assumes an "upstream" remote
 touched_pylint:
 	pylint -E $(shell git diff --name-only upstream/master src | grep .py$$) || true
+
+pydocstyle: src/toil
+	pydocstyle --add-ignore=D100,D101,D102,D103,D104,D105,D107 setup.py $^ || true
 
 pydocstyle_report.txt: src/toil
 	pydocstyle setup.py $^ > $@ 2>&1 || true

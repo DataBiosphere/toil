@@ -73,15 +73,16 @@ if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
+    from optparse import OptionParser
 
 logger = logging.getLogger(__name__)
 
 
 class JobPromiseConstraintError(RuntimeError):
     """
-    Represents a problem where a job is being asked to promise its return
-    value, but it has not yet been hit in the topological order of the job
-    graph.
+    Error for job being asked to promise its return value, but it not available.
+
+    (Due to the return value not yet been hit in the topological order of the job graph.)
     """
 
     def __init__(
@@ -150,10 +151,8 @@ class TemporaryID:
         return not isinstance(other, TemporaryID) or self._value != other._value
 
 class AcceleratorRequirement(TypedDict):
-    """
-    Represents a requirement for one or more computational accelerators, like a
-    GPU or FPGA.
-    """
+    """Requirement for one or more computational accelerators, like a GPU or FPGA."""
+
     count: int
     """
     How many of the accelerator are needed to run the job.
@@ -192,7 +191,9 @@ class AcceleratorRequirement(TypedDict):
     @staticmethod
     def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
         """
-        Parse an AcceleratorRequirement specified by user code. Supports formats like:
+        Parse an AcceleratorRequirement specified by user code.
+
+        Supports formats like:
 
         >>> AcceleratorRequirement.parse(8)
         {'count': 8, 'kind': 'gpu'}
@@ -222,10 +223,9 @@ class AcceleratorRequirement(TypedDict):
         of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
         is a brand.
 
-        Raises ValueError if it gets somethign it can't parse, and TypeError if
-        it gets something it can't parse because it's the wrong type.
+        :raises ValueError: if it gets somethign it can't parse
+        :raises TypeError: if it gets something it can't parse because it's the wrong type.
         """
-
         KINDS = {'gpu'}
         BRANDS = {'nvidia', 'amd'}
         APIS = {'cuda', 'rocm', 'opencl'}
@@ -301,9 +301,11 @@ class AcceleratorRequirement(TypedDict):
     @staticmethod
     def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
         """
-        Return True if the given candidate at least partially satisfies the given requirement (i.e. check all fields other than count).
-        """
+        Test candidate partially against the given requirement.
 
+        :returns: True if the given candidate at least partially satisfies the
+                  given requirement (i.e. check all fields other than count).
+        """
         for key in ['kind', 'brand', 'api', 'model']:
             if key in requirement:
                 if key not in candidate:
@@ -317,8 +319,9 @@ class AcceleratorRequirement(TypedDict):
 
 class RequirementsDict(TypedDict):
     """
-    Typed storage for requirements for a job, where requirement values are of
-    different types depending on the requirement.
+    Typed storage for requirements for a job.
+
+    Where requirement values are of different types depending on the requirement.
     """
 
     cores: NotRequired[Union[int, float]]
@@ -343,8 +346,9 @@ ParseableRequirement = Union[ParseableIndivisibleResource, ParseableDivisibleRes
 
 class Requirer:
     """
-    Base class implementing the storage and presentation of requirements for
-    cores, memory, disk, and preemptability as properties.
+    Base class implementing the storage and presentation of requirements.
+
+    Has cores, memory, disk, and preemptability as properties.
     """
 
     _requirementOverrides: RequirementsDict
@@ -640,11 +644,10 @@ class Requirer:
 
     def scale(self, requirement: str, factor: float) -> "Requirer":
         """
-        Return a copy of this object with the given requirement scaled up or
-        down by the given factor. Only works on requirements where that makes
-        sense.
-        """
+        Return a copy of this object with the given requirement scaled up or down.
 
+        Only works on requirements where that makes sense.
+        """
         # Make a shallow copy
         scaled = copy.copy(self)
         # But make sure it has its own override dictionary
@@ -664,9 +667,7 @@ class Requirer:
             raise ValueError(f"Cannot scale {requirement} requirements!")
 
     def requirements_string(self) -> str:
-        """
-        Get a nice human-readable string of our requirements.
-        """
+        """Get a nice human-readable string of our requirements."""
         parts = []
         for k in REQUIREMENT_NAMES:
             v = self._fetchRequirement(k)
@@ -941,9 +942,9 @@ class JobDescription(Requirer):
 
     def clear_nonexistent_dependents(self, job_store: "AbstractJobStore") -> None:
         """
-        Remove all references to child, follow-on, and associated service jobs
-        that do not exist (i.e. have been completed and removed) in the given
-        job store.
+        Remove all references to child, follow-on, and associated service jobs that do not exist.
+
+        That is to say, all those that have been completed and removed.
         """
         predicate = lambda j: job_store.job_exists(j)
         self.filterSuccessors(predicate)
@@ -957,10 +958,11 @@ class JobDescription(Requirer):
 
     def is_subtree_done(self) -> bool:
         """
-        Return True if the job appears to be done, and all related child,
-        follow-on, and service jobs appear to be finished and removed.
-        """
+        Check if the subtree is done.
 
+        :returns: True if the job appears to be done, and all related child,
+                  follow-on, and service jobs appear to be finished and removed.
+        """
         return self.command == None and next(self.successorsAndServiceHosts(), None) is None
 
     def replace(self, other: "JobDescription") -> None:
@@ -1040,6 +1042,8 @@ class JobDescription(Requirer):
 
     def onRegistration(self, jobStore: "AbstractJobStore") -> None:
         """
+        Perform setup work that requires the JobStore.
+
         Called by the Job saving logic when this JobDescription meets the JobStore and has its ID assigned.
 
         Overridden to perform setup work (like hooking up flag files for service
@@ -1048,8 +1052,10 @@ class JobDescription(Requirer):
         :param jobStore: The job store we are being placed into
         """
 
-    def setupJobAfterFailure(self, exit_status: Optional[int] = None, exit_reason: Optional["BatchJobExitReason"] = None):
+    def setupJobAfterFailure(self, exit_status: Optional[int] = None, exit_reason: Optional["BatchJobExitReason"] = None) -> None:
         """
+        Configure job after a failure.
+
         Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
         which is common).
@@ -1058,9 +1064,7 @@ class JobDescription(Requirer):
 
         :param exit_status: The exit code from the job.
         :param exit_reason: The reason the job stopped, if available from the batch system.
-
         """
-
         # Avoid potential circular imports
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
@@ -1096,7 +1100,7 @@ class JobDescription(Requirer):
 
     def getLogFileHandle(self, jobStore):
         """
-        Returns a context manager that yields a file handle to the log file.
+        Create a context manager that yields a file handle to the log file.
 
         Assumes logJobStoreFileID is set.
         """
@@ -1105,6 +1109,8 @@ class JobDescription(Requirer):
     @property
     def remainingTryCount(self):
         """
+        Get the number of tries remaining.
+
         The try count set on the JobDescription, or the default based on the
         retry count from the config if none is set.
         """
@@ -1158,20 +1164,20 @@ class JobDescription(Requirer):
 
     def pre_update_hook(self) -> None:
         """
-        Called by the job store before pickling and saving a created or updated
-        version of a job.
-        """
+        Run before pickling and saving a created or updated version of this job.
 
+        Called by the job store.
+        """
         self._job_version += 1
         logger.debug("New job version: %s", self)
 
     def get_job_kind(self) -> str:
         """
-        Returns an identifier of the job for use with the message bus.
-        Either the unit name, job name, or display name, which identifies
-        the kind of job it is to toil.
+        Return an identifier of the job for use with the message bus.
 
-        Otherwise returns Unknown Job in case no identifier is available
+        Returns: Either the unit name, job name, or display name, which identifies
+                 the kind of job it is to toil.
+                 Otherwise "Unknown Job" in case no identifier is available
         """
         if self.unitName:
             return self.unitName
@@ -1184,15 +1190,10 @@ class JobDescription(Requirer):
 
 
 class ServiceJobDescription(JobDescription):
-    """
-    A description of a job that hosts a service.
-    """
+    """A description of a job that hosts a service."""
 
     def __init__(self, *args, **kwargs):
-        """
-        Create a ServiceJobDescription to describe a ServiceHostJob.
-        """
-
+        """Create a ServiceJobDescription to describe a ServiceHostJob."""
         # Make the base JobDescription
         super().__init__(*args, **kwargs)
 
@@ -1212,6 +1213,8 @@ class ServiceJobDescription(JobDescription):
 
     def onRegistration(self, jobStore):
         """
+        Setup flag files.
+
         When a ServiceJobDescription first meets the JobStore, it needs to set up its flag files.
         """
         super().onRegistration(jobStore)
@@ -1227,10 +1230,7 @@ class CheckpointJobDescription(JobDescription):
     """
 
     def __init__(self, *args, **kwargs):
-        """
-        Create a CheckpointJobDescription to describe a checkpoint job.
-        """
-
+        """Create a CheckpointJobDescription to describe a checkpoint job."""
         # Make the base JobDescription
         super().__init__(*args, **kwargs)
 
@@ -1406,22 +1406,14 @@ class Job:
             return 'Job(' + str(self.description) + ')'
 
     @property
-    def jobStoreID(self):
-        """
-        Get the ID of this Job.
-
-        :rtype: str|toil.job.TemporaryID
-        """
+    def jobStoreID(self) -> Union[str, TemporaryID]:
+        """Get the ID of this Job."""
         # This is managed by the JobDescription.
         return self._description.jobStoreID
 
     @property
-    def description(self):
-        """
-        Expose the JobDescription that describes this job.
-
-        :rtype: toil.job.JobDescription
-        """
+    def description(self) -> JobDescription:
+        """Expose the JobDescription that describes this job."""
         return self._description
 
     # Instead of being a Requirer ourselves, we pass anything about
@@ -1429,11 +1421,7 @@ class Job:
 
     @property
     def disk(self) -> int:
-        """
-        The maximum number of bytes of disk the job will require to run.
-
-        :rtype: int
-        """
+        """The maximum number of bytes of disk the job will require to run."""
         return self.description.disk
     @disk.setter
     def disk(self, val):
@@ -1441,47 +1429,31 @@ class Job:
 
     @property
     def memory(self):
-        """
-        The maximum number of bytes of memory the job will require to run.
-
-        :rtype: int
-        """
+        """The maximum number of bytes of memory the job will require to run."""
         return self.description.memory
     @memory.setter
     def memory(self, val):
          self.description.memory = val
 
     @property
-    def cores(self):
-        """
-        The number of CPU cores required.
-
-       :rtype: int|float
-        """
+    def cores(self) -> Union[int, float]:
+        """The number of CPU cores required."""
         return self.description.cores
     @cores.setter
     def cores(self, val):
          self.description.cores = val
 
     @property
-    def accelerators(self):
-        """
-        Any accelerators, such as GPUs, that are needed.
-
-       :rtype: list
-        """
+    def accelerators(self) -> List[str]:
+        """Any accelerators, such as GPUs, that are needed."""
         return self.description.accelerators
     @accelerators.setter
-    def accelerators(self, val):
+    def accelerators(self, val: List[str]) -> None:
          self.description.accelerators = val
 
     @property
-    def preemptible(self):
-        """
-        Whether the job can be run on a preemptible node.
-
-        :rtype: bool
-        """
+    def preemptible(self) -> bool:
+        """Whether the job can be run on a preemptible node."""
         return self.description.preemptible
 
     @deprecated(new_function_name="preemptible")
@@ -1492,16 +1464,11 @@ class Job:
          self.description.preemptible = val
 
     @property
-    def checkpoint(self):
-        """
-        Determine if the job is a checkpoint job or not.
-
-        :rtype: bool
-        """
-
+    def checkpoint(self) -> bool:
+        """Determine if the job is a checkpoint job or not."""
         return isinstance(self._description, CheckpointJobDescription)
 
-    def assignConfig(self, config: Config):
+    def assignConfig(self, config: Config) -> None:
         """
         Assign the given config object.
 
@@ -1747,20 +1714,20 @@ class Job:
         return self._tempDir
 
     def log(self, text: str, level=logging.INFO) -> None:
-        """Convenience wrapper for :func:`fileStore.logToMaster`."""
+        """Log using :func:`fileStore.logToMaster`."""
         self._fileStore.logToMaster(text, level)
 
     @staticmethod
-    def wrapFn(fn, *args, **kwargs):
+    def wrapFn(fn, *args, **kwargs) -> "FunctionWrappingJob":
         """
-        Makes a Job out of a function. \
+        Makes a Job out of a function.
+
         Convenience function for constructor of :class:`toil.job.FunctionWrappingJob`.
 
         :param fn: Function to be run with ``*args`` and ``**kwargs`` as arguments. \
         See toil.job.JobFunctionWrappingJob for reserved keyword arguments used \
         to specify resource requirements.
         :return: The new function that wraps fn.
-        :rtype: toil.job.FunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
             return PromisedRequirementFunctionWrappingJob.create(fn, *args, **kwargs)
@@ -1768,31 +1735,30 @@ class Job:
             return FunctionWrappingJob(fn, *args, **kwargs)
 
     @staticmethod
-    def wrapJobFn(fn, *args, **kwargs):
+    def wrapJobFn(fn, *args, **kwargs) -> "JobFunctionWrappingJob":
         """
-        Makes a Job out of a job function. \
+        Makes a Job out of a job function.
+
         Convenience function for constructor of :class:`toil.job.JobFunctionWrappingJob`.
 
         :param fn: Job function to be run with ``*args`` and ``**kwargs`` as arguments. \
         See toil.job.JobFunctionWrappingJob for reserved keyword arguments used \
         to specify resource requirements.
         :return: The new job function that wraps fn.
-        :rtype: toil.job.JobFunctionWrappingJob
         """
         if PromisedRequirement.convertPromises(kwargs):
             return PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs)
         else:
             return JobFunctionWrappingJob(fn, *args, **kwargs)
 
-    def encapsulate(self, name=None):
+    def encapsulate(self, name: Optional[str] = None) -> "EncapsulatedJob":
         """
         Encapsulates the job, see :class:`toil.job.EncapsulatedJob`.
         Convenience function for constructor of :class:`toil.job.EncapsulatedJob`.
 
-        :param str name: Human-readable name for the encapsulated job.
+        :param name: Human-readable name for the encapsulated job.
 
         :return: an encapsulated version of this job.
-        :rtype: toil.job.EncapsulatedJob
         """
         return EncapsulatedJob(self, unitName=name)
 
@@ -1823,8 +1789,6 @@ class Job:
 
         :return: A promise representing the return value of this jobs :meth:`toil.job.Job.run`
                  method.
-
-        :rtype: toil.job.Promise
         """
         return Promise(self, path)
 
@@ -1858,10 +1822,10 @@ class Job:
     def _disablePromiseRegistration(self):
         """
         Called when the job data is about to be saved in the JobStore.
+
         No promises should attempt to register with the job after this has been
         called, because that registration would not be persisted.
         """
-
         self._promiseJobStore = None
 
     ####################################################
@@ -1888,12 +1852,12 @@ class Job:
 
     def getRootJobs(self) -> Set['Job']:
         """
-        Returns the set of root job objects that contain this job.
+        Return the set of root job objects that contain this job.
+
         A root job is a job with no predecessors (i.e. which are not children, follow-ons, or services).
 
         Only deals with jobs created here, rather than loaded from the job store.
         """
-
         # Start assuming all jobs are roots
         roots = set(self._registry.keys())
 
@@ -1953,9 +1917,7 @@ class Job:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
 
     def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
-        """
-        DFS traversal to detect cycles in augmented job graph.
-        """
+        """DFS traversal to detect cycles in augmented job graph."""
         if self not in visited:
             visited.add(self)
             stack.append(self)
@@ -1968,9 +1930,11 @@ class Job:
             raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
 
     @staticmethod
-    def _getImpliedEdges(roots):
+    def _getImpliedEdges(roots) -> Dict["Job", List["Job"]]:
         """
-        Gets the set of implied edges (between children and follow-ons of a common job). Used in Job.checkJobGraphAcylic.
+        Gets the set of implied edges (between children and follow-ons of a common job).
+
+        Used in Job.checkJobGraphAcylic.
 
         Only deals with jobs created here, rather than loaded from the job store.
 
@@ -2008,7 +1972,7 @@ class Job:
 
         return extraEdges
 
-    def checkNewCheckpointsAreLeafVertices(self):
+    def checkNewCheckpointsAreLeafVertices(self) -> None:
         """
         A checkpoint job is a job that is restarted if either it fails, or if any of \
         its successors completely fails, exhausting their retries.
@@ -2040,7 +2004,7 @@ class Job:
     # Deferred function system
     ####################################################
 
-    def defer(self, function, *args, **kwargs):
+    def defer(self, function, *args, **kwargs) -> None:
         """
         Register a deferred function, i.e. a callable that will be invoked after the current
         attempt at running this job concludes. A job attempt is said to conclude when the job
@@ -2081,7 +2045,6 @@ class Job:
             Get argument parser with added toil workflow options.
 
             :returns: The argument parser used by a toil workflow with added Toil options.
-            :rtype: :class:`argparse.ArgumentParser`
             """
             parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
             Job.Runner.addToilOptions(parser)
@@ -2092,27 +2055,25 @@ class Job:
             """
             Get default options for a toil workflow.
 
-            :param string jobStore: A string describing the jobStore \
+            :param jobStore: A string describing the jobStore \
             for the workflow.
             :returns: The options used by a toil workflow.
-            :rtype: argparse.ArgumentParser values object
             """
             parser = Job.Runner.getDefaultArgumentParser()
             return parser.parse_args(args=[jobStore])
 
         @staticmethod
-        def addToilOptions(parser):
+        def addToilOptions(parser: Union["OptionParser", ArgumentParser]) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
             parser object.
 
             :param parser: Options object to add toil options to.
-            :type parser: optparse.OptionParser or argparse.ArgumentParser
             """
             addOptions(parser)
 
         @staticmethod
-        def startToil(job, options):
+        def startToil(job: "Job", options) -> Any:
             """
             Run the toil workflow using the given options.
 
@@ -2120,11 +2081,10 @@ class Job:
 
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
             job.
-            :param toil.job.Job job: root job of the workflow
-            :raises toil.exceptions.FailedJobsException: if at the end of function \
+            :param job: root job of the workflow
+            :raises: toil.exceptions.FailedJobsException if at the end of function \
             there remain failed jobs.
             :return: The return value of the root job's run function.
-            :rtype: Any
             """
             set_logging_from_options(options)
             with Toil(options) as toil:
@@ -2147,7 +2107,6 @@ class Job:
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-
             # Save the requirements in ourselves so they are visible on `self` to user code.
             super().__init__({
                 'memory': memory,
@@ -2167,11 +2126,11 @@ class Job:
             self.hostID = None
 
         @abstractmethod
-        def start(self, job):
+        def start(self, job: "Job") -> Any:
             """
             Start the service.
 
-            :param toil.job.Job job: The underlying host job that the service is being run in.
+            :param job: The underlying host job that the service is being run in.
                                      Can be used to register deferred functions, or to access
                                      the fileStore for creating temporary files.
 
@@ -2180,16 +2139,16 @@ class Job:
             """
 
         @abstractmethod
-        def stop(self, job):
+        def stop(self, job: "Job") -> None:
             """
             Stops the service. Function can block until complete.
 
-            :param toil.job.Job job: The underlying host job that the service is being run in.
-                                     Can be used to register deferred functions, or to access
-                                     the fileStore for creating temporary files.
+            :param job: The underlying host job that the service is being run in.
+                        Can be used to register deferred functions, or to access
+                        the fileStore for creating temporary files.
             """
 
-        def check(self):
+        def check(self) -> bool:
             """
             Checks the service is still running.
 
@@ -2213,11 +2172,9 @@ class Job:
         return next(job.description.successorsAndServiceHosts(), None) is None
 
     @classmethod
-    def _loadUserModule(cls, userModule):
+    def _loadUserModule(cls, userModule: ModuleDescriptor):
         """
         Imports and returns the module object represented by the given module descriptor.
-
-        :type userModule: ModuleDescriptor
         """
         return userModule.load()
 
@@ -2263,7 +2220,7 @@ class Job:
 
     def _fulfillPromises(self, returnValues, jobStore):
         """
-        Sets the values for promises using the return values from this job's run() function.
+        Set the values for promises using the return values from this job's run() function.
         """
         for path, promiseFileStoreIDs in self._rvs.items():
             if not path:
@@ -2301,11 +2258,10 @@ class Job:
 
     def _collectAllSuccessors(self, visited):
         """
-        Adds the job and all jobs reachable on a directed path from current node to the given set.
+        Add the job and all jobs reachable on a directed path from current node to the given set.
 
         Only considers jobs in this job's subgraph that are newly added, not loaded from the job store.
         """
-
         # Keep our own stack since we may have a stick in the graph long enough
         # to exhaust the real stack
         todo = [self]
@@ -2320,7 +2276,7 @@ class Job:
                         # We added this successor locally
                         todo.append(self._registry[successorID])
 
-    def getTopologicalOrderingOfJobs(self):
+    def getTopologicalOrderingOfJobs(self) -> List["Job"]:
         """
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
         the job at index i can be run before the job at index j.
@@ -2328,10 +2284,7 @@ class Job:
         Only considers jobs in this job's subgraph that are newly added, not loaded from the job store.
 
         Ignores service jobs.
-
-        :rtype: list[Job]
         """
-
         # List of Job objects in order.
         ordering = []
         # Set of IDs of visited jobs.
@@ -2371,13 +2324,12 @@ class Job:
     # Storing Jobs into the JobStore
     ####################################################
 
-    def _register(self, jobStore):
+    def _register(self, jobStore) -> List[Tuple[TemporaryID, str]]:
         """
         If this job lacks a JobStore-assigned ID, assign this job an ID.
         Must be called for each job before it is saved to the JobStore for the first time.
 
         :returns: A list with either one old ID, new ID pair, or an empty list
-        :rtype: list
         """
 
         # TODO: This doesn't really have much to do with the registry. Rename
@@ -2401,7 +2353,7 @@ class Job:
             # We already have an ID. No assignment or reference rewrite necessary.
             return []
 
-    def _renameReferences(self, renames):
+    def _renameReferences(self, renames: Dict[TemporaryID, str]) -> None:
         """
         Apply the given dict of ID renames to all references to other jobs.
 
@@ -2409,13 +2361,13 @@ class Job:
 
         IDs not present in the renames dict are left as-is.
 
-        :param dict(TemporaryID, str) renames: Rename operations to apply.
+        :param renames: Rename operations to apply.
         """
 
         # Do renames in the description
         self._description.renameReferences(renames)
 
-    def saveBody(self, jobStore):
+    def saveBody(self, jobStore: "AbstractJobStore") -> None:
         """
         Save the execution data for just this job to the JobStore, and fill in
         the JobDescription with the information needed to retrieve it.
@@ -2424,8 +2376,7 @@ class Job:
 
         Does not save the JobDescription.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store
-            to save the job body into.
+        :param jobStore: The job store to save the job body into.
         """
 
         # We can't save the job in the right place for cleanup unless the
@@ -2482,16 +2433,15 @@ class Job:
         # The command connects the body of the job to the JobDescription
         self._description.command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
 
-    def _saveJobGraph(self, jobStore, saveSelf=False, returnValues=None):
+    def _saveJobGraph(self, jobStore: "AbstractJobStore", saveSelf: bool = False, returnValues: bool = None):
         """
         Save job data and new JobDescriptions to the given job store for this
         job and all descending jobs, including services.
 
         Used to save the initial job graph containing the root job of the workflow.
 
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store
-            to save the jobs into.
-        :param bool saveSelf: Set to True to save this job along with its children,
+        :param jobStore: The job store to save the jobs into.
+        :param saveSelf: Set to True to save this job along with its children,
             follow-ons, and services, or False to just save the children, follow-ons,
             and services and to populate the return value.
         :param returnValues: The collection of values returned when executing
