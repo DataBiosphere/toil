@@ -1476,11 +1476,11 @@ class Job:
          self.description.cores = val
 
     @property
-    def accelerators(self) -> List[str]:
+    def accelerators(self) -> List[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
         return self.description.accelerators
     @accelerators.setter
-    def accelerators(self, val: List[str]) -> None:
+    def accelerators(self, val: List[ParseableAcceleratorRequirement]) -> None:
          self.description.accelerators = val
 
     @property

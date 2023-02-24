@@ -1069,16 +1069,18 @@ class WDLTaskJob(WDLBaseJob):
                     command_line.remove('--fakeroot')
 
                 extra_flags: Set[str] = set()
-                for accelerator in (self.accelerators or []):
-                    if accelerator['kind'] == 'gpu':
-                        if accelerator['brand'] == 'nvidia':
-                            # Tell Singularity to expose nvidia GPUs
-                            extra_flags.add('--nv')
-                        elif accelerator['api'] == 'rocm':
-                            # Tell Singularity to expose ROCm GPUs
-                            extra_flags.add('--nv')
-                        else:
-                            raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
+                accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators
+                if accelerators_needed is not None:
+                    for accelerator in accelerators_needed:
+                        if accelerator['kind'] == 'gpu':
+                            if accelerator['brand'] == 'nvidia':
+                                # Tell Singularity to expose nvidia GPUs
+                                extra_flags.add('--nv')
+                            elif accelerator['api'] == 'rocm':
+                                # Tell Singularity to expose ROCm GPUs
+                                extra_flags.add('--nv')
+                            else:
+                                raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
 
                 for flag in extra_flags:
                     # Put in all those flags
