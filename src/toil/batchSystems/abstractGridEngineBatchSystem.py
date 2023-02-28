@@ -17,12 +17,13 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage
+from toil.job import JobDescription, AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,17 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
     """
-
+    
+    # Internally we throw around these flat tuples of random important things about a job.
+    # Assigned ID
+    # Required cores
+    # Required memory
+    # Command to run
+    # Unit name of the job
+    # Environment dict for the job
+    # Accelerator requirements for the job
+    JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
+    
     class Worker(Thread, metaclass=ABCMeta):
 
         def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
@@ -57,7 +68,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
             self.killedJobsQueue = killedJobsQueue
-            self.waitingJobs: List[Any] = list()
+            self.waitingJobs: List[JobTuple] = list()
             self.runningJobs = set()
             self.runningJobsLock = Lock()
             self.batchJobIDs = dict()
@@ -92,13 +103,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.runningJobs.remove(jobID)
             del self.batchJobIDs[jobID]
 
-        def createJobs(self, newJob: Any) -> bool:
+        def createJobs(self, newJob: JobTuple) -> bool:
             """
-            Create a new job with the Toil job ID.
+            Create a new job with the given attributes.
 
             Implementation-specific; called by AbstractGridEngineWorker.run()
-
-            :param string newJob: Toil job ID
             """
             activity = False
             # Load new job id if present:
