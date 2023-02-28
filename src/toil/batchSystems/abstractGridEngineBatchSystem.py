@@ -29,21 +29,21 @@ from toil.lib.misc import CalledProcessErrorStderr
 logger = logging.getLogger(__name__)
 
 
+# Internally we throw around these flat tuples of random important things about a job.
+# Assigned ID
+# Required cores
+# Required memory
+# Command to run
+# Unit name of the job
+# Environment dict for the job
+# Accelerator requirements for the job
+JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
+
 class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
     """
-    
-    # Internally we throw around these flat tuples of random important things about a job.
-    # Assigned ID
-    # Required cores
-    # Required memory
-    # Command to run
-    # Unit name of the job
-    # Environment dict for the job
-    # Accelerator requirements for the job
-    JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
     
     class Worker(Thread, metaclass=ABCMeta):
 

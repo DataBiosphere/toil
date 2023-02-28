@@ -27,23 +27,22 @@ from toil.job import AcceleratorRequirement
 
 logger = logging.getLogger(__name__)
 
+# Internally we throw around these flat tuples of random important things about a job. These are *different* than the AbstractGridEngineBatchSystem ones!
+# MyPy can't deal with that but we will deal with MyPy later.
+#
+# Assigned ID
+# Required *whole* cores
+# Required memory
+# *Required disk*
+# *Unit name of the job* (swapped with command)
+# *Command to run* (swapped with unit name)
+# Environment dict for the job
+# Accelerator requirements for the job
+JobTuple = Tuple[int, int, int, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
 
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
     
-    # Internally we throw around these flat tuples of random important things about a job. These are *different* than the AbstractGridEngineBatchSystem ones!
-    # MyPy can't deal with that but we will deal with MyPy later.
-    #
-    # Assigned ID
-    # Required *whole* cores
-    # Required memory
-    # *Required disk*
-    # *Unit name of the job* (swapped with command)
-    # *Command to run* (swapped with unit name)
-    # Environment dict for the job
-    # Accelerator requirements for the job
-    JobTuple = Tuple[int, int, int, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
-
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
