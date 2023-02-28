@@ -102,7 +102,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             submit_parameters = {
                 'executable': '/bin/sh',
                 'transfer_executable': 'False',
-                'arguments': f'''"-c '{command}'"'''.encode(),    # Workaround for HTCondor Python bindings Unicode conversion bug
+                'arguments': f'''"-c '{self.duplicate_quotes(command)}'"'''.encode(),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(environment),
                 'getenv': 'True',
                 'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile
@@ -295,7 +295,16 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return schedd
 
-        def getEnvString(self, overrides: Dict[str, str]):
+        def duplicate_quotes(self, value: str) -> str:
+            """
+            Escape a string by doubling up all single and double quotes.
+            
+            This is used for arguments we pass to htcondor that need to be
+            inside both double and single quote enclosures.
+            """
+            return value.replace("'", "''").replace('"', '""')
+
+        def getEnvString(self, overrides: Dict[str, str]) -> str:
             """
             Build an environment string that a HTCondor Submit object can use.
 
@@ -314,7 +323,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
                     # The entire value should be encapsulated in single quotes
                     # Quote marks (single or double) that are part of the value should be duplicated
-                    env_string += "'" + value.replace("'", "''").replace('"', '""') + "'"
+                    env_string += "'" + self.duplicate_quotes(value) + "'"
 
                     env_items.append(env_string)
 
