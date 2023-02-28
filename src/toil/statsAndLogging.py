@@ -148,6 +148,8 @@ class StatsAndLogging:
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
             stats = json.loads(statsStr, object_hook=Expando)
+            if not stats:
+                return
             try:
                 logs = stats.workers.logsToMaster
             except AttributeError:

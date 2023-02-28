@@ -85,7 +85,10 @@ class NonCachingFileStore(AbstractFileStore):
                 self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
-            os.remove(self.jobStateFile)
+            try:
+                os.remove(self.jobStateFile)
+            except FileNotFoundError:
+                pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
