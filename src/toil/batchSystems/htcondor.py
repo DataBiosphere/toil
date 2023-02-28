@@ -285,7 +285,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                     raise
 
                 yield schedd
-                
+
         @retry(errors=[RuntimeError])
         def _ping_scheduler(self, schedd: Any) -> None:
             """

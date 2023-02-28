@@ -275,7 +275,7 @@ class hidden:
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
             self.assertEqual(jobUpdateInfo.jobID, job5)
-        
+
         def test_set_job_env(self):
             """ Test the mechanism for setting per-job environment variables to batch system jobs."""
             script = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
@@ -537,7 +537,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
          'toleration_seconds': None,
          'value': 'true'}]
         """).strip(), str(spot_spec.tolerations))
-        
+
     def test_label_constraints(self):
         """
         Make sure we generate the right preemptability constraints.
