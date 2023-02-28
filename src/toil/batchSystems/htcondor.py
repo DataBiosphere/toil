@@ -16,14 +16,17 @@ import logging
 import math
 import os
 import time
+from contextlib import contextmanager
+from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
 import htcondor
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
-    
+
 from toil.job import AcceleratorRequirement
+from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,12 @@ logger = logging.getLogger(__name__)
 # Accelerator requirements for the job
 JobTuple = Tuple[int, int, int, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
 
+# We have one global lock to control access to the HTCondor scheduler
+schedd_lock = Lock()
+
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
-    
+
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
@@ -57,7 +63,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command, environment, accelerators = self.waitingJobs.pop(0)
-                
+
                 if accelerators:
                     logger.warning('Scheduling job %s without enforcing accelerator requirement', jobID)
 
@@ -137,9 +143,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, submitObj):
 
             # Queue the job using a Schedd transaction
-            schedd = self.connectSchedd()
-            with schedd.transaction() as txn:
-                batchJobID = submitObj.queue(txn)
+            with self.connectSchedd() as schedd:
+                with schedd.transaction() as txn:
+                    batchJobID = submitObj.queue(txn)
 
             # Return the ClusterId
             return batchJobID
@@ -149,9 +155,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             # Get all Toil jobs that are running
             requirements = '(JobStatus == 2) && (IsToilJob)'
             projection = ['ClusterId', 'ToilJobID', 'EnteredCurrentStatus']
-            schedd = self.connectSchedd()
-            ads = schedd.xquery(requirements = requirements,
-                                    projection = projection)
+            with self.connectSchedd() as schedd:
+                ads = schedd.xquery(requirements = requirements,
+                                        projection = projection)
 
             # Only consider the Toil jobs that are part of this workflow
             batchJobIDs = [batchJobID for (batchJobID, task) in self.batchJobIDs.values()]
@@ -173,9 +179,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             logger.debug(f"Killing HTCondor job {batchJobID}")
 
             # Set the job to be killed when its exit status is checked
-            schedd = self.connectSchedd()
-            job_spec = f'(ClusterId == {batchJobID})'
-            schedd.edit(job_spec, 'ToilJobKilled', 'True')
+            with self.connectSchedd() as schedd:
+                job_spec = f'(ClusterId == {batchJobID})'
+                schedd.edit(job_spec, 'ToilJobKilled', 'True')
 
         def getJobExitCode(self, batchJobID):
             logger.debug(f"Getting exit code for HTCondor job {batchJobID}")
@@ -194,73 +200,113 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             projection = ['JobStatus', 'ToilJobKilled', 'ExitCode',
                               'HoldReason', 'HoldReasonSubCode']
 
-            schedd = self.connectSchedd()
-            ads = schedd.xquery(requirements = requirements,  projection = projection)
+            with self.connectSchedd() as schedd:
+                ads = schedd.xquery(requirements = requirements,  projection = projection)
 
-            # Make sure a ClassAd was returned
-            try:
+                # Make sure a ClassAd was returned
                 try:
-                    ad = next(ads)
-                except TypeError:
-                    ad = ads.next()
-            except StopIteration:
-                logger.error(
-                    f"No HTCondor ads returned using constraint: {requirements}")
-                raise
+                    try:
+                        ad = next(ads)
+                    except TypeError:
+                        ad = ads.next()
+                except StopIteration:
+                    logger.error(
+                        f"No HTCondor ads returned using constraint: {requirements}")
+                    raise
 
-            # Make sure only one ClassAd was returned
-            try:
+                # Make sure only one ClassAd was returned
                 try:
-                    next(ads)
-                except TypeError:
-                    ads.next()
-            except StopIteration:
-                pass
-            else:
-                logger.warning(
-                    f"Multiple HTCondor ads returned using constraint: {requirements}")
+                    try:
+                        next(ads)
+                    except TypeError:
+                        ads.next()
+                except StopIteration:
+                    pass
+                else:
+                    logger.warning(
+                        f"Multiple HTCondor ads returned using constraint: {requirements}")
 
-            if ad['ToilJobKilled']:
-                logger.debug(f"HTCondor job {batchJobID} was killed by Toil")
+                if ad['ToilJobKilled']:
+                    logger.debug(f"HTCondor job {batchJobID} was killed by Toil")
 
-                # Remove the job from the Schedd and return 1
-                job_spec = f'ClusterId == {batchJobID}'
-                schedd.act(htcondor.JobAction.Remove, job_spec)
-                return 1
+                    # Remove the job from the Schedd and return 1
+                    job_spec = f'ClusterId == {batchJobID}'
+                    schedd.act(htcondor.JobAction.Remove, job_spec)
+                    return 1
 
-            elif status[ad['JobStatus']] == 'Completed':
-                logger.debug("HTCondor job {} completed with exit code {}".format(
-                    batchJobID, ad['ExitCode']))
+                elif status[ad['JobStatus']] == 'Completed':
+                    logger.debug("HTCondor job {} completed with exit code {}".format(
+                        batchJobID, ad['ExitCode']))
 
-                # Remove the job from the Schedd and return its exit code
-                job_spec = f'ClusterId == {batchJobID}'
-                schedd.act(htcondor.JobAction.Remove, job_spec)
-                return int(ad['ExitCode'])
+                    # Remove the job from the Schedd and return its exit code
+                    job_spec = f'ClusterId == {batchJobID}'
+                    schedd.act(htcondor.JobAction.Remove, job_spec)
+                    return int(ad['ExitCode'])
 
-            elif status[ad['JobStatus']] == 'Held':
-                logger.error("HTCondor job {} was held: '{} (sub code {})'".format(
-                    batchJobID, ad['HoldReason'], ad['HoldReasonSubCode']))
+                elif status[ad['JobStatus']] == 'Held':
+                    logger.error("HTCondor job {} was held: '{} (sub code {})'".format(
+                        batchJobID, ad['HoldReason'], ad['HoldReasonSubCode']))
 
-                # Remove the job from the Schedd and return 1
-                job_spec = f'ClusterId == {batchJobID}'
-                schedd.act(htcondor.JobAction.Remove, job_spec)
-                return 1
+                    # Remove the job from the Schedd and return 1
+                    job_spec = f'ClusterId == {batchJobID}'
+                    schedd.act(htcondor.JobAction.Remove, job_spec)
+                    return 1
 
-            else: # Job still running or idle or doing something else
-                logger.debug("HTCondor job {} has not completed (Status: {})".format(
-                    batchJobID, status[ad['JobStatus']]))
-                return None
+                else: # Job still running or idle or doing something else
+                    logger.debug("HTCondor job {} has not completed (Status: {})".format(
+                        batchJobID, status[ad['JobStatus']]))
+                    return None
 
 
         """
         Implementation-specific helper methods
         """
 
+        @contextmanager
         def connectSchedd(self):
-            '''Connect to HTCondor Schedd and return a Schedd object'''
+            """
+            Connect to HTCondor Schedd and yield a Schedd object.
+
+            You can only use it inside the context.
+            Handles locking to make sure that only one thread is trying to do this at a time.
+            """
+
+            # Find the scheduler
+            schedd_ad = self._get_schedd_address()
+
+            with schedd_lock:
+                schedd = self._open_schedd_connection(schedd_ad)
+
+                # Ping the Schedd to make sure it's there and responding
+                try:
+                    self._ping_scheduler(schedd)
+                except RuntimeError:
+                    logger.error("Could not connect to HTCondor Schedd")
+                    raise
+
+                yield schedd
+                
+        @retry(errors=[RuntimeError])
+        def _ping_scheduler(self, schedd: Any) -> None:
+            """
+            Ping the scheduler, or fail if it persistently cannot be contacted.
+            """
+            schedd.xquery(limit = 0)
+
+        @retry(errors=[htcondor.HTCondorIOError])
+        def _get_schedd_address(self) -> Optional[str]:
+            """
+            Get the HTCondor scheduler to connect to, or None for the local machine.
+
+            Retries if necessary.
+            """
+            # TODO: Memoize? Or is the collector meant to field every request?
 
             condor_host = os.getenv('TOIL_HTCONDOR_COLLECTOR')
             schedd_name = os.getenv('TOIL_HTCONDOR_SCHEDD')
+
+            # Get the scheduler's address, if not local
+            schedd_ad: Optional[str] = None
 
             # If TOIL_HTCONDOR_ variables are set, use them to find the Schedd
             if condor_host and schedd_name:
@@ -278,27 +324,33 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error(
                         f"Could not find HTCondor Schedd with name {schedd_name}")
                     raise
-                else:
-                    schedd = htcondor.Schedd(schedd_ad)
-
-            # Otherwise assume the Schedd is on the local machine
             else:
+                # Otherwise assume the Schedd is on the local machine
                 logger.debug("Connecting to HTCondor Schedd on local machine")
-                schedd = htcondor.Schedd()
 
-            # Ping the Schedd to make sure it's there and responding
-            try:
-                schedd.xquery(limit = 0)
-            except RuntimeError:
-                logger.error("Could not connect to HTCondor Schedd")
-                raise
+            return schedd_ad
 
-            return schedd
+        @retry(errors=[htcondor.HTCondorIOError])
+        def _open_schedd_connection(self, schedd_ad: Optional[str] = None) -> Any:
+            """
+            Open a connection to the htcondor schedd.
+
+            Assumes that the necessary lock is already held. Retries if needed.
+
+            :param schedd_ad: Where the scheduler is. If not set, use the local machine.
+            """
+
+            # TODO: Don't hold the lock while retrying?
+
+            if schedd_ad is not None:
+                return htcondor.Schedd(schedd_ad)
+            else:
+                return htcondor.Schedd()
 
         def duplicate_quotes(self, value: str) -> str:
             """
             Escape a string by doubling up all single and double quotes.
-            
+
             This is used for arguments we pass to htcondor that need to be
             inside both double and single quote enclosures.
             """
