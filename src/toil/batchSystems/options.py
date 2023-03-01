@@ -76,6 +76,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     set_option("manualMemArgs")
     set_option("runCwlInternalJobsOnWorkers", bool, default=False)
     set_option("statePollingWait")
+    set_option("batch_logs_dir", env=["TOIL_BATCH_LOGS_DIR"])
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
@@ -152,6 +153,15 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         help="Time, in seconds, to wait before doing a scheduler query for job state.  "
              "Return cached results if within the waiting period. Only works for grid "
              "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+    )
+    parser.add_argument(
+        "--batchLogsDir",
+        dest="batch_logs_dir",
+        default=None,
+        help="Directory to tell the backing batch system to log into. Should be available "
+             "on both the leader and the workers, if the backing batch system writes logs "
+             "to the worker machines' filesystems, as many HPC schedulers do. If unset, " 
+             "the Toil work directory will be used."
     )
 
     for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():

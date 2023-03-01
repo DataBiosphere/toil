@@ -116,6 +116,9 @@ class Config:
     tes_bearer_token: str
     jobStore: str
     batchSystem: str
+    batch_logs_dir: Optional[str] = None
+    """The backing scheduler will be instructed, if possible, to save logs
+    to this directory, where the leader can read them."""
     workflowAttemptNumber: int
     disableAutoDeployment: bool
 
@@ -401,8 +404,8 @@ class Config:
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
-
         set_option("write_messages", os.path.abspath)
+
         if not self.write_messages:
             self.write_messages = gen_message_bus_path()
 

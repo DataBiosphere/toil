@@ -47,6 +47,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``TOIL_COORDINATION_DIR`` and the                  |
 |                                  | ``--coordinationDir`` command    line option.      |
 +----------------------------------+----------------------------------------------------+
+| TOIL_BATCH_LOGS_DIR              | A directory to save batch system logs into, where  |
+|                                  | the leader can access them. The ``--batchLogsDir`` |
+|                                  | option overrides this.                             |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
 |                                  | for shared caching. Will be created if it doesn't  |

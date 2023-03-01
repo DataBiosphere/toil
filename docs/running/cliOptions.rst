@@ -167,6 +167,12 @@ levels in toil are based on priority from the logging module:
                         the waiting period. Only works for grid engine batch
                         systems such as gridengine, htcondor, torque, slurm,
                         and lsf.
+  --batchLogsDir BATCHLOGSDIR
+                        Directory to tell the backing batch system to log into.
+                        Should be available on both the leader and the workers,
+                        if the backing batch system writes logs to the worker
+                        machines' filesystems, as many HPC schedulers do. If
+                        unset, the Toil work directory will be used.
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a
