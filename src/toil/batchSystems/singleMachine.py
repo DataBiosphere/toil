@@ -37,7 +37,7 @@ from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
 
 from toil.common import SYS_MAX_SIZE, Config, Toil, fC
-from toil.job import JobDescription, AcceleratorRequirement, Requirer
+from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
 from toil.lib.threading import cpu_count
 
@@ -542,7 +542,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # Check all the ones we haven't grabbed yet
                     # TODO: We'll re-check early ones against this requirement if it has a count of more than one.
                     candidate = self.accelerator_identities[candidate_index]
-                    if AcceleratorRequirement.satisfies(candidate, requirement, ignore=['model']):
+                    if accelerator_satisfies(candidate, requirement, ignore=['model']):
                         # If this accelerator can satisfy one unit of this requirement.
                         # We ignore model constraints because as a single
                         # machine we can't really determine the models of

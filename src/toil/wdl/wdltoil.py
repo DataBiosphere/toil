@@ -40,7 +40,7 @@ from WDL.runtime.backend.singularity import SingularityContainer
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
-from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, unwrap, unwrap_all
+from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -952,10 +952,8 @@ class WDLTaskJob(WDLBaseJob):
             if gpu_brand is not None:
                 accelerator_spec['brand'] = gpu_brand
 
-            # TODO: MyPy thinks this attribute doesn't exist for no good reason.
-            accelerator_requirement = AcceleratorRequirement.parse(accelerator_spec) #  type: ignore
-            # It also doesn't think we have this check function
-            if not AcceleratorRequirement.together_fully_satisfy(self.accelerators, accelerator_requirement, ignore=['model']): #  type: ignore
+            accelerator_requirement = parse_accelerator(accelerator_spec)
+            if not accelerators_fully_satisfy(self.accelerators, accelerator_requirement, ignore=['model']):
                 # We don't meet the accelerator requirement.
                 # We are loose on the model here since, really, we *should*
                 # have either no accelerators or the accelerators we asked for.
