@@ -88,6 +88,7 @@ class NonCachingFileStore(AbstractFileStore):
             try:
                 os.remove(self.jobStateFile)
             except FileNotFoundError:
+                logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
                 pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
