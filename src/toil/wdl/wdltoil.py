@@ -52,7 +52,12 @@ logger = logging.getLogger(__name__)
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
     """
-    Given a URI or bare path, yield in turn all the URIs, with schemes, where we should actually try to find it, given that we want to search under/against the given paths or URIs, the current directory, and the given importing WDL document if any.
+    Get potential absolute URIs to check for an imported file.
+
+    Given a URI or bare path, yield in turn all the URIs, with schemes, where we
+    should actually try to find it, given that we want to search under/against
+    the given paths or URIs, the current directory, and the given importing WDL
+    document if any.
     """
 
     # We need to brute-force find this URI relative to:
@@ -249,7 +254,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
 # We define a URI scheme kind of like but not actually compatible with the one
 # we use for CWL. CWL brings along the file basename in its file type, but
-# WDL.Value.File doesn't. So we need to maker sure we stash that somewhere in
+# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
 # the URI.
 # TODO: We need to also make sure files from the same source directory end up
 # in the same destination directory, when dealing with basename conflicts.
@@ -337,7 +342,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Deserialize the FileID
             file_id, file_basename = unpack_toil_uri(filename)
 
-            # Decide wehre it should be put
+            # Decide where it should be put
             file_dir = self._file_store.getLocalTempDir()
             dest_path = os.path.join(file_dir, file_basename)
 
@@ -938,7 +943,7 @@ class WDLTaskJob(WDLBaseJob):
         if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
-            # Get the GPU gount if set, or 1 if not,
+            # Get the GPU count if set, or 1 if not,
             gpu_count: int = cast(WDL.Value.Int, runtime_bindings.get('gpuCount', WDL.Value.Int(1))).value
             # Get the GPU model constraint if set, or None if not
             gpu_model: Optional[str] = cast(Union[WDL.Value.String, WDL.Value.Null], runtime_bindings.get('gpuType', WDL.Value.Null())).value
@@ -1037,30 +1042,23 @@ class WDLTaskJob(WDLBaseJob):
             workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
 
-            # Until miniwdl 1.10+ is released, we need to replace singularity
-            # run with singularity exec to handle overriding container
-            # entrypoints (see
-            # <https://github.com/chanzuckerberg/miniwdl/issues/628>). Also, we
-            # might need to send GPUs and the current miniwdl deosn't do that
-            # for Singularity. And we might need to *not* try and use
+            # We might need to send GPUs and the current miniwdl deosn't do
+            # that for Singularity. And we might need to *not* try and use
             # --fakeroot if we lack sub-UIDs. So we sneakily monkey patch it
             # here.
             original_run_invocation = task_container._run_invocation
             def patched_run_invocation(*args: Any, **kwargs: Any) -> List[str]:
                 """
                 Invoke the original _run_invocation to get a base Singularity
-                command line, and then adjust the result to use "exec" and to
-                pass GPUs if needed.
+                command line, and then adjust the result to pass GPUs and not
+                fake root if needed.
                 """
-                # We are written against https://github.com/chanzuckerberg/miniwdl/blob/d8481a01000118eda76cbbb30df9fa5df493b86f/WDL/runtime/backend/singularity.py#L75
                 command_line: List[str] = original_run_invocation(*args, **kwargs)
 
                 logger.debug('MiniWDL wants to run command line: %s', command_line)
 
-                # "run" can be at index 1 or 2 depending on if we have a --verbose. We also might already have just "exec" there.
+                # "exec" can be at index 1 or 2 depending on if we have a --verbose.
                 subcommand_index = 2 if command_line[1] == "--verbose" else 1
-                if command_line[subcommand_index] == "run":
-                    command_line[subcommand_index] = "exec"
 
                 if '--fakeroot' in command_line and not self.can_fake_root():
                     # We can't fake root so don't try.
@@ -1135,7 +1133,7 @@ class WDLTaskJob(WDLBaseJob):
                     logger.info('Standard output at %s: %s', host_stdout_txt, open(host_stdout_txt).read())
 
         else:
-            # We need to fake stdout and stderr, since tnothing ran but the
+            # We need to fake stdout and stderr, since nothing ran but the
             # standard library lets you grab them. TODO: Can these be None?
             host_stdout_txt = "/dev/null"
             host_stderr_txt = "/dev/null"
