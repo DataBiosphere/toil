@@ -240,17 +240,17 @@ def retry(
 
     :param intervals: A list of times in seconds we keep retrying until returning failure.
         Defaults to retrying with the following exponential back-off before failing:
-            1s, 1s, 2s, 4s, 8s, 16s
+        1s, 1s, 2s, 4s, 8s, 16s
     :param infinite_retries: If this is True, reset the intervals when they run out.
         Defaults to: False.
     :param errors: A list of exceptions OR ErrorCondition objects to catch and retry on.
         ErrorCondition objects describe more detailed error event conditions than a plain error.
         An ErrorCondition specifies:
-            - Exception (required)
-            - Error codes that must match to be retried (optional; defaults to not checking)
-            - A string that must be in the error message to be retried
-              (optional; defaults to not checking)
-            - A bool that can be set to False to always error on this condition.
+        - Exception (required)
+        - Error codes that must match to be retried (optional; defaults to not checking)
+        - A string that must be in the error message to be retried (optional; defaults to not checking)
+        - A bool that can be set to False to always error on this condition.
+
         If not specified, this will default to a generic Exception.
     :param log_message: Optional tuple of ("log/print function()", "message string")
         that will precede each attempt.

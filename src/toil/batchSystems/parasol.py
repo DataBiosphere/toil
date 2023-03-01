@@ -96,10 +96,11 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def _runParasol(self, command, autoRetry=True):
         """
-        Issues a parasol command using popen to capture the output. If the command fails then it
-        will try pinging parasol until it gets a response. When it gets a response it will
-        recursively call the issue parasol command, repeating this pattern for a maximum of N
-        times. The final exit value will reflect this.
+        Issue a parasol command using popen to capture the output.
+
+        If the command fails then it will try pinging parasol until it gets a response.
+        When it gets a response it will recursively call the issue parasol command,
+        repeating this pattern for a maximum of N times. The final exit value will reflect this.
         """
         command = list(concat(self.parasolCommand, command))
         while True:
@@ -126,9 +127,7 @@ class ParasolBatchSystem(BatchSystemSupport):
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
     def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
-        """
-        Issues parasol with job commands.
-        """
+        """Issue parasol with job commands."""
         self.check_resource_request(jobDesc)
 
         MiB = 1 << 20
@@ -221,9 +220,7 @@ class ParasolBatchSystem(BatchSystemSupport):
     runningPattern = re.compile(r'r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+')
 
     def getJobIDsForResultsFile(self, resultsFile):
-        """
-        Get all queued and running jobs for a results file.
-        """
+        """Get all queued and running jobs for a results file."""
         jobIDs = []
         for line in self._runParasol(['-extended', 'list', 'jobs'])[1]:
             fields = line.strip().split()
@@ -245,9 +242,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return list(issuedJobs)
 
     def getRunningBatchJobIDs(self):
-        """
-        Returns map of running jobIDs and the time they have been running.
-        """
+        """Returns map of running jobIDs and the time they have been running."""
         # Example lines..
         # r 5410186 benedictpaten worker 1247029663 localhost
         # r 5410324 benedictpaten worker 1247030076 localhost
@@ -284,17 +279,19 @@ class ParasolBatchSystem(BatchSystemSupport):
 
         Results have the following structure.. (thanks Mark D!)
 
-        int status;    /* Job status - wait() return format. 0 is good. */
-        char *host;    /* Machine job ran on. */
-        char *jobId;    /* Job queuing system job ID */
-        char *exe;    /* Job executable file (no path) */
-        int usrTicks;    /* 'User' CPU time in ticks. */
-        int sysTicks;    /* 'System' CPU time in ticks. */
-        unsigned submitTime;    /* Job submission time in seconds since 1/1/1970 */
-        unsigned startTime;    /* Job start time in seconds since 1/1/1970 */
-        unsigned endTime;    /* Job end time in seconds since 1/1/1970 */
-        char *user;    /* User who ran job */
-        char *errFile;    /* Location of stderr file on host */
+        ====================   =============================================
+        int status;            Job status - wait() return format. 0 is good.
+        char host;             Machine job ran on.
+        char jobId;            Job queuing system job ID
+        char exe;              Job executable file (no path)
+        int usrTicks;          'User' CPU time in ticks.
+        int sysTicks;          'System' CPU time in ticks.
+        unsigned submitTime;   Job submission time in seconds since 1/1/1970
+        unsigned startTime;    Job start time in seconds since 1/1/1970
+        unsigned endTime;      Job end time in seconds since 1/1/1970
+        char user;             User who ran job
+        char errFile;          Location of stderr file on host
+        ====================   =============================================
 
         Plus you finally have the command name.
         """
