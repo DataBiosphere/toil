@@ -1,8 +1,9 @@
-# Note that this is a draft-WDL file; we don't have input sections, or output
-# sections on the workflow.
-task md5 {
-  File inputFile
+version 1.0
 
+task md5 {
+  input {
+    File inputFile
+  }
   command {
     /bin/my_md5sum ${inputFile}
   }
@@ -20,6 +21,11 @@ task md5 {
 }
 
 workflow ga4ghMd5 {
- File inputFile
- call md5 { input: inputFile=inputFile }
+  input {
+    File inputFile
+  }
+  call md5 { input: inputFile=inputFile }
+  output {
+    File value = md5.value
+  }
 }
