@@ -174,7 +174,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return job_runtimes
 
-        def killJob(self, jobID):
+        def killJob(self, jobID: int) -> None:
             batchJobID = self.batchJobIDs[jobID][0]
             logger.debug(f"Killing HTCondor job {batchJobID}")
 

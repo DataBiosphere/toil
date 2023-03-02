@@ -118,6 +118,8 @@ class Config:
     batchSystem: str
     workflowAttemptNumber: int
     disableAutoDeployment: bool
+    statePollingWait: Optional[Union[float, int]]
+    coalesceStatusCalls: Optional[bool]
 
     def __init__(self) -> None:
         # Core options
