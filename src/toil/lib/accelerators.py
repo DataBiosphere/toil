@@ -94,6 +94,11 @@ def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set
 
     # Since we only know about nvidia GPUs right now, we can just say our
     # accelerator numbering space is the same as nvidia's GPU numbering space.
-    return {'CUDA_VISIBLE_DEVICES': ','.join(str(i) for i in accelerator_numbers)}
+    gpu_list = ','.join(str(i) for i in accelerator_numbers)
+
+    # Put this in several places: CUDA_VISIBLE_DEVICES for controlling
+    # processes right here, and SINGULARITYENV_CUDA_VISIBLE_DEVICES for
+    # propagating to Singularity containers.
+    return {'CUDA_VISIBLE_DEVICES': gpu_list, 'SINGULARITYENV_CUDA_VISIBLE_DEVICES': gpu_list}
 
 

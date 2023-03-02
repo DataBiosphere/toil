@@ -54,7 +54,7 @@ class ToilWdlTest(BaseToilWdlTest):
         inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
         json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir])
+        subprocess.check_call(self.base_command + [wdl, json, '-o', self.output_dir, '--logDebug'])
         md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
         assert os.path.exists(md5sum_output)
         os.unlink(md5sum_output)
