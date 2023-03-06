@@ -188,134 +188,161 @@ class AcceleratorRequirement(TypedDict):
 
     # TODO: support requesting any GPU with X amount of vram
 
-    @staticmethod
-    def parse(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
-        """
-        Parse an AcceleratorRequirement specified by user code.
+def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
+    """
+    Parse an AcceleratorRequirement specified by user code.
 
-        Supports formats like:
+    Supports formats like:
 
-        >>> AcceleratorRequirement.parse(8)
-        {'count': 8, 'kind': 'gpu'}
+    >>> parse_accelerator(8)
+    {'count': 8, 'kind': 'gpu'}
 
-        >>> AcceleratorRequirement.parse("1")
-        {'count': 1, 'kind': 'gpu'}
+    >>> parse_accelerator("1")
+    {'count': 1, 'kind': 'gpu'}
 
-        >>> AcceleratorRequirement.parse("nvidia-tesla-k80")
-        {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+    >>> parse_accelerator("nvidia-tesla-k80")
+    {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
 
-        >>> AcceleratorRequirement.parse("nvidia-tesla-k80:2")
-        {'count': 2, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
+    >>> parse_accelerator("nvidia-tesla-k80:2")
+    {'count': 2, 'kind': 'gpu', 'brand': 'nvidia', 'model': 'nvidia-tesla-k80'}
 
-        >>> AcceleratorRequirement.parse("gpu")
-        {'count': 1, 'kind': 'gpu'}
+    >>> parse_accelerator("gpu")
+    {'count': 1, 'kind': 'gpu'}
 
-        >>> AcceleratorRequirement.parse("cuda:1")
-        {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda'}
+    >>> parse_accelerator("cuda:1")
+    {'count': 1, 'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda'}
 
-        >>> AcceleratorRequirement.parse({"kind": "gpu"})
-        {'count': 1, 'kind': 'gpu'}
+    >>> parse_accelerator({"kind": "gpu"})
+    {'count': 1, 'kind': 'gpu'}
 
-        >>> AcceleratorRequirement.parse({"brand": "nvidia", "count": 5})
-        {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
+    >>> parse_accelerator({"brand": "nvidia", "count": 5})
+    {'count': 5, 'kind': 'gpu', 'brand': 'nvidia'}
 
-        Assumes that if not specified, we are talking about GPUs, and about one
-        of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
-        is a brand.
+    Assumes that if not specified, we are talking about GPUs, and about one
+    of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
+    is a brand.
 
-        :raises ValueError: if it gets somethign it can't parse
-        :raises TypeError: if it gets something it can't parse because it's the wrong type.
-        """
-        KINDS = {'gpu'}
-        BRANDS = {'nvidia', 'amd'}
-        APIS = {'cuda', 'rocm', 'opencl'}
+    :raises ValueError: if it gets somethign it can't parse
+    :raises TypeError: if it gets something it can't parse because it's the wrong type.
+    """
+    KINDS = {'gpu'}
+    BRANDS = {'nvidia', 'amd'}
+    APIS = {'cuda', 'rocm', 'opencl'}
 
-        parsed: AcceleratorRequirement = {'count': 1, 'kind': 'gpu'}
+    parsed: AcceleratorRequirement = {'count': 1, 'kind': 'gpu'}
 
-        if isinstance(spec, int):
-            parsed['count'] = spec
-        elif isinstance(spec, str):
-            parts = spec.split(':')
+    if isinstance(spec, int):
+        parsed['count'] = spec
+    elif isinstance(spec, str):
+        parts = spec.split(':')
 
-            if len(parts) > 2:
-                raise ValueError("Could not parse AcceleratorRequirement: " + spec)
+        if len(parts) > 2:
+            raise ValueError("Could not parse AcceleratorRequirement: " + spec)
 
-            possible_count = parts[-1]
+        possible_count = parts[-1]
 
-            try:
-                # If they have : and then a count, or just a count, handle that.
-                parsed['count'] = int(possible_count)
-                if len(parts) > 1:
-                    # Then we take whatever was before the colon as text
-                    possible_description = parts[0]
-                else:
-                    possible_description = None
-            except ValueError:
-                # It doesn't end with a number
-                if len(parts) == 2:
-                    # We should have a number though.
-                    raise ValueError("Could not parse AcceleratorRequirement count in: " + spec)
-                else:
-                    # Must be just the description
-                    possible_description = possible_count
-
-            # Determine if we have a kind, brand, API, or (by default) model
-            if possible_description in KINDS:
-                parsed['kind'] = possible_description
-            elif possible_description in BRANDS:
-                parsed['brand'] = possible_description
-            elif possible_description in APIS:
-                parsed['api'] = possible_description
+        try:
+            # If they have : and then a count, or just a count, handle that.
+            parsed['count'] = int(possible_count)
+            if len(parts) > 1:
+                # Then we take whatever was before the colon as text
+                possible_description = parts[0]
             else:
-                parsed['model'] = possible_description
-        elif isinstance(spec, dict):
-            # It's a dict, so merge with the defaults.
-            parsed.update(spec)
-            # TODO: make sure they didn't misspell keys or something
+                possible_description = None
+        except ValueError:
+            # It doesn't end with a number
+            if len(parts) == 2:
+                # We should have a number though.
+                raise ValueError("Could not parse AcceleratorRequirement count in: " + spec)
+            else:
+                # Must be just the description
+                possible_description = possible_count
+
+        # Determine if we have a kind, brand, API, or (by default) model
+        if possible_description in KINDS:
+            parsed['kind'] = possible_description
+        elif possible_description in BRANDS:
+            parsed['brand'] = possible_description
+        elif possible_description in APIS:
+            parsed['api'] = possible_description
         else:
-            raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
+            parsed['model'] = possible_description
+    elif isinstance(spec, dict):
+        # It's a dict, so merge with the defaults.
+        parsed.update(spec)
+        # TODO: make sure they didn't misspell keys or something
+    else:
+        raise TypeError(f"Cannot parse value of type {type(spec)} as an AcceleratorRequirement")
 
-        if parsed['kind'] == 'gpu':
-            # Use some smarts about what current GPUs are like to elaborate the
-            # description.
+    if parsed['kind'] == 'gpu':
+        # Use some smarts about what current GPUs are like to elaborate the
+        # description.
 
-            if 'brand' not in parsed and 'model' in parsed:
-                # Try to guess the brand from the model
-                for brand in BRANDS:
-                    if parsed['model'].startswith(brand):
-                        # The model often starts with the brand
-                        parsed['brand'] = brand
-                        break
+        if 'brand' not in parsed and 'model' in parsed:
+            # Try to guess the brand from the model
+            for brand in BRANDS:
+                if parsed['model'].startswith(brand):
+                    # The model often starts with the brand
+                    parsed['brand'] = brand
+                    break
 
-            if 'brand' not in parsed and 'api' in parsed:
-                # Try to guess the brand from the API
-                if parsed['api'] == 'cuda':
-                    # Only nvidia makes cuda cards
-                    parsed['brand'] = 'nvidia'
-                elif parsed['api'] == 'rocm':
-                    # Only amd makes rocm cards
-                    parsed['brand'] = 'amd'
+        if 'brand' not in parsed and 'api' in parsed:
+            # Try to guess the brand from the API
+            if parsed['api'] == 'cuda':
+                # Only nvidia makes cuda cards
+                parsed['brand'] = 'nvidia'
+            elif parsed['api'] == 'rocm':
+                # Only amd makes rocm cards
+                parsed['brand'] = 'amd'
 
-        return parsed
+    return parsed
 
-    @staticmethod
-    def satisfies(candidate: 'AcceleratorRequirement', requirement: 'AcceleratorRequirement') -> bool:
-        """
-        Test candidate partially against the given requirement.
+def accelerator_satisfies(candidate: AcceleratorRequirement, requirement: AcceleratorRequirement, ignore: List[str] = []) -> bool:
+    """
+    Test if candidate partially satisfies the given requirement.
 
-        :returns: True if the given candidate at least partially satisfies the
-                  given requirement (i.e. check all fields other than count).
-        """
-        for key in ['kind', 'brand', 'api', 'model']:
-            if key in requirement:
-                if key not in candidate:
-                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have a %s', candidate, requirement, key)
-                    return False
-                if candidate[key] != requirement[key]:
-                    logger.debug('Candidate %s does not satisfy requirement %s because it does not have the correct %s', candidate, requirement, key)
-                    return False
-        # If all these match or are more specific than required, we match!
-        return True
+    :returns: True if the given candidate at least partially satisfies the
+              given requirement (i.e. check all fields other than count).
+    """
+    for key in ['kind', 'brand', 'api', 'model']:
+        if key in ignore:
+            # Skip this aspect.
+            continue
+        if key in requirement:
+            if key not in candidate:
+                logger.debug('Candidate %s does not satisfy requirement %s because it does not have a %s', candidate, requirement, key)
+                return False
+            if candidate[key] != requirement[key]:
+                logger.debug('Candidate %s does not satisfy requirement %s because it does not have the correct %s', candidate, requirement, key)
+                return False
+    # If all these match or are more specific than required, we match!
+    return True
+
+def accelerators_fully_satisfy(candidates: Optional[List[AcceleratorRequirement]], requirement: AcceleratorRequirement, ignore: List[str] = []) -> bool:
+    """
+    Determine if a set of accelerators satisfy a requirement.
+
+    Ignores fields specified in ignore.
+    
+    :returns:  True if the requirement AcceleratorRequirement is
+               fully satisfied by the ones in the list, taken
+               together (i.e. check all fields including count).
+    """
+
+    count_remaining = requirement['count']
+
+    if candidates:
+        for candidate in candidates:
+            if accelerator_satisfies(candidate, requirement, ignore=ignore):
+                if candidate['count'] > count_remaining:
+                    # We found all the matching accelerators we need
+                    count_remaining = 0
+                    break
+                else:
+                    count_remaining -= candidate['count']
+
+    # If we have no count left we are fully satisfied
+    return count_remaining == 0
 
 class RequirementsDict(TypedDict):
     """
@@ -546,9 +573,9 @@ class Requirer:
             # The type checking for this is delegated to the
             # AcceleratorRequirement class.
             if isinstance(value, list):
-                return [AcceleratorRequirement.parse(v) for v in value] #accelerators={'kind': 'gpu', 'brand': 'nvidia', 'count': 2}
+                return [parse_accelerator(v) for v in value] #accelerators={'kind': 'gpu', 'brand': 'nvidia', 'count': 2}
             else:
-                return [AcceleratorRequirement.parse(value)] #accelerators=1
+                return [parse_accelerator(value)] #accelerators=1
         else:
             # Anything else we just pass along without opinons
             return cast(ParsedRequirement, value)
@@ -1333,7 +1360,7 @@ class Job:
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
         :type disk: int or string convertible by toil.lib.conversions.human2bytes to an int
-        :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by AcceleratorRequirement.parse.
+        :type accelerators: int, string, dict, or list of those. Strings and dicts must be parseable by parse_accelerator.
         :type preemptible: bool, int in {0, 1}, or string in {'false', 'true'} in any case
         :type unitName: str
         :type checkpoint: bool
@@ -1444,11 +1471,11 @@ class Job:
          self.description.cores = val
 
     @property
-    def accelerators(self) -> List[str]:
+    def accelerators(self) -> List[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
         return self.description.accelerators
     @accelerators.setter
-    def accelerators(self, val: List[str]) -> None:
+    def accelerators(self, val: List[ParseableAcceleratorRequirement]) -> None:
          self.description.accelerators = val
 
     @property

@@ -1766,11 +1766,9 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
         # Not specified, so the default default is to not need any.
         return []
     # Otherwise parse each requirement.
-    from toil.job import AcceleratorRequirement
+    from toil.job import parse_accelerator
 
-    # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
-    parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
-    return [parser(r) for r in specs.split(',')]
+    return [parse_accelerator(r) for r in specs.split(',')]
 
 
 def cacheDirName(workflowID: str) -> str:
