@@ -49,7 +49,9 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | TOIL_BATCH_LOGS_DIR              | A directory to save batch system logs into, where  |
 |                                  | the leader can access them. The ``--batchLogsDir`` |
-|                                  | option overrides this.                             |
+|                                  | option overrides this. Only works for grid engine  |
+|                                  | batch systems such as gridengine, htcondor,        |
+|                                  | torque, slurm, and lsf.                            |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
 |                                  | the Toil work directory in the workers, to allow   |
