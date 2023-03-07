@@ -372,8 +372,8 @@ Kubernetes to orchestrate jobs, Toil can create a Kubernetes cluster for you
 using the AWS provisioner.
 
 By default, the ``toil launch-cluster`` command uses a Mesos cluster as the
-cluster scheduler. Toil can also create a kubernetes cluster to schedule Toil
-jobs. To set up a kubernetes cluster, simply set the ``--clusterType=kubernetes``
+jobs scheduler. Toil can also create a Kubernetes cluster to schedule Toil
+jobs. To set up a Kubernetes cluster, simply add the ``--clusterType=kubernetes``
 command line option to ``toil launch-cluster``.
 
 For example, to launch a Toil cluster with a Kubernetes scheduler, run: ::
