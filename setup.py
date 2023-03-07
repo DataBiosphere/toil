@@ -28,8 +28,8 @@ def get_requirements(extra=None):
     filename = f"requirements-{extra}.txt" if extra else "requirements.txt"
 
     with open(filename) as fp:
-        # Parse out as one per line
-        return [l.strip() for l in fp.readlines() if l.strip()]
+        # Parse out as one per line, dropping comments
+        return [l.split('#')[0].strip() for l in fp.readlines() if l.split('#')[0].strip()]
 
 
 def run_setup():
@@ -46,7 +46,7 @@ def run_setup():
     # this is tricky to conditionally support in 'all' due
     # to how wheels work, so it is not included in all and
     # must be explicitly installed as an extra
-    all_reqs = ""
+    all_reqs = []
     non_htcondor_extras = [
         "aws",
         "cwl",
@@ -59,7 +59,7 @@ def run_setup():
     ]
     for extra in non_htcondor_extras:
         extras_require[extra] = get_requirements(extra)
-        all_reqs += "\n" + "\n".join(extras_require[extra])
+        all_reqs += extras_require[extra]
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
     extras_require["all"] = all_reqs

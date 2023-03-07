@@ -70,14 +70,17 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             ht_memory = float(memory)/1024 # memory in KB
             ht_disk = float(disk)/1024 # disk in KB
 
-            # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
-            # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
-            # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
-            # in the submit file, so that HTCondor will write the standard output/error files on the
-            # compute node, then transfer back once the job has completed.
-            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'out')
-            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'err')
-            condorlogfile: str = self.boss.formatStdOutErrPath(jobID, '$(cluster)', 'events')
+            # NOTE: format_std_out_err_path() by default puts files in the Toil
+            # work directory, which defaults to being in the system temporary
+            # directory ($TMPDIR, often /tmp) which is unlikely to be on a
+            # shared filesystem. So to make this work more often without the
+            # user setting --batchLogsDir we need to set should_transfer_files
+            # = Yes in the submit file, so that HTCondor will write the
+            # standard output/error files on the compute node, then transfer
+            # back once the job has completed.
+            stdoutfile: str = self.boss.format_std_out_err_path(jobID, '$(cluster)', 'out')
+            stderrfile: str = self.boss.format_std_out_err_path(jobID, '$(cluster)', 'err')
+            condorlogfile: str = self.boss.format_std_out_err_path(jobID, '$(cluster)', 'events')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.
