@@ -140,6 +140,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             # Return the Submit object
             return htcondor.Submit(submit_parameters)
 
+        @retry(errors=[htcondor.HTCondorIOError])
         def submitJob(self, submitObj):
 
             # Queue the job using a Schedd transaction
