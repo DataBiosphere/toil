@@ -361,6 +361,120 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
 
+
+.. _ProvisioningWithKubernetes:
+
+Provisioning with a Kubernetes cluster
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you don't have an existing Kubernetes cluster but still want to use
+Kubernetes to orchestrate jobs, Toil can create a Kubernetes cluster for you
+using the AWS provisioner.
+
+By default, the ``toil launch-cluster`` command uses a Mesos cluster as the
+cluster scheduler. Toil can also create a kubernetes cluster to schedule Toil
+jobs. To set up a kubernetes cluster, simply set the ``--clusterType=kubernetes``
+command line option to ``toil launch-cluster``.
+
+For example, to launch a Toil cluster with a Kubernetes scheduler, run: ::
+
+    (venv) $ toil launch-cluster <cluster-name> \
+            --provisioner=aws \
+            --clusterType kubernetes \
+            --zone us-west-2a \
+            --keyPairName wlgao@ucsc.edu \
+            --leaderNodeType t2.medium \
+            --leaderStorage 50 \
+            --nodeTypes t2.medium -w 1-4 \
+            --nodeStorage 20 \
+            --logDebug
+
+Behind the scenes, Toil installs kubeadm and configures kubelet on the Toil
+leader and all worker nodes. This Toil cluster can then schedule jobs using
+Kubernetes.
+
+.. note::
+    You should set at least one worker node, otherwise Kubernetes would not be
+    able to schedule any jobs. It is also normal for this step to take a while.
+
+
+Below is a tutorial on how to launch a Toil job on this newly created cluster.
+As a demostration, we will use :download:`sort.py <../../../src/toil/test/sort/sort.py>`
+again, but run it on a Toil cluster with Kubernetes. First, download this file
+and put it to the current working directory.
+
+We then need to copy over the workflow file and SSH into the cluster: ::
+
+    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> tutorial_multiplejobs3.py :/root
+    (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
+
+
+Remember to replace ``<cluster-name>`` with your actual cluster name, and feel
+free to use your own cluster configuration and/or workflow files. For more
+information on this step, visit :ref:`StaticProvisioning`.
+
+Now that we are inside the cluster, a Kubernetes environment should have already
+been configured and running. To verify this, simply run: ::
+
+    $ kubectl get nodes
+
+You should see a ``master`` node with the ``Ready`` status. Depending on the
+number of worker nodes you set to create upfront, you should also see them
+displayed here.
+
+Additionally, you can also verify that the metrics server is running: ::
+
+    $ kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes"
+
+If there is a JSON response and you are not seeing any errors, that means the
+metrics server is set up and running, and you are good to start running workflows.
+
+.. note::
+    It'll take a while for all nodes to get set up and running, so you might
+    not be able to see all nodes running at first. You can start running
+    workflows already, but Toil might complain until the necessary resources
+    are set up and running.
+
+
+Now we can run the workflow: ::
+
+    $ python sort.py \
+            --provisioner aws
+            --batchSystem kubernetes \
+            aws:<region>:<job-store-name>
+
+Make sure to replace ``<region>`` and ``<job-store-name>``. It is **required**
+to use an AWS job store when using the Kubernetes batch system.
+
+
+The sort workflow should start running on the Kubernetes cluster set up by Toil.
+This workflow would take a while to execute, so you could put the job in the
+background and monitor the Kubernetes cluster using ``kubectl``. For example,
+you can check out the pods that are running: ::
+
+    $ kubectl get pods
+
+You should see an output like: ::
+
+    NAME                                                      READY   STATUS              RESTARTS   AGE
+    root-toil-a864e1b0-2e1f-48db-953c-038e5ad293c7-11-4cwdl   0/1     ContainerCreating   0          85s
+    root-toil-a864e1b0-2e1f-48db-953c-038e5ad293c7-14-5dqtk   0/1     Completed           0          18s
+    root-toil-a864e1b0-2e1f-48db-953c-038e5ad293c7-7-gkwc9    0/1     ContainerCreating   0          107s
+    root-toil-a864e1b0-2e1f-48db-953c-038e5ad293c7-9-t7vsb    1/1     Running             0          96s
+
+
+If a pod failed for whatever reason or if you want to make sure a pod isn't
+stuck, you can use ``kubectl describe pod <pod-name>`` or
+``kubectl logs <pod-name>`` to inspect the pod.
+
+
+If everything is successful, you should be able to see an output file from the sort workflow: ::
+
+    $ head sortedFile.txt
+
+You can now run your own workflows!
+
+
 Using MinIO and S3-Compatible object stores
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
