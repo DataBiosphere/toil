@@ -256,10 +256,10 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
             """
-            stdoutfile: str = self.boss.formatStdOutErrPath(
+            stdoutfile: str = self.boss.format_std_out_err_path(
                 jobID, r"${PBS_JOBID}", "out"
             )
-            stderrfile: str = self.boss.formatStdOutErrPath(
+            stderrfile: str = self.boss.format_std_out_err_path(
                 jobID, r"${PBS_JOBID}", "err"
             )
 

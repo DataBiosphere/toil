@@ -315,8 +315,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
-            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'out')
-            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '%j', 'err')
+            stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
+            stderrfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return sbatch_line

@@ -1,2 +1,2 @@
-miniwdl==1.8.0
+miniwdl==1.9.1
 wdlparse==0.1.0

@@ -63,7 +63,7 @@ def count_nvidia_gpus() -> int:
         return int(minidom.parseString(
             subprocess.check_output(["nvidia-smi", "-q", "-x"])
         ).getElementsByTagName("attached_gpus")[0].firstChild.data)
-    except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError):
+    except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError, PermissionError):
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some
@@ -94,6 +94,11 @@ def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set
 
     # Since we only know about nvidia GPUs right now, we can just say our
     # accelerator numbering space is the same as nvidia's GPU numbering space.
-    return {'CUDA_VISIBLE_DEVICES': ','.join(str(i) for i in accelerator_numbers)}
+    gpu_list = ','.join(str(i) for i in accelerator_numbers)
+
+    # Put this in several places: CUDA_VISIBLE_DEVICES for controlling
+    # processes right here, and SINGULARITYENV_CUDA_VISIBLE_DEVICES for
+    # propagating to Singularity containers.
+    return {'CUDA_VISIBLE_DEVICES': gpu_list, 'SINGULARITYENV_CUDA_VISIBLE_DEVICES': gpu_list}
 
 

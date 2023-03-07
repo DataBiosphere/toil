@@ -116,6 +116,9 @@ class Config:
     tes_bearer_token: str
     jobStore: str
     batchSystem: str
+    batch_logs_dir: Optional[str] = None
+    """The backing scheduler will be instructed, if possible, to save logs
+    to this directory, where the leader can read them."""
     workflowAttemptNumber: int
     disableAutoDeployment: bool
 
@@ -401,8 +404,8 @@ class Config:
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
-
         set_option("write_messages", os.path.abspath)
+
         if not self.write_messages:
             self.write_messages = gen_message_bus_path()
 
@@ -1763,11 +1766,9 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
         # Not specified, so the default default is to not need any.
         return []
     # Otherwise parse each requirement.
-    from toil.job import AcceleratorRequirement
+    from toil.job import parse_accelerator
 
-    # TODO: MyPy doesn't think AcceleratorRequirement has a parse()
-    parser: Callable[[str], AcceleratorRequirement] = AcceleratorRequirement.parse  # type: ignore
-    return [parser(r) for r in specs.split(',')]
+    return [parse_accelerator(r) for r in specs.split(',')]
 
 
 def cacheDirName(workflowID: str) -> str:
