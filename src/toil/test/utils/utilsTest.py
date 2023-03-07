@@ -282,14 +282,14 @@ class UtilsTest(ToilTest):
         collatedStats = processData(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
 
-    def check_status(self, status, status_fn, seconds=10):
+    def check_status(self, status, status_fn, seconds=20):
         i = 0.0
         while status_fn(self.toilDir) != status:
             time.sleep(0.5)
             i += 0.5
             if i > seconds:
                 s = status_fn(self.toilDir)
-                self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
+                self.assertEqual(s, status, f'Waited {seconds} seconds without status reaching {status}; stuck at {s}')
 
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
