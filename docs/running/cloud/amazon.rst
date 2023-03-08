@@ -405,29 +405,33 @@ and put it to the current working directory.
 
 We then need to copy over the workflow file and SSH into the cluster: ::
 
-    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> tutorial_multiplejobs3.py :/root
+    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
     (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
 
 
 Remember to replace ``<cluster-name>`` with your actual cluster name, and feel
 free to use your own cluster configuration and/or workflow files. For more
-information on this step, visit :ref:`StaticProvisioning`.
+information on this step, see the corresponding section of the
+:ref:`StaticProvisioning` tutorial.
 
-Now that we are inside the cluster, a Kubernetes environment should have already
-been configured and running. To verify this, simply run: ::
+Now that we are inside the cluster, a Kubernetes environment should already be
+configured and running. To verify this, simply run: ::
 
     $ kubectl get nodes
 
-You should see a ``master`` node with the ``Ready`` status. Depending on the
-number of worker nodes you set to create upfront, you should also see them
-displayed here.
+You should see a leader node with the ``Ready`` status. Depending on the number
+of worker nodes you set to create upfront, you should also see them displayed
+here.
 
 Additionally, you can also verify that the metrics server is running: ::
 
     $ kubectl get --raw "/apis/metrics.k8s.io/v1beta1/nodes"
 
-If there is a JSON response and you are not seeing any errors, that means the
-metrics server is set up and running, and you are good to start running workflows.
+If there is a JSON response (similar to the output below), and you are not
+seeing any errors, that means the metrics server is set up and running, and you
+are good to start running workflows. ::
+
+    {"kind":"NodeMetricsList","apiVersion":"metrics.k8s.io/v1beta1", ...}
 
 .. note::
     It'll take a while for all nodes to get set up and running, so you might
@@ -444,7 +448,8 @@ Now we can run the workflow: ::
             aws:<region>:<job-store-name>
 
 Make sure to replace ``<region>`` and ``<job-store-name>``. It is **required**
-to use an AWS job store when using the Kubernetes batch system.
+to use a cloud-accessible job store like AWS or Google when using the Kubernetes
+batch system.
 
 
 The sort workflow should start running on the Kubernetes cluster set up by Toil.
