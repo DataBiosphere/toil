@@ -17,6 +17,8 @@ Preparing your Kubernetes environment
 
    To run Toil workflows on Kubernetes, you need to have a Kubernetes cluster set up. This will not be covered here, but there are many options available, and which one you choose will depend on which cloud ecosystem if any you use already, and on pricing. If you are just following along with the documentation, use ``minikube`` on your local machine.
 
+   Alternatively, Toil can set up a Kubernetes cluster for you with the :ref:`Toil provisioner <installProvisioner>`. Follow :ref:`this <ProvisioningWithKubernetes>` guide to get started with a Toil-managed Kubernetes cluster on AWS.
+
    **Note that currently the only way to run a Toil workflow on Kubernetes is to use the AWS Job Store, so your Kubernetes workflow will currently have to store its data in Amazon's cloud regardless of where you run it. This can result in significant egress charges from Amazon if you run it outside of Amazon.**
 
    Kubernetes Cluster Providers:
