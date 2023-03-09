@@ -1813,14 +1813,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
     addOptions(parser, jobstore_as_flag=True)
 
-    parser.add_argument("wdl_uri", type=str, help="WDL document URI")
-    parser.add_argument("inputs_uri", type=str, help="WDL input JSON URI")
+    parser.add_argument("wdl_uri", type=str,
+                        help="WDL document URI")
+    parser.add_argument("inputs_uri", type=str, nargs='?',
+                        help="WDL input JSON URI")
+    parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
+                        help="WDL input JSON URI")
     parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell', choices=['cromwell', 'miniwdl'],
                         help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
                               "values as JSON, while 'miniwld' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
                         help=("Directory in which to save output files. By default a new directory is created in the current directory."))
+    parser.add_argument("--outputFile", "-m", dest="output_file", type=argparse.FileType('w'), default=sys.stdout,
+                        help="File to save output JSON to.")
 
     options = parser.parse_args(sys.argv[1:])
 
@@ -1937,8 +1943,8 @@ def main() -> None:
         outputs = WDL.values_to_json(output_bindings)
         if options.output_dialect == 'miniwdl':
             outputs = {'dir': output_directory, 'outputs': outputs}
-        print(json.dumps(outputs))
-
+        options.output_file.write(json.dumps(outputs))
+        options.output_file.write('\n')
 
 
 if __name__ == "__main__":
