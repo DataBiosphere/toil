@@ -1821,7 +1821,7 @@ def main() -> None:
                         help="WDL input JSON URI")
     parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell', choices=['cromwell', 'miniwdl'],
                         help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
-                              "values as JSON, while 'miniwld' nests that under an 'outputs' key, and "
+                              "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
                         help=("Directory in which to save output files. By default a new directory is created in the current directory."))
