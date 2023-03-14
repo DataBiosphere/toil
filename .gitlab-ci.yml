@@ -275,7 +275,7 @@ wdl:
     # These are not set up as Toil PyTest tests (yet?)
     - git clone https://github.com/adamnovak/wdl-conformance-tests.git
     - cd wdl-conformance-tests
-    - git checkout 0777ec2de3cf0c5db44ff49e9b5feb7b98f03cc6
+    - git checkout 0ca00774331630d8eb06990caa8a1ba178cabecb
     - python run.py --runner toil-wdl-runner --versions 1.0 --threads 8
 
 jobstore_and_provisioning:
