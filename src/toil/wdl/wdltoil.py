@@ -32,7 +32,7 @@ import tempfile
 import uuid
 
 from contextlib import ExitStack
-from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, TypeVar, Iterator
+from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
@@ -1005,7 +1005,7 @@ class WDLTaskJob(WDLBaseJob):
                 os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.path.join(file_store.workflow_dir, 'miniwdl_sif_cache')
 
             # Run containers with Singularity
-            TaskContainerImplementation = SingularityContainer
+            TaskContainerImplementation: Type[TaskContainer]  = SingularityContainer
         else:
             # Run containers with Docker
             TaskContainerImplementation = SwarmContainer
