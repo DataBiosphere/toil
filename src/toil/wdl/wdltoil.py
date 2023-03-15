@@ -37,7 +37,8 @@ from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
 from WDL.runtime.task_container import TaskContainer
-from WDL.runtime.backend.singularity import DockerContainer, SingularityContainer
+from WDL.runtime.backend.singularity import SingularityContainer
+from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
@@ -1007,7 +1008,13 @@ class WDLTaskJob(WDLBaseJob):
             TaskContainerImplementation = SingularityContainer
         else:
             # Run containers with Docker
-            TaskContainerImplementation = DockerContainer
+            TaskContainerImplementation = SwarmContainer
+            if runtime_accelerators:
+                # Complain to the user that this is unlikely to work.
+                logger.warning("Running job that needs accelerators with Docker, because "
+                               "Singularity is not available. Accelerator and GPU support "
+                               "is not yet implemented in the MiniWDL Docker "
+                               "containerization implementation.")
 
         # Set up the MiniWDL container running stuff
         miniwdl_logger = logging.getLogger("MiniWDLContainers")
