@@ -537,7 +537,7 @@ class KubernetesBatchSystemBenchTest(ToilTest):
          'toleration_seconds': None,
          'value': 'true'}]
         """).strip(), str(spot_spec.tolerations))
-        
+
     def test_label_constraints(self):
         """
         Make sure we generate the right preemptability constraints.
