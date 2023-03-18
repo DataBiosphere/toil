@@ -3208,6 +3208,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
+    dockergroup.add_argument(
+        "--custom-net",
+        help="Specify docker network name to pass to docker run command",
+    )
     cidgroup = parser.add_argument_group(
         "Options for recording the Docker container identifier into a file."
     )
