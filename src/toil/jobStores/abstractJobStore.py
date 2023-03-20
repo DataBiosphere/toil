@@ -853,7 +853,7 @@ class AbstractJobStore(ABC):
             if jobDescription.command is None:
 
                 def stackSizeFn() -> int:
-                    return len(jobDescription.allSuccessors())
+                    return len(list(jobDescription.allSuccessors()))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
                 jobDescription.filterSuccessors(haveJob)

@@ -129,7 +129,7 @@ class ToilStatus:
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = len(job.allSuccessors())
+            childNumber = len(list(job.allSuccessors()))
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")

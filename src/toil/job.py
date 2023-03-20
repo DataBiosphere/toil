@@ -827,11 +827,11 @@ class JobDescription(Requirer):
         # The IDs of all follow-on jobs of the described job.
         # Follow-ons which are done must be removed with filterSuccessors.
         self.followOnIDs: Set[str] = set()
-        
+
         # We keep our own children and follow-ons in a list of successor
         # phases, along with any successors adopted from jobs we have chained
         # from. When we finish our own children and follow-ons, we may have to
-        # go back and finish successors for those jobs. 
+        # go back and finish successors for those jobs.
         self.successor_phases: List[Set[str]] = [self.followOnIDs, self.childIDs]
 
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
@@ -880,31 +880,31 @@ class JobDescription(Requirer):
 
     def successorsAndServiceHosts(self) -> Iterator[str]:
         """Get an iterator over all child, follow-on, and service job IDs."""
-    
+
         return itertools.chain(self.allSuccessors(), self.serviceTree.keys())
 
     def allSuccessors(self) -> Iterator[str]:
         """
         Get an iterator over all child, follow-on, and chained, inherited successor job IDs.
-        
+
         Follow-ons will come before children.
         """
-        
+
         for phase in self.successor_phases:
             for successor in phase:
                 yield successor
-                
-    def successors_by_phase(self): Iterator[Tuple[int, str]]:
+
+    def successors_by_phase(self) -> Iterator[Tuple[int, str]]:
         """
         Get an iterator over all child/follow-on/chained inherited successor job IDs, along with their phase numbere on the stack.
-        
+
         Phases ececute higher numbers to lower numbers.
         """
-        
+
         for i, phase in enumerate(self.successor_phases):
             for successor in phase:
                 yield i, successor
-        
+
     @property
     def services(self):
         """
@@ -936,7 +936,7 @@ class JobDescription(Requirer):
                     return phase
         # If no phase isn't empty, we're done.
         return None
-        
+
     def filterSuccessors(self, predicate: Callable[[str], bool]) -> None:
         """
         Keep only successor jobs for which the given predicate function approves.
@@ -945,7 +945,7 @@ class JobDescription(Requirer):
 
         Treats all other successors as complete and forgets them.
         """
-        
+
         for phase in self.successor_phases:
             for successor_id in list(phase):
                 if not predicate(successor_id):
@@ -1012,14 +1012,14 @@ class JobDescription(Requirer):
 
         :param other: Job description to replace.
         """
-        
+
         # Take all the successors other than this one
         old_phases = [{i for i in p if i != self.jobStoreID} for p in other.successor_phases]
         # And drop empty phases
         old_phases = [p for p in old_phases if len(p) > 0]
         # And put in front of our existing phases
         self.successor_phases = old_phases + self.successor_phases
-        
+
         # TODO: also be able to take on the successors of the other job, under
         # ours on the stack, somehow.
 
@@ -1302,7 +1302,8 @@ class CheckpointJobDescription(JobDescription):
         """
         assert self.checkpoint is not None
         successorsDeleted = []
-        if len(self.allSuccessors()) > 0 or self.serviceTree or self.command is not None:
+        all_successors = list(self.allSuccessors())
+        if len(all_successors) > 0 or self.serviceTree or self.command is not None:
             if self.command is not None:
                 assert self.command == self.checkpoint
                 logger.debug("Checkpoint job already has command set to run")
@@ -1312,10 +1313,10 @@ class CheckpointJobDescription(JobDescription):
             jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
-            if len(self.allSuccessors()) > 0 or self.serviceTree:
+            if len(all_successors) > 0 or self.serviceTree:
                 # If the subtree of successors is not complete restart everything
                 logger.debug("Checkpoint job has unfinished successor jobs, deleting successors: %s, services: %s " %
-                             (self.allSuccessors(), self.serviceTree.keys()))
+                             (all_successors, self.serviceTree.keys()))
 
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue

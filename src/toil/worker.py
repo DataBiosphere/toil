@@ -67,15 +67,6 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
                      predecessor.nextSuccessors() is None, len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
         return None
 
-    if len(predecessor.stack) > 1 and len(predecessor.stack[-1]) > 0 and len(predecessor.stack[-2]) > 0:
-        # TODO: Without a real stack list we can freely mutate, we can't chain
-        # to a child, which may branch, and then go back and do the follow-ons
-        # of the original job.
-        # TODO: Go back to a free-form stack list and require some kind of
-        # stack build phase?
-        logger.debug("Stopping running chain of jobs because job has both children and follow-ons")
-        logger.debug("Child: %s Follow-on: %s", predecessor.stack[-1], predecessor.stack[-2])
-        return None
 
     #Get the next set of jobs to run
     jobs = predecessor.nextSuccessors()
