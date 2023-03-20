@@ -354,7 +354,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
             if uri.startswith(TOIL_URI_SCHEME):
                 # This is a Toil File ID we encoded; we have the size
                 # available.
-                file_id, _ = unpack_toil_uri(filename)
+                file_id, _ = unpack_toil_uri(uri)
                 # Use the encoded size
                 total_size += file_id.size
             else:
