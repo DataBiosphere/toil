@@ -809,6 +809,11 @@ class WDLBaseJob(Job):
         in the constructor because it needs to happen in the leader and the
         worker before a job body containing MiniWDL structures can be saved.
         """
+
+        # Default everything to being a local job
+        if 'local' not in kwargs:
+            kwargs['local'] = True
+
         super().__init__(**kwargs)
 
         # The jobs can't pickle under the default Python recursion limit of
@@ -847,7 +852,10 @@ class WDLTaskJob(WDLBaseJob):
                The caller has alredy added the task's own name.
         """
 
-        super().__init__(unitName=namespace, displayName=namespace, **kwargs)
+        # This job should not be local because it represents a real workflow task.
+        # TODO: Instead of re-scheduling with more resources, add a local
+        # "wrapper" job like CWL uses to determine the actual requirements.
+        super().__init__(unitName=namespace, displayName=namespace, local=False, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, namespace)
 
