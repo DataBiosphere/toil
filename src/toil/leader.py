@@ -1263,7 +1263,7 @@ class Leader:
             jobDesc = self.toilState.get_job(job_id)
 
             # For lists of successors
-            for successorID in jobDesc.all_successors():
+            for successorID in jobDesc.allSuccessors():
                 # If successor not already visited
                 if successorID not in alreadySeenSuccessors:
 

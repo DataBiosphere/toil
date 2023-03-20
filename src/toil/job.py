@@ -1080,7 +1080,7 @@ class JobDescription(Requirer):
                 if isinstance(item, TemporaryID) and item in renames:
                     # Replace each renamed item one at a time to preserve set identity
                     phase.remove(item)
-                    phase.insert(renames[item])
+                    phase.add(renames[item])
         self.serviceTree = {renames.get(parent, parent): [renames.get(child, child) for child in children]
                             for parent, children in self.serviceTree.items()}
 
