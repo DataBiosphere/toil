@@ -37,8 +37,7 @@ from toil.bus import (JobAnnotationMessage,
                       JobUpdatedMessage,
                       QueueSizeMessage)
 from toil.common import Config, Toil, ToilMetrics
-from toil.cwl.utils import (CWL_INTERNAL_JOBS,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
+from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (CheckpointJobDescription,
                       JobDescription,
                       ServiceJobDescription,
@@ -899,7 +898,7 @@ class Leader:
             # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptibleJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptibleJobsIssued += 1
-        cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
+        cur_logger = logger.debug if jobNode.local else logger.info
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and %s",
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())

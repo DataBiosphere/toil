@@ -323,7 +323,7 @@ def accelerators_fully_satisfy(candidates: Optional[List[AcceleratorRequirement]
     Determine if a set of accelerators satisfy a requirement.
 
     Ignores fields specified in ignore.
-    
+
     :returns:  True if the requirement AcceleratorRequirement is
                fully satisfied by the ones in the list, taken
                together (i.e. check all fields including count).
@@ -731,6 +731,7 @@ class JobDescription(Requirer):
         unitName: str = "",
         displayName: str = "",
         command: Optional[str] = None,
+        local: Optional[bool] = None
     ) -> None:
         """
         Create a new JobDescription.
@@ -750,9 +751,15 @@ class JobDescription(Requirer):
         :param displayName: A human-readable name to identify this
             particular job instance. Ought to be the job class's name
             if no real user-defined name is available.
+        :param local: If True, the job is meant to use minimal resources but is
+            sensitive to execution latency, and so should be executed by the
+            leader.
         """
         # Set requirements
         super().__init__(requirements)
+
+        # Set local-ness flag, which is not (yet?) a requirement
+        self.local: bool = local or False
 
         # Save names, making sure they are strings and not e.g. bytes.
         def makeString(x: Union[str, bytes]) -> str:
@@ -1337,6 +1344,7 @@ class Job:
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
         descriptionClass: Optional[type] = None,
+        local: Optional[bool] = None,
     ) -> None:
         """
         Job initializer.
@@ -1356,6 +1364,7 @@ class Job:
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :param displayName: Human-readable job type display name.
         :param descriptionClass: Override for the JobDescription class used to describe the job.
+        :param local: if the job can be run on the leader.
 
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
@@ -1389,7 +1398,13 @@ class Job:
         # Create the JobDescription that owns all the scheduling information.
         # Make it with a temporary ID until we can be assigned a real one by
         # the JobStore.
-        self._description = descriptionClass(requirements, jobName, unitName=unitName, displayName=displayName)
+        self._description = descriptionClass(
+            requirements,
+            jobName,
+            unitName=unitName,
+            displayName=displayName,
+            local=local
+        )
 
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.

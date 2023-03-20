@@ -31,8 +31,7 @@ from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
-from toil.cwl.utils import (CWL_INTERNAL_JOBS,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -603,7 +602,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         # Commit log file reference back to JobStore
         jobStore.update_job(jobDesc)
 
-    elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
+    elif ((debugging or (config.writeLogsFromAllJobs and not jobDesc.local))
           and redirectOutputToLogFile):  # write log messages
         with open(tempWorkerLogPath, 'rb') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:

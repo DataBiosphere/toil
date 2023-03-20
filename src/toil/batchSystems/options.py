@@ -74,7 +74,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     set_option("coalesceStatusCalls")
     set_option("maxLocalJobs", int)
     set_option("manualMemArgs")
-    set_option("runCwlInternalJobsOnWorkers", bool, default=False)
+    set_option("run_local_jobs_on_workers", bool, default=False)
     set_option("statePollingWait")
     set_option("batch_logs_dir", env=["TOIL_BATCH_LOGS_DIR"])
 
@@ -124,13 +124,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
+        "--runLocalJobsOnWorkers"
         "--runCwlInternalJobsOnWorkers",
-        dest="runCwlInternalJobsOnWorkers",
+        dest="run_local_jobs_on_workers",
         action="store_true",
         default=None,
-        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-        "instead of the primary node. If false (default), then all such jobs are run on "
-        "the primary node. Setting this to true can speed up the pipeline for very large "
+        help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
+        "instead of the leader node. If false (default), then all such jobs are run on "
+        "the leader node. Setting this to true can speed up CWL pipelines for very large "
         "workflows with many sub-workflows and/or scatters, provided that the worker "
         "pool is large enough.",
     )
