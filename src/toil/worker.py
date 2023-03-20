@@ -62,9 +62,9 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     :param config: The configuration for the current run.
     """
     #If no more jobs to run or services not finished, quit
-    if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
-        logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
-                     len(predecessor.stack), len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
+    if predecessor.nextSuccessors() is None or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
+        logger.debug("Stopping running chain of jobs: no successors: %s, services: %s, checkpoint: %s",
+                     predecessor.nextSuccessors() is None, len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
         return None
 
     if len(predecessor.stack) > 1 and len(predecessor.stack[-1]) > 0 and len(predecessor.stack[-2]) > 0:
@@ -74,6 +74,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
         # TODO: Go back to a free-form stack list and require some kind of
         # stack build phase?
         logger.debug("Stopping running chain of jobs because job has both children and follow-ons")
+        logger.debug("Child: %s Follow-on: %s", predecessor.stack[-1], predecessor.stack[-2])
         return None
 
     #Get the next set of jobs to run
@@ -86,7 +87,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     #If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
         logger.debug("No more jobs can run in series by this worker,"
-                    " it's got %i children", len(jobs)-1)
+                    " it's got %i successors", len(jobs)-1)
         return None
 
     # Grab the only job that should be there.

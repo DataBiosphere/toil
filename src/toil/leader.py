@@ -413,18 +413,22 @@ class Leader:
 
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
+        
+        # Grap the successors
+        next_successors = predecessor.nextSuccessors()
 
-        assert len(predecessor.stack[-1]) > 0
+        assert next_successors is not None
+        assert len(next_successors) > 0
         logger.debug("Job: %s has %i successors to schedule",
-                     predecessor_id, len(predecessor.stack[-1]))
+                     predecessor_id, len(next_successors))
         #Record the number of successors that must be completed before
         #the job can be considered again
         assert self.toilState.count_pending_successors(predecessor_id) == 0, 'Attempted to schedule successors of the same job twice!'
-        self.toilState.successors_pending(predecessor_id, len(predecessor.stack[-1]))
+        self.toilState.successors_pending(predecessor_id, len(next_successors))
 
         # For each successor schedule if all predecessors have been completed
         successors = []
-        for successor_id in predecessor.stack[-1]:
+        for successor_id in next_successors:
             try:
                 successor = self.toilState.get_job(successor_id)
             except NoSuchJobException:
@@ -543,7 +547,7 @@ class Leader:
             logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
             self.serviceManager.put_client(job_id)
-        elif len(readyJob.stack) > 0:
+        elif readyJob.nextSuccessors() is not None:
             # There are successors to run
             self._runJobSuccessors(job_id)
         elif readyJob.jobStoreID in self.toilState.servicesIssued:
@@ -1259,22 +1263,18 @@ class Leader:
             jobDesc = self.toilState.get_job(job_id)
 
             # For lists of successors
-            for successorList in jobDesc.stack:
+            for successorID in jobDesc.all_successors():
+                # If successor not already visited
+                if successorID not in alreadySeenSuccessors:
 
-                # For each successor in list of successors
-                for successorID in successorList:
+                    # Add to set of successors
+                    successors.add(successorID)
+                    alreadySeenSuccessors.add(successorID)
 
-                    # If successor not already visited
-                    if successorID not in alreadySeenSuccessors:
-
-                        # Add to set of successors
-                        successors.add(successorID)
-                        alreadySeenSuccessors.add(successorID)
-
-                        # Recurse if job exists
-                        # (job may not exist if already completed)
-                        if self.toilState.job_exists(successorID):
-                            successorRecursion(successorID)
+                    # Recurse if job exists
+                    # (job may not exist if already completed)
+                    if self.toilState.job_exists(successorID):
+                        successorRecursion(successorID)
 
         successorRecursion(job_id)  # Recurse from passed job
 

@@ -776,21 +776,20 @@ class AbstractJobStore(ABC):
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
                 for job_description in unprocessed_job_descriptions:
-                    for jobs in job_description.stack:
-                        for successor_jobstore_id in jobs:
-                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                                successor_job_description = getJobDescription(successor_jobstore_id)
+                    for successor_jobstore_id in job_description.allSuccessors():
+                        if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                            successor_job_description = getJobDescription(successor_jobstore_id)
 
-                                # Add each successor job.
-                                reachable_from_root.add(
-                                    str(successor_job_description.jobStoreID)
-                                )
-                                # Add all of the successor's linked service jobs as well.
-                                for service_jobstore_id in successor_job_description.services:
-                                    if haveJob(service_jobstore_id):
-                                        reachable_from_root.add(service_jobstore_id)
+                            # Add each successor job.
+                            reachable_from_root.add(
+                                str(successor_job_description.jobStoreID)
+                            )
+                            # Add all of the successor's linked service jobs as well.
+                            for service_jobstore_id in successor_job_description.services:
+                                if haveJob(service_jobstore_id):
+                                    reachable_from_root.add(service_jobstore_id)
 
-                                new_job_descriptions_to_process.append(successor_job_description)
+                            new_job_descriptions_to_process.append(successor_job_description)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
@@ -854,7 +853,7 @@ class AbstractJobStore(ABC):
             if jobDescription.command is None:
 
                 def stackSizeFn() -> int:
-                    return sum(map(len, jobDescription.stack))
+                    return len(jobDescription.allSuccessors())
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
                 jobDescription.filterSuccessors(haveJob)
