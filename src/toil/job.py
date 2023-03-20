@@ -2007,12 +2007,14 @@ class Job:
         #connected by an implied edge
         extraEdges = {n: [] for n in nodes}
         for job in nodes:
-            for depth in range(1, len(job.description.stack)):
+             # Get all the nonempty successor phases
+            phases = [p for p in job.description.successor_phases if len(p) > 0]
+            for depth in range(1, len(phases)):
                 # Add edges from all jobs in the earlier/upper subtrees to all
                 # the roots of the later/lower subtrees
 
-                upper = job.description.stack[depth]
-                lower = job.description.stack[depth - 1]
+                upper = phases[depth]
+                lower = phases[depth - 1]
 
                 # Find everything in the upper subtree
                 reacheable = set()
