@@ -931,7 +931,7 @@ class JobDescription(Requirer):
             return set()
         else:
             for phase in reversed(self.successor_phases):
-                if len(pahse) > 0:
+                if len(phase) > 0:
                     # Rightmost phase that isn't empty
                     return phase
         # If no phase isn't empty, we're done.
@@ -2371,7 +2371,7 @@ class Job:
                 visited.add(job.jobStoreID)
                 ordering.append(job)
 
-                for otherID in self.allSuccessors():
+                for otherID in self.description.allSuccessors():
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
