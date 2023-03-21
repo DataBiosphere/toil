@@ -10,7 +10,7 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.
+# limitations under the Licenseassign_job_id.
 import errno
 import logging
 import os
@@ -151,6 +151,7 @@ class FileJobStore(AbstractJobStore):
                                      dir=self._get_arbitrary_jobs_dir_for_name(usefulFilename))
 
         job_description.jobStoreID = self._get_job_id_from_dir(absJobDir)
+        logger.debug('Assigned job ID %s', job_description.jobStoreID)
 
     def create_job(self, job_description):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
@@ -796,7 +797,7 @@ class FileJobStore(AbstractJobStore):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
-        if not self._wait_for_exists(jobStoreID, 3):
+        if not self._wait_for_exists(jobStoreID, 30):
             raise NoSuchJobException(jobStoreID)
 
     def _get_file_path_from_id(self, jobStoreFileID):
