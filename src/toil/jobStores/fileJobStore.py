@@ -796,7 +796,7 @@ class FileJobStore(AbstractJobStore):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
-        if not self._wait_for_exists(jobStoreID, 30):
+        if not self._wait_for_exists(jobStoreID, 3):
             raise NoSuchJobException(jobStoreID)
 
     def _get_file_path_from_id(self, jobStoreFileID):

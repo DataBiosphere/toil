@@ -1018,6 +1018,7 @@ class JobDescription(Requirer):
         # And drop empty phases
         old_phases = [p for p in old_phases if len(p) > 0]
         # And put in front of our existing phases
+        logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
         self.successor_phases = old_phases + self.successor_phases
 
         # TODO: also be able to take on the successors of the other job, under
@@ -1031,6 +1032,8 @@ class JobDescription(Requirer):
         self.jobsToDelete += other.jobsToDelete
 
         self._job_version = other._job_version
+        
+        logger.debug('Now have %s with successor phases: %s', self, self.successor_phases)
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1596,6 +1599,7 @@ class Job:
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
         self._description.addChild(childJob.jobStoreID)
+        logger.debug("%s now has child %s", self._description.jobStoreID, childJob.jobStoreID)
         # Record the temporary back-reference
         childJob._addPredecessor(self)
 
@@ -1623,6 +1627,7 @@ class Job:
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
         self._description.addFollowOn(followOnJob.jobStoreID)
+        logger.debug("%s now has follow-on %s", self._description.jobStoreID, followOnJob.jobStoreID)
         # Record the temporary back-reference
         followOnJob._addPredecessor(self)
 
@@ -2363,6 +2368,7 @@ class Job:
             for predJob in job._directPredecessors:
                 if predJob.jobStoreID not in visited:
                     outstandingPredecessor = True
+                    logger.debug("%s is waiting on %s", job, predJob)
                     break
             if outstandingPredecessor:
                 continue
@@ -2372,10 +2378,13 @@ class Job:
                 ordering.append(job)
 
                 for otherID in self.description.allSuccessors():
+                    logger.debug('Consider successor ID %s of %s', otherID, self)
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
                         todo.append(self._registry[otherID])
+                    else:
+                        logger.debug('Successor is not in registry')
 
         return ordering
 
@@ -2405,6 +2414,8 @@ class Job:
 
             # Make sure the JobDescription can do its JobStore-related setup.
             self.description.onRegistration(jobStore)
+            
+            logger.debug('Assigning ID to %s, formerly %s', self.description, fake)
 
             # Return the fake to real mapping
             return [(fake, self.description.jobStoreID)]
@@ -2543,7 +2554,7 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
 
-        logger.info("Saving graph of %d jobs, %d new", len(allJobs), len(fakeToReal))
+        logger.info("Saving graph of %d jobs, %d new, %d non-service", len(allJobs), len(fakeToReal), len(ordering))
 
         # Make sure we're the root
         assert ordering[-1] == self

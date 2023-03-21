@@ -563,6 +563,7 @@ class InsufficientSystemResources(Exception):
         """
 
         self.job_name : Optional[str] = str(requirer)
+
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available

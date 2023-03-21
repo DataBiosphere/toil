@@ -69,7 +69,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
 
 
     #Get the next set of jobs to run
-    jobs = predecessor.nextSuccessors()
+    jobs = list(predecessor.nextSuccessors())
     if len(jobs) == 0:
         # If there are no jobs, we might just not have any children.
         logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")
@@ -78,11 +78,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     #If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
         logger.debug("No more jobs can run in series by this worker,"
-                    " it's got %i successors", len(jobs)-1)
+                    " it's got %i successors", len(jobs))
+        logger.debug("Two distinct successors are %s and %s", jobs[0], jobs[1])
         return None
 
     # Grab the only job that should be there.
-    successorID = next(iter(jobs))
+    successorID = jobs[0]
+    
+    logger.debug("%s would chain to ID %s", predecessor, successorID)
 
     # Load the successor JobDescription
     successor = jobStore.load_job(successorID)
@@ -478,6 +481,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # after the commit process we just kicked off, and aren't committed
             # early or partially.
             jobDesc = copy.deepcopy(jobDesc)
+            # Bump its version since saving will do that too and we don't want duplicate versions.
+            jobDesc.pre_update_hook()
+            
 
             logger.debug("Starting the next job")
 

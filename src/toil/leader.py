@@ -736,6 +736,8 @@ class Leader:
         while self._messages.count(JobUpdatedMessage) > 0 or \
               self.getNumberOfJobsIssued() or \
               self.serviceManager.get_job_count():
+              
+            logger.debug("Tick")
 
             if self._messages.count(JobUpdatedMessage) > 0:
                 self._processReadyJobs()
