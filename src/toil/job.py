@@ -890,7 +890,6 @@ class JobDescription(Requirer):
         Follow-ons will come before children.
         """
 
-        logger.debug("%s enumerating successors %s", self, self.successor_phases)
         for phase in self.successor_phases:
             for successor in phase:
                 yield successor
@@ -1013,9 +1012,9 @@ class JobDescription(Requirer):
 
         :param other: Job description to replace.
         """
-        
+
         # TODO: We can't join the job graphs with Job._jobGraphsJoined, is that a problem?
-        
+
         # Take all the successors other than this one
         old_phases = [{i for i in p if i != self.jobStoreID} for p in other.successor_phases]
         # And drop empty phases
@@ -1035,8 +1034,6 @@ class JobDescription(Requirer):
         self.jobsToDelete += other.jobsToDelete
 
         self._job_version = other._job_version
-        
-        logger.debug('Now have %s with successor phases: %s', self, self.successor_phases)
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1458,8 +1455,6 @@ class Job:
         self._fileStore = None
         self._defer = None
         self._tempDir = None
-        
-        logger.debug("Created job %s", self)
 
     def __str__(self):
         """
@@ -1605,8 +1600,6 @@ class Job:
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
         self._description.addChild(childJob.jobStoreID)
-        logger.debug("%s now has child %s", self._description, childJob._description)
-        logger.debug("%s now has successors: %s", self._description, self._description.successor_phases)
         # Record the temporary back-reference
         childJob._addPredecessor(self)
 
@@ -1634,8 +1627,6 @@ class Job:
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
         self._description.addFollowOn(followOnJob.jobStoreID)
-        logger.debug("%s now has follow-on %s", self._description, followOnJob._description)
-        logger.debug("%s now has successors: %s", self._description, self._description.successor_phases)
         # Record the temporary back-reference
         followOnJob._addPredecessor(self)
 
@@ -2376,7 +2367,6 @@ class Job:
             for predJob in job._directPredecessors:
                 if predJob.jobStoreID not in visited:
                     outstandingPredecessor = True
-                    logger.debug("%s is waiting on %s", job, predJob)
                     break
             if outstandingPredecessor:
                 continue
@@ -2386,13 +2376,10 @@ class Job:
                 ordering.append(job)
 
                 for otherID in job.description.allSuccessors():
-                    logger.debug('Consider successor ID %s of %s', otherID, self)
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
                         todo.append(self._registry[otherID])
-                    else:
-                        logger.debug('Successor is not in registry')
 
         return ordering
 
@@ -2422,8 +2409,6 @@ class Job:
 
             # Make sure the JobDescription can do its JobStore-related setup.
             self.description.onRegistration(jobStore)
-            
-            logger.debug('Assigning ID to %s, formerly %s, in registry %s', self.description, fake, id(self._registry))
 
             # Return the fake to real mapping
             return [(fake, self.description.jobStoreID)]
@@ -2566,7 +2551,7 @@ class Job:
 
         # Make sure we're the root
         assert ordering[-1] == self
-        
+
         # Don't verify the ordering length: it excludes service host jobs.
         ordered_ids = {o.jobStoreID for o in ordering}
         for j in allJobs:
@@ -2574,7 +2559,7 @@ class Job:
             if not isinstance(j, ServiceHostJob) and j.jobStoreID not in ordered_ids:
                 raise RuntimeError(f"{j} not found in ordering {ordering}")
 
-        
+
 
         if not saveSelf:
             # Fulfil promises for return values (even if value is None)

@@ -151,7 +151,6 @@ class FileJobStore(AbstractJobStore):
                                      dir=self._get_arbitrary_jobs_dir_for_name(usefulFilename))
 
         job_description.jobStoreID = self._get_job_id_from_dir(absJobDir)
-        logger.debug('Assigned job ID %s', job_description.jobStoreID)
 
     def create_job(self, job_description):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:

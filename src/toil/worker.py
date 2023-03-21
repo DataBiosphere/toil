@@ -84,7 +84,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
 
     # Grab the only job that should be there.
     successorID = jobs[0]
-    
+
     logger.debug("%s would chain to ID %s", predecessor, successorID)
 
     # Load the successor JobDescription
@@ -483,7 +483,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             jobDesc = copy.deepcopy(jobDesc)
             # Bump its version since saving will do that too and we don't want duplicate versions.
             jobDesc.pre_update_hook()
-            
+
 
             logger.debug("Starting the next job")
 

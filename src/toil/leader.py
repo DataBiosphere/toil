@@ -306,7 +306,7 @@ class Leader:
 
         :param successor_id: The successor which has failed.
         :param predecessor_id: The job which the successor comes after.
-        :returns: True if there are still active successors. 
+        :returns: True if there are still active successors.
                   False if all successors have failed and the job is queued to run to handle the failed successors.
         """
         logger.debug("Successor job: %s of job: %s has failed """
@@ -413,7 +413,7 @@ class Leader:
 
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
-        
+
         # Grap the successors
         next_successors = predecessor.nextSuccessors()
 
@@ -444,7 +444,7 @@ class Leader:
     def _processFailedSuccessors(self, predecessor_id: str):
         """
         Deal with some of a job's successors having failed.
-        
+
         Either fail the job, or restart it if it has retries left and is a checkpoint
         job.
         """
@@ -496,7 +496,7 @@ class Leader:
 
         logger.debug('Updating status of job %s with result status: %s',
                      readyJob, result_status)
-        
+
         # TODO: Filter out nonexistent successors/services now, so we can tell
         # if they are all done and the job needs deleting?
 
@@ -579,7 +579,7 @@ class Leader:
             if readyJob.remainingTryCount > 0:
                 # add attribute to let issueJob know that this is an empty job and should be deleted
                 logger.debug("Job: %s is empty, we are cleaning it up", readyJob)
-                
+
                 try:
                     self.toilState.delete_job(readyJob.jobStoreID)
                 except Exception as e:
@@ -728,7 +728,7 @@ class Leader:
     def innerLoop(self):
         """
         Process jobs.
-        
+
         This is the leader's main loop.
         """
         self.timeSinceJobsLastRescued = time.time()
@@ -736,8 +736,6 @@ class Leader:
         while self._messages.count(JobUpdatedMessage) > 0 or \
               self.getNumberOfJobsIssued() or \
               self.serviceManager.get_job_count():
-              
-            logger.debug("Tick")
 
             if self._messages.count(JobUpdatedMessage) > 0:
                 self._processReadyJobs()
@@ -869,7 +867,7 @@ class Leader:
         # Never issue the same job multiple times simultaneously
         assert jobNode.jobStoreID not in self.toilState.jobs_issued, \
             f"Attempted to issue {jobNode} multiple times simultaneously!"
-            
+
         workerCommand = [resolveEntryPoint('_toil_worker'),
                          jobNode.jobName,
                          self.jobStoreLocator,
@@ -1124,7 +1122,7 @@ class Leader:
         Process finished jobs.
 
         Called when an attempt to run a job finishes, either successfully or otherwise.
-        
+
         Takes the job out of the issued state, and then works out what
         to do about the fact that it succeeded or failed.
 
@@ -1133,28 +1131,28 @@ class Leader:
         """
         # De-issue the job.
         issued_job = self.removeJob(batch_system_id)
-        
+
         if result_status != 0:
             # Show job as failed in progress (and take it from completed)
             self.progress_overall.update(incr=-1)
             self.progress_failed.update(incr=1)
-        
+
         # Delegate to the vers
         return self.process_finished_job_description(issued_job, result_status, wall_time, exit_reason, batch_system_id)
-    
+
     def process_finished_job_description(self, finished_job: JobDescription, result_status: int,
                                          wall_time: Optional[float] = None,
                                          exit_reason: Optional[BatchJobExitReason] = None,
                                          batch_system_id: Optional[int] = None) -> bool:
         """
         Process a finished JobDescription based upon its succees or failure.
-        
+
         If wall-clock time is available, informs the cluster scaler about the
         job finishing.
-        
+
         If the job failed and a batch system ID is available, checks for and
         reports batch system logs.
-        
+
         Checks if it succeeded and was removed, or if it failed and needs to be
         set up after failure, and dispatches to the appropriate function.
 
@@ -1201,7 +1199,7 @@ class Leader:
                 # reduce the try count here.
                 if replacement_job.logJobStoreFileID is None:
                     logger.warning("No log file is present, despite job failing: %s", replacement_job)
-                
+
                 if batch_system_id is not None:
                     # Look for any standard output/error files created by the batch system.
                     # They will only appear if the batch system actually supports
