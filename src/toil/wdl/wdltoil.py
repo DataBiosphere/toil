@@ -1060,7 +1060,7 @@ class WDLTaskJob(WDLBaseJob):
             if isinstance(task_container, SingularityContainer):
                 # We need to patch the Singularity container run invocation
 
-                # We might need to send GPUs and the current miniwdl deosn't do
+                # We might need to send GPUs and the current miniwdl doesn't do
                 # that for Singularity. And we might need to *not* try and use
                 # --fakeroot if we lack sub-UIDs. So we sneakily monkey patch it
                 # here.
@@ -1100,7 +1100,7 @@ class WDLTaskJob(WDLBaseJob):
                         # Put in all those flags
                         command_line.insert(subcommand_index + 1, flag)
 
-                    logger.debug('Ammended command line to: %s', command_line)
+                    logger.debug('Amended command line to: %s', command_line)
 
                     # Return the modified command line
                     return command_line

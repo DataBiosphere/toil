@@ -34,7 +34,7 @@ to use other Toil-supported batch systems, such as Kubernetes:
 
 ``toil-wdl-runner --jobStore aws:us-west-2:wdl-job-store --batchSystem kubernetes myWorkflow.wdl --inputs myWorkflow_inputs.json``
 
-For Toil, the ``--inputs`` is optiona, and inputs can be passed as a positional
+For Toil, the ``--inputs`` is optional, and inputs can be passed as a positional
 argument:
 
 ``toil-wdl-runner myWorkflow.wdl myWorkflow_inputs.json``
@@ -67,22 +67,6 @@ Any number of other Toil options may also be specified. For defined Toil options
 see the documentation:
 http://toil.readthedocs.io/en/latest/running/cliOptions.html
 
-Running WDL within Toil Scripts
--------------------------------
-
-Currently, the recommended way to run WDL code from within a Toil Python
-workflow is to call out to a WDL runner like ``toil-wdl-runner`` or Cromwell,
-within a Toil job.
-
-.. note::
-        A ``cromwell.jar`` file is needed in order to run a WDL workflow with Cromwell.
-
-This is not very efficient, but for some use cases, such as running one process
-on multiple files, it may be useful. For example, if you want to run a WDL
-workflow with 3 JSON files specifying different samples inputs, it could look
-something like:
-
-.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_wdlexample.py
 
 WDL Specifications
 ------------------
