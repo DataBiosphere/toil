@@ -147,10 +147,5 @@ class ToilDocumentationTest(ToilTest):
     def testStaging(self):
         self.checkExitCode("tutorial_staging.py")
 
-    @unittest.skip('Needs cromwell jar file to run.')
-    def testWdlexample(self):
-        self.checkExitCode("tutorial_wdlexample.py")
-
-
 if __name__ == "__main__":
     unittest.main()
