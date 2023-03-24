@@ -32,14 +32,14 @@ Toil uses batch systems to manage the jobs it creates.
 
 The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
 local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
-Toil supports many different batch systems such as `Apache Mesos`_ and Grid Engine; its versatility makes it
+Toil supports many different batch systems such as `Kubernetes`_ and Grid Engine; its versatility makes it
 easy to run your workflow in all kinds of places.
 
 Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
-.. _Apache Mesos: https://mesos.apache.org/getting-started/
+.. _Kubernetes: https://kubernetes.io/
 
 .. _cwlquickstart:
 
@@ -279,7 +279,7 @@ workflow there is always one leader process, and potentially many worker process
 
 When using the single-machine batch system (the default), the worker processes will be running
 on the same machine as the leader process. With full-fledged batch systems like
-Mesos the worker processes will typically be started on separate machines. The
+Kubernetes the worker processes will typically be started on separate machines. The
 boilerplate ensures that the pipeline is only started once---on the leader---but
 not when its job functions are imported and executed on the individual workers.
 
@@ -394,8 +394,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a cluster in AWS using the :ref:`launchCluster` command::
 
         (venv) $ toil launch-cluster <cluster-name> \
+                     --clusterType kubernetes \
                      --keyPairName <AWS-key-pair-name> \
                      --leaderNodeType t2.medium \
+                     --nodeTypes t2.medium -w 1 \
                      --zone us-west-2a
 
    The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster.
@@ -448,8 +450,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. First launch a node in AWS using the :ref:`launchCluster` command::
 
       (venv) $ toil launch-cluster <cluster-name> \
+                   --clusterType kubernetes \
                    --keyPairName <AWS-key-pair-name> \
                    --leaderNodeType t2.medium \
+                   --nodeTypes t2.medium -w 1 \
                    --zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
@@ -462,24 +466,25 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
       (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
-#. Once on the leader node, it's a good idea to update and install the following::
+#. Once on the leader node, command line tools such as ``kubectl`` will be available to you. It's also a good idea to
+   update and install the following::
 
     sudo apt-get update
     sudo apt-get -y upgrade
     sudo apt-get -y dist-upgrade
     sudo apt-get -y install git
-    sudo pip install mesos.cli
 
 #. Now create a new ``virtualenv`` with the ``--system-site-packages`` option and activate::
 
     virtualenv --system-site-packages venv
     source venv/bin/activate
 
-#. Now run the CWL workflow::
+#. Now run the CWL workflow with the kubernetes batch system::
 
       (venv) $ toil-cwl-runner \
                    --provisioner aws \
-                   --jobStore aws:us-west-2a:any-name \
+                   --batchSystem kubernetes \
+                   --jobStore aws:us-west-2:any-name \
                    /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
@@ -497,6 +502,8 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 Running a Workflow with Autoscaling - Cactus
 ---------------------------------------------------
+
+.. TODO: change to use a kubernetes cluster.
 
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free, whole-genome multiple alignment
 program that can be run on any of the cloud platforms Toil supports.

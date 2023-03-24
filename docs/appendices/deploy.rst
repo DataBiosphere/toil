@@ -41,7 +41,7 @@ From here, you can install a project and its dependencies::
 
    3 directories, 5 files
    $ pip install matplotlib
-   $ cp -R workflow util venv/lib/python2.7/site-packages
+   $ cp -R workflow util venv/lib/python3.9/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which streamlines the installation process::
 
@@ -70,7 +70,7 @@ both Python and Toil are assumed to be present on the leader and all worker node
 
 We can now run our workflow::
 
-   $ python main.py --batchSystem=mesos …
+   $ python main.py --batchSystem=kubernetes …
 
 .. important::
 
@@ -101,7 +101,7 @@ This scenario applies if the user script imports modules that are its siblings::
    $ cd my_project
    $ ls
    userScript.py utilities.py
-   $ ./userScript.py --batchSystem=mesos …
+   $ ./userScript.py --batchSystem=kubernetes …
 
 Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
@@ -143,7 +143,7 @@ The following shell session illustrates this::
        └── main.py
 
    3 directories, 5 files
-   $ python -m workflow.main --batchSystem=mesos …
+   $ python -m workflow.main --batchSystem=kubernetes …
 
 .. _package: https://docs.python.org/2/tutorial/modules.html#packages
 
@@ -168,7 +168,7 @@ could do this::
    $ cd my_project
    $ export PYTHONPATH="$PWD"
    $ cd /some/other/dir
-   $ python -m workflow.main --batchSystem=mesos …
+   $ python -m workflow.main --batchSystem=kubernetes …
 
 Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
@@ -193,7 +193,7 @@ replicates ``PYTHONPATH`` from the leader to every worker.
 Toil Appliance
 --------------
 
-The term Toil Appliance refers to the Mesos Docker image that Toil uses to simulate the machines in the virtual mesos
+The term Toil Appliance refers to the ubuntu-based Docker image that Toil uses to simulate the machines in the virtual
 cluster.  It's easily deployed, only needs Docker, and allows for workflows to be run in single-machine mode and for
 clusters of VMs to be provisioned.  To specify a different image, see the Toil :ref:`envars` section.  For more
 information on the Toil Appliance, see the :ref:`runningAWS` section.

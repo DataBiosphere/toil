@@ -99,20 +99,26 @@ during the computation of a workflow, first set up and configure an account with
    the installed version that you are using if you're using a different version): ::
 
     $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:5.3.0 \
-          toil launch-cluster clustername \
+          toil launch-cluster <cluster-name> \
+          --clusterType kubernetes \
           --leaderNodeType t2.medium \
+          --nodeTypes t2.medium -w 1 \
           --zone us-west-1a \
           --keyPairName id_rsa
 
 To further break down each of these commands:
 
-    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** --- This is optional.  It specifies a mesos docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags.
+    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** --- This is optional.  It specifies a ubuntu-based docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags.
 
     **toil launch-cluster** --- Base command in toil to launch a cluster.
 
-    **clustername** --- Just choose a name for your cluster.
+    **<cluster-name>** --- Just choose a name for your cluster.
+
+    **--clusterType kubernetes** --- Specify the type of cluster to coordinate and execute your workflow. Kubernetes is the recommended option.
 
     **--leaderNodeType t2.medium** --- Specify the leader node type.  Make a t2.medium (2CPU; 4Gb RAM; $0.0464/Hour).  List of available AWS instances: https://aws.amazon.com/ec2/pricing/on-demand/
+
+    **--nodeTypes t2.medium -w 1** --- Specify the worker node type and the number of worker nodes to launch. The kubernetes cluster requires at least 1 worker node.
 
     **--zone us-west-1a** --- Specify the AWS zone you want to launch the instance in.  Must have the same prefix as the zone in your awscli credentials (which, in the example of this tutorial is: "us-west-1").
 
@@ -162,7 +168,7 @@ Getting started with the provisioner is simple:
    `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-config-files>`__.
 
 The Toil provisioner is built around the Toil Appliance, a Docker image that bundles
-Toil and all its requirements (e.g. Mesos). This makes deployment simple across
+Toil and all its requirements (e.g. Kubernetes). This makes deployment simple across
 platforms, and you can even simulate a cluster locally (see :ref:`appliance_dev` for details).
 
 .. admonition:: Choosing Toil Appliance Image
@@ -182,12 +188,14 @@ Details about Launching a Cluster in AWS
 ----------------------------------------
 
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
-to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
+to launch a kubernetes cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
     (venv) $ toil launch-cluster my-cluster \
+                 --clusterType kubernetes \
                  --leaderNodeType t2.medium \
+                 --nodeTypes t2.medium -w 1 \
                  --zone us-west-2a \
-                 --keyPairName <your-AWS-key-pair-name>
+                 --keyPairName <AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. Also, the Toil provisioner will
@@ -234,9 +242,12 @@ change. This is in contrast with :ref:`Autoscaling`.
 To launch worker nodes alongside the leader we use the ``-w`` option::
 
     (venv) $ toil launch-cluster my-cluster \
+                 --clusterType kubernetes \
                  --leaderNodeType t2.small -z us-west-2a \
-                 --keyPairName your-AWS-key-pair-name \
-                 --nodeTypes m3.large,t2.micro -w 1,4
+                 --keyPairName <AWS-key-pair-name> \
+                 --nodeTypes m3.large,t2.micro -w 1,4 \
+                 --zone us-west-2a
+
 
 This will spin up a leader node of type t2.small with five additional workers --- one m3.large instance and four t2.micro.
 
@@ -264,6 +275,8 @@ look like ::
 Running a Workflow with Autoscaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. TODO: change to use kubernetes. But the kubernetes batch system doesn't support autoscaling?
+
 Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.
 Autoscaling leverages Mesos containers to provide an execution environment for these workflows.
 
@@ -276,6 +289,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 #. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
     (venv) $ toil launch-cluster <cluster-name> \
+                 --clusterType mesos \
                  --keyPairName <AWS-key-pair-name> \
                  --leaderNodeType t2.medium \
                  --zone us-west-2a
@@ -382,7 +396,7 @@ For example, to launch a Toil cluster with a Kubernetes scheduler, run: ::
             --provisioner=aws \
             --clusterType kubernetes \
             --zone us-west-2a \
-            --keyPairName wlgao@ucsc.edu \
+            --keyPairName <AWS-key-pair-name> \
             --leaderNodeType t2.medium \
             --leaderStorage 50 \
             --nodeTypes t2.medium -w 1-4 \
