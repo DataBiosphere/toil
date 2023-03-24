@@ -161,16 +161,16 @@ def main() -> None:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
+    if options.clusterType == "mesos":
+        logger.warning('You are using a "mesos" cluster, which is no longer recommended as Toil is '
+                       'transitioning to using a kubernetes-based cluster. Consider switching to '
+                       '--clusterType=kubernetes.')
+
     if options.clusterType is None:
         logger.warning('Argument --clusterType is not set... using "mesos" as the cluster scheduler. '
                        'Starting in the next version of Toil, the default cluster scheduler will be '
                        'set to "kubernetes" if the cluster type is not specified.')
         options.clusterType = "mesos"
-
-    if options.clusterType == "mesos":
-        logger.warning('You are using a "mesos" cluster, which is no longer recommended as Toil is '
-                       'transitioning to using a kubernetes-based cluster. Consider switching to '
-                       '--clusterType=kubernetes.')
 
     logger.info('Creating cluster %s...', options.clusterName)
 

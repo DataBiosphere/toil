@@ -9,9 +9,9 @@ that can adapt to the size of your workflow, whether your workflow requires 10 i
 
 Toil does this by creating a virtual cluster with `Kubernetes`_.  `Kubernetes`_ requires a leader node to coordinate
 the workflow, and worker nodes to execute the various tasks within the workflow.  As the workflow runs, Toil will
-"autoscale", creating and terminating workers as needed to meet the demands of the workflow. Historically, Toil spins
-up clusters with `Apache Mesos`_, but it is no longer the recommended way to coordinate and execute tasks within the
-workflow.
+"autoscale", creating and terminating workers as needed to meet the demands of the workflow. Historically, Toil has
+spun up clusters with `Apache Mesos`_, but it is no longer the recommended way to coordinate and execute tasks within
+the workflow.
 
 Once a user is familiar with the basics of running toil locally (specifying a :ref:`jobStore <jobStoreOverview>`, and
 how to write a toil script), they can move on to the guides below to learn how to translate these workflows into cloud
