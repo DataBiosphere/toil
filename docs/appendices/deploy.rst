@@ -31,10 +31,10 @@ From here, you can install a project and its dependencies::
    $ tree
    .
    ├── util
-   │   ├── __init__.py
-   │   └── sort
-   │       ├── __init__.py
-   │       └── quick.py
+   │   ├── __init__.py
+   │   └── sort
+   │       ├── __init__.py
+   │       └── quick.py
    └── workflow
        ├── __init__.py
        └── main.py
@@ -48,10 +48,10 @@ Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which s
    $ tree
    .
    ├── util
-   │   ├── __init__.py
-   │   └── sort
-   │       ├── __init__.py
-   │       └── quick.py
+   │   ├── __init__.py
+   │   └── sort
+   │       ├── __init__.py
+   │       └── quick.py
    ├── workflow
    │   ├── __init__.py
    │   └── main.py
@@ -107,7 +107,7 @@ Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
 workers, alongside the user script. Note that sibling modules will be
 auto-deployed regardless of whether they are actually imported by the user
-script–all .py files residing in the same directory as the user script will
+script-all .py files residing in the same directory as the user script will
 automatically be auto-deployed.
 
 Sibling modules are a suitable method of organizing the source code of
@@ -134,10 +134,10 @@ The following shell session illustrates this::
    $ tree
    .
    ├── utils
-   │   ├── __init__.py
-   │   └── sort
-   │       ├── __init__.py
-   │       └── quick.py
+   │   ├── __init__.py
+   │   └── sort
+   │       ├── __init__.py
+   │       └── quick.py
    └── workflow
        ├── __init__.py
        └── main.py
