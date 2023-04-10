@@ -786,34 +786,6 @@ class WDLBaseJob(Job):
         # bindings are actually linked lists or something?
         sys.setrecursionlimit(10000)
 
-class WDLInputJob(WDLBaseJob):
-    """
-    Job that evaluates a WDL input, or sources it from the workflow inputs.
-    """
-    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
-        """
-        Make a new job to evaluate a WDL input.
-        """
-        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
-
-        self._node = node
-        self._prev_node_results = prev_node_results
-
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
-        """
-        Evaluate the input.
-        """
-        super().run(file_store)
-
-        logger.info("Running node %s", self._node.workflow_node_id)
-
-        # Combine the bindings we get from previous jobs
-        incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
-        # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store)
-
-        return incoming_bindings.bind(self._node.name, evaluate_defaultable_decl(self._node, incoming_bindings, standard_library))
-
 class WDLTaskJob(WDLBaseJob):
     """
     Job that runs a WDL task.
