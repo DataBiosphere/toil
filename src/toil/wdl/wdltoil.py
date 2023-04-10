@@ -572,8 +572,8 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
     """
 
-    if node.name in environment:
-        logger.debug('Name %s is already defined, not using default', node.name)
+    if node.name in environment and not isinstance(environment[node.name], WDL.Value.Null):
+        logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
         return environment[node.name]
     else:
         logger.info('Defaulting %s to %s', node.name, node.expr)
