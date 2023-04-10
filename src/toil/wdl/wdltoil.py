@@ -572,12 +572,22 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
     """
 
-    if node.name in environment and not isinstance(environment[node.name], WDL.Value.Null):
-        logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
-        return environment[node.name]
-    else:
-        logger.info('Defaulting %s to %s', node.name, node.expr)
-        return evaluate_decl(node, environment, stdlib)
+    try:
+        if node.name in environment and not isinstance(environment[node.name], WDL.Value.Null):
+            logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
+            return environment[node.name]
+        else:
+            if node.type is not None and not node.type.optional and node.expr is None:
+                # We need a value for this but there isn't one.
+                raise WDL.Error.EvalError(node, f"Value for {node.name} was not provided and no default value is available")
+            logger.info('Defaulting %s to %s', node.name, node.expr)
+            return evaluate_decl(node, environment, stdlib)
+    except Exception:
+        # If something goes wrong, dump.
+        logger.exception("Evaluation failed for %s", node)
+        logger.info("Statement was evaluated in environment:")
+        log_bindings([environment])
+        raise
 
 # TODO: make these stdlib methods???
 def devirtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
@@ -797,7 +807,7 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], called_as: str, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
         """
@@ -806,6 +816,8 @@ class WDLTaskJob(WDLBaseJob):
 
         self._task = task
         self._prev_node_results = prev_node_results
+        self._task_id = task_id
+        self._called_as = called_as
 
     def can_fake_root(self) -> bool:
         """
@@ -832,7 +844,7 @@ class WDLTaskJob(WDLBaseJob):
         Actually run the task.
         """
         super().run(file_store)
-        logger.info("Running task %s", self._task.name)
+        logger.info("Running task %s (%s) called as %s", self._task.name, self._task_id, self._called_as)
 
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
@@ -954,7 +966,7 @@ class WDLTaskJob(WDLBaseJob):
             # resources.
             # TODO: What if the runtime section says we need a lot of disk to
             # hold the large files that the inputs section is going to write???
-            rescheduled = WDLTaskJob(self._task, self._prev_node_results, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
+            rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._called_as, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
             # Run that as a child
             self.addChild(rescheduled)
             # And return its result.
@@ -1201,11 +1213,11 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
-                subjob: Job = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings])
+                subjob: Job = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, self._node.name)
                 self.addChild(subjob)
             elif isinstance(self._node.callee, WDL.Tree.Task):
                 # This is a call of a task
-                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings])
+                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, self._node.name)
                 self.addChild(subjob)
             else:
                 raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
@@ -1681,7 +1693,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], called_as: str, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -1700,6 +1712,8 @@ class WDLWorkflowJob(WDLSectionJob):
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
+        self._workflow_id = workflow_id
+        self._called_as = called_as
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1707,7 +1721,7 @@ class WDLWorkflowJob(WDLSectionJob):
         """
         super().run(file_store)
 
-        logger.info("Running workflow %s", self._workflow.name)
+        logger.info("Running workflow %s (%s) called as %s", self._workflow.name, self._workflow_id, self._called_as)
 
         # Combine the bindings we get from previous jobs.
         # For a task we only see the insode-the-task namespace.
@@ -1787,7 +1801,7 @@ class WDLRootJob(WDLSectionJob):
 
         # Run the workflow. We rely in this to handle entering the input
         # namespace if needed, or handling free-floating inputs.
-        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs])
+        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._workflow.name)
         self.addChild(workflow_job)
 
         # And namespace its outputs
