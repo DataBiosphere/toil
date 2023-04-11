@@ -182,11 +182,6 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     #
     # So we do the merge manually.
     
-    logger.debug('Combining bindings:')
-    for binding in all_bindings:
-        logger.debug('Binding:')
-        log_bindings([binding])
-        
     if len(all_bindings) == 0:
         # Combine nothing
         return WDL.Env.Bindings()
@@ -206,9 +201,6 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
                         logger.debug('Drop duplicate binding for %s', binding.name)
                 else:
                     merged = merged.bind(binding.name, binding.value, binding.info)
-    
-    logger.debug('Merge result:')
-    log_bindings([merged])
     
     return merged
 
@@ -850,8 +842,7 @@ class WDLTaskJob(WDLBaseJob):
 
         super().__init__(unitName=task.name, displayName=task.name, **kwargs)
         
-        logger.info("Preparing to run task %s with inputs:", task.name)
-        log_bindings(prev_node_results)
+        logger.info("Preparing to run task %s", task.name)
 
         self._task = task
         self._prev_node_results = prev_node_results
@@ -892,8 +883,6 @@ class WDLTaskJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
-            logger.debug("Input evaluation context:")
-            log_bindings([bindings])
             logger.debug("Evaluate task inputs:")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
@@ -1223,8 +1212,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         self._prev_node_results = prev_node_results
         
         if isinstance(self._node, WDL.Tree.Call):
-            logger.info("Preparing job for call node %s with environment:", self._node.workflow_node_id)
-            log_bindings(prev_node_results)
+            logger.debug("Preparing job for call node %s", self._node.workflow_node_id)
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1248,8 +1236,6 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             # Fetch all the inputs we are passing and bind them.
             # The call is only allowed to use these.
-            logger.debug("Input evaluation context:")
-            log_bindings([incoming_bindings])
             logger.debug("Evaluate step inputs:")
             input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
 
@@ -1590,9 +1576,6 @@ class WDLScatterJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
 
-        logger.debug("Scatter bindings:")
-        log_bindings(bindings)
-
         # Get what to scatter over
         scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
 
@@ -1758,8 +1741,8 @@ class WDLWorkflowJob(WDLSectionJob):
         # at deserialization. So we need to do the actual building-out of the
         # workflow in run().
 
-        logger.info("Preparing to run workflow %s with inputs:", workflow.name)
-        log_bindings(prev_node_results)
+        logger.debug("Preparing to run workflow %s", workflow.name)
+       
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
