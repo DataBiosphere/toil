@@ -582,7 +582,7 @@ class InsufficientSystemResources(Exception):
 
         msg = []
         if self.job_name is not None:
-            msg.append(f'The job {self.job_name} is requesting ')
+            msg.append(f'The job {self} is requesting ')
         else:
             msg.append(f'Requesting ')
         msg.append(f'{self.requested} {unit}{self.resource}')
