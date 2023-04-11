@@ -169,12 +169,48 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     Combine variable bindings from multiple predecessor tasks into one set for
     the current task.
     """
-
-    # Sort, largest last
-    all_bindings = sorted(all_bindings, key=lambda x: len(x))
-
-    # Merge them up
-    return WDL.Env.merge(*all_bindings)
+    
+    # We can't just use WDL.Env.merge, because if a value is shadowed in a
+    # binding, WDL.Env.merge can resurrect it to haunt us and become the
+    # winning value in the merge result. See
+    # <https://github.com/chanzuckerberg/miniwdl/issues/637>
+    #
+    # It also just strings the resolution chains of all the bindings together,
+    # which is a bad plan if we aren't careful to avoid shadowing most of the
+    # time. Whereas we actually routinely merge bindings of the whole current
+    # environment together to propagate one or zero new values.
+    #
+    # So we do the merge manually.
+    
+    logger.debug('Combining bindings:')
+    for binding in all_bindings:
+        logger.debug('Binding:')
+        log_bindings([binding])
+        
+    if len(all_bindings) == 0:
+        # Combine nothing
+        return WDL.Env.Bindings()
+    else:
+        # Sort, largest first
+        all_bindings = sorted(all_bindings, key=lambda x: -len(x))
+        
+        merged = all_bindings[0]
+        for bindings in all_bindings[1:]:
+            for binding in bindings:
+                if binding.name in merged:
+                    # This is a duplicate
+                    existing_value = merged[binding.name]
+                    if existing_value != binding.value:
+                        raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
+                    else:
+                        logger.debug('Drop duplicate binding for %s', binding.name)
+                else:
+                    merged = merged.bind(binding.name, binding.value, binding.info)
+    
+    logger.debug('Merge result:')
+    log_bindings([merged])
+    
+    return merged
 
 def log_bindings(all_bindings: Sequence[Promised[WDLBindings]]) -> None:
     """
@@ -363,7 +399,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # This is a local file
             result = filename
 
-        logger.info('Devirtualized %s as openable file %s', filename, result)
+        logger.debug('Devirtualized %s as openable file %s', filename, result)
         assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!"
         return result
 
@@ -376,13 +412,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if self._is_url(filename):
             # Already virtual
-            logger.info('Virtualized %s as WDL file %s', filename, filename)
+            logger.debug('Virtualized %s as WDL file %s', filename, filename)
             return filename
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
         result = pack_toil_uri(file_id, os.path.basename(filename))
-        logger.info('Virtualized %s as WDL file %s', filename, result)
+        logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
 class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
@@ -813,6 +849,9 @@ class WDLTaskJob(WDLBaseJob):
         """
 
         super().__init__(unitName=task.name, displayName=task.name, **kwargs)
+        
+        logger.info("Preparing to run task %s with inputs:", task.name)
+        log_bindings(prev_node_results)
 
         self._task = task
         self._prev_node_results = prev_node_results
@@ -853,6 +892,9 @@ class WDLTaskJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
+            logger.debug("Input evaluation context:")
+            log_bindings([bindings])
+            logger.debug("Evaluate task inputs:")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
@@ -1099,7 +1141,7 @@ class WDLTaskJob(WDLBaseJob):
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             task_container.add_paths(get_file_paths_in_bindings(bindings))
-            logger.info("Using container path map: %s", task_container.input_path_map)
+            logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
@@ -1179,6 +1221,10 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
         self._node = node
         self._prev_node_results = prev_node_results
+        
+        if isinstance(self._node, WDL.Tree.Call):
+            logger.info("Preparing job for call node %s with environment:", self._node.workflow_node_id)
+            log_bindings(prev_node_results)
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1202,7 +1248,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             # Fetch all the inputs we are passing and bind them.
             # The call is only allowed to use these.
-            logger.info("Evaluate step inputs")
+            logger.debug("Input evaluation context:")
+            log_bindings([incoming_bindings])
+            logger.debug("Evaluate step inputs:")
             input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
 
             # Bindings may also be added in from the enclosing workflow inputs
@@ -1541,6 +1589,9 @@ class WDLScatterJob(WDLSectionJob):
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
+
+        logger.debug("Scatter bindings:")
+        log_bindings(bindings)
 
         # Get what to scatter over
         scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
