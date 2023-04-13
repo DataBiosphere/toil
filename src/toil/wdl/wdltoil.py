@@ -1154,10 +1154,12 @@ class WDLTaskJob(WDLBaseJob):
                 # image is already pulled, so MiniWDL doesn't try and pull it.
                 # MiniWDL only locks its cache directory within a process, and we
                 # need to coordinate with other processes sharing the cache.
-                # TODO: We assume that if we share the cache, we share the coordination directory!
-                with global_mutex(file_store.coordination_dir, 'miniwdl_sif_cache_mutex'):
-                    with ExitStack() as cleanup:
-                        task_container._pull(miniwdl_logger, cleanup)
+                with global_mutex(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], 'toil_miniwdl_sif_cache_mutex'):
+                    # Also lock the Singularity layer cache in case it is shared with a different set of hosts
+                    # TODO: Will these locks work well across machines???
+                    with global_mutex(os.environ['SINGULARITY_CACHEDIR'], 'toil_singularity_cache_mutex'):
+                        with ExitStack() as cleanup:
+                            task_container._pull(miniwdl_logger, cleanup)
 
             # Run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
