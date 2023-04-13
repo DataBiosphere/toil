@@ -559,11 +559,7 @@ class InsufficientSystemResources(Exception):
         :param details: Any extra details about the problem that can be attached to the error.
         """
 
-        self.job_name : Optional[str] = None
-        if hasattr(requirer, 'jobName') and isinstance(getattr(requirer, 'jobName'), str):
-            # Keep the job name if any
-            self.job_name = cast(str, getattr(requirer, 'jobName'))
-
+        self.job_name : Optional[str] = str(requirer)
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available
@@ -582,7 +578,7 @@ class InsufficientSystemResources(Exception):
 
         msg = []
         if self.job_name is not None:
-            msg.append(f'The job {self} is requesting ')
+            msg.append(f'The job {self.job_name} is requesting ')
         else:
             msg.append(f'Requesting ')
         msg.append(f'{self.requested} {unit}{self.resource}')
