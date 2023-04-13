@@ -1010,17 +1010,21 @@ class WDLTaskJob(WDLBaseJob):
 
         if shutil.which('singularity'):
 
-            # Prepare to use Singularity. Make sure that we have plenty of space to
+            # Prepare to use Singularity. We will need plenty of space to
             # download images.
             if 'SINGULARITY_CACHEDIR' not in os.environ:
                 # Cache Singularity's layers somehwere known to have space, not in home
                 os.environ['SINGULARITY_CACHEDIR'] = os.path.join(file_store.workflow_dir, 'singularity_cache')
+            # Make sure it exists.
+            os.makedirs(os.environ['SINGULARITY_CACHEDIR'], exist_ok=True)
 
             if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
                 # Cache Singularity images for the workflow on this machine.
                 # Since MiniWDL does only within-process synchronization for pulls,
                 # we also will need to pre-pull one image into here at a time.
                 os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.path.join(file_store.workflow_dir, 'miniwdl_sif_cache')
+            # Make sure it exists.
+            os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
 
             # Run containers with Singularity
             TaskContainerImplementation: Type[TaskContainer]  = SingularityContainer
