@@ -169,7 +169,7 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     Combine variable bindings from multiple predecessor tasks into one set for
     the current task.
     """
-    
+
     # We can't just use WDL.Env.merge, because if a value is shadowed in a
     # binding, WDL.Env.merge can resurrect it to haunt us and become the
     # winning value in the merge result. See
@@ -181,14 +181,14 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     # environment together to propagate one or zero new values.
     #
     # So we do the merge manually.
-    
+
     if len(all_bindings) == 0:
         # Combine nothing
         return WDL.Env.Bindings()
     else:
         # Sort, largest first
         all_bindings = sorted(all_bindings, key=lambda x: -len(x))
-        
+
         merged = all_bindings[0]
         for bindings in all_bindings[1:]:
             for binding in bindings:
@@ -201,7 +201,7 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
                         logger.debug('Drop duplicate binding for %s', binding.name)
                 else:
                     merged = merged.bind(binding.name, binding.value, binding.info)
-    
+
     return merged
 
 def log_bindings(all_bindings: Sequence[Promised[WDLBindings]]) -> None:
@@ -844,7 +844,7 @@ class WDLTaskJob(WDLBaseJob):
         """
 
         super().__init__(unitName=namespace, displayName=namespace, **kwargs)
-        
+
         logger.info("Preparing to run task %s as %s", task.name, namespace)
 
         self._task = task
@@ -1152,7 +1152,7 @@ class WDLTaskJob(WDLBaseJob):
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
-            
+
             if isinstance(task_container, SingularityContainer):
                 # Before running the command, we need to make sure the container's
                 # image is already pulled, so MiniWDL doesn't try and pull it.
@@ -1220,7 +1220,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         self._node = node
         self._prev_node_results = prev_node_results
         self._namespace = namespace
-        
+
         if isinstance(self._node, WDL.Tree.Call):
             logger.debug("Preparing job for call node %s", self._node.workflow_node_id)
 
@@ -1763,7 +1763,7 @@ class WDLWorkflowJob(WDLSectionJob):
         # workflow in run().
 
         logger.debug("Preparing to run workflow %s", workflow.name)
-       
+
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results

@@ -247,7 +247,7 @@ class NonCachingFileStore(AbstractFileStore):
         jobStateFiles = []
 
         assert os.path.exists(coordination_dir), f"{coordination_dir} has vanished unexpectedly!"
-        
+
         # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
         for entry in os.scandir(os.fsencode(coordination_dir)):
@@ -255,7 +255,7 @@ class NonCachingFileStore(AbstractFileStore):
             if entry.name.endswith(b'.jobState'):
                 # This is the state of a job
                 jobStateFiles.append(os.fsdecode(entry.path))
-        
+
         for fname in jobStateFiles:
             try:
                 logger.debug('Considering other job state file %s', fname)
