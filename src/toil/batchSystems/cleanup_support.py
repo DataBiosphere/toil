@@ -71,7 +71,9 @@ class WorkerCleanupContext:
         # Set up an arena so we know who is the last worker to leave
         self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir),
                                               self.workerCleanupInfo.workflow_id + '-cleanup')
+        logger.debug('Entering cleanup arena')
         self.arena.enter()
+        logger.debug('Cleanup arena entered')
 
     # This is exactly the signature MyPy demands.
     # Also, it demands we not say we can return a bool if we return False
@@ -79,10 +81,12 @@ class WorkerCleanupContext:
     # context managers never eat exceptions. So it decides any context manager
     # that is always falsey but claims to return a bool is an error.
     def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
+        logger.debug('Leaving cleanup arena')
         for _ in self.arena.leave():
             # We are the last concurrent worker to finish.
             # Do batch system cleanup.
             logger.debug('Cleaning up worker')
             BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
+        logger.debug('Cleanup arena left')
 
 

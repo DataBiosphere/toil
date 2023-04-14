@@ -65,6 +65,8 @@ class NonCachingFileStore(AbstractFileStore):
         self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
+        logger.debug('Using job state file %s', self.jobStateFile)
+        assert os.path.exists(self.jobStateFile)
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
             logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
@@ -85,6 +87,7 @@ class NonCachingFileStore(AbstractFileStore):
                 self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
+            logger.debug('Removing own job state file %s', self.jobStateFile)
             os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
@@ -248,6 +251,7 @@ class NonCachingFileStore(AbstractFileStore):
         
         for fname in jobStateFiles:
             try:
+                logger.debug('Considering other job state file %s', fname)
                 yield NonCachingFileStore._readJobState(fname)
             except OSError as e:
                 if e.errno == 2:

@@ -511,6 +511,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
     finally:
+        # Get rid of our deferred function manager now so we can't mistake it
+        # for someone else's if we do worker cleanup.
+        del deferredFunctionManager
         try:
             import cwltool.main
 
