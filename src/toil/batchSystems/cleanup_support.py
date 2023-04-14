@@ -68,6 +68,7 @@ class WorkerCleanupContext:
         # Don't set self.arena or MyPy will be upset that sometimes it doesn't have the right type.
 
     def __enter__(self) -> None:
+        assert os.path.exists(self.workerCleanupInfo.coordination_dir), f"{self.workerCleanupInfo.coordination_dir} has vanished unexpectedly!"
         # Set up an arena so we know who is the last worker to leave
         self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir),
                                               self.workerCleanupInfo.workflow_id + '-cleanup')
@@ -82,11 +83,13 @@ class WorkerCleanupContext:
     # that is always falsey but claims to return a bool is an error.
     def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
         logger.debug('Leaving cleanup arena')
+        assert os.path.exists(self.workerCleanupInfo.coordination_dir), f"{self.workerCleanupInfo.coordination_dir} has vanished unexpectedly!"
         for _ in self.arena.leave():
             # We are the last concurrent worker to finish.
             # Do batch system cleanup.
             logger.debug('Cleaning up worker')
             BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
+            # Now the coordination_dir is allowed to no longer exist on the node.
         logger.debug('Cleanup arena left')
 
 

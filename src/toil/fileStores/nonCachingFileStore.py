@@ -58,6 +58,8 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile: Optional[str] = None
         self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
 
+        assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
+
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
@@ -88,6 +90,7 @@ class NonCachingFileStore(AbstractFileStore):
             os.chdir(startingDir)
             # Finally delete the job from the worker
             logger.debug('Removing own job state file %s', self.jobStateFile)
+            assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
             os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
@@ -196,6 +199,8 @@ class NonCachingFileStore(AbstractFileStore):
         :return:
         """
 
+        assert os.path.exists(coordination_dir), f"{coordination_dir} has vanished unexpectedly!"
+
         for jobState in cls._getAllJobStates(coordination_dir):
             if not process_name_exists(coordination_dir, jobState['jobProcessName']):
                 # We need to have a race to pick someone to clean up.
@@ -240,6 +245,8 @@ class NonCachingFileStore(AbstractFileStore):
         :return: dict with keys (jobName,  jobProcessName, jobDir)
         """
         jobStateFiles = []
+
+        assert os.path.exists(coordination_dir), f"{coordination_dir} has vanished unexpectedly!"
         
         # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
@@ -276,6 +283,7 @@ class NonCachingFileStore(AbstractFileStore):
         :return: Path to the job state file
         :rtype: str
         """
+        assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}

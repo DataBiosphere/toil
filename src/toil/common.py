@@ -1364,6 +1364,10 @@ class Toil(ContextManager["Toil"]):
                  POSIX filesystem that allows directories containing open files to be
                  deleted.
         """
+        
+        if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
+            # Slurm has been observed providing this variable but not the directory.
+            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!', os.environ['XDG_RUNTIME_DIR'])
 
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
