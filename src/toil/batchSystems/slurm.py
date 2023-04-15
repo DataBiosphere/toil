@@ -78,13 +78,15 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 #
                 # So we hide the whole XDG universe from Slurm before we make
                 # the submission.
-                no_xdg_environment = os.environ.copy()
-                xdg_names = [n for n in no_xdg_environment.keys() if n.startswith('XDG_')]
-                for name in xdg_names:
-                    del no_xdg_environment[name]
+                # Might as well hode DBUS also.
+                # This doesn't get us a trustworthy XDG session in Slurm, but
+                # it does let us see the one Slurm tries to give us.
+                no_session_environment = os.environ.copy()
+                session_names = [n for n in no_session_environment.keys() if n.startswith('XDG_') or n.startswith('DBUS_')]
+                for name in session_names:
+                    del no_session_environment[name]
 
-                output = call_command(subLine, env=no_xdg_environment)
-
+                output = call_command(subLine, env=no_session_environment)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)

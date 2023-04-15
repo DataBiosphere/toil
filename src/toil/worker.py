@@ -198,7 +198,13 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         "LOGNAME",
         "USER",
         "DISPLAY",
-        "JAVA_HOME"
+        "JAVA_HOME",
+        "XDG_SESSION_TYPE",
+        "XDG_SESSION_CLASS",
+        "XDG_SESSION_ID",
+        "XDG_RUNTIME_DIR",
+        "XDG_DATA_DIRS",
+        "DBUS_SESSION_BUS_ADDRESS"
     }
     for i in environment:
         if i == "PATH":
@@ -300,6 +306,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         sys.stdout.flush()
 
         logProcessContext(config)
+        logger.debug('Environment: %s', os.environ)
 
         ##########################################
         # Connect to the deferred function system
