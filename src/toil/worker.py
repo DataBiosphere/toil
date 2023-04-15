@@ -306,7 +306,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         sys.stdout.flush()
 
         logProcessContext(config)
-        logger.debug('Environment: %s', os.environ)
 
         ##########################################
         # Connect to the deferred function system
