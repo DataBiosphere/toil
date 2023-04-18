@@ -371,12 +371,13 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         # Try to create the file, ignoring if it exists or not.
         fd = os.open(lock_filename, os.O_CREAT | os.O_WRONLY)
 
-        # Wait until we can exclusively lock it.
-        fcntl.lockf(fd, fcntl.LOCK_EX)
-
-        # Holding the lock, make sure we are looking at the same file on disk still.
-        fd_stats = os.fstat(fd)
         try:
+            # Wait until we can exclusively lock it.
+            fcntl.lockf(fd, fcntl.LOCK_EX)
+
+            # Holding the lock, make sure we are looking at the same file on disk still.
+            fd_stats = os.fstat(fd)
+
             path_stats: Optional[os.stat_result] = os.stat(lock_filename)
         except FileNotFoundError:
             path_stats = None
