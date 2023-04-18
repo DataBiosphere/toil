@@ -38,6 +38,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # Directory went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
         # We assume the directory going away while we have it open won't upset
         # the listdir iterator.
@@ -54,6 +59,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # Directory went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
     else:
         # It is not or was not a directory.
@@ -63,6 +73,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # File went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
 
 def atomic_tmp_file(final_path: str) -> str:
