@@ -78,7 +78,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 #
                 # So we hide the whole XDG universe from Slurm before we make
                 # the submission.
-                # Might as well hode DBUS also.
+                # Might as well hide DBUS also.
                 # This doesn't get us a trustworthy XDG session in Slurm, but
                 # it does let us see the one Slurm tries to give us.
                 no_session_environment = os.environ.copy()

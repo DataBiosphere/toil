@@ -204,16 +204,22 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
 
     return merged
 
-def log_bindings(all_bindings: Sequence[Promised[WDLBindings]]) -> None:
+# TODO: Develop a Protocol that can match the logging function type more closely
+def log_bindings(log_function: Callable[..., None], message: str, all_bindings: Sequence[Promised[WDLBindings]]) -> None:
     """
     Log bindings to the console, even if some are still promises.
+
+    :param log_function: Function (like logger.info) to call to log data
+    :param message: Message to log before the bindings
+    :param all_bindings: A list of bindings or promises for bindings, to log
     """
+    log_function(message)
     for bindings in all_bindings:
         if isinstance(bindings, WDL.Env.Bindings):
             for binding in bindings:
-                logger.info("%s = %s", binding.name, binding.value)
+                log_function("%s = %s", binding.name, binding.value)
         elif isinstance(bindings, Promise):
-            logger.info("<Unfulfilled promise for bindings>")
+            log_function("<Unfulfilled promise for bindings>")
 
 def get_supertype(types: Sequence[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
     """
@@ -567,8 +573,7 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
         except Exception:
             # If something goes wrong, dump.
             logger.exception("Expression evaluation failed for %s: %s", name, expression)
-            logger.info("Expression was evaluated in environment:")
-            log_bindings([environment])
+            log_bindings(logger.exception, "Expression was evaluated in:", [environment])
             raise
 
     if expected_type:
@@ -613,8 +618,7 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     except Exception:
         # If something goes wrong, dump.
         logger.exception("Evaluation failed for %s", node)
-        logger.info("Statement was evaluated in environment:")
-        log_bindings([environment])
+        log_bindings(logger.exception, "Statement was evaluated in:", [environment])
         raise
 
 # TODO: make these stdlib methods???
@@ -886,7 +890,7 @@ class WDLTaskJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
-            logger.debug("Evaluate task inputs:")
+            logger.debug("Evaluating task inputs")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
@@ -1246,7 +1250,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             # Fetch all the inputs we are passing and bind them.
             # The call is only allowed to use these.
-            logger.debug("Evaluate step inputs:")
+            logger.debug("Evaluating step inputs")
             input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
 
             # Bindings may also be added in from the enclosing workflow inputs

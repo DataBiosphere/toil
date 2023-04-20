@@ -58,7 +58,43 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile: Optional[str] = None
         self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
 
-        assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
+        self.check_for_state_corruption()
+
+    @staticmethod
+    def check_for_coordination_corruption(coordination_dir: Optional[str]) -> None:
+        """
+        Make sure the coordination directory hasn't been deleted unexpectedly.
+
+        Slurm has been known to delete XDG_RUNTIME_DIR out from under processes
+        it was promised to, so it is possible that in certain misconfigured
+        environments the coordination directory and everything in it could go
+        away unexpectedly. We are going to regularly make sure that the things
+        we think should exist actually exist, and we are going to abort if they
+        do not.
+        """
+
+        if coordination_dir and not os.path.exists(coordination_dir):
+            raise RuntimeError(
+                f'The Toil coordination directory at {coordination_dir} '
+                f'was removed while the workflow was running! Please provide a '
+                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
+                f'is safe from automated cleanup during the workflow run.'
+            )
+
+    def check_for_state_corruption(self) -> None:
+        """
+        Make sure state tracking information hasn't been deleted unexpectedly.
+        """
+
+        NonCachingFileStore.check_for_coordination_corruption(self.coordination_dir)
+
+        if self.jobStateFile and not os.path.exists(self.jobStateFile):
+            raise RuntimeError(
+                f'The job state file {self.jobStateFile} '
+                f'was removed while the workflow was running! Please provide a '
+                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
+                f'is safe from automated cleanup during the workflow run.'
+            )
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
@@ -67,8 +103,7 @@ class NonCachingFileStore(AbstractFileStore):
         self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
-        logger.debug('Using job state file %s', self.jobStateFile)
-        assert os.path.exists(self.jobStateFile)
+        self.check_for_state_corruption()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
             logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
@@ -89,8 +124,7 @@ class NonCachingFileStore(AbstractFileStore):
                 self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
-            logger.debug('Removing own job state file %s', self.jobStateFile)
-            assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
+            self.check_for_state_corruption()
             os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
@@ -199,7 +233,7 @@ class NonCachingFileStore(AbstractFileStore):
         :return:
         """
 
-        assert os.path.exists(coordination_dir), f"{coordination_dir} has vanished unexpectedly!"
+        cls.check_for_coordination_corruption(coordination_dir)
 
         for jobState in cls._getAllJobStates(coordination_dir):
             if not process_name_exists(coordination_dir, jobState['jobProcessName']):
@@ -234,8 +268,8 @@ class NonCachingFileStore(AbstractFileStore):
                         fcntl.lockf(dirFD, fcntl.LOCK_UN)
                         os.close(dirFD)
 
-    @staticmethod
-    def _getAllJobStates(coordination_dir: str) -> Iterator[Dict[str, str]]:
+    @classmethod
+    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[Dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
@@ -246,7 +280,7 @@ class NonCachingFileStore(AbstractFileStore):
         """
         jobStateFiles = []
 
-        assert os.path.exists(coordination_dir), f"{coordination_dir} has vanished unexpectedly!"
+        cls.check_for_coordination_corruption(coordination_dir)
 
         # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
@@ -258,7 +292,6 @@ class NonCachingFileStore(AbstractFileStore):
 
         for fname in jobStateFiles:
             try:
-                logger.debug('Considering other job state file %s', fname)
                 yield NonCachingFileStore._readJobState(fname)
             except OSError as e:
                 if e.errno == 2:
@@ -283,7 +316,7 @@ class NonCachingFileStore(AbstractFileStore):
         :return: Path to the job state file
         :rtype: str
         """
-        assert os.path.exists(self.coordination_dir), f"{self.coordination_dir} has vanished unexpectedly!"
+        self.check_for_state_corruption()
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
