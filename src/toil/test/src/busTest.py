@@ -111,6 +111,7 @@ class MessageBusTest(ToilTest):
         job_store = self._getTestJobStorePath()
 
         bus_holder_dir = os.path.join(temp_dir, 'bus_holder')
+        os.mkdir(bus_holder_dir)
 
         start_options = Job.Runner.getDefaultOptions(job_store)
         start_options.logLevel = 'DEBUG'
@@ -127,9 +128,13 @@ class MessageBusTest(ToilTest):
         except FailedJobsException:
             pass
 
+        logger.info('First attempt successfully failed, removing message bus log')
+
         # Get rid of the bus
         os.unlink(start_options.write_messages)
         os.rmdir(bus_holder_dir)
+
+        logger.info('Making second attempt')
 
         # Set up options without a specific bus path
         restart_options = Job.Runner.getDefaultOptions(job_store)
@@ -141,9 +146,11 @@ class MessageBusTest(ToilTest):
         try:
             with Toil(restart_options) as toil:
                 # Run again and observe a failed job (and not a failure to start)
-                toil.restart(root)
+                toil.restart()
         except FailedJobsException:
             pass
+
+        logger.info('Second attempt successfully failed')
 
 
 def failing_job_fn(job: Job) -> None:

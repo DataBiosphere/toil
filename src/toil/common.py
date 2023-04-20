@@ -198,7 +198,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.write_messages: str = ""
+        self.write_messages: Optional[str] = None
 
         # Misc
         self.environment: Dict[str, str] = {}
@@ -221,6 +221,24 @@ class Config:
 
         # CWL
         self.cwl: bool = False
+
+    def prepare_start(self) -> None:
+        """
+        After options are set, prepare for initial start of workflow.
+        """
+        self.workflowAttemptNumber = 0
+
+    def prepare_restart(self) -> None:
+        """
+        Before restart options are set, prepare for a restart of a workflow.
+        Set up any execution-specific parameters and clear out any stale ones.
+        """
+        self.workflowAttemptNumber += 1
+        # We should clear the stored message bus path, because it may have been
+        # auto-generated and point to a temp directory that could no longer
+        # exist and that can't safely be re-made.
+        self.write_messages = None
+        
 
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
@@ -407,6 +425,8 @@ class Config:
         set_option("write_messages", os.path.abspath)
 
         if not self.write_messages:
+            # The user hasn't specified a place for the message bus so we
+            # should make one.
             self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
@@ -947,14 +967,14 @@ class Toil(ContextManager["Toil"]):
             self.options.caching = config.caching
 
         if not config.restart:
-            config.workflowAttemptNumber = 0
+            config.prepare_start()
             jobStore.initialize(config)
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
             config = jobStore.config
+            config.prepare_restart()
             config.setOptions(self.options)
-            config.workflowAttemptNumber += 1
             jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
