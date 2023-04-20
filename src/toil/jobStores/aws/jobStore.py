@@ -58,6 +58,7 @@ from toil.jobStores.utils import (ReadablePipe,
                                   WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import (create_s3_bucket,
+                                enable_public_objects,
                                 flatten_tags,
                                 get_bucket_region,
                                 get_object_for_url,
@@ -752,6 +753,10 @@ class AWSJobStore(AbstractJobStore):
                                 flat_tags = flatten_tags(tags)
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
                                 bucket_tagging.put(Tagging={'TagSet': flat_tags})
+
+                            # Configure bucket so that we can make objects in
+                            # it public, which was the historical default. 
+                            enable_public_objects(bucket_name)
                         elif block:
                             raise
                         else:
