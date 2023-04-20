@@ -201,6 +201,30 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
+def ensure_no_collisions(directory: CWLObjectType):
+    """
+    Make sure no items in the given CWL Directory have the same name.
+
+    If any do, raise a WorkflowException about a "File staging conflict". 
+    
+    Does not recurse into subdirectories.
+    """
+
+    seen_names = set()
+
+    for child in directory.get("listing", []):
+        if "basename" in child:
+            # For each child that actually has a path to go at in its parent
+            wanted_name = cast(str, child["basename"])
+            if wanted_name in seen_names:
+                # We used this name already so bail out
+                raise cwl_utils.errors.WorkflowException(
+                    f"File staging conflict: Duplicate entries for \"{wanted_name}\""
+                    f" prevent actually creating the directory \"{directory.get('basename')}\""
+                )
+            seen_names.add(wanted_name)
+        
+        
 
 class Conditional:
     """
@@ -729,6 +753,10 @@ class ToilPathMapper(PathMapper):
             location = cast(str, obj["location"])
 
             logger.debug("ToilPathMapper visiting directory %s", location)
+
+            # We want to check the directory to make sure it is not
+            # self-contradictory in its immediate children and their names.
+            ensure_no_collisions(obj)
 
             # We may need to copy this directory even if we don't copy things inside it.
             copy_here = False
@@ -1587,11 +1615,16 @@ def import_files(
         Ensures that any child File or Directory objects from the original
         listing remain as child objects, so that they will be hit by the
         recursion.
+
+        Ensures that no directory listings have name collisions.
         """
         if rec.get("class", None) == "File":
             # Nothing to do!
             return None
         elif rec.get("class", None) == "Directory":
+            # Check the original listing for collisions
+            ensure_no_collisions(rec)
+
             # Pull out the old listing, if any
             old_listing = cast(Optional[List[CWLObjectType]], rec.get("listing", None))
 
@@ -1606,6 +1639,9 @@ def import_files(
                     get_listing(fs_access, rec, recursive=False)
                 # Otherwise, we preserve the existing listing (including all
                 # its original File objects that we need to process)
+
+                # Check the new listing for collisions
+                ensure_no_collisions(rec)
 
             return old_listing
         return None
