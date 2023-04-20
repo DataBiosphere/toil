@@ -60,6 +60,7 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.job
 import cwltool.load_tool
 import cwltool.main
 import cwltool.provenance
@@ -201,7 +202,7 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
-def ensure_no_collisions(directory: CWLObjectType):
+def ensure_no_collisions(directory: CWLObjectType, dir_description: Optional[str] = None):
     """
     Make sure no items in the given CWL Directory have the same name.
 
@@ -209,6 +210,10 @@ def ensure_no_collisions(directory: CWLObjectType):
     
     Does not recurse into subdirectories.
     """
+
+    if dir_description is None:
+        # Work out how to describe the directory we are working on.
+        dir_description = f"the directory \"{directory.get('basename')}\""
 
     seen_names = set()
 
@@ -220,7 +225,7 @@ def ensure_no_collisions(directory: CWLObjectType):
                 # We used this name already so bail out
                 raise cwl_utils.errors.WorkflowException(
                     f"File staging conflict: Duplicate entries for \"{wanted_name}\""
-                    f" prevent actually creating the directory \"{directory.get('basename')}\""
+                    f" prevent actually creating {dir_description}"
                 )
             seen_names.add(wanted_name)
         
@@ -996,9 +1001,23 @@ class ToilTool:
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
-    pass
+    def _initialworkdir(self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder) -> None:
+        """
+        Hook the InitialWorkDirRequirement setup to make sure that there are no
+        name conflicts at the top level of the work directory.
+        """
 
-
+        super()._initialworkdir(j, builder)
+        
+        # The initial work dir listing is now in j.generatefiles["listing"]
+        # Also j.generatrfiles is a CWL Directory.
+        # So check the initial working directory.
+        logger.info('Initial work dir: %s', j.generatefiles)
+        ensure_no_collisions(
+            j.generatefiles,
+            "the job's working directory as specified by the InitialWorkDirRequirement"
+        )
+        
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
 
