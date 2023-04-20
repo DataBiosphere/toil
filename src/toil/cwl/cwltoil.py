@@ -85,6 +85,7 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
+    DirectoryType,
     CWLObjectType,
     CWLOutputType,
     adjustDirObjs,
@@ -202,7 +203,7 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
-def ensure_no_collisions(directory: CWLObjectType, dir_description: Optional[str] = None):
+def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str] = None) -> None:
     """
     Make sure no items in the given CWL Directory have the same name.
 
@@ -761,7 +762,7 @@ class ToilPathMapper(PathMapper):
 
             # We want to check the directory to make sure it is not
             # self-contradictory in its immediate children and their names.
-            ensure_no_collisions(obj)
+            ensure_no_collisions(cast(DirectoryType, obj))
 
             # We may need to copy this directory even if we don't copy things inside it.
             copy_here = False
@@ -1642,7 +1643,7 @@ def import_files(
             return None
         elif rec.get("class", None) == "Directory":
             # Check the original listing for collisions
-            ensure_no_collisions(rec)
+            ensure_no_collisions(cast(DirectoryType, rec))
 
             # Pull out the old listing, if any
             old_listing = cast(Optional[List[CWLObjectType]], rec.get("listing", None))
@@ -1660,7 +1661,7 @@ def import_files(
                 # its original File objects that we need to process)
 
                 # Check the new listing for collisions
-                ensure_no_collisions(rec)
+                ensure_no_collisions(cast(DirectoryType, rec))
 
             return old_listing
         return None
