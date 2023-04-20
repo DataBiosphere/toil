@@ -243,24 +243,16 @@ def enable_public_objects(bucket_name: str) -> None:
 
     s3_client = cast(S3Client, session.client('s3'))
 
-    # Stop blocking public access
-    s3_client.put_public_access_block(
-        Bucket=bucket_name,
-        PublicAccessBlockConfiguration={
-            'BlockPublicAcls': False,
-            'IgnorePublicAcls': False,
-            'BlockPublicPolicy': False,
-            'RestrictPublicBuckets': False
-        }
-    )
+    # Even though the new default is for public access to be prohibited, this
+    # is implemented by adding new things attached to the bucket. If we remove
+    # those things the bucket will default to the old defaults. See
+    # <https://aws.amazon.com/blogs/aws/heads-up-amazon-s3-security-changes-are-coming-in-april-of-2023/>.
 
-    # Use an ownership setting that allows ACLs to work. Use the one that makes
-    # uploads tend to be owned by the bucket owner, since that makes more
-    # sense.
-    s3_client.put_bucket_ownership_controls(
-        Bucket=bucket_name,
-        OwnershipControls={'Rules': [{'ObjectOwnership': 'BucketOwnerPreferred'}]}
-    )
+    # Stop blocking public access
+    s3_client.delete_public_access_block(Bucket=bucket_name)
+
+    # Stop using an ownership controls setting that prohibits ACLs.
+    s3_client.delete_bucket_ownership_controls(Bucket=bucket_name)
 
 
 def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
