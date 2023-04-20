@@ -140,8 +140,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         action="store_true",
         default=None,
         help=(
-            "Coalese status calls to prevent the batch system from being overloaded. "
-            "Currently only supported for LSF. "
+            "Coalese status calls to the batch system to prevent toil from being overloaded. "
+            "Note that if you do NOT use this option, the loop which polls the batch "
+            "system for status updates will be O(n^2) time complexity!"
+            "Currently only supported for --batchSystem lsf and slurm. "
             "default=false"
         ),
     )
