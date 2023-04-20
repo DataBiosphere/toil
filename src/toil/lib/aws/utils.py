@@ -56,6 +56,7 @@ try:
     from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
     BotoServerError = None  # type: ignore
+    ClientError = None  # type: ignore
     # AWS/boto extra is not installed
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,43 @@ def create_s3_bucket(
             CreateBucketConfiguration={"LocationConstraint": region},
         )
     return bucket
+
+@retry(errors=[ClientError])
+def enable_public_objects(bucket_name: str) -> None:
+    """
+    Enable a bucket to contain objects which are public.
+
+    This adjusts the bucket's Public Access Block setting to not block all
+    public access, and also adjusts the bucket's Object Ownership setting to a
+    setting which enables object ACLs.
+
+    Does *not* touch the *account*'s Public Access Block setting, which can
+    also interfere here. That is probably best left to the account
+    administrator.
+
+    This configuration used to be the default, and is what most of Toil's code
+    is written to expect, but it was changed so that new buckets default to the
+    more restrictive setting
+    <https://aws.amazon.com/about-aws/whats-new/2022/12/amazon-s3-automatically-enable-block-public-access-disable-access-control-lists-buckets-april-2023/>,
+    with the expectation that people would write IAM policies for the buckets
+    to allow public access if needed. Toil expects to be able to make arbitrary
+    objects in arbitrary places public, and naming them all in an IAM policy
+    would be a very awkward way to do it. So we restore the old behavior.
+    """
+
+    s3_client = cast(S3Client, session.client('s3'))
+
+    # Even though the new default is for public access to be prohibited, this
+    # is implemented by adding new things attached to the bucket. If we remove
+    # those things the bucket will default to the old defaults. See
+    # <https://aws.amazon.com/blogs/aws/heads-up-amazon-s3-security-changes-are-coming-in-april-of-2023/>.
+
+    # Stop blocking public access
+    s3_client.delete_public_access_block(Bucket=bucket_name)
+
+    # Stop using an ownership controls setting that prohibits ACLs.
+    s3_client.delete_bucket_ownership_controls(Bucket=bucket_name)
+
 
 def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
     """
