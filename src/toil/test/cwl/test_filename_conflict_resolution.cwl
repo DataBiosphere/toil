@@ -16,7 +16,7 @@ requirements:
           for i in range(2):
             msout = f"{root}_{i}"
             print(f"Copying: {msin} -> {msout}")
-            subprocess.check_call(['cp', '-r', '-L', '--no-preserve=mode', msin, msout])
+            subprocess.check_call(['cp', '-R', '-L', msin, msout])
 
 inputs:
   - id: msin
