@@ -36,6 +36,7 @@ import boto3.resources.base
 import boto.connection
 import botocore
 from boto3 import Session
+from botocore.client import Config
 from botocore.credentials import JSONFileCache
 from botocore.session import get_session
 
@@ -159,13 +160,23 @@ class AWSConnectionManager:
 
         return cast(boto3.resources.base.ServiceResource, storage.item)
 
-    def client(self, region: Optional[str], service_name: str, endpoint_url: Optional[str] = None) -> botocore.client.BaseClient:
+    def client(self, region: Optional[str], service_name: str, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
         """
         Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
 
         :param endpoint_url: AWS endpoint URL to use for the client. If not
                specified, a default is used.
+        :param config: Custom configuration to use for the client.
         """
+
+        if config is not None:
+            # Don't try and memoize if a custom config is used
+            with _init_lock:
+                if endpoint_url is not None:
+                    return self.session(region).client(service_name, endpoint_url=endpoint_url, config=config) # type: ignore
+                else:
+                    return self.session(region).client(service_name, config=config) # type: ignore
+
         key = (region, service_name, endpoint_url)
         storage = self.client_cache[key]
         if not hasattr(storage, 'item'):
@@ -208,7 +219,7 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     # Just use a global version of the manager. Note that we change the argument order!
     return _global_manager.session(region_name)
 
-def client(service_name: str, region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> botocore.client.BaseClient:
+def client(service_name: str, region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
     """
     Get a Boto 3 client for a particular AWS service, usable by the current thread.
 
@@ -216,7 +227,7 @@ def client(service_name: str, region_name: Optional[str] = None, endpoint_url: O
     """
 
     # Just use a global version of the manager. Note that we change the argument order!
-    return _global_manager.client(region_name, service_name, endpoint_url=endpoint_url)
+    return _global_manager.client(region_name, service_name, endpoint_url=endpoint_url, config=config)
 
 def resource(service_name: str, region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
     """
