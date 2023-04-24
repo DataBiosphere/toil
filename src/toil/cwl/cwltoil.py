@@ -60,6 +60,7 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.job
 import cwltool.load_tool
 import cwltool.main
 import cwltool.provenance
@@ -84,6 +85,7 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
+    DirectoryType,
     CWLObjectType,
     CWLOutputType,
     adjustDirObjs,
@@ -201,6 +203,34 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
+def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str] = None) -> None:
+    """
+    Make sure no items in the given CWL Directory have the same name.
+
+    If any do, raise a WorkflowException about a "File staging conflict". 
+    
+    Does not recurse into subdirectories.
+    """
+
+    if dir_description is None:
+        # Work out how to describe the directory we are working on.
+        dir_description = f"the directory \"{directory.get('basename')}\""
+
+    seen_names = set()
+
+    for child in directory.get("listing", []):
+        if "basename" in child:
+            # For each child that actually has a path to go at in its parent
+            wanted_name = cast(str, child["basename"])
+            if wanted_name in seen_names:
+                # We used this name already so bail out
+                raise cwl_utils.errors.WorkflowException(
+                    f"File staging conflict: Duplicate entries for \"{wanted_name}\""
+                    f" prevent actually creating {dir_description}"
+                )
+            seen_names.add(wanted_name)
+        
+        
 
 class Conditional:
     """
@@ -730,6 +760,10 @@ class ToilPathMapper(PathMapper):
 
             logger.debug("ToilPathMapper visiting directory %s", location)
 
+            # We want to check the directory to make sure it is not
+            # self-contradictory in its immediate children and their names.
+            ensure_no_collisions(cast(DirectoryType, obj))
+
             # We may need to copy this directory even if we don't copy things inside it.
             copy_here = False
 
@@ -968,9 +1002,23 @@ class ToilTool:
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
-    pass
+    def _initialworkdir(self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder) -> None:
+        """
+        Hook the InitialWorkDirRequirement setup to make sure that there are no
+        name conflicts at the top level of the work directory.
+        """
 
-
+        super()._initialworkdir(j, builder)
+        
+        # The initial work dir listing is now in j.generatefiles["listing"]
+        # Also j.generatrfiles is a CWL Directory.
+        # So check the initial working directory.
+        logger.info('Initial work dir: %s', j.generatefiles)
+        ensure_no_collisions(
+            j.generatefiles,
+            "the job's working directory as specified by the InitialWorkDirRequirement"
+        )
+        
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
 
@@ -1587,11 +1635,16 @@ def import_files(
         Ensures that any child File or Directory objects from the original
         listing remain as child objects, so that they will be hit by the
         recursion.
+
+        Ensures that no directory listings have name collisions.
         """
         if rec.get("class", None) == "File":
             # Nothing to do!
             return None
         elif rec.get("class", None) == "Directory":
+            # Check the original listing for collisions
+            ensure_no_collisions(cast(DirectoryType, rec))
+
             # Pull out the old listing, if any
             old_listing = cast(Optional[List[CWLObjectType]], rec.get("listing", None))
 
@@ -1606,6 +1659,9 @@ def import_files(
                     get_listing(fs_access, rec, recursive=False)
                 # Otherwise, we preserve the existing listing (including all
                 # its original File objects that we need to process)
+
+                # Check the new listing for collisions
+                ensure_no_collisions(cast(DirectoryType, rec))
 
             return old_listing
         return None
