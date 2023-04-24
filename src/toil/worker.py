@@ -198,7 +198,13 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         "LOGNAME",
         "USER",
         "DISPLAY",
-        "JAVA_HOME"
+        "JAVA_HOME",
+        "XDG_SESSION_TYPE",
+        "XDG_SESSION_CLASS",
+        "XDG_SESSION_ID",
+        "XDG_RUNTIME_DIR",
+        "XDG_DATA_DIRS",
+        "DBUS_SESSION_BUS_ADDRESS"
     }
     for i in environment:
         if i == "PATH":
@@ -511,6 +517,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         AbstractFileStore._terminateEvent.set()
     finally:
+        # Get rid of our deferred function manager now so we can't mistake it
+        # for someone else's if we do worker cleanup.
+        del deferredFunctionManager
         try:
             import cwltool.main
 

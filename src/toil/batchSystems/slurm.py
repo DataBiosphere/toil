@@ -68,7 +68,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             try:
-                output = call_command(subLine)
+                # Slurm is not quite clever enough to follow the XDG spec on
+                # its own. If the submission command sees e.g. XDG_RUNTIME_DIR
+                # in our environment, it will send it along (especially with
+                # --export=ALL), even though it makes a promise to the job that
+                # Slurm isn't going to keep. It also has a tendency to create
+                # /run/user/<uid> *at the start* of a job, but *not* keep it
+                # around for the duration of the job.
+                #
+                # So we hide the whole XDG universe from Slurm before we make
+                # the submission.
+                # Might as well hide DBUS also.
+                # This doesn't get us a trustworthy XDG session in Slurm, but
+                # it does let us see the one Slurm tries to give us.
+                no_session_environment = os.environ.copy()
+                session_names = [n for n in no_session_environment.keys() if n.startswith('XDG_') or n.startswith('DBUS_')]
+                for name in session_names:
+                    del no_session_environment[name]
+
+                output = call_command(subLine, env=no_session_environment)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)

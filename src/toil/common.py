@@ -1365,6 +1365,11 @@ class Toil(ContextManager["Toil"]):
                  deleted.
         """
 
+        if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
+            # Slurm has been observed providing this variable but not keeping
+            # the directory live as long as we run for.
+            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!', os.environ['XDG_RUNTIME_DIR'])
+
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
         # succeeds.
@@ -1381,7 +1386,9 @@ class Toil(ContextManager["Toil"]):
             # session that has the env var set. Otherwise it might belong to a
             # different set of sessions and get cleaned up out from under us
             # when that session ends.
-            ('XDG_RUNTIME_DIR' in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
+            # We don't think Slurm XDG sessions are trustworthy, depending on
+            # the cluster's PAM configuration, so don't use them.
+            ('XDG_RUNTIME_DIR' in os.environ and 'SLURM_JOBID' not in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
             # Try under /run/lock. It might be a temp dir style sticky directory.
             try_path('/run/lock') or
             # Finally, fall back on the work dir and hope it's a legit filesystem.
