@@ -232,11 +232,14 @@ class ToilStatus:
         """
 
         print("\nMessage bus path: ", self.message_bus_path)
-
-        replayed_messages = replay_message_bus(self.message_bus_path)
-        for key in replayed_messages:
-            if replayed_messages[key].exit_code != 0:
-                print(replayed_messages[key])
+        if self.message_bus_path is not None:
+            if os.path.exists(self.message_bus_path):
+                replayed_messages = replay_message_bus(self.message_bus_path)
+                for key in replayed_messages:
+                    if replayed_messages[key].exit_code != 0:
+                        print(replayed_messages[key])
+            else:
+                print("Message bus file is missing!")
 
         return None
 
