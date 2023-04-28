@@ -3904,11 +3904,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         visit_class(outobj, ("File",), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4, default=str))
 
-    profiler.disable()
-    stats = pstats.Stats(profiler).sort_stats('cumtime')
-    stats.print_stats()
-    stats = pstats.Stats(profiler)
-    stats.dump_stats('toil_profile.out')
     return 0
 
 
