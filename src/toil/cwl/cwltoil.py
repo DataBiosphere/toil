@@ -121,6 +121,7 @@ from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
 from toil.exceptions import FailedJobsException
 
+
 logger = logging.getLogger(__name__)
 
 # Find the default temporary directory
@@ -3193,6 +3194,9 @@ usage_message = "\n\n" + textwrap.dedent(
 
 
 def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
+    import cProfile, pstats
+    profiler = cProfile.Profile()
+    profiler.enable()
     """Run the main loop for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
@@ -3264,7 +3268,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    dockergroup.add_argument(
+    extra_dockergroup = parser.add_argument_group()
+    extra_dockergroup.add_argument(
         "--custom-net",
         help="Specify docker network name to pass to docker run command",
     )
@@ -3899,6 +3904,11 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         visit_class(outobj, ("File",), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4, default=str))
 
+    profiler.disable()
+    stats = pstats.Stats(profiler).sort_stats('cumtime')
+    stats.print_stats()
+    stats = pstats.Stats(profiler)
+    stats.dump_stats('toil_profile.out')
     return 0
 
 
