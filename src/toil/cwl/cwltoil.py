@@ -3194,9 +3194,6 @@ usage_message = "\n\n" + textwrap.dedent(
 
 
 def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
-    import cProfile, pstats
-    profiler = cProfile.Profile()
-    profiler.enable()
     """Run the main loop for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
