@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-from typing import Tuple
 
 from toil.wdl.wdl_analysis import AnalyzeWDL
+
 
 def get_version(iterable) -> str:
     """
