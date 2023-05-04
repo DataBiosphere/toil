@@ -110,7 +110,7 @@ def toilPackageDirPath() -> str:
     return result
 
 
-def inVirtualEnv():
+def inVirtualEnv() -> bool:
     """Test if we are inside a virtualenv or Conda virtual environment."""
     return ('VIRTUAL_ENV' in os.environ or
             'CONDA_DEFAULT_ENV' in os.environ or
