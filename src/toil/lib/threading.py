@@ -368,15 +368,18 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
     # get a lock on the deleted file.
 
     while True:
-        # Try to create the file, ignoring if it exists or not.
-        fd = os.open(lock_filename, os.O_CREAT | os.O_WRONLY)
+        fd = -1
 
-        # Wait until we can exclusively lock it.
-        fcntl.lockf(fd, fcntl.LOCK_EX)
-
-        # Holding the lock, make sure we are looking at the same file on disk still.
-        fd_stats = os.fstat(fd)
         try:
+            # Try to create the file, ignoring if it exists or not.
+            fd = os.open(lock_filename, os.O_CREAT | os.O_WRONLY)
+
+            # Wait until we can exclusively lock it.
+            fcntl.lockf(fd, fcntl.LOCK_EX)
+
+            # Holding the lock, make sure we are looking at the same file on disk still.
+            fd_stats = os.fstat(fd)
+
             path_stats: Optional[os.stat_result] = os.stat(lock_filename)
         except FileNotFoundError:
             path_stats = None
@@ -386,9 +389,10 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
             # any). This usually happens, because before someone releases a
             # lock, they delete the file. Go back and contend again. TODO: This
             # allows a lot of queue jumping on our mutex.
-            fcntl.lockf(fd, fcntl.LOCK_UN)
-            os.close(fd)
-            continue
+            if fd != -1:
+                fcntl.lockf(fd, fcntl.LOCK_UN)
+                os.close(fd)
+                continue
         else:
             # We have a lock on the file that the name points to. Since we
             # hold the lock, nobody will be deleting it or can be in the
@@ -404,12 +408,13 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         # under someone else who thinks they are holding it.
         logger.debug('PID %d releasing mutex %s', os.getpid(), lock_filename)
         os.unlink(lock_filename)
-        fcntl.lockf(fd, fcntl.LOCK_UN)
-        # Note that we are unlinking it and then unlocking it; a lot of people
-        # might have opened it before we unlinked it and will wake up when they
-        # get the worthless lock on the now-unlinked file. We have to do some
-        # stat gymnastics above to work around this.
-        os.close(fd)
+        if fd != -1:
+            fcntl.lockf(fd, fcntl.LOCK_UN)
+            # Note that we are unlinking it and then unlocking it; a lot of people
+            # might have opened it before we unlinked it and will wake up when they
+            # get the worthless lock on the now-unlinked file. We have to do some
+            # stat gymnastics above to work around this.
+            os.close(fd)
 
 
 class LastProcessStandingArena:
