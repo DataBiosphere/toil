@@ -29,7 +29,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
-            config, maxCores, maxMemory, maxDisk, max_jobs=config.maxLocalJobs
+            config, maxCores, maxMemory, maxDisk, max_jobs=config.max_local_jobs
         )
 
     def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:

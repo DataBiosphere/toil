@@ -73,7 +73,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     set_option("disableAutoDeployment", bool, default=False)
     set_option("coalesceStatusCalls")
     set_option("max_jobs", int)
-    set_option("maxLocalJobs", int)
+    set_option("max_local_jobs", int)
     set_option("manualMemArgs")
     set_option("run_local_jobs_on_workers", bool, default=False)
     set_option("statePollingWait")
@@ -116,6 +116,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     )
     parser.add_argument(
         "--maxLocalJobs",
+        dest="max_local_jobs",
         default=cpu_count(),
         help=f"Specifies the maximum number of housekeeping jobs to "
              f"run on the local system. Defaults to the number of "
@@ -197,7 +198,7 @@ def set_batchsystem_config_defaults(config) -> None:
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.max_jobs = sys.maxsize
-    config.maxLocalJobs = cpu_count()
+    config.max_local_jobs = cpu_count()
     config.manualMemArgs = False
     config.coalesceStatusCalls = False
     config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state

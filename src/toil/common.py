@@ -109,7 +109,7 @@ class Config:
     logRotating: bool
     cleanWorkDir: str
     max_jobs: int
-    maxLocalJobs: int
+    max_local_jobs: int
     run_local_jobs_on_workers: bool
     tes_endpoint: str
     tes_user: str
