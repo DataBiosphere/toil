@@ -94,9 +94,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.mesos_endpoint = config.mesos_endpoint
-        self.mesos_role = config.mesos_role
+        if config.mesos_role is not None:
+            self.mesos_role = config.mesos_role
         self.mesos_name = config.mesos_name
-        self.mesos_framework_id = config.mesos_framework_id
+        if config.mesos_framework_id is not None:
+            self.mesos_framework_id = config.mesos_framework_id
 
         # Written to when Mesos kills tasks, as directed by Toil.
         # Jobs must not enter this set until they are removed from runningJobMap.
@@ -321,8 +323,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         framework.user = get_user_name()  # We must determine the user name ourselves with pymesos
         framework.name = config.mesos_name
         framework.principal = framework.name
-        framework.roles = config.mesos_role
-        framework.capabilities = [dict(type='MULTI_ROLE')]
+        if config.mesos_role is not None:
+            framework.roles = config.mesos_role
+            framework.capabilities = [dict(type='MULTI_ROLE')]
 
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
         # Make sure it will call us with nice namespace-y addicts
@@ -845,17 +848,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=cls.get_default_mesos_endpoint(),
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
-        parser.add_argument("--mesosFrameworkId", dest="mesos_framework_id", default="toil-sort",
-                            help="The Mesos framework id to use.")
-        parser.add_argument("--mesosRole", dest="mesos_role", default="high",
-                            help="The Mesos role to use.")
+        parser.add_argument("--mesosFrameworkId", dest="mesos_framework_id",
+                            help="Use a specific Mesos framework ID.")
+        parser.add_argument("--mesosRole", dest="mesos_role",
+                            help="Use a Mesos role.")
         parser.add_argument("--mesosName", dest="mesos_name", default="toil",
-                            help="The Mesos name to use.")
+                            help="The Mesos name to use. (default: %(default)s)")
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
         setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
-        setOption("mesos_name", None, None, "sort")
-        setOption("mesos_role", None, None, "high")
-        setOption("mesos_framework_id", None, None, "toil-sort")
+        setOption("mesos_name", None, None, "toil")
+        setOption("mesos_role")
+        setOption("mesos_framework_id")
 
