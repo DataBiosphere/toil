@@ -164,7 +164,7 @@ slurm_test:
   script:
     - pwd
     - cd contrib/slurm-test/
-    - pip install docker-compose
+    - docker-compose version || (apt update && apt install -y docker-compose && docker-compose version) 
     - ./slurm_test.sh
 
 cwl_v1.0:
