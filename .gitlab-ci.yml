@@ -160,7 +160,7 @@ batch_systems:
     - kill $(jobs -p) || true
 
 slurm_test:
-  stage: main_tests
+  stage: linting_and_dependencies
   script:
     - pwd
     - cd contrib/slurm-test/
