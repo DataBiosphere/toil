@@ -142,8 +142,8 @@ levels in toil are based on priority from the logging module:
                         the same location on all workers.  Default = False.
   --maxJobs MAXJOBS
                         Specifies the maximum number of jobs to submit to the
-                        backing scheduler at once. Not supported on Mesos.
-                        Defaults to unlimited.
+                        backing scheduler at once. Not supported on Mesos or
+                        AWS Batch. Defaults to unlimited.
   --maxLocalJobs MAXLOCALJOBS
                         Specifies the maximum number of housekeeping jobs to
                         run on the local system. Defaults to the number of

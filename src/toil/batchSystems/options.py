@@ -111,8 +111,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         dest="max_jobs",
         default=sys.maxsize, # This is *basically* unlimited and saves a lot of Optional[]
         help="Specifies the maximum number of jobs to submit to the "
-             "backing scheduler at once. Not supported on Mesos. "
-             "Defaults to unlimited.",
+             "backing scheduler at once. Not supported on Mesos or "
+             "AWS Batch. Defaults to unlimited.",
     )
     parser.add_argument(
         "--maxLocalJobs",
