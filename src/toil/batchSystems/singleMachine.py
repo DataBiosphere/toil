@@ -81,7 +81,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(
-        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int, max_jobs: Optional[int] = None
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int, max_jobs: Optional[int] = None
     ) -> None:
         self.config = config
 
@@ -99,7 +99,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # If we don't have up to the limit of the resource (and the resource
         # isn't the inlimited sentinel), warn.
         if maxCores > self.numCores:
-            if maxCores != SYS_MAX_SIZE:
+            if maxCores != SYS_MAX_SIZE and maxCores != float('int'):
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
