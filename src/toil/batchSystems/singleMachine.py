@@ -81,9 +81,18 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(
-        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int, max_jobs: Optional[int] = None
     ) -> None:
         self.config = config
+
+        if max_jobs is None:
+            # Use the main limit for jobs from the config
+            self.max_jobs = self.config.max_jobs
+        else:
+            # Use the override (probably because we are the local batch system
+            # and not the main one).
+            self.max_jobs = max_jobs
+
         # Limit to the smaller of the user-imposed limit and what we actually
         # have on this machine for each resource.
         #
@@ -154,6 +163,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Put them all organized by resource type
         self.resource_sources = [
+            # A pool representing available job slots
+            ResourcePool(self.max_jobs, 'job slots'),
             # A pool representing available CPU in units of minCores
             ResourcePool(int(self.maxCores / self.minCores), 'cores'),
             # A pool representing available memory in bytes
@@ -580,8 +591,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         startTime = time.time()
 
         # And what do we want from each resource in self.resource_sources?
-        # We know they go cores, memory, disk, accelerators.
-        resource_requests: List[Union[int, Set[int]]] = [coreFractions, jobMemory, jobDisk]
+        # We know they go job slot, cores, memory, disk, accelerators.
+        resource_requests: List[Union[int, Set[int]]] = [1, coreFractions, jobMemory, jobDisk]
 
         # Keep a reference to the accelerators separately
         accelerators_needed = None

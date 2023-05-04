@@ -72,6 +72,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     # Options shared between multiple batch systems
     set_option("disableAutoDeployment", bool, default=False)
     set_option("coalesceStatusCalls")
+    set_option("max_jobs", int)
     set_option("maxLocalJobs", int)
     set_option("manualMemArgs")
     set_option("run_local_jobs_on_workers", bool, default=False)
@@ -106,13 +107,19 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "script/package should be present at the same location on all workers.  Default = False.",
     )
     parser.add_argument(
+        "--maxJobs",
+        dest="max_jobs",
+        default=sys.maxsize, # This is *basically* unlimited and saves a lot of Optional[]
+        help="Specifies the maximum number of jobs to submit to the "
+             "backing scheduler at once. Not supported on Mesos. "
+             "Defaults to unlimited.",
+    )
+    parser.add_argument(
         "--maxLocalJobs",
         default=cpu_count(),
-        help=f"For batch systems that support a local queue for housekeeping jobs "
-        f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
-        f"number of these housekeeping jobs to run on the local system.  The default "
-        f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
-        f"local housekeeping jobs.",
+        help=f"Specifies the maximum number of housekeeping jobs to "
+             f"run on the local system. Defaults to the number of "
+             f"local cores ({cpu_count()}).",
     )
     parser.add_argument(
         "--manualMemArgs",
@@ -189,6 +196,7 @@ def set_batchsystem_config_defaults(config) -> None:
     # Do the global options across batch systems
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
+    config.max_jobs = sys.maxsize
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
     config.coalesceStatusCalls = False

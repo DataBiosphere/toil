@@ -140,13 +140,14 @@ levels in toil are based on priority from the logging module:
                         Should auto-deployment of the user script be deactivated?
                         If True, the user script/package should be present at
                         the same location on all workers.  Default = False.
+  --maxJobs MAXJOBS
+                        Specifies the maximum number of jobs to submit to the
+                        backing scheduler at once. Not supported on Mesos.
+                        Defaults to unlimited.
   --maxLocalJobs MAXLOCALJOBS
-                        For batch systems that support a local queue for
-                        housekeeping jobs (Mesos, GridEngine, htcondor, lsf,
-                        slurm, torque).  Specifies the maximum number of these
-                        housekeeping jobs to run on the local system.  The
-                        default (equal to the number of cores) is a maximum of
-                        concurrent local housekeeping jobs.
+                        Specifies the maximum number of housekeeping jobs to
+                        run on the local system. Defaults to the number of
+                        local cores.
   --manualMemArgs       Do not add the default arguments: 'hv=MEMORY' &
                         'h_vmem=MEMORY' to the qsub call, and instead rely on
                         TOIL_GRIDGENGINE_ARGS to supply alternative arguments.
