@@ -40,6 +40,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
+from toil.lib.retry import retry
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -301,6 +302,7 @@ class NonCachingFileStore(AbstractFileStore):
                     raise
 
     @staticmethod
+    @retry(errors=[OSError])
     def _readJobState(jobStateFileName: str) -> Dict[str, str]:
         with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)

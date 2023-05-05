@@ -121,6 +121,7 @@ from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
 from toil.exceptions import FailedJobsException
 
+
 logger = logging.getLogger(__name__)
 
 # Find the default temporary directory
@@ -3269,7 +3270,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    dockergroup.add_argument(
+    extra_dockergroup = parser.add_argument_group()
+    extra_dockergroup.add_argument(
         "--custom-net",
         help="Specify docker network name to pass to docker run command",
     )
