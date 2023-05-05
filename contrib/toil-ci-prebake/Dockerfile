@@ -18,7 +18,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN mkdir -p ~/.docker/cli-plugins/
 RUN curl -L https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64 > ~/.docker/cli-plugins/docker-buildx
-RUN chmod u+x ~/.docker/cli-plugins/docker-buildx
+RUN curl -L https://github.com/docker/compose/releases/download/v2.17.2/docker-compose-linux-x86_64 > ~/.docker/cli-plugins/docker-compose
+RUN chmod u+x ~/.docker/cli-plugins/*
 
 RUN apt-get -q -y update && \
     apt-get -q -y upgrade && \

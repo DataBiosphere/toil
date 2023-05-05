@@ -36,6 +36,7 @@ from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequen
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
+from WDL._util import byte_size_units
 from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
@@ -328,6 +329,49 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
 
     return file_id, file_basename
 
+class NonDownloadingSize(WDL.StdLib._Size):
+    """
+    WDL size() implementatiuon that avoids downloading files.
+
+    MiniWDL's default size() implementation downloads the whole file to get its
+    size. We want to be able to get file sizes from code running on the leader,
+    where there may not be space to download the whole file. So we override the
+    fancy class that implements it so that we can handle sizes for FileIDs
+    using the FileID's stored size info.
+    """
+
+    def _call_eager(self, expr: "WDL.Expr.Apply", arguments: List[WDL.Value.Base]) -> WDL.Value.Base:
+        """
+        Replacement evaluation implementation that avoids downloads.
+        """
+
+        # Get all the URIs of files that actually are set.
+        file_uris: List[str] = [f.value for f in arguments[0].coerce(WDL.Type.Array(WDL.Type.File(optional=True))).value if not isinstance(f, WDL.Value.Null)]
+
+        total_size = 0.0
+        for uri in file_uris:
+            # Sum up the sizes of all the files, if any.
+            if uri.startswith(TOIL_URI_SCHEME):
+                # This is a Toil File ID we encoded; we have the size
+                # available.
+                file_id, _ = unpack_toil_uri(uri)
+                # Use the encoded size
+                total_size += file_id.size
+            else:
+                # We need to fetch it and get its size.
+                total_size += os.path.getsize(self.stdlib._devirtualize_filename(uri))
+
+        if len(arguments) > 1:
+            # Need to convert units. See
+            # <https://github.com/chanzuckerberg/miniwdl/blob/498dc98d08e3ea3055b34b5bec408ae51dae0f0f/WDL/StdLib.py#L735-L740>
+            unit_name: str = arguments[1].coerce(WDL.Type.String()).value
+            if unit_name not in byte_size_units:
+                raise WDL.Error.EvalError(expr, "size(): invalid unit " + unit_name)
+            # Divide down to the right unit
+            total_size /= float(byte_size_units[unit_name])
+
+        # Return the result as a WDL float value
+        return WDL.Value.Float(total_size)
 
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
@@ -344,6 +388,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         write_dir = file_store.getLocalTempDir()
         # Set up miniwdl's implementation (which may be WDL.StdLib.TaskOutputs)
         super().__init__(wdl_version, write_dir)
+
+        # Replace the MiniWDL size() implementation with one that doesn't need
+        # to always download the file.
+        self.size = NonDownloadingSize(self)
 
         # Keep the file store around so we can access files.
         self._file_store = file_store
@@ -372,7 +420,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
-
         if filename.startswith(TOIL_URI_SCHEME):
             # This is a reference to the Toil filestore.
             # Deserialize the FileID
@@ -809,6 +856,11 @@ class WDLBaseJob(Job):
         in the constructor because it needs to happen in the leader and the
         worker before a job body containing MiniWDL structures can be saved.
         """
+
+        # Default everything to being a local job
+        if 'local' not in kwargs:
+            kwargs['local'] = True
+
         super().__init__(**kwargs)
 
         # The jobs can't pickle under the default Python recursion limit of
@@ -847,7 +899,10 @@ class WDLTaskJob(WDLBaseJob):
                The caller has alredy added the task's own name.
         """
 
-        super().__init__(unitName=namespace, displayName=namespace, **kwargs)
+        # This job should not be local because it represents a real workflow task.
+        # TODO: Instead of re-scheduling with more resources, add a local
+        # "wrapper" job like CWL uses to determine the actual requirements.
+        super().__init__(unitName=namespace, displayName=namespace, local=False, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, namespace)
 
@@ -1828,7 +1883,7 @@ class WDLOutputsJob(WDLBaseJob):
         """
         super().run(file_store)
 
-        # Evaluate all the outputs in the noirmal, non-task-outputs library context
+        # Evaluate all the outputs in the normal, non-task-outputs library context
         standard_library = ToilWDLStdLibBase(file_store)
         output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
         for output_decl in self._outputs:

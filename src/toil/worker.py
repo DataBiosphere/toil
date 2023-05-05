@@ -31,8 +31,7 @@ from typing import Any, Callable, Iterator, List, Optional
 
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
-from toil.cwl.utils import (CWL_INTERNAL_JOBS,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -63,22 +62,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     :param config: The configuration for the current run.
     """
     #If no more jobs to run or services not finished, quit
-    if len(predecessor.stack) == 0 or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
-        logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
-                     len(predecessor.stack), len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
+    if predecessor.nextSuccessors() is None or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
+        logger.debug("Stopping running chain of jobs: no successors: %s, services: %s, checkpoint: %s",
+                     predecessor.nextSuccessors() is None, len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
         return None
 
-    if len(predecessor.stack) > 1 and len(predecessor.stack[-1]) > 0 and len(predecessor.stack[-2]) > 0:
-        # TODO: Without a real stack list we can freely mutate, we can't chain
-        # to a child, which may branch, and then go back and do the follow-ons
-        # of the original job.
-        # TODO: Go back to a free-form stack list and require some kind of
-        # stack build phase?
-        logger.debug("Stopping running chain of jobs because job has both children and follow-ons")
-        return None
 
     #Get the next set of jobs to run
-    jobs = predecessor.nextSuccessors()
+    jobs = list(predecessor.nextSuccessors())
     if len(jobs) == 0:
         # If there are no jobs, we might just not have any children.
         logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")
@@ -87,11 +78,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     #If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
         logger.debug("No more jobs can run in series by this worker,"
-                    " it's got %i children", len(jobs)-1)
+                    " it's got %i successors", len(jobs))
+        logger.debug("Two distinct successors are %s and %s", jobs[0], jobs[1])
         return None
 
     # Grab the only job that should be there.
-    successorID = next(iter(jobs))
+    successorID = jobs[0]
+
+    logger.debug("%s would chain to ID %s", predecessor, successorID)
 
     # Load the successor JobDescription
     successor = jobStore.load_job(successorID)
@@ -487,6 +481,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # after the commit process we just kicked off, and aren't committed
             # early or partially.
             jobDesc = copy.deepcopy(jobDesc)
+            # Bump its version since saving will do that too and we don't want duplicate versions.
+            jobDesc.pre_update_hook()
+
 
             logger.debug("Starting the next job")
 
@@ -603,7 +600,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         # Commit log file reference back to JobStore
         jobStore.update_job(jobDesc)
 
-    elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
+    elif ((debugging or (config.writeLogsFromAllJobs and not jobDesc.local))
           and redirectOutputToLogFile):  # write log messages
         with open(tempWorkerLogPath, 'rb') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:

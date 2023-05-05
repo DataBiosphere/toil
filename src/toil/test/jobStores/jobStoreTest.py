@@ -277,11 +277,11 @@ class AbstractJobStoreTest:
 
             # Check equivalence between jobstore1 and jobstore2.
             # While job1 and job2 share a jobStoreID, job1 has not been "refreshed" to show the newly added child jobs.
-            self.assertNotEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertNotEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load_job(job1.jobStoreID)
-            self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)

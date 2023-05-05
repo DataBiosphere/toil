@@ -1863,6 +1863,7 @@ class CWLNamedJob(Job):
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
+        local: Optional[bool] = None,
     ) -> None:
         """
         Make a new job and set up its requirements and naming.
@@ -1905,6 +1906,7 @@ class CWLNamedJob(Job):
             accelerators=accelerators,
             unitName=unit_name,
             displayName=display_name,
+            local=local,
         )
 
 
@@ -1918,7 +1920,7 @@ class ResolveIndirect(CWLNamedJob):
 
     def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
         """Store the dictionary of promises for later resolution."""
-        super().__init__(parent_name=parent_name, subjob_name="_resolve")
+        super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
@@ -2094,7 +2096,10 @@ class CWLJobWrapper(CWLNamedJob):
     ):
         """Store our context for later evaluation."""
         super().__init__(
-            tool_id=tool.tool.get("id"), parent_name=parent_name, subjob_name="_wrapper"
+            tool_id=tool.tool.get("id"),
+            parent_name=parent_name,
+            subjob_name="_wrapper",
+            local=True,
         )
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
@@ -2482,7 +2487,7 @@ class CWLScatter(Job):
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -2642,7 +2647,7 @@ class CWLGather(Job):
         outputs: Promised[Union[CWLObjectType, List[CWLObjectType]]],
     ):
         """Collect our context for later gathering."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.outputs = outputs
 
@@ -2743,7 +2748,7 @@ class CWLWorkflow(CWLNamedJob):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name)
+        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name, local=True)
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
