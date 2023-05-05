@@ -417,8 +417,8 @@ class Leader:
         # Grap the successors
         next_successors = predecessor.nextSuccessors()
 
-        assert next_successors is not None
-        assert len(next_successors) > 0
+        if next_successors is None or len(next_successors) == 0:
+            raise RuntimeError(f"Job {self} trying to run successors, but it doesn't have any")
         logger.debug("Job: %s has %i successors to schedule",
                      predecessor_id, len(next_successors))
         #Record the number of successors that must be completed before
