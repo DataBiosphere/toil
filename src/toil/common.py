@@ -109,7 +109,7 @@ class Config:
     logRotating: bool
     cleanWorkDir: str
     maxLocalJobs: int
-    runCwlInternalJobsOnWorkers: bool
+    run_local_jobs_on_workers: bool
     tes_endpoint: str
     tes_user: str
     tes_password: str
@@ -438,7 +438,6 @@ class Config:
         set_option("environment", parseSetEnv)
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
-        set_option("runCwlInternalJobsOnWorkers")
         set_option("statusWait", int)
         set_option("disableProgress")
 

@@ -37,8 +37,7 @@ from toil.bus import (JobAnnotationMessage,
                       JobUpdatedMessage,
                       QueueSizeMessage)
 from toil.common import Config, Toil, ToilMetrics
-from toil.cwl.utils import (CWL_INTERNAL_JOBS,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
+from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (CheckpointJobDescription,
                       JobDescription,
                       ServiceJobDescription,
@@ -307,7 +306,7 @@ class Leader:
 
         :param successor_id: The successor which has failed.
         :param predecessor_id: The job which the successor comes after.
-        :returns: True if there are still active successors. 
+        :returns: True if there are still active successors.
                   False if all successors have failed and the job is queued to run to handle the failed successors.
         """
         logger.debug("Successor job: %s of job: %s has failed """
@@ -415,17 +414,21 @@ class Leader:
         # Grab the predecessor's JobDescription
         predecessor = self.toilState.get_job(predecessor_id)
 
-        assert len(predecessor.stack[-1]) > 0
+        # Grap the successors
+        next_successors = predecessor.nextSuccessors()
+
+        assert next_successors is not None
+        assert len(next_successors) > 0
         logger.debug("Job: %s has %i successors to schedule",
-                     predecessor_id, len(predecessor.stack[-1]))
+                     predecessor_id, len(next_successors))
         #Record the number of successors that must be completed before
         #the job can be considered again
         assert self.toilState.count_pending_successors(predecessor_id) == 0, 'Attempted to schedule successors of the same job twice!'
-        self.toilState.successors_pending(predecessor_id, len(predecessor.stack[-1]))
+        self.toilState.successors_pending(predecessor_id, len(next_successors))
 
         # For each successor schedule if all predecessors have been completed
         successors = []
-        for successor_id in predecessor.stack[-1]:
+        for successor_id in next_successors:
             try:
                 successor = self.toilState.get_job(successor_id)
             except NoSuchJobException:
@@ -441,7 +444,7 @@ class Leader:
     def _processFailedSuccessors(self, predecessor_id: str):
         """
         Deal with some of a job's successors having failed.
-        
+
         Either fail the job, or restart it if it has retries left and is a checkpoint
         job.
         """
@@ -493,7 +496,7 @@ class Leader:
 
         logger.debug('Updating status of job %s with result status: %s',
                      readyJob, result_status)
-        
+
         # TODO: Filter out nonexistent successors/services now, so we can tell
         # if they are all done and the job needs deleting?
 
@@ -544,7 +547,7 @@ class Leader:
             logger.debug("Giving job: %s to service manager to schedule its jobs", readyJob)
             # Use the service manager to start the services
             self.serviceManager.put_client(job_id)
-        elif len(readyJob.stack) > 0:
+        elif readyJob.nextSuccessors() is not None:
             # There are successors to run
             self._runJobSuccessors(job_id)
         elif readyJob.jobStoreID in self.toilState.servicesIssued:
@@ -576,7 +579,7 @@ class Leader:
             if readyJob.remainingTryCount > 0:
                 # add attribute to let issueJob know that this is an empty job and should be deleted
                 logger.debug("Job: %s is empty, we are cleaning it up", readyJob)
-                
+
                 try:
                     self.toilState.delete_job(readyJob.jobStoreID)
                 except Exception as e:
@@ -725,7 +728,7 @@ class Leader:
     def innerLoop(self):
         """
         Process jobs.
-        
+
         This is the leader's main loop.
         """
         self.timeSinceJobsLastRescued = time.time()
@@ -864,7 +867,7 @@ class Leader:
         # Never issue the same job multiple times simultaneously
         assert jobNode.jobStoreID not in self.toilState.jobs_issued, \
             f"Attempted to issue {jobNode} multiple times simultaneously!"
-            
+
         workerCommand = [resolveEntryPoint('_toil_worker'),
                          jobNode.jobName,
                          self.jobStoreLocator,
@@ -899,7 +902,7 @@ class Leader:
             # len(issued_jobs_by_batch_system_id) should always be greater than or equal to preemptibleJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptibleJobsIssued += 1
-        cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
+        cur_logger = logger.debug if jobNode.local else logger.info
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and %s",
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())
@@ -1119,7 +1122,7 @@ class Leader:
         Process finished jobs.
 
         Called when an attempt to run a job finishes, either successfully or otherwise.
-        
+
         Takes the job out of the issued state, and then works out what
         to do about the fact that it succeeded or failed.
 
@@ -1128,28 +1131,28 @@ class Leader:
         """
         # De-issue the job.
         issued_job = self.removeJob(batch_system_id)
-        
+
         if result_status != 0:
             # Show job as failed in progress (and take it from completed)
             self.progress_overall.update(incr=-1)
             self.progress_failed.update(incr=1)
-        
+
         # Delegate to the vers
         return self.process_finished_job_description(issued_job, result_status, wall_time, exit_reason, batch_system_id)
-    
+
     def process_finished_job_description(self, finished_job: JobDescription, result_status: int,
                                          wall_time: Optional[float] = None,
                                          exit_reason: Optional[BatchJobExitReason] = None,
                                          batch_system_id: Optional[int] = None) -> bool:
         """
         Process a finished JobDescription based upon its succees or failure.
-        
+
         If wall-clock time is available, informs the cluster scaler about the
         job finishing.
-        
+
         If the job failed and a batch system ID is available, checks for and
         reports batch system logs.
-        
+
         Checks if it succeeded and was removed, or if it failed and needs to be
         set up after failure, and dispatches to the appropriate function.
 
@@ -1196,7 +1199,7 @@ class Leader:
                 # reduce the try count here.
                 if replacement_job.logJobStoreFileID is None:
                     logger.warning("No log file is present, despite job failing: %s", replacement_job)
-                
+
                 if batch_system_id is not None:
                     # Look for any standard output/error files created by the batch system.
                     # They will only appear if the batch system actually supports
@@ -1260,22 +1263,18 @@ class Leader:
             jobDesc = self.toilState.get_job(job_id)
 
             # For lists of successors
-            for successorList in jobDesc.stack:
+            for successorID in jobDesc.allSuccessors():
+                # If successor not already visited
+                if successorID not in alreadySeenSuccessors:
 
-                # For each successor in list of successors
-                for successorID in successorList:
+                    # Add to set of successors
+                    successors.add(successorID)
+                    alreadySeenSuccessors.add(successorID)
 
-                    # If successor not already visited
-                    if successorID not in alreadySeenSuccessors:
-
-                        # Add to set of successors
-                        successors.add(successorID)
-                        alreadySeenSuccessors.add(successorID)
-
-                        # Recurse if job exists
-                        # (job may not exist if already completed)
-                        if self.toilState.job_exists(successorID):
-                            successorRecursion(successorID)
+                    # Recurse if job exists
+                    # (job may not exist if already completed)
+                    if self.toilState.job_exists(successorID):
+                        successorRecursion(successorID)
 
         successorRecursion(job_id)  # Recurse from passed job
 

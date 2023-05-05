@@ -65,18 +65,17 @@ class ToilStatus:
 
         # Print the edges
         for job in set(self.jobsToReport):
-            for level, jobList in enumerate(job.stack):
-                for childJob in jobList:
-                    # Check, b/c successor may be finished / not in the set of jobs
-                    if childJob in jobsToNodeNames:
-                        print(
-                            '%s -> %s [label="%i"];'
-                            % (
-                                jobsToNodeNames[str(job.jobStoreID)],
-                                jobsToNodeNames[childJob],
-                                level,
-                            )
+            for level, childJob in job.successors_by_phase():
+                # Check, b/c successor may be finished / not in the set of jobs
+                if childJob in jobsToNodeNames:
+                    print(
+                        '%s -> %s [label="%i"];'
+                        % (
+                            jobsToNodeNames[str(job.jobStoreID)],
+                            jobsToNodeNames[childJob],
+                            level,
                         )
+                    )
         print("}")
 
     def printJobLog(self) -> None:
@@ -94,9 +93,8 @@ class ToilStatus:
         """Takes a list of jobs, and prints their successors."""
         for job in self.jobsToReport:
             children = "CHILDREN_OF_JOB:%s " % job
-            for level, jobList in enumerate(job.stack):
-                for childJob in jobList:
-                    children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
+            for level, childJob in job.successors_by_phase():
+                children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
     def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
@@ -131,7 +129,7 @@ class ToilStatus:
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = reduce(lambda x, y: x + y, list(map(len, job.stack)) + [0])
+            childNumber = len(list(job.allSuccessors()))
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")
@@ -304,10 +302,9 @@ class ToilStatus:
         foundJobStoreIDs.add(str(rootJob.jobStoreID))
         jobsToReport.append(rootJob)
         # Traverse jobs in stack
-        for jobs in rootJob.stack:
-            for successorJobStoreID in jobs:
-                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
-                    self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+        for successorJobStoreID in rootJob.allSuccessors():
+            if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
+                self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:

@@ -186,6 +186,12 @@ levels in toil are based on priority from the logging module:
   --mesosEndpoint MESOSENDPOINT
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
+  --mesosFrameworkId MESOSFRAMEWORKID
+                        Use a specific Mesos framework ID.
+  --mesosRole MESOSROLE
+                        Use a Mesos role.
+  --mesosName MESOSNAME
+                        The Mesos name to use. (default: toil)
   --kubernetesHostPath KUBERNETES_HOST_PATH
                         Path on Kubernetes hosts to use as shared inter-pod temp
                         directory.
