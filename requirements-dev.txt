@@ -4,7 +4,7 @@ pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
 setuptools>=65.5.1,<68
-sphinx>=4,<6
+sphinx>=4,<8
 sphinx-autoapi
 sphinx-autodoc-typehints
 sphinxcontrib-autoprogram
