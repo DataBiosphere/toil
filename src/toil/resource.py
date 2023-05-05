@@ -30,14 +30,11 @@ from zipfile import ZipFile
 
 from typing import (TYPE_CHECKING,
                     Optional,
-                    Any,
                     Callable,
-                    Union,
                     IO,
                     Type,
-                    Tuple,
                     Sequence,
-                    TextIO)
+                    BinaryIO)
 
 from toil import inVirtualEnv
 from toil.lib.iterables import concat
@@ -45,10 +42,10 @@ from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
 
+from types import ModuleType
+
 if TYPE_CHECKING:
     from toil.jobStores.abstractJobStore import AbstractJobStore
-    from types import ModuleType
-    from io import FileIO
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +83,6 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
 
         :param str leaderPath:
-
-        :rtype: Resource
         """
         pathHash = cls._pathHash(leaderPath)
         contentHash = hashlib.md5()
@@ -216,7 +211,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         return hashlib.md5(path.encode('utf-8')).hexdigest()
 
     @classmethod
-    def _load(cls, path: str) -> Union[IO[bytes], IO[str]]:
+    def _load(cls, path: str) -> IO[bytes]:
         """
         Returns a readable file-like object for the given path. If the path refers to a regular
         file, this method returns the result of invoking open() on the given path. If the path
@@ -224,7 +219,6 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         in the directory at the given path.
 
         :type path: str
-        :rtype: io.FileIO
         """
         raise NotImplementedError()
 
@@ -241,7 +235,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
              error=HTTPError,
              error_codes=[400])
     ])
-    def _download(self, dstFile: Union[BytesIO, FileIO]) -> None:
+    def _download(self, dstFile: IO[bytes]) -> None:
         """
         Download this resource from its URL to the given file object.
 
@@ -258,11 +252,11 @@ class FileResource(Resource):
     """A resource read from a file on the leader."""
 
     @classmethod
-    def _load(cls, path: str) -> TextIO:
-        return open(path)
+    def _load(cls, path: str) -> BinaryIO:
+        return open(path, 'rb')
 
     def _save(self, dirPath: str) -> None:
-        with open(os.path.join(dirPath, self.name), mode='w') as localFile:
+        with open(os.path.join(dirPath, self.name), mode='wb') as localFile:
             self._download(localFile)
 
     @property
@@ -382,6 +376,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     Clean up
     >>> rmtree( dirPath )
     """
+    dirPath: str
+    name: str
 
     @classmethod
     def forModule(cls, name: str) -> "ModuleDescriptor":
@@ -393,9 +389,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         method assumes that the module with the specified name has already been loaded.
         """
         module = sys.modules[name]
-        fileAbsPath = ""
-        if module.__file__ is not None:
-            fileAbsPath = os.path.abspath(module.__file__)
+        if module.__file__ is None:
+            raise Exception(f'Module {name} does not exist.')
+        fileAbsPath = os.path.abspath(module.__file__)
         filePath = fileAbsPath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
         if extension not in (".py", ".pyc"):
@@ -459,7 +455,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             sys.path = old_sys_path
 
     @property
-    def belongsToToil(self) -> Any:
+    def belongsToToil(self) -> bool:
         """
         True if this module is part of the Toil distribution
         """
@@ -517,7 +513,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                                   name=self.name,
                                   fromVirtualEnv=self.fromVirtualEnv)
 
-    def _runningOnWorker(self) -> Union[bool, str]:
+    def _runningOnWorker(self) -> bool:
         try:
             mainModule = sys.modules['__main__']
         except KeyError:
@@ -528,11 +524,10 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             # toil is being run interactively, in which case
             # we can reasonably assume that we are not running
             # on a worker node.
+            if mainModule.__file__ is None:
+                return False
             try:
-                if mainModule.__file__ is not None:
-                    mainModuleFile = os.path.basename(mainModule.__file__)
-                else:
-                    mainModuleFile = ''
+                mainModuleFile = os.path.basename(mainModule.__file__)
             except AttributeError:
                 return False
 
@@ -558,7 +553,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                                   fromVirtualEnv=fromVirtualEnv)
 
     @property
-    def _resourcePath(self) -> Any:
+    def _resourcePath(self) -> str:
         """
         The path to the directory that should be used when shipping this module and its siblings
         around as a resource.
@@ -584,7 +579,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 return name
         return None
 
-    def _rootPackage(self) -> Any:
+    def _rootPackage(self) -> str:
         try:
             head, tail = self.name.split('.', 1)
         except ValueError:
@@ -592,7 +587,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         else:
             return head
 
-    def toCommand(self) -> Tuple[str, ...]:
+    def toCommand(self) -> Sequence[str]:
         return tuple(map(str, self))
 
     @classmethod
