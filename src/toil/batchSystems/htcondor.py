@@ -60,7 +60,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 self.waitingJobs.append(newJob)
 
             # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.max_jobs):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command, environment, accelerators = self.waitingJobs.pop(0)
 
