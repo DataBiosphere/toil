@@ -143,11 +143,11 @@ levels in toil are based on priority from the logging module:
   --maxJobs MAXJOBS
                         Specifies the maximum number of jobs to submit to the
                         backing scheduler at once. Not supported on Mesos or
-                        AWS Batch. Defaults to unlimited.
+                        AWS Batch. Use 0 for unlimited. Defaults to unlimited.
   --maxLocalJobs MAXLOCALJOBS
                         Specifies the maximum number of housekeeping jobs to
-                        run on the local system. Defaults to the number of
-                        local cores.
+                        run simultaneously on the local system. Use 0 for
+                        unlimited. Defaults to the number of local cores.
   --manualMemArgs       Do not add the default arguments: 'hv=MEMORY' &
                         'h_vmem=MEMORY' to the qsub call, and instead rely on
                         TOIL_GRIDGENGINE_ARGS to supply alternative arguments.
