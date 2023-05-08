@@ -204,12 +204,15 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
-def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str] = None) -> None:
+
+def ensure_no_collisions(
+    directory: DirectoryType, dir_description: Optional[str] = None
+) -> None:
     """
     Make sure no items in the given CWL Directory have the same name.
 
-    If any do, raise a WorkflowException about a "File staging conflict". 
-    
+    If any do, raise a WorkflowException about a "File staging conflict".
+
     Does not recurse into subdirectories.
     """
 
@@ -226,12 +229,11 @@ def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str
             if wanted_name in seen_names:
                 # We used this name already so bail out
                 raise cwl_utils.errors.WorkflowException(
-                    f"File staging conflict: Duplicate entries for \"{wanted_name}\""
+                    f'File staging conflict: Duplicate entries for "{wanted_name}"'
                     f" prevent actually creating {dir_description}"
                 )
             seen_names.add(wanted_name)
-        
-        
+
 
 class Conditional:
     """
@@ -1003,23 +1005,26 @@ class ToilTool:
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
-    def _initialworkdir(self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder) -> None:
+    def _initialworkdir(
+        self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
+    ) -> None:
         """
         Hook the InitialWorkDirRequirement setup to make sure that there are no
         name conflicts at the top level of the work directory.
         """
 
         super()._initialworkdir(j, builder)
-        
+
         # The initial work dir listing is now in j.generatefiles["listing"]
         # Also j.generatrfiles is a CWL Directory.
         # So check the initial working directory.
-        logger.info('Initial work dir: %s', j.generatefiles)
+        logger.info("Initial work dir: %s", j.generatefiles)
         ensure_no_collisions(
             j.generatefiles,
-            "the job's working directory as specified by the InitialWorkDirRequirement"
+            "the job's working directory as specified by the InitialWorkDirRequirement",
         )
-        
+
+
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
 
@@ -1230,6 +1235,7 @@ class ToilFsAccess(StdFsAccess):
                         "ToilFsAccess fetching directory %s from a JobStore", path
                     )
                     dest_dir = tempfile.mkdtemp()
+
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
                         if AbstractJobStore.get_is_directory(url):
@@ -1919,7 +1925,9 @@ class ResolveIndirect(CWLNamedJob):
     of actual values.
     """
 
-    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
+    def __init__(
+        self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None
+    ):
         """Store the dictionary of promises for later resolution."""
         super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
         self.cwljob = cwljob
@@ -2001,7 +2009,6 @@ def toilStageFiles(
                         "CreateFile",
                         "CreateWritableFile",
                     ]:  # TODO: CreateFile for buckets is not under testing
-
                         with tempfile.NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode("utf-8"))
@@ -2195,6 +2202,7 @@ class CWLJob(CWLNamedJob):
             accelerators=accelerators,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
+            local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
         )
 
         self.cwljob = cwljob
@@ -2680,9 +2688,11 @@ class CWLGather(Job):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
-        
+
         # TODO: MyPy can't understand that this is the type we should get by unwrapping the promise
-        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs))
+        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(
+            Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs)
+        )
         for k in [sn(i) for i in self.step.tool["out"]]:
             outobj[k] = self.extract(outputs, k)
 
@@ -2749,7 +2759,9 @@ class CWLWorkflow(CWLNamedJob):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name, local=True)
+        super().__init__(
+            tool_id=cwlwf.tool.get("id"), parent_name=parent_name, local=True
+        )
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3519,13 +3531,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
     )
-    
+
     # Parse all the options once.
     options = parser.parse_args(args)
-    
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    
+
     # We need a workdir for the CWL runtime contexts.
     if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
         # if tmpdir_prefix is not the default value, move
@@ -3535,8 +3547,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Use a directory in the default tmpdir
         workdir = tempfile.mkdtemp()
     # Make sure workdir doesn't exist so it can be a job store
-    os.rmdir(workdir) 
-    
+    os.rmdir(workdir)
+
     if options.jobStore is None:
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
