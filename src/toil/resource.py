@@ -90,9 +90,8 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         with cls._load(leaderPath) as src:
             with jobStore.write_shared_file_stream(shared_file_name=pathHash, encrypted=False) as dst:
                 userScript = src.read()
-                if isinstance(userScript, bytes):
-                    contentHash.update(userScript)
-                    dst.write(userScript)
+                contentHash.update(userScript)
+                dst.write(userScript)
         return cls(name=os.path.basename(leaderPath),
                    pathHash=pathHash,
                    url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
