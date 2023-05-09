@@ -115,7 +115,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.waitingJobs.append(newJob)
             # Launch jobs as necessary:
             while len(self.waitingJobs) > 0 and \
-                    len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+                    len(self.runningJobs) < int(self.boss.config.max_jobs):
                 activity = True
                 jobID, cpu, memory, command, jobName, environment, gpus = self.waitingJobs.pop(0)
 

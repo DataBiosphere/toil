@@ -237,6 +237,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Keep track of available resources.
         maxMillicores = int(SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000)
         self.resource_sources = [
+            # A pool representing available job slots
+            ResourcePool(self.config.max_jobs, 'job slots'),
             # A pool representing available CPU in units of millicores (1 CPU
             # unit = 1000 millicores)
             ResourcePool(maxMillicores, 'cores'),
@@ -920,7 +922,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         # Limit the amount of resources requested at a time.
-        resource_requests: List[int] = [int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
+        resource_requests: List[int] = [1, int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
 
         acquired = []
         for source, request in zip(self.resource_sources, resource_requests):
