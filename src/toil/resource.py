@@ -523,9 +523,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             # toil is being run interactively, in which case
             # we can reasonably assume that we are not running
             # on a worker node.
-            if mainModule.__file__ is None:
-                return False
             try:
+                if mainModule.__file__ is None:
+                    return False
                 mainModuleFile = os.path.basename(mainModule.__file__)
             except AttributeError:
                 return False
