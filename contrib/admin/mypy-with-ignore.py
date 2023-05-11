@@ -29,7 +29,6 @@ def main():
         'src/toil/job.py',
         'src/toil/leader.py',
         'src/toil/__init__.py',
-        'src/toil/resource.py',
         'src/toil/deferred.py',
         'src/toil/version.py',
         'src/toil/wdl/utils.py',
