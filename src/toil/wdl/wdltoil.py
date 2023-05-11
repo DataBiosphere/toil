@@ -331,7 +331,7 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
 
 class NonDownloadingSize(WDL.StdLib._Size):
     """
-    WDL size() implementatiuon that avoids downloading files.
+    WDL size() implementation that avoids downloading files.
 
     MiniWDL's default size() implementation downloads the whole file to get its
     size. We want to be able to get file sizes from code running on the leader,
