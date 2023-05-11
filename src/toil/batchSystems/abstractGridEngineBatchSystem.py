@@ -195,7 +195,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if self._checkOnJobsTimestamp:
                 time_since_last_check = (datetime.now() - self._checkOnJobsTimestamp).total_seconds()
                 if time_since_last_check < self.boss.config.statePollingWait:
-                    logger.debug('Only %s/%s time elapsed between polls, using cached information', time_since_last_check, self.boss.config.statePollingWait)
                     return self._checkOnJobsCache
 
             activity = False
