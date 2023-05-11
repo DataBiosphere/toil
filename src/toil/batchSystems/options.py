@@ -71,7 +71,6 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
             batch_system_type.setOptions(set_option)
     # Options shared between multiple batch systems
     set_option("disableAutoDeployment", bool, default=False)
-    set_option("coalesceStatusCalls")
     # Make limits maximum if set to 0
     set_option("max_jobs", lambda x: int(x) or sys.maxsize)
     set_option("max_local_jobs", lambda x: int(x) or sys.maxsize)
@@ -148,13 +147,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--coalesceStatusCalls",
         dest="coalesceStatusCalls",
         action="store_true",
-        default=None,
+        default=True,
         help=(
-            "Coalese status calls to the batch system to prevent toil from being overloaded. "
-            "Note that if you do NOT use this option, the loop which polls the batch "
-            "system for status updates will be O(n^2) time complexity!"
-            "Currently only supported for --batchSystem lsf and slurm. "
-            "default=false"
+            "Ask for job statuses from the batch system in a batch. Deprecated; now always "
+            "enabled where supported."
         ),
     )
     parser.add_argument(
@@ -201,7 +197,6 @@ def set_batchsystem_config_defaults(config) -> None:
     config.max_jobs = sys.maxsize
     config.max_local_jobs = cpu_count()
     config.manualMemArgs = False
-    config.coalesceStatusCalls = False
     config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
     OptionType = TypeVar('OptionType')
