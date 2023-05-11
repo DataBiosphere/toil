@@ -109,7 +109,7 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
 
 
 def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
-                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None) -> Union[str, bytes]:
+                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None) -> str:
     """Simplified calling of external commands.  This always returns
     stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
     is raised.  The captured stderr is always printed, regardless of
@@ -126,12 +126,15 @@ def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeou
         env["LANGUAGE"] = env["LC_ALL"] = "C"
 
     logger.debug("run command: {}".format(" ".join(cmd)))
+    start_time = datetime.datetime.now()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             encoding='utf-8', errors="replace", env=env)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    end_time = datetime.datetime.now()
+    runtime = (end_time - start_time).total_seconds()
     sys.stderr.write(stderr)
     if proc.returncode != 0:
-        logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
+        logger.debug("command failed in {}s: {}: {}".format(runtime, " ".join(cmd), stderr.rstrip()))
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
+    logger.debug("command succeeded in {}s: {}: {}".format(runtime, " ".join(cmd), stdout.rstrip()))
     return stdout
