@@ -191,7 +191,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             Respects statePollingWait and will return cached results if not within
             time period to talk with the scheduler.
             """
-            
+
             if self._checkOnJobsTimestamp:
                 time_since_last_check = (datetime.now() - self._checkOnJobsTimestamp).total_seconds()
                 if time_since_last_check < self.boss.config.statePollingWait:
@@ -211,13 +211,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     # We have to get the statuses individually
                     for running_job_id, batch_job_id in zip(running_job_list, batch_job_id_list):
                         status = self.boss.with_retries(self.getJobExitCode, batch_job_id)
-                        logger.debug('Got single job status: %s', status)
                         activity = self._handle_job_status(
                             running_job_id, status, activity
                         )
                 else:
                     # We got the statuses as a batch
-                    logger.debug('Got batched statuses: %s', statuses)
                     for running_job_id, status in zip(running_job_list, statuses):
                         activity = self._handle_job_status(
                             running_job_id, status, activity
@@ -256,20 +254,16 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             activity = False
             newJob = None
             if not self.newJobsQueue.empty():
-                logger.debug('New job obtained')
                 activity = True
                 newJob = self.newJobsQueue.get()
                 if newJob is None:
                     logger.debug('Received queue sentinel.')
                     return False
             if self.killJobs():
-                logger.debug('Jobs killed')
                 activity = True
             if self.createJobs(newJob):
-                logger.debug('New job created')
                 activity = True
             if self.checkOnJobs():
-                logger.debug('Jobs checked on')
                 activity = True
             if not activity:
                 logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())

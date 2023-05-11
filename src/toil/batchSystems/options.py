@@ -168,7 +168,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=None,
         help="Directory to tell the backing batch system to log into. Should be available "
              "on both the leader and the workers, if the backing batch system writes logs "
-             "to the worker machines' filesystems, as many HPC schedulers do. If unset, " 
+             "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
              "the Toil work directory will be used. Only works for grid engine batch "
              "systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
