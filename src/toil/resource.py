@@ -90,8 +90,9 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         with cls._load(leaderPath) as src:
             with jobStore.write_shared_file_stream(shared_file_name=pathHash, encrypted=False) as dst:
                 userScript = src.read()
-                contentHash.update(userScript)
-                dst.write(userScript)
+                if isinstance(userScript, bytes):
+                    contentHash.update(userScript)
+                    dst.write(userScript)
         return cls(name=os.path.basename(leaderPath),
                    pathHash=pathHash,
                    url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
@@ -523,6 +524,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             # toil is being run interactively, in which case
             # we can reasonably assume that we are not running
             # on a worker node.
+            if mainModule.__file__ is None:
+                return False
             try:
                 if mainModule.__file__ is None:
                     return False
