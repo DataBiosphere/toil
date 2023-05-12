@@ -159,9 +159,6 @@ levels in toil are based on priority from the logging module:
                         Setting this to true can speed up the pipeline for very
                         large workflows with many sub-workflows and/or scatters,
                         provided that the worker pool is large enough.
-  --coalesceStatusCalls
-                        Coalese status calls to prevent the batch system from
-                        being overloaded. Currently only supported for LSF.
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within

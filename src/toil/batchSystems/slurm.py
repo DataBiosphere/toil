@@ -369,21 +369,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     ### The interface for SLURM
     ###
 
-    @classmethod
-    def getWaitDuration(cls):
-        # Extract the slurm batchsystem config for the appropriate value
-        lines = call_command(['scontrol', 'show', 'config']).split('\n')
-        time_value_list = []
-        for line in lines:
-            values = line.split()
-            if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):
-                time_name = values[values.index('=')+1:][1]
-                time_value = int(values[values.index('=')+1:][0])
-                if time_name == 'min':
-                    time_value *= 60
-                # Add a 20% ceiling on the wait duration relative to the scheduler update duration
-                time_value_list.append(math.ceil(time_value*1.2))
-        return max(time_value_list)
+    # `scontrol show config` can get us the slurm config, and there are values
+    # SchedulerTimeSlice and AcctGatherNodeFreq in there, but
+    # SchedulerTimeSlice is for time-sharing preemtion and AcctGatherNodeFreq
+    # is for reporting resource statistics (and can be 0). Slurm does not
+    # actually seem to have a scheduling granularity or tick rate. So we don't
+    # implement getWaitDuration().
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]):
