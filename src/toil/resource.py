@@ -24,10 +24,17 @@ from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
-from typing import Any
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
+
+from typing import (TYPE_CHECKING,
+                    Optional,
+                    Callable,
+                    IO,
+                    Type,
+                    Sequence,
+                    BinaryIO)
 
 from toil import inVirtualEnv
 from toil.lib.iterables import concat
@@ -35,8 +42,12 @@ from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
 
-logger = logging.getLogger(__name__)
+from types import ModuleType
 
+if TYPE_CHECKING:
+    from toil.jobStores.abstractJobStore import AbstractJobStore
+
+logger = logging.getLogger(__name__)
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
     """
@@ -63,7 +74,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
     rootDirPathEnvName = resourceEnvNamePrefix + 'ROOT'
 
     @classmethod
-    def create(cls, jobStore, leaderPath):
+    def create(cls, jobStore: "AbstractJobStore", leaderPath: str) -> "Resource":
         """
         Saves the content of the file or directory at the given path to the given job store
         and returns a resource object representing that content for the purpose of obtaining it
@@ -72,8 +83,6 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
 
         :param str leaderPath:
-
-        :rtype: Resource
         """
         pathHash = cls._pathHash(leaderPath)
         contentHash = hashlib.md5()
@@ -88,7 +97,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                    url=jobStore.getSharedPublicUrl(sharedFileName=pathHash),
                    contentHash=contentHash.hexdigest())
 
-    def refresh(self, jobStore):
+    def refresh(self, jobStore: "AbstractJobStore") -> "Resource":
         return type(self)(name=self.name,
                           pathHash=self.pathHash,
                           url=jobStore.get_shared_public_url(shared_file_name=self.pathHash),
@@ -120,12 +129,12 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             if k.startswith(cls.resourceEnvNamePrefix):
                 os.environ.pop(k)
 
-    def register(self):
+    def register(self) -> None:
         """Register this resource for later retrieval via lookup(), possibly in a child process."""
         os.environ[self.resourceEnvNamePrefix + self.pathHash] = self.pickle()
 
     @classmethod
-    def lookup(cls, leaderPath: str) -> "Resource":
+    def lookup(cls, leaderPath: str) -> Optional["Resource"]:
         """
         Return a resource object representing a resource created from a file or directory at the given path on the leader.
 
@@ -146,7 +155,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             assert self.pathHash == pathHash
             return self
 
-    def download(self, callback=None):
+    def download(self, callback: Optional[Callable[[str], None]] = None) -> None:
         """
         Download this resource from its URL to a file on the local system.
 
@@ -171,7 +180,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
                     raise
 
     @property
-    def localPath(self):
+    def localPath(self) -> str:
         """
         Get the path to resource on the worker.
 
@@ -181,27 +190,27 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         raise NotImplementedError
 
     @property
-    def localDirPath(self):
+    def localDirPath(self) -> str:
         """
         The path to the directory containing the resource on the worker.
         """
         rootDirPath = os.environ[self.rootDirPathEnvName]
         return os.path.join(rootDirPath, self.contentHash)
 
-    def pickle(self):
+    def pickle(self) -> str:
         return self.__class__.__module__ + "." + self.__class__.__name__ + ':' + json.dumps(self)
 
     @classmethod
-    def unpickle(cls, s) -> "Resource":
+    def unpickle(cls, s: str) -> "Resource":
         className, _json = s.split(':', 1)
-        return locate(className)(*json.loads(_json))
+        return locate(className)(*json.loads(_json)) # type: ignore
 
     @classmethod
-    def _pathHash(cls, path):
+    def _pathHash(cls, path: str) -> str:
         return hashlib.md5(path.encode('utf-8')).hexdigest()
 
     @classmethod
-    def _load(cls, path):
+    def _load(cls, path: str) -> IO[bytes]:
         """
         Returns a readable file-like object for the given path. If the path refers to a regular
         file, this method returns the result of invoking open() on the given path. If the path
@@ -209,11 +218,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         in the directory at the given path.
 
         :type path: str
-        :rtype: io.FileIO
         """
         raise NotImplementedError()
 
-    def _save(self, dirPath):
+    def _save(self, dirPath: str) -> None:
         """
         Save this resource to the directory at the given parent path.
 
@@ -226,7 +234,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
              error=HTTPError,
              error_codes=[400])
     ])
-    def _download(self, dstFile):
+    def _download(self, dstFile: IO[bytes]) -> None:
         """
         Download this resource from its URL to the given file object.
 
@@ -243,15 +251,15 @@ class FileResource(Resource):
     """A resource read from a file on the leader."""
 
     @classmethod
-    def _load(cls, path):
-        return open(path)
+    def _load(cls, path: str) -> BinaryIO:
+        return open(path, 'rb')
 
-    def _save(self, dirPath):
-        with open(os.path.join(dirPath, self.name), mode='w') as localFile:
+    def _save(self, dirPath: str) -> None:
+        with open(os.path.join(dirPath, self.name), mode='wb') as localFile:
             self._download(localFile)
 
     @property
-    def localPath(self):
+    def localPath(self) -> str:
         return os.path.join(self.localDirPath, self.name)
 
 
@@ -294,7 +302,7 @@ class DirectoryResource(Resource):
         bytesIO.seek(0)
         return bytesIO
 
-    def _save(self, dirPath):
+    def _save(self, dirPath: str) -> None:
         bytesIO = BytesIO()
         self._download(bytesIO)
         bytesIO.seek(0)
@@ -302,7 +310,7 @@ class DirectoryResource(Resource):
             zipFile.extractall(path=dirPath)
 
     @property
-    def localPath(self):
+    def localPath(self) -> str:
         return self.localDirPath
 
 
@@ -367,9 +375,11 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     Clean up
     >>> rmtree( dirPath )
     """
+    dirPath: str
+    name: str
 
     @classmethod
-    def forModule(cls, name: str) -> Any:
+    def forModule(cls, name: str) -> "ModuleDescriptor":
         """
         Return an instance of this class representing the module of the given name.
 
@@ -378,8 +388,10 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         method assumes that the module with the specified name has already been loaded.
         """
         module = sys.modules[name]
-        filePath = os.path.abspath(module.__file__)
-        filePath = filePath.split(os.path.sep)
+        if module.__file__ is None:
+            raise Exception(f'Module {name} does not exist.')
+        fileAbsPath = os.path.abspath(module.__file__)
+        filePath = fileAbsPath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
         if extension not in (".py", ".pyc"):
             raise Exception("The name of a user script/module must end in .py or .pyc.")
@@ -389,12 +401,12 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             if module.__package__:
                 # Invoked as a module via python -m foo.bar
                 logger.debug("Script was invoked as a module")
-                name = [filePath.pop()]
+                nameList = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
                     assert dirPathTail == package
-                    name.append(dirPathTail)
-                name = '.'.join(reversed(name))
+                    nameList.append(dirPathTail)
+                name = '.'.join(reversed(nameList))
                 dirPath = os.path.sep.join(filePath)
             else:
                 # Invoked as a script via python foo/bar.py
@@ -420,7 +432,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
     @classmethod
-    def _check_conflict(cls, dirPath, name):
+    def _check_conflict(cls, dirPath: str, name: str) -> None:
         """
         Check whether the module of the given name conflicts with another module on the sys.path.
 
@@ -442,13 +454,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             sys.path = old_sys_path
 
     @property
-    def belongsToToil(self):
+    def belongsToToil(self) -> bool:
         """
         True if this module is part of the Toil distribution
         """
         return self.name.startswith('toil.')
 
-    def saveAsResourceTo(self, jobStore) -> Resource:
+    def saveAsResourceTo(self, jobStore: "AbstractJobStore") -> Resource:
         """
         Store the file containing this module--or even the Python package directory hierarchy
         containing that file--as a resource to the given job store and return the
@@ -458,10 +470,11 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         """
         return self._getResourceClass().create(jobStore, self._resourcePath)
 
-    def _getResourceClass(self):
+    def _getResourceClass(self) -> Type[Resource]:
         """
         Return the concrete subclass of Resource that's appropriate for auto-deploying this module.
         """
+        subcls: Type[Resource]
         if self.fromVirtualEnv:
             subcls = VirtualEnvResource
         elif os.path.isdir(self._resourcePath):
@@ -474,7 +487,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             raise AssertionError("No such file or directory: '%s'" % self._resourcePath)
         return subcls
 
-    def localize(self) -> Resource:
+    def localize(self) -> "ModuleDescriptor":
         """
         Check if this module was saved as a resource.
 
@@ -488,7 +501,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         if resource is None:
             return self
         else:
-            def stash(tmpDirPath):
+            def stash(tmpDirPath: str) -> None:
                 # Save the original dirPath such that we can restore it in globalize()
                 with open(os.path.join(tmpDirPath, '.stash'), 'w') as f:
                     f.write('1' if self.fromVirtualEnv else '0')
@@ -499,7 +512,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                                   name=self.name,
                                   fromVirtualEnv=self.fromVirtualEnv)
 
-    def _runningOnWorker(self):
+    def _runningOnWorker(self) -> bool:
         try:
             mainModule = sys.modules['__main__']
         except KeyError:
@@ -511,6 +524,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             # we can reasonably assume that we are not running
             # on a worker node.
             try:
+                if mainModule.__file__ is None:
+                    return False
                 mainModuleFile = os.path.basename(mainModule.__file__)
             except AttributeError:
                 return False
@@ -537,7 +552,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                                   fromVirtualEnv=fromVirtualEnv)
 
     @property
-    def _resourcePath(self):
+    def _resourcePath(self) -> str:
         """
         The path to the directory that should be used when shipping this module and its siblings
         around as a resource.
@@ -557,35 +572,35 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             return self.dirPath
 
     @classmethod
-    def _initModuleName(cls, dirPath):
+    def _initModuleName(cls, dirPath: str) -> Optional[str]:
         for name in ('__init__.py', '__init__.pyc', '__init__.pyo'):
             if os.path.exists(os.path.join(dirPath, name)):
                 return name
         return None
 
-    def _rootPackage(self):
+    def _rootPackage(self) -> str:
         try:
             head, tail = self.name.split('.', 1)
         except ValueError:
-            raise ValueError('%r is stand-alone module.' % self)
+            raise ValueError('%r is stand-alone module.' % self.__repr__())
         else:
             return head
 
-    def toCommand(self):
+    def toCommand(self) -> Sequence[str]:
         return tuple(map(str, self))
 
     @classmethod
-    def fromCommand(cls, command):
+    def fromCommand(cls, command: Sequence[str]) -> "ModuleDescriptor":
         assert len(command) == 3
         return cls(dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
 
-    def makeLoadable(self):
+    def makeLoadable(self) -> "ModuleDescriptor":
         module = self if self.belongsToToil else self.localize()
         if module.dirPath not in sys.path:
             sys.path.append(module.dirPath)
         return module
 
-    def load(self):
+    def load(self) -> Optional[ModuleType]:
         module = self.makeLoadable()
         try:
             return importlib.import_module(module.name)
