@@ -314,6 +314,9 @@ class FileJobStore(AbstractJobStore):
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
         if issubclass(otherCls, FileJobStore):
+            if os.path.isdir(uri.path):
+                # Don't allow directories (unless someone is racing us)
+                raise IsADirectoryError(uri.path)
             if shared_file_name is None:
                 executable = os.stat(uri.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._get_unique_file_path(uri.path)  # use this to get a valid path to write to in job store

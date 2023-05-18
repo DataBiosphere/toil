@@ -63,6 +63,10 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     document if any.
     """
 
+    if uri == "":
+        # Empty URIs can't come from anywhere.
+        return
+
     # We need to brute-force find this URI relative to:
     #
     # 1. Itself if a full URI.
