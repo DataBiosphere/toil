@@ -720,6 +720,11 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Work out what the basename for the file was
             file_basename = os.path.basename(urlsplit(candidate_uri).path)
 
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later.
+                raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
             # Was actually found
             return pack_toil_uri(imported, file_basename)
 
