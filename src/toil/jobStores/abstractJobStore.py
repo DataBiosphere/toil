@@ -78,6 +78,16 @@ class InvalidImportExportUrlException(Exception):
         """
         super().__init__("The URL '%s' is invalid." % url.geturl())
 
+class UnimplementedURLException(RuntimeError):
+    def __init__(self, url: ParseResult, operation: str) -> None:
+        """
+        :param url: The given URL
+        """
+        super().__init__(
+            f"No available job store implementation can {operation} the URL "
+            f"'{url.geturl()}'. Ensure Toil has been installed "
+            f"with the appropriate extras."
+        )
 
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
@@ -339,8 +349,7 @@ class AbstractJobStore(ABC):
         for implementation in cls._get_job_store_classes():
             if implementation._supports_url(url, export):
                 return implementation
-        raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
-                           ('ex' if export else 'im', url.geturl()))
+        raise UnimplementedURLException(url, "export" if export else "import")
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
