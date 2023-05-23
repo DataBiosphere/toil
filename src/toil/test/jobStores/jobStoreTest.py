@@ -645,6 +645,39 @@ class AbstractJobStoreTest:
         mpTestPartSize = 5 << 20
 
         @classmethod
+        def make_link_import_tests(cls):
+            def test_file_link_import(self, size, link_imports):
+                if link_imports is None:
+                    link_imports = False
+
+                self.jobstore_initialized.linkImports = link_imports
+                self.jobstore_initialized.config.linkImports = link_imports
+
+                store = self._externalStore()
+
+                srcUrl, srcMd5 = self._prepareTestFile(store, size)
+                # Import into job store under test
+                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=link_imports)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
+                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                    # gets abs path
+                    filename = f.name
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+                if link_imports:
+                    self.assertTrue(os.path.islink(filename))
+                else:
+                    self.assertFalse(os.path.islink(filename))
+
+            make_tests(test_file_link_import, cls,
+                       size=dict(zero=0,
+                                 one=1,
+                                 oneMiB=2 ** 20,
+                                 partSizeMinusOne=cls.mpTestPartSize - 1,
+                                 partSize=cls.mpTestPartSize,
+                                 partSizePlusOne=cls.mpTestPartSize + 1),
+                       link_imports={'deactivated': None, 'activated': True})
+        @classmethod
         def makeImportExportTests(cls):
 
             testClasses = [FileJobStoreTest, AWSJobStoreTest, GoogleJobStoreTest]
@@ -1503,3 +1536,4 @@ class StubHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 
 AbstractJobStoreTest.Test.makeImportExportTests()
+AbstractJobStoreTest.Test.make_link_import_tests()

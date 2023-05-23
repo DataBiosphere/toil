@@ -1473,7 +1473,7 @@ def toil_get_file(
             pipe_threads_real.append((th, os.open(src_path, os.O_RDONLY)))
         else:
             src_path = file_store.readGlobalFile(
-                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=True
+                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=file_store.jobStore.config.linkImports
             )
 
         # TODO: shouldn't we be using these as a cache?
@@ -3803,7 +3803,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # always get a FileID out.
             file_import_function = cast(
                 Callable[[str], FileID],
-                functools.partial(toil.import_file, symlink=True),
+                functools.partial(toil.import_file, symlink=options.linkImports),
             )
 
             # Import all the input files, some of which may be missing optional
