@@ -183,7 +183,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
         localID = self.handleLocalJob(jobNode)
-        if localID:
+        if localID is not None:
             return localID
 
         self.check_resource_request(jobNode)
