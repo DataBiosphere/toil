@@ -393,7 +393,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobDesc)
-        if localID:
+        if localID is not None:
             return localID
         else:
             self.check_resource_request(jobDesc)
