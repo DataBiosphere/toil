@@ -81,7 +81,12 @@ class InvalidImportExportUrlException(Exception):
 class UnimplementedURLException(RuntimeError):
     def __init__(self, url: ParseResult, operation: str) -> None:
         """
+        Make a new exception to report that a URL scheme is not implemented, or
+        that the implementation can't be loaded because its dependencies are
+        not installed.
+
         :param url: The given URL
+        :param operation: Whether we are trying to 'import' or 'export'
         """
         super().__init__(
             f"No available job store implementation can {operation} the URL "
