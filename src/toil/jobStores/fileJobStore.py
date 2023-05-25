@@ -233,7 +233,7 @@ class FileJobStore(AbstractJobStore):
             # This is the good case; the delete arrived in time.
             # If it didn't, we might go on to re-execute the already-finished job.
             # Anyway, this job doesn't really exist after all.
-            raise NoSuchJobException()
+            raise NoSuchJobException(job_id)
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)

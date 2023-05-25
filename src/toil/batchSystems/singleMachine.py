@@ -134,8 +134,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self.debugWorker = config.debugWorker
 
-        # A counter to generate job IDs and a lock to guard it
-        self.jobIndex = 0
+        # A counter to generate job IDs and a lock to guard it.
+        # We make sure to start this at 1 so that job IDs are never falsy.
+        self.jobIndex = 1
         self.jobIndexLock = Lock()
 
         # A dictionary mapping batch system IDs of submitted jobs to the command line
