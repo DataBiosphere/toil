@@ -306,7 +306,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 del here[k]
 
         drop_boring(root_dict)
-        return cast(str, yaml.dump(root_dict))
+        return yaml.dump(root_dict)
 
     @overload
     def _api(
