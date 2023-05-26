@@ -431,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=None):
         try:
             if issubclass(otherCls, AWSJobStore):
                 srcObj = get_object_for_url(uri, existing=True)

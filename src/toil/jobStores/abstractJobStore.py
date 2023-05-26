@@ -431,7 +431,7 @@ class AbstractJobStore(ABC):
                      uri: ParseResult,
                      shared_file_name: Optional[str] = None,
                      hardlink: bool = False,
-                     symlink: bool = False) -> Optional[FileID]:
+                     symlink: Optional[bool] = None) -> Optional[FileID]:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it

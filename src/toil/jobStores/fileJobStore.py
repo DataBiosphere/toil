@@ -312,7 +312,9 @@ class FileJobStore(AbstractJobStore):
         else:
             atomic_copy(srcPath, dst_path)
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=None):
+        # honor explicit user arguments over CLI input
+        symlink = self.linkImports if symlink is None else symlink
         if issubclass(otherCls, FileJobStore):
             if shared_file_name is None:
                 executable = os.stat(uri.path).st_mode & stat.S_IXUSR != 0
