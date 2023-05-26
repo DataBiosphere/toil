@@ -728,8 +728,8 @@ class JobDescription(Requirer):
         self,
         requirements: Mapping[str, Union[int, str, bool]],
         jobName: str,
-        unitName: str = "",
-        displayName: str = "",
+        unitName: Optional[str] = "",
+        displayName: Optional[str] = "",
         command: Optional[str] = None,
         local: Optional[bool] = None
     ) -> None:
@@ -761,9 +761,13 @@ class JobDescription(Requirer):
         # Set local-ness flag, which is not (yet?) a requirement
         self.local: bool = local or False
 
-        # Save names, making sure they are strings and not e.g. bytes.
-        def makeString(x: Union[str, bytes]) -> str:
-            return x if not isinstance(x, bytes) else x.decode('utf-8', errors='replace')
+        # Save names, making sure they are strings and not e.g. bytes or None.
+        def makeString(x: Union[str, bytes, None]) -> str:
+            if isinstance(x, bytes):
+                return x.decode('utf-8', errors='replace')
+            if x is None:
+                return ""
+            return x
         self.jobName = makeString(jobName)
         self.unitName = makeString(unitName)
         self.displayName = makeString(displayName)
@@ -1224,7 +1228,9 @@ class JobDescription(Requirer):
 
     def get_job_kind(self) -> str:
         """
-        Return an identifier of the job for use with the message bus.
+        Return an identifying string for the job.
+
+        The result may contain spaces.
 
         Returns: Either the unit name, job name, or display name, which identifies
                  the kind of job it is to toil.
