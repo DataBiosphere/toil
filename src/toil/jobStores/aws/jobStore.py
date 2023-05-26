@@ -451,7 +451,17 @@ class AWSJobStore(AbstractJobStore):
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
             pass
-        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
+
+        # copy if exception
+        if shared_file_name is None:
+            with self.write_file_stream() as (writable, jobStoreFileID):
+                size, executable = otherCls._read_from_url(uri, writable)
+                return FileID(jobStoreFileID, size, executable)
+        else:
+            self._requireValidSharedFileName(shared_file_name)
+            with self.write_shared_file_stream(shared_file_name) as writable:
+                otherCls._read_from_url(uri, writable)
+                return None
 
     def _export_file(self, otherCls, file_id, uri):
         try:
