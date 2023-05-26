@@ -407,10 +407,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             else:
                 gpus = jobDesc.accelerators
 
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.get_job_kind(),
                                    job_environment, gpus))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.unitName)
+                         jobDesc.get_job_kind())
         return jobID
 
     def killBatchJobs(self, jobIDs):
