@@ -78,6 +78,21 @@ class InvalidImportExportUrlException(Exception):
         """
         super().__init__("The URL '%s' is invalid." % url.geturl())
 
+class UnimplementedURLException(RuntimeError):
+    def __init__(self, url: ParseResult, operation: str) -> None:
+        """
+        Make a new exception to report that a URL scheme is not implemented, or
+        that the implementation can't be loaded because its dependencies are
+        not installed.
+
+        :param url: The given URL
+        :param operation: Whether we are trying to 'import' or 'export'
+        """
+        super().__init__(
+            f"No available job store implementation can {operation} the URL "
+            f"'{url.geturl()}'. Ensure Toil has been installed "
+            f"with the appropriate extras."
+        )
 
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
@@ -339,8 +354,7 @@ class AbstractJobStore(ABC):
         for implementation in cls._get_job_store_classes():
             if implementation._supports_url(url, export):
                 return implementation
-        raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
-                           ('ex' if export else 'im', url.geturl()))
+        raise UnimplementedURLException(url, "export" if export else "import")
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
@@ -407,7 +421,8 @@ class AbstractJobStore(ABC):
                 e.g. gs://bucket/file
 
         :param str src_uri: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an AWS s3 bucket.
+                supported URL scheme e.g. a blob in an AWS s3 bucket. It must be a file, not a
+                directory or prefix.
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 

@@ -393,7 +393,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobDesc)
-        if localID:
+        if localID is not None:
             return localID
         else:
             self.check_resource_request(jobDesc)
@@ -407,10 +407,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             else:
                 gpus = jobDesc.accelerators
 
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.unitName,
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.get_job_kind(),
                                    job_environment, gpus))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.unitName)
+                         jobDesc.get_job_kind())
         return jobID
 
     def killBatchJobs(self, jobIDs):

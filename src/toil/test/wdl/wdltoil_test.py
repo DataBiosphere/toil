@@ -25,7 +25,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         cls.base_command = [exactPython, '-m', 'toil.wdl.wdltoil']
 
     # We inherit a testMD5sum but it is going to need Singularity and not
-    # Docker now. And also needs to have a WDL 1.0+ WDL file. So we replace it. 
+    # Docker now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity
     def testMD5sum(self):
         """Test if toilwdl produces the same outputs as known good outputs for WDL's
@@ -40,6 +40,18 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert isinstance(result['ga4ghMd5.value'], str)
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
+
+    def test_empty_file_path(self):
+        """Test if empty File type inputs are protected against"""
+        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
+        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
+
+        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        retval = p.wait()
+
+        assert retval != 0
+        assert b'Could not find' in stderr
 
     @needs_singularity
     def test_miniwdl_self_test(self):

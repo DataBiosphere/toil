@@ -233,7 +233,7 @@ class FileJobStore(AbstractJobStore):
             # This is the good case; the delete arrived in time.
             # If it didn't, we might go on to re-execute the already-finished job.
             # Anyway, this job doesn't really exist after all.
-            raise NoSuchJobException()
+            raise NoSuchJobException(job_id)
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
@@ -316,6 +316,9 @@ class FileJobStore(AbstractJobStore):
         # honor explicit user arguments over CLI input
         symlink = self.linkImports if symlink is None else symlink
         if issubclass(otherCls, FileJobStore):
+            if os.path.isdir(uri.path):
+                # Don't allow directories (unless someone is racing us)
+                raise IsADirectoryError(f"URI {uri} points to a directory but a file was expected")
             if shared_file_name is None:
                 executable = os.stat(uri.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._get_unique_file_path(uri.path)  # use this to get a valid path to write to in job store

@@ -46,7 +46,7 @@ from toil.common import Config, Toil, addOptions
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
@@ -62,6 +62,10 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     the given paths or URIs, the current directory, and the given importing WDL
     document if any.
     """
+
+    if uri == "":
+        # Empty URIs can't come from anywhere.
+        return
 
     # We need to brute-force find this URI relative to:
     #
@@ -705,9 +709,16 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             tried.append(candidate_uri)
             try:
                 imported = toil.import_file(candidate_uri)
+            except UnimplementedURLException as e:
+                # We can't find anything that can even support this URL scheme.
+                # Report to the user, they are probably missing an extra.
+                logger.critical('Error: ' + str(e))
+                sys.exit(1)
             except Exception:
-                # We couldn't try the import. Try the next URL
-                continue
+                # Something went wrong besides the file not being found. Maybe
+                # we have no auth.
+                logger.error("Something went wrong importing %s", candidate_uri)
+                raise
             if imported is None:
                 # Wasn't found there
                 continue
@@ -716,13 +727,16 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Work out what the basename for the file was
             file_basename = os.path.basename(urlsplit(candidate_uri).path)
 
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later.
+                raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
             # Was actually found
             return pack_toil_uri(imported, file_basename)
 
         # If we get here we tried all the candidates
-        # TODO: Make a more informative message?
-        logger.error('Could not find %s at any of: %s', uri, tried)
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
+        raise RuntimeError(f"Could not find {uri} at any of: {tried}")
 
     return map_over_files_in_bindings(environment, import_file_from_uri)
 
