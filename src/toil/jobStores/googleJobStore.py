@@ -20,7 +20,7 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from urllib.parse import ParseResult
 
 from google.api_core.exceptions import (GoogleAPICallError,
@@ -33,6 +33,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
+
+from toil.fileStores import FileID
+
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
@@ -562,3 +565,35 @@ class GoogleJobStore(AbstractJobStore):
 
         with DownloadPipe(encoding=encoding, errors=errors) as readable:
             yield readable
+
+    def _import_file(self,
+                     otherCls: 'AbstractJobStore',
+                     uri: ParseResult,
+                     shared_file_name: Optional[str] = None,
+                     hardlink: bool = False,
+                     symlink: bool = False) -> Optional[FileID]:
+        """
+        Import the file at the given URL using the given job store class to retrieve that file.
+        See also :meth:`.importFile`. This method applies a generic approach to importing: it
+        asks the other job store class for a stream and writes that stream as either a regular or
+        a shared file.
+
+        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+               reading from the given URL and getting the file size from the URL.
+
+        :param ParseResult uri: The location of the file to import.
+
+        :param str shared_file_name: Optional name to assign to the imported file within the job store
+
+        :return The FileID of imported file or None if sharedFileName was given
+        :rtype: toil.fileStores.FileID or None
+        """
+        if shared_file_name is None:
+            with self.write_file_stream() as (writable, jobStoreFileID):
+                size, executable = otherCls._read_from_url(uri, writable)
+                return FileID(jobStoreFileID, size, executable)
+        else:
+            self._requireValidSharedFileName(shared_file_name)
+            with self.write_shared_file_stream(shared_file_name) as writable:
+                otherCls._read_from_url(uri, writable)
+                return None

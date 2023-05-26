@@ -1473,7 +1473,7 @@ def toil_get_file(
             pipe_threads_real.append((th, os.open(src_path, os.O_RDONLY)))
         else:
             src_path = file_store.readGlobalFile(
-                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=file_store.jobStore.config.linkImports
+                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=True
             )
 
         # TODO: shouldn't we be using these as a cache?

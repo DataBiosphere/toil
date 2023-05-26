@@ -448,15 +448,7 @@ class AbstractJobStore(ABC):
         :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
-        if shared_file_name is None:
-            with self.write_file_stream() as (writable, jobStoreFileID):
-                size, executable = otherCls._read_from_url(uri, writable)
-                return FileID(jobStoreFileID, size, executable)
-        else:
-            self._requireValidSharedFileName(shared_file_name)
-            with self.write_shared_file_stream(shared_file_name) as writable:
-                otherCls._read_from_url(uri, writable)
-                return None
+        raise NotImplementedError
 
     @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
