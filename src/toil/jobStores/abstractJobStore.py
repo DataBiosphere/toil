@@ -421,7 +421,8 @@ class AbstractJobStore(ABC):
                 e.g. gs://bucket/file
 
         :param str src_uri: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an AWS s3 bucket.
+                supported URL scheme e.g. a blob in an AWS s3 bucket. It must be a file, not a
+                directory or prefix.
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 
