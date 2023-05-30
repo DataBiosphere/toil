@@ -645,39 +645,6 @@ class AbstractJobStoreTest:
         mpTestPartSize = 5 << 20
 
         @classmethod
-        def make_link_import_tests(cls):
-            def test_file_link_import(self, size, link_imports):
-                if link_imports is None:
-                    link_imports = False
-
-                self.jobstore_initialized.linkImports = link_imports
-                self.jobstore_initialized.config.linkImports = link_imports
-
-                store = self._externalStore()
-
-                srcUrl, srcMd5 = self._prepareTestFile(store, size)
-                # Import into job store under test
-                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=link_imports)
-                self.assertTrue(isinstance(jobStoreFileID, FileID))
-                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
-                    # gets abs path
-                    filename = f.name
-                    fileMD5 = hashlib.md5(f.read()).hexdigest()
-                self.assertEqual(fileMD5, srcMd5)
-                if link_imports:
-                    self.assertTrue(os.path.islink(filename))
-                else:
-                    self.assertFalse(os.path.islink(filename))
-
-            make_tests(test_file_link_import, cls,
-                       size=dict(zero=0,
-                                 one=1,
-                                 oneMiB=2 ** 20,
-                                 partSizeMinusOne=cls.mpTestPartSize - 1,
-                                 partSize=cls.mpTestPartSize,
-                                 partSizePlusOne=cls.mpTestPartSize + 1),
-                       link_imports={'deactivated': None, 'activated': True})
-        @classmethod
         def makeImportExportTests(cls):
 
             testClasses = [FileJobStoreTest, AWSJobStoreTest, GoogleJobStoreTest]
@@ -1244,6 +1211,60 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 # Clean up download directory
                 shutil.rmtree(download_dir)
 
+    def test_file_link_imports_args(self):
+        """
+        Test if imports are linked when passing in the symlink argument manually
+        The user passed argument symlink should take priority over the linkImports value in the jobStore config
+        """
+        for link_imports in [True, False]:
+            store = self._externalStore()
+
+            size = 1
+
+            srcUrl, srcMd5 = self._prepareTestFile(store, size)
+            # Import into job store under test
+            jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=link_imports)
+            self.assertTrue(isinstance(jobStoreFileID, FileID))
+            with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                # gets abs path
+                filename = f.name
+                fileMD5 = hashlib.md5(f.read()).hexdigest()
+            self.assertEqual(fileMD5, srcMd5)
+            if link_imports:
+                self.assertTrue(os.path.islink(filename))
+            else:
+                self.assertFalse(os.path.islink(filename))
+
+            # Remove local Files
+            os.remove(srcUrl[7:])
+
+
+    def test_file_link_imports_config(self):
+        """Test if imports are linked when CLI config is set and symlink argument is unset"""
+        for link_imports in [True, False]:
+            self.jobstore_initialized.linkImports = link_imports
+
+            store = self._externalStore()
+
+            size = 1
+
+            srcUrl, srcMd5 = self._prepareTestFile(store, size)
+            # Import into job store under test
+            # by default, symlink=None, so it should take the value from jobstore
+            jobStoreFileID = self.jobstore_initialized.import_file(srcUrl)
+            self.assertTrue(isinstance(jobStoreFileID, FileID))
+            with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                # gets abs path
+                filename = f.name
+                fileMD5 = hashlib.md5(f.read()).hexdigest()
+            self.assertEqual(fileMD5, srcMd5)
+            if self.jobstore_initialized.linkImports:
+                self.assertTrue(os.path.islink(filename))
+            else:
+                self.assertFalse(os.path.islink(filename))
+
+            # Remove local Files
+            os.remove(srcUrl[7:])
 
 
 @needs_google
@@ -1536,4 +1557,3 @@ class StubHttpRequestHandler(http.server.SimpleHTTPRequestHandler):
 
 
 AbstractJobStoreTest.Test.makeImportExportTests()
-AbstractJobStoreTest.Test.make_link_import_tests()

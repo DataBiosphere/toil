@@ -1277,7 +1277,7 @@ class Toil(ContextManager["Toil"]):
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: bool = False) -> Optional[FileID]:
+                    symlink: Optional[bool] = False) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 

@@ -364,21 +364,21 @@ class AbstractJobStore(ABC):
                    srcUrl: str,
                    sharedFileName: str,
                    hardlink: bool = False,
-                   symlink: bool = False) -> None: ...
+                   symlink: Optional[bool] = None) -> None: ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
                    hardlink: bool = False,
-                   symlink: bool = False) -> FileID: ...
+                   symlink: Optional[bool] = None) -> FileID: ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
                    hardlink: bool = False,
-                   symlink: bool = False) -> Optional[FileID]:
+                   symlink: Optional[bool] = None) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
 
     @overload
@@ -386,20 +386,20 @@ class AbstractJobStore(ABC):
                     src_uri: str,
                     shared_file_name: str,
                     hardlink: bool = False,
-                    symlink: bool = False) -> None: ...
+                    symlink: Optional[bool] = None) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
                     hardlink: bool = False,
-                    symlink: bool = False) -> FileID: ...
+                    symlink: Optional[bool] = None) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
                     hardlink: bool = False,
-                    symlink: bool = False) -> Optional[FileID]:
+                    symlink: Optional[bool] = None) -> Optional[FileID]:
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as

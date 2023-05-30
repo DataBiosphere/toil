@@ -307,7 +307,7 @@ class FileJobStore(AbstractJobStore):
     def _copy_or_link(self, src_path, dst_path, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extract_path_from_url(src_path)
-        if self.linkImports or symlink:
+        if symlink:
             os.symlink(os.path.realpath(srcPath), dst_path)
         else:
             atomic_copy(srcPath, dst_path)
