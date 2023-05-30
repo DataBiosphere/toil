@@ -334,7 +334,15 @@ class FileJobStore(AbstractJobStore):
                     self._copy_or_link(uri, path, symlink=symlink)
                 return None
         else:
-            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
+            if shared_file_name is None:
+                with self.write_file_stream() as (writable, jobStoreFileID):
+                    size, executable = otherCls._read_from_url(uri, writable)
+                    return FileID(jobStoreFileID, size, executable)
+            else:
+                self._requireValidSharedFileName(shared_file_name)
+                with self.write_shared_file_stream(shared_file_name) as writable:
+                    otherCls._read_from_url(uri, writable)
+                    return None
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, FileJobStore):
