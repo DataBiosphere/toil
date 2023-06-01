@@ -14,6 +14,7 @@
 
 """Accelerator (i.e. GPU) utilities for Toil"""
 
+import os
 import subprocess
 from typing import Dict, List, Optional, Set, Union
 from xml.dom import minidom
