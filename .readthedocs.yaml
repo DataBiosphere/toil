@@ -13,6 +13,11 @@ sphinx:
    configuration: docs/conf.py
 
 python:
-   install:
+   install:  
    # We list all our docs build requirements as dev dependencies, so install the dev dependencies.
    - requirements: requirements-dev.txt
+   # Install Toil itself, without any extras.
+   - method: pip
+     path: .
+     extra_requirements: []
+  
