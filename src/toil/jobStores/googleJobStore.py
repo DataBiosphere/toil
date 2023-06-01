@@ -565,27 +565,3 @@ class GoogleJobStore(AbstractJobStore):
 
         with DownloadPipe(encoding=encoding, errors=errors) as readable:
             yield readable
-
-    def _import_file(self,
-                     otherCls: 'AbstractJobStore',
-                     uri: ParseResult,
-                     shared_file_name: Optional[str] = None,
-                     hardlink: bool = False,
-                     symlink: Optional[bool] = None) -> Optional[FileID]:
-        """
-        Import the file at the given URL using the given job store class to retrieve that file.
-        See also :meth:`.importFile`. This method applies a generic approach to importing: it
-        asks the other job store class for a stream and writes that stream as either a regular or
-        a shared file.
-
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
-               reading from the given URL and getting the file size from the URL.
-
-        :param ParseResult uri: The location of the file to import.
-
-        :param str shared_file_name: Optional name to assign to the imported file within the job store
-
-        :return The FileID of imported file or None if sharedFileName was given
-        :rtype: toil.fileStores.FileID or None
-        """
-        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
