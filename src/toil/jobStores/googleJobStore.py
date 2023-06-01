@@ -588,12 +588,4 @@ class GoogleJobStore(AbstractJobStore):
         :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
-        if shared_file_name is None:
-            with self.write_file_stream() as (writable, jobStoreFileID):
-                size, executable = otherCls._read_from_url(uri, writable)
-                return FileID(jobStoreFileID, size, executable)
-        else:
-            self._requireValidSharedFileName(shared_file_name)
-            with self.write_shared_file_stream(shared_file_name) as writable:
-                otherCls._read_from_url(uri, writable)
-                return None
+        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)

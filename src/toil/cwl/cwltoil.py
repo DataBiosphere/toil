@@ -2015,7 +2015,7 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.import_file(f.name).pack()
+                                "toilfile:" + toil.import_file(f.name, symlink=False).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -3803,7 +3803,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # always get a FileID out.
             file_import_function = cast(
                 Callable[[str], FileID],
-                functools.partial(toil.import_file, symlink=options.linkImports),
+                functools.partial(toil.import_file, symlink=True),
             )
 
             # Import all the input files, some of which may be missing optional

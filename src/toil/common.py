@@ -1247,37 +1247,37 @@ class Toil(ContextManager["Toil"]):
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: str,
-                   symlink: bool = False) -> None: ...
+                   symlink: bool = True) -> None: ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
-                   symlink: bool = False) -> FileID: ...
+                   symlink: bool = True) -> FileID: ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
-                   symlink: bool = False) -> Optional[FileID]:
+                   symlink: bool = True) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, symlink)
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: str,
-                    symlink: bool = False) -> None: ...
+                    symlink: bool = True) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
-                    symlink: bool = False) -> FileID: ...
+                    symlink: bool = True) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: Optional[bool] = False) -> Optional[FileID]:
+                    symlink: bool = True) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 

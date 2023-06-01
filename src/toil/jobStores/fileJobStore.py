@@ -307,14 +307,15 @@ class FileJobStore(AbstractJobStore):
     def _copy_or_link(self, src_path, dst_path, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extract_path_from_url(src_path)
-        if symlink:
+        if self.linkImports and symlink:
             os.symlink(os.path.realpath(srcPath), dst_path)
         else:
             atomic_copy(srcPath, dst_path)
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=None):
-        # honor explicit user arguments over CLI input
-        symlink = self.linkImports if symlink is None else symlink
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
+        # symlink argument says whether the caller can take symlinks or not
+        # ex: if false, it implies the workflow cannot work with symlinks and thus will hardlink imports
+        # default is true since symlinking everything is ideal
         if issubclass(otherCls, FileJobStore):
             if os.path.isdir(uri.path):
                 # Don't allow directories (unless someone is racing us)
@@ -334,15 +335,7 @@ class FileJobStore(AbstractJobStore):
                     self._copy_or_link(uri, path, symlink=symlink)
                 return None
         else:
-            if shared_file_name is None:
-                with self.write_file_stream() as (writable, jobStoreFileID):
-                    size, executable = otherCls._read_from_url(uri, writable)
-                    return FileID(jobStoreFileID, size, executable)
-            else:
-                self._requireValidSharedFileName(shared_file_name)
-                with self.write_shared_file_stream(shared_file_name) as writable:
-                    otherCls._read_from_url(uri, writable)
-                    return None
+            return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         if issubclass(otherCls, FileJobStore):

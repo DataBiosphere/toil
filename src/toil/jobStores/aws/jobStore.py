@@ -431,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=None):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
         try:
             if issubclass(otherCls, AWSJobStore):
                 srcObj = get_object_for_url(uri, existing=True)
@@ -453,15 +453,7 @@ class AWSJobStore(AbstractJobStore):
             pass
 
         # copy if exception
-        if shared_file_name is None:
-            with self.write_file_stream() as (writable, jobStoreFileID):
-                size, executable = otherCls._read_from_url(uri, writable)
-                return FileID(jobStoreFileID, size, executable)
-        else:
-            self._requireValidSharedFileName(shared_file_name)
-            with self.write_shared_file_stream(shared_file_name) as writable:
-                otherCls._read_from_url(uri, writable)
-                return None
+        return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
         try:

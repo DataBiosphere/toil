@@ -364,21 +364,21 @@ class AbstractJobStore(ABC):
                    srcUrl: str,
                    sharedFileName: str,
                    hardlink: bool = False,
-                   symlink: Optional[bool] = None) -> None: ...
+                   symlink: bool = True) -> None: ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
                    hardlink: bool = False,
-                   symlink: Optional[bool] = None) -> FileID: ...
+                   symlink: bool = True) -> FileID: ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
                    hardlink: bool = False,
-                   symlink: Optional[bool] = None) -> Optional[FileID]:
+                   symlink: bool = True) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
 
     @overload
@@ -386,20 +386,20 @@ class AbstractJobStore(ABC):
                     src_uri: str,
                     shared_file_name: str,
                     hardlink: bool = False,
-                    symlink: Optional[bool] = None) -> None: ...
+                    symlink: bool = True) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
                     hardlink: bool = False,
-                    symlink: Optional[bool] = None) -> FileID: ...
+                    symlink: bool = True) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
                     hardlink: bool = False,
-                    symlink: Optional[bool] = None) -> Optional[FileID]:
+                    symlink: bool = True) -> Optional[FileID]:
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
@@ -446,7 +446,7 @@ class AbstractJobStore(ABC):
                      uri: ParseResult,
                      shared_file_name: Optional[str] = None,
                      hardlink: bool = False,
-                     symlink: Optional[bool] = None) -> Optional[FileID]:
+                     symlink: bool = True) -> Optional[FileID]:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
@@ -463,7 +463,16 @@ class AbstractJobStore(ABC):
         :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
-        raise NotImplementedError
+
+        if shared_file_name is None:
+            with self.write_file_stream() as (writable, jobStoreFileID):
+                size, executable = otherCls._read_from_url(uri, writable)
+                return FileID(jobStoreFileID, size, executable)
+        else:
+            self._requireValidSharedFileName(shared_file_name)
+            with self.write_shared_file_stream(shared_file_name) as writable:
+                otherCls._read_from_url(uri, writable)
+                return None
 
     @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:

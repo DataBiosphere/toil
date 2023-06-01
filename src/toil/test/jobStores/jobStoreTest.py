@@ -1211,60 +1211,32 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 # Clean up download directory
                 shutil.rmtree(download_dir)
 
-    def test_file_link_imports_args(self):
+    def test_file_link_imports(self):
         """
-        Test if imports are linked when passing in the symlink argument manually
-        The user passed argument symlink should take priority over the linkImports value in the jobStore config
+        Test that imported files are symlinked when when expected
         """
-        for link_imports in [True, False]:
-            store = self._externalStore()
+        store = self._externalStore()
+        size = 1
+        srcUrl, srcMd5 = self._prepareTestFile(store, size)
+        for symlink in [True, False]:
+            for link_imports in [True, False]:
+                self.jobstore_initialized.linkImports = link_imports
+                # Import into job store under test
+                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=symlink)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
+                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                    # gets abs path
+                    filename = f.name
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+                if link_imports and symlink:
+                    self.assertTrue(os.path.islink(filename))
+                else:
+                    self.assertFalse(os.path.islink(filename))
 
-            size = 1
-
-            srcUrl, srcMd5 = self._prepareTestFile(store, size)
-            # Import into job store under test
-            jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=link_imports)
-            self.assertTrue(isinstance(jobStoreFileID, FileID))
-            with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
-                # gets abs path
-                filename = f.name
-                fileMD5 = hashlib.md5(f.read()).hexdigest()
-            self.assertEqual(fileMD5, srcMd5)
-            if link_imports:
-                self.assertTrue(os.path.islink(filename))
-            else:
-                self.assertFalse(os.path.islink(filename))
-
-            # Remove local Files
-            os.remove(srcUrl[7:])
-
-
-    def test_file_link_imports_config(self):
-        """Test if imports are linked when CLI config is set and symlink argument is unset"""
-        for link_imports in [True, False]:
-            self.jobstore_initialized.linkImports = link_imports
-
-            store = self._externalStore()
-
-            size = 1
-
-            srcUrl, srcMd5 = self._prepareTestFile(store, size)
-            # Import into job store under test
-            # by default, symlink=None, so it should take the value from jobstore
-            jobStoreFileID = self.jobstore_initialized.import_file(srcUrl)
-            self.assertTrue(isinstance(jobStoreFileID, FileID))
-            with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
-                # gets abs path
-                filename = f.name
-                fileMD5 = hashlib.md5(f.read()).hexdigest()
-            self.assertEqual(fileMD5, srcMd5)
-            if self.jobstore_initialized.linkImports:
-                self.assertTrue(os.path.islink(filename))
-            else:
-                self.assertFalse(os.path.islink(filename))
-
-            # Remove local Files
-            os.remove(srcUrl[7:])
+                # Remove local Files
+                os.remove(filename)
+        os.remove(srcUrl[7:])
 
 
 @needs_google
