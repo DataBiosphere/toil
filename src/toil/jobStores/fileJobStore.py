@@ -307,12 +307,15 @@ class FileJobStore(AbstractJobStore):
     def _copy_or_link(self, src_path, dst_path, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extract_path_from_url(src_path)
-        if self.linkImports or symlink:
+        if self.linkImports and symlink:
             os.symlink(os.path.realpath(srcPath), dst_path)
         else:
             atomic_copy(srcPath, dst_path)
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
+        # symlink argument says whether the caller can take symlinks or not
+        # ex: if false, it implies the workflow cannot work with symlinks and thus will hardlink imports
+        # default is true since symlinking everything is ideal
         if issubclass(otherCls, FileJobStore):
             if os.path.isdir(uri.path):
                 # Don't allow directories (unless someone is racing us)
