@@ -1211,6 +1211,32 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 # Clean up download directory
                 shutil.rmtree(download_dir)
 
+    def test_file_link_imports(self):
+        """
+        Test that imported files are symlinked when when expected
+        """
+        store = self._externalStore()
+        size = 1
+        srcUrl, srcMd5 = self._prepareTestFile(store, size)
+        for symlink in [True, False]:
+            for link_imports in [True, False]:
+                self.jobstore_initialized.linkImports = link_imports
+                # Import into job store under test
+                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=symlink)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
+                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                    # gets abs path
+                    filename = f.name
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+                if link_imports and symlink:
+                    self.assertTrue(os.path.islink(filename))
+                else:
+                    self.assertFalse(os.path.islink(filename))
+
+                # Remove local Files
+                os.remove(filename)
+        os.remove(srcUrl[7:])
 
 
 @needs_google
