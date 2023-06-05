@@ -403,6 +403,7 @@ class AbstractFileStore(ABC):
                       :func:`toil.fileStores.CachingFileStore.readGlobalFile`
         :param mutable: Described in
                         :func:`toil.fileStores.CachingFileStore.readGlobalFile`
+        :param symlink: True if caller can accept symlink, False if caller can only accept a normal file or hardlink
 
         :return: An absolute path to a local, temporary copy of the file keyed
                  by fileStoreID.
