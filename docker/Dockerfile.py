@@ -129,16 +129,16 @@ print(heredoc('''
     #    > /etc/apt/sources.list.d/mesos.list \
     #    && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
     #
-    #RUN apt-get -y update --fix-missing && \
-    #    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
-    #    DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-    #    if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
-    #    apt-get clean && \
-    #    rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
     # For now we install from the snapshotted DEBs directly
     RUN if [ $TARGETARCH = amd64 ] ; then wget -q "$(cat /etc/toil/extra-debs.tsv | grep "^mesos.$TARGETARCH" | cut -f4)" && \
         dpkg -i mesos_*.deb && \
-        rm *.deb ; \
+        rm *.deb && \
+        mesos-agent --help >/dev/null; \
         fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
