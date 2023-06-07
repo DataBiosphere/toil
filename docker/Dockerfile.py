@@ -57,8 +57,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'time',
                          # Dependencies for Mesos which the deb doesn't actually list
                          'libsvn1',
-                         'libcurl4-nss-dev',
                          'libapr1',
+                         # Dependencies for Mesos which the deb does list but dpkg -i won't fetch
+                         'default-jre',
+                         'libevent-dev',
+                         'libcurl4-openssl-dev',
                          # Dependencies for singularity
                          'containernetworking-plugins'])
 
