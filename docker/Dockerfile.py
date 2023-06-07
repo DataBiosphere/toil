@@ -101,24 +101,45 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
+    ADD extra-debs.tsv /etc/toil/extra-debs.tsv
+
     # Find a repo with a Mesos build.
     # See https://rpm.aventer.biz/README.txt
-    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/ for https://rpm.aventer.biz/Ubuntu
-    # And one that works with https://rpm.aventer.biz/Ubuntu/focal (the new URL) is at https://ipfs.io/ipfs/Qmcrmx7T1YkEnyexMXdd7QjoBZxf7DMDrQ5ErUKi9mDRw6/
+    #
+    # A working snapshot is
+    # https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/ for
+    # https://rpm.aventer.biz/Ubuntu
+    #
+    # This is rehosted at
+    # https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS
+    #
+    # An attempt at one that works with https://rpm.aventer.biz/Ubuntu/focal
+    # (the new URL) is at
+    # https://ipfs.io/ipfs/Qmcrmx7T1YkEnyexMXdd7QjoBZxf7DMDrQ5ErUKi9mDRw6/ but
+    # that didn't grab the debs themselves.
+    #
     # As archived with:
+    #
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://rpm.aventer.biz/Ubuntu/focal focal main" \
-        > /etc/apt/sources.list.d/mesos.list \
-        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
-
-    RUN apt-get -y update --fix-missing && \
-        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
-        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+    #
+    # TODO: Fix this process to always actually grab the DEBs.
+    #RUN echo "deb https://rpm.aventer.biz/Ubuntu/focal focal main" \
+    #    > /etc/apt/sources.list.d/mesos.list \
+    #    && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
+    #
+    #RUN apt-get -y update --fix-missing && \
+    #    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+    #    DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+    #    if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
+    #    apt-get clean && \
+    #    rm -rf /var/lib/apt/lists/*
+    # For now we install from the snapshotted DEBs directly
+    RUN if [ $TARGETARCH = amd64 ] ; then wget -q "$(cat /etc/toil/extra-debs.tsv | grep "^mesos.$TARGETARCH" | cut -f4)" && \
+        dpkg -i mesos_*.deb && \
+        rm *.deb ; \
+        fi
     
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
@@ -141,10 +162,9 @@ print(heredoc('''
     # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
     #
     # So we need to make sure to install a downgraded squashfs first.
-    ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
-    RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
+    RUN wget -q "$(cat /etc/toil/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
         dpkg -i squashfs-tools_*.deb && \
-        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
+        wget -q "$(cat /etc/toil/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
         dpkg -i singularity-container_*.deb && \
         rm singularity-container_*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
