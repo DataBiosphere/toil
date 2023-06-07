@@ -101,8 +101,6 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
-    ADD extra-debs.tsv /etc/toil/extra-debs.tsv
-
     # Find a repo with a Mesos build.
     # See https://rpm.aventer.biz/README.txt
     #
@@ -134,7 +132,10 @@ print(heredoc('''
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
+
+
     # For now we install from the snapshotted DEBs directly
+    ADD extra-debs.tsv /etc/toil/extra-debs.tsv
     RUN if [ $TARGETARCH = amd64 ] ; then wget -q "$(cat /etc/toil/extra-debs.tsv | grep "^mesos.$TARGETARCH" | cut -f4)" && \
         dpkg -i mesos_*.deb && \
         rm *.deb && \
