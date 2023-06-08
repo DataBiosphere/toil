@@ -32,6 +32,7 @@ import tempfile
 import uuid
 
 from contextlib import ExitStack
+from graphlib import TopologicalSorter
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
@@ -1375,7 +1376,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         """
         Make a new job to run a list of workflow nodes to completion.
         """
-        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
+        super().__init__(unitName=nodes[0].workflow_node_id + '+', displayName=nodes[0].workflow_node_id + '+', **kwargs)
 
         self._nodes = nodes
         self._prev_node_results = prev_node_results
@@ -1402,7 +1403,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                 value = evaluate_decl(node, current_bindings, standard_library)
                 current_bindings = current_bindings.bind(node.name, value)
             else:
-                raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(node)))
+                raise WDL.Error.InvalidType(node, "Unimplemented WorkflowNode: " + str(type(node)))
 
         return current_bindings
 
@@ -1462,6 +1463,102 @@ class WDLNamespaceBindingsJob(WDLBaseJob):
         super().run(file_store)
         return combine_bindings(unwrap_all(self._prev_node_results)).wrap_namespace(self._namespace)
 
+class WDLWorkflowGraph:
+    """
+    Represents a graph of WDL WorkflowNodes.
+
+    Operates at a certain level of instantiation (i.e. sub-sections are
+    represented by single nodes).
+
+    Assumes all relevant nodes are provided; dependencies outside the provided
+    nodes are assumed to be satisfied already.
+    """
+
+    def __init__(self, nodes: Sequence[WDL.Tree.WorkflowNode]) -> None:
+        """
+        Make a graph for analyzing a set of workflow nodes.
+        """
+
+        # For Gather nodes, the Toil interpreter handles them as part of their
+        # associated section. So make a map from gather ID to the section node
+        # ID.
+        self._gather_to_section: Dict[str, str] = {}
+        for node in nodes:
+            if isinstance(node, WDL.Tree.WorkflowSection):
+                for gather_node in node.gathers.values():
+                    self._gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
+
+        # Store all the nodes by ID, except the gathers which we elide.
+        self._nodes: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if not isinstance(node, WDL.Tree.Gather)}
+
+    def real_id(self, node_id: str) -> str:
+        """
+        Map multiple IDs for what we consider the same node to one ID.
+
+        This elides/resolves gathers.
+        """
+        return self._gather_to_section.get(node_id, node_id)
+
+    def get(self, node_id: str) -> WDL.Tree.WorkflowNode:
+        """
+        Get a node by ID.
+        """
+        return self._nodes[self.real_id(node_id)]
+
+    def get_dependencies(self, node_id: str) -> List[str]:
+        """
+        Get all the nodes that a node depends on.
+
+        Produces dependencies after resolving gathers and internal-to-section
+        dependencies, on nodes that are also in this graph.
+        """
+
+        # We need to make sure to bubble up dependencies from inside sections.
+        # A conditional might only appear to depend on the variables in the
+        # conditional expression, but its body can depend on other stuff, and
+        # we need to make sure that that stuff has finished and updated the
+        # environment before the conditional body runs. TODO: This is because
+        # Toil can't go and get and add successors to the relevant jobs later,
+        # while MiniWDL's engine apparently can. This ends up reducing
+        # parallelism more than would strictly be necessary; nothing in the
+        # conditional can start until the dependencies of everything in the
+        # conditional are ready.
+
+        dependencies = set()
+
+        node = self.get(node_id)
+        for dependency in recursive_dependencies(node):
+            real_dependency = self.real_id(dependency)
+            if real_dependency in self._nodes:
+                dependencies.add(real_dependency)
+
+        return list(dependencies)
+
+    def topological_order(self) -> List[str]:
+        """
+        Get a topological order of the nodes, based on their dependencies.
+        """
+
+        sorter : TopologicalSorter[str] = TopologicalSorter()
+        for node_id in self._nodes.keys():
+            for dependency in self.get_dependencies(node_id):
+                # Add all the edges
+                sorter.add(node_id, dependency)
+        return list(sorter.static_order())
+
+    def leaves(self) -> List[str]:
+        """
+        Get all the workflow node IDs that have no dependents in the graph.
+        """
+
+        leaves = set(self._nodes.keys())
+        for node_id in self._nodes.keys():
+            for dependency in self.get_dependencies(node_id):
+                # Mark everything depended on as not a leaf
+                leaves.remove(dependency)
+        return list(leaves)
+
+
 class WDLSectionJob(WDLBaseJob):
     """
     Job that can create more graph for a section of the wrokflow.
@@ -1493,95 +1590,31 @@ class WDLSectionJob(WDLBaseJob):
                at the end of the section.
         """
 
-        # We need to track the dependency universe; some of our child nodes may
-        # depend on nodes that are e.g. inputs to the workflow that encloses
-        # the section that encloses this section, and we need to just assume
-        # those are already available, even though we don't have access to the
-        # complete list. So we make a set of everything we actually do need to
-        # care about resolving, instead.
-        dependabes: Set[str] = set()
-
         if local_environment is not None:
             # Bring local environment into scope
             environment = combine_bindings([environment, local_environment])
 
-        # What nodes exist, under their IDs?
-        wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if isinstance(node, WDL.Tree.WorkflowNode)}
-        dependabes |= set(wdl_id_to_wdl_node.keys())
-
-        # That doesn't include gather nodes, which in the Toil interpreter we
-        # handle as part of their enclosing section, without individual Toil
-        # jobs for each. So make a map from gather ID to the section node ID.
-        gather_to_section: Dict[str, str] = {}
-        for node in nodes:
-            if isinstance(node, WDL.Tree.WorkflowSection):
-                for gather_node in node.gathers.values():
-                    gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
-        dependabes |= set(gather_to_section.keys())
+        # Make a graph of all the nodes at this level
+        section_graph = WDLWorkflowGraph(nodes)
 
         # To make Toil jobs, we need all the jobs they depend on made so we can
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
+           
+        wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
 
-        # We also need to make sure to bubble up dependencies from inside
-        # sections. A conditional might only appear to depend on the variables
-        # in the conditional expression, but its body can depend on other
-        # stuff, and we need to make sure that that stuff has finished and
-        # updated the environment before the conditional body runs. TODO: This
-        # is because Toil can't go and get and add successors to the relevant
-        # jobs later, while MiniWDL's engine apparently can. This ends up
-        # reducing parallelism more than would strictly be necessary; nothing
-        # in the conditional can start until the dependencies of everything in
-        # the conditional are ready.
-
-        # What are the dependencies of all the body nodes on other body nodes?
-        # Nodes can depend on other nodes actually in the tree, or on gathers
-        # that belong to other nodes, but we rewrite the gather dependencies
-        # through to the enclosing section node. Skip any dependencies on
-        # anything not provided by another body node (such as on an input, or
-        # something outside of the current section). TODO: This will need to
-        # change if we let parallelism transcend sections.
-        wdl_id_to_dependency_ids = {node_id: list({gather_to_section[dep] if dep in gather_to_section else dep for dep in recursive_dependencies(node) if dep in dependabes}) for node_id, node in wdl_id_to_wdl_node.items()}
-
-        # Which of those are outstanding?
-        wdl_id_to_outstanding_dependency_ids = copy.deepcopy(wdl_id_to_dependency_ids)
-
-        # What nodes depend on each node?
-        wdl_id_to_dependent_ids: Dict[str, Set[str]] = collections.defaultdict(set)
-        for node_id, dependencies in wdl_id_to_dependency_ids.items():
-            for dependency_id in dependencies:
-                # Invert the dependency edges
-                wdl_id_to_dependent_ids[dependency_id].add(node_id)
-
-        # This will hold all the Toil jobs by WDL node ID
-        wdl_id_to_toil_job: Dict[str, Job] = {}
-
-        # And collect IDs of jobs with no successors to add a final sink job
-        leaf_ids: Set[str] = set()
-
-        # What nodes are ready?
-        ready_node_ids = {node_id for node_id, dependencies in wdl_id_to_outstanding_dependency_ids.items() if len(dependencies) == 0}
-
-        while len(wdl_id_to_outstanding_dependency_ids) > 0:
-            logger.debug('Ready nodes: %s', ready_node_ids)
-            logger.debug('Waiting nodes: %s', wdl_id_to_outstanding_dependency_ids)
-
-            # Find a node that we can do now
-            node_id = next(iter(ready_node_ids))
-
-            # Say we are doing it
-            ready_node_ids.remove(node_id)
-            del wdl_id_to_outstanding_dependency_ids[node_id]
+        for node_id in section_graph.topological_order():
+            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
+            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in section_graph.get_dependencies(node_id)]
+            
             logger.debug('Make Toil job for %s', node_id)
 
-            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in wdl_id_to_dependency_ids[node_id] if prev_node_id in wdl_id_to_toil_job]
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
 
             # Use them to make a new job
-            job = WDLWorkflowNodeJob(wdl_id_to_wdl_node[node_id], rvs, self._namespace)
+            job = WDLWorkflowNodeJob(section_graph.get(node_id), rvs, self._namespace)
             for prev_job in prev_jobs:
                 # Connect up the happens-after relationships to make sure the
                 # return values are available.
@@ -1595,19 +1628,9 @@ class WDLSectionJob(WDLBaseJob):
 
             # Save the job
             wdl_id_to_toil_job[node_id] = job
-
-            if len(wdl_id_to_dependent_ids[node_id]) == 0:
-                # Nothing comes after this job, so connect it to sink
-                leaf_ids.add(node_id)
-            else:
-                for dependent_id in wdl_id_to_dependent_ids[node_id]:
-                    # For each job that waits on this job
-                    wdl_id_to_outstanding_dependency_ids[dependent_id].remove(node_id)
-                    logger.debug('Dependent %s no longer needs to wait on %s', dependent_id, node_id)
-                    if len(wdl_id_to_outstanding_dependency_ids[dependent_id]) == 0:
-                        # We were the last thing blocking them.
-                        ready_node_ids.add(dependent_id)
-                        logger.debug('Dependent %s is now ready', dependent_id)
+        
+        # Find all the leaves
+        leaf_ids = section_graph.leaves()
 
         # Make the sink job
         leaf_rvs: List[Union[WDLBindings, Promise]] = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
