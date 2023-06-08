@@ -239,7 +239,7 @@ class Config:
         # auto-generated and point to a temp directory that could no longer
         # exist and that can't safely be re-made.
         self.write_messages = None
-        
+
 
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""

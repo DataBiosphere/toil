@@ -709,6 +709,9 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             tried.append(candidate_uri)
             try:
                 imported = toil.import_file(candidate_uri)
+            except FileNotFoundError as e:
+                # This isn't here.
+                imported = None
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -721,6 +724,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 raise
             if imported is None:
                 # Wasn't found there
+                logger.info('Looked for %s at %s but did not find it', uri, candidate_uri)
                 continue
             logger.info('Imported %s', candidate_uri)
 
@@ -1389,7 +1393,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         """
         Actually execute the workflow nodes.
         """
-        
+
         # Combine the bindings we get from previous jobs
         current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
@@ -1552,8 +1556,9 @@ class WDLWorkflowGraph:
         leaves = set(self._nodes.keys())
         for node_id in self._nodes.keys():
             for dependency in self.get_dependencies(node_id):
-                # Mark everything depended on as not a leaf
-                leaves.remove(dependency)
+                if dependency in leaves:
+                    # Mark everything depended on as not a leaf
+                    leaves.remove(dependency)
         return list(leaves)
 
 
@@ -1598,7 +1603,7 @@ class WDLSectionJob(WDLBaseJob):
         # To make Toil jobs, we need all the jobs they depend on made so we can
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
-           
+
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
 
         creation_order = section_graph.topological_order()
@@ -1608,7 +1613,7 @@ class WDLSectionJob(WDLBaseJob):
         for node_id in creation_order:
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
             prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in section_graph.get_dependencies(node_id)]
-            
+
             logger.debug('Make Toil job for %s', node_id)
 
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
@@ -1630,7 +1635,7 @@ class WDLSectionJob(WDLBaseJob):
 
             # Save the job
             wdl_id_to_toil_job[node_id] = job
-        
+
         # Find all the leaves
         leaf_ids = section_graph.leaves()
 

@@ -130,7 +130,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     @slow
     @needs_singularity_or_docker
     def test_giraffe(self):
-        """Test if Giraffe runs. This could take 12 minutes. Also we scale it down."""
+        """Test if Giraffe runs. This could take 12 minutes. Also we scale it down but it still demands lots of memory."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
