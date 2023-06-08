@@ -1364,6 +1364,49 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         else:
             raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
 
+class WDLWorkflowNodeListJob(WDLBaseJob):
+    """
+    Job that evaluates a list of WDL workflow nodes, which are in the same
+    scope and in a topological dependency order, and which do not call out to any other
+    workflows or tasks or sections.
+    """
+
+    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, **kwargs: Any) -> None:
+        """
+        Make a new job to run a list of workflow nodes to completion.
+        """
+        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
+
+        self._nodes = nodes
+        self._prev_node_results = prev_node_results
+        self._namespace = namespace
+
+        for n in self._nodes:
+            if isinstance(n, (WDL.Tree.Call, WDL.Tree.Scatter, WDL.Tree.Conditional)):
+                raise RuntimeError("Node cannot be evaluated with other nodes: " + str(n))
+
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Actually execute the workflow nodes.
+        """
+        
+        # Combine the bindings we get from previous jobs
+        current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+
+        for node in self._nodes:
+            if isinstance(node, WDL.Tree.Decl):
+                # This is a variable assignment
+                logger.info('Setting %s to %s', node.name, node.expr)
+                value = evaluate_decl(node, current_bindings, standard_library)
+                current_bindings = current_bindings.bind(node.name, value)
+            else:
+                raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(node)))
+
+        return current_bindings
+
+
 class WDLCombineBindingsJob(WDLBaseJob):
     """
     Job that collects the results from WDL workflow nodes and combines their
