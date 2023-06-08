@@ -264,7 +264,6 @@ def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode
     internal nodes of conditionals and scatters, and gather nodes.
     """
 
-    logger.debug('WorkflowNode: %s: %s %s', type(root), root, root.workflow_node_id)
     yield root
     for child_node in root.children:
         if isinstance(child_node, WDL.Tree.WorkflowNode):
@@ -1541,9 +1540,8 @@ class WDLWorkflowGraph:
 
         sorter : TopologicalSorter[str] = TopologicalSorter()
         for node_id in self._nodes.keys():
-            for dependency in self.get_dependencies(node_id):
-                # Add all the edges
-                sorter.add(node_id, dependency)
+            # Add all the edges
+            sorter.add(node_id, *self.get_dependencies(node_id))
         return list(sorter.static_order())
 
     def leaves(self) -> List[str]:
@@ -1603,7 +1601,11 @@ class WDLSectionJob(WDLBaseJob):
            
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
 
-        for node_id in section_graph.topological_order():
+        creation_order = section_graph.topological_order()
+
+        logger.debug('Creation order: %s', creation_order)
+
+        for node_id in creation_order:
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
             prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in section_graph.get_dependencies(node_id)]
             

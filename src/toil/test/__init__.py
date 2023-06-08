@@ -582,6 +582,16 @@ def needs_singularity(test_item: MT) -> MT:
         return test_item
     else:
         return unittest.skip("Install singularity to include this test.")(test_item)
+
+def needs_singularity_or_docker(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to only run them if
+    singularity OR Docker is installed.
+    """
+    if which('singularity'):
+        return _mark_test('singularity', test_item)
+    else:
+        return needs_docker(test_item)
         
 def needs_local_cuda(test_item: MT) -> MT:
     """
