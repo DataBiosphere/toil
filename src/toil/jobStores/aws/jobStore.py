@@ -58,6 +58,7 @@ from toil.jobStores.utils import (ReadablePipe,
                                   WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import (create_s3_bucket,
+                                enable_public_objects,
                                 flatten_tags,
                                 get_bucket_region,
                                 get_object_for_url,
@@ -430,7 +431,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Created %r.", info)
         return info.fileID
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
         try:
             if issubclass(otherCls, AWSJobStore):
                 srcObj = get_object_for_url(uri, existing=True)
@@ -450,6 +451,8 @@ class AWSJobStore(AbstractJobStore):
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
             pass
+
+        # copy if exception
         return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
 
     def _export_file(self, otherCls, file_id, uri):
@@ -752,6 +755,10 @@ class AWSJobStore(AbstractJobStore):
                                 flat_tags = flatten_tags(tags)
                                 bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
                                 bucket_tagging.put(Tagging={'TagSet': flat_tags})
+
+                            # Configure bucket so that we can make objects in
+                            # it public, which was the historical default. 
+                            enable_public_objects(bucket_name)
                         elif block:
                             raise
                         else:

@@ -60,6 +60,7 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.job
 import cwltool.load_tool
 import cwltool.main
 import cwltool.provenance
@@ -84,6 +85,7 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
+    DirectoryType,
     CWLObjectType,
     CWLOutputType,
     adjustDirObjs,
@@ -118,6 +120,7 @@ from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
 from toil.exceptions import FailedJobsException
+
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +203,36 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
     elif isinstance(value, dict):
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
+
+
+def ensure_no_collisions(
+    directory: DirectoryType, dir_description: Optional[str] = None
+) -> None:
+    """
+    Make sure no items in the given CWL Directory have the same name.
+
+    If any do, raise a WorkflowException about a "File staging conflict".
+
+    Does not recurse into subdirectories.
+    """
+
+    if dir_description is None:
+        # Work out how to describe the directory we are working on.
+        dir_description = f"the directory \"{directory.get('basename')}\""
+
+    seen_names = set()
+
+    for child in directory.get("listing", []):
+        if "basename" in child:
+            # For each child that actually has a path to go at in its parent
+            wanted_name = cast(str, child["basename"])
+            if wanted_name in seen_names:
+                # We used this name already so bail out
+                raise cwl_utils.errors.WorkflowException(
+                    f'File staging conflict: Duplicate entries for "{wanted_name}"'
+                    f" prevent actually creating {dir_description}"
+                )
+            seen_names.add(wanted_name)
 
 
 class Conditional:
@@ -730,6 +763,10 @@ class ToilPathMapper(PathMapper):
 
             logger.debug("ToilPathMapper visiting directory %s", location)
 
+            # We want to check the directory to make sure it is not
+            # self-contradictory in its immediate children and their names.
+            ensure_no_collisions(cast(DirectoryType, obj))
+
             # We may need to copy this directory even if we don't copy things inside it.
             copy_here = False
 
@@ -968,7 +1005,24 @@ class ToilTool:
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
-    pass
+    def _initialworkdir(
+        self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
+    ) -> None:
+        """
+        Hook the InitialWorkDirRequirement setup to make sure that there are no
+        name conflicts at the top level of the work directory.
+        """
+
+        super()._initialworkdir(j, builder)
+
+        # The initial work dir listing is now in j.generatefiles["listing"]
+        # Also j.generatrfiles is a CWL Directory.
+        # So check the initial working directory.
+        logger.info("Initial work dir: %s", j.generatefiles)
+        ensure_no_collisions(
+            j.generatefiles,
+            "the job's working directory as specified by the InitialWorkDirRequirement",
+        )
 
 
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
@@ -1181,6 +1235,7 @@ class ToilFsAccess(StdFsAccess):
                         "ToilFsAccess fetching directory %s from a JobStore", path
                     )
                     dest_dir = tempfile.mkdtemp()
+
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
                         if AbstractJobStore.get_is_directory(url):
@@ -1587,11 +1642,16 @@ def import_files(
         Ensures that any child File or Directory objects from the original
         listing remain as child objects, so that they will be hit by the
         recursion.
+
+        Ensures that no directory listings have name collisions.
         """
         if rec.get("class", None) == "File":
             # Nothing to do!
             return None
         elif rec.get("class", None) == "Directory":
+            # Check the original listing for collisions
+            ensure_no_collisions(cast(DirectoryType, rec))
+
             # Pull out the old listing, if any
             old_listing = cast(Optional[List[CWLObjectType]], rec.get("listing", None))
 
@@ -1606,6 +1666,9 @@ def import_files(
                     get_listing(fs_access, rec, recursive=False)
                 # Otherwise, we preserve the existing listing (including all
                 # its original File objects that we need to process)
+
+                # Check the new listing for collisions
+                ensure_no_collisions(cast(DirectoryType, rec))
 
             return old_listing
         return None
@@ -1807,6 +1870,7 @@ class CWLNamedJob(Job):
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
+        local: Optional[bool] = None,
     ) -> None:
         """
         Make a new job and set up its requirements and naming.
@@ -1849,6 +1913,7 @@ class CWLNamedJob(Job):
             accelerators=accelerators,
             unitName=unit_name,
             displayName=display_name,
+            local=local,
         )
 
 
@@ -1860,9 +1925,11 @@ class ResolveIndirect(CWLNamedJob):
     of actual values.
     """
 
-    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
+    def __init__(
+        self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None
+    ):
         """Store the dictionary of promises for later resolution."""
-        super().__init__(parent_name=parent_name, subjob_name="_resolve")
+        super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
@@ -1942,14 +2009,13 @@ def toilStageFiles(
                         "CreateFile",
                         "CreateWritableFile",
                     ]:  # TODO: CreateFile for buckets is not under testing
-
                         with tempfile.NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode("utf-8"))
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.import_file(f.name).pack()
+                                "toilfile:" + toil.import_file(f.name, symlink=False).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -2038,7 +2104,10 @@ class CWLJobWrapper(CWLNamedJob):
     ):
         """Store our context for later evaluation."""
         super().__init__(
-            tool_id=tool.tool.get("id"), parent_name=parent_name, subjob_name="_wrapper"
+            tool_id=tool.tool.get("id"),
+            parent_name=parent_name,
+            subjob_name="_wrapper",
+            local=True,
         )
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
@@ -2133,6 +2202,7 @@ class CWLJob(CWLNamedJob):
             accelerators=accelerators,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
+            local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
         )
 
         self.cwljob = cwljob
@@ -2426,7 +2496,7 @@ class CWLScatter(Job):
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -2586,7 +2656,7 @@ class CWLGather(Job):
         outputs: Promised[Union[CWLObjectType, List[CWLObjectType]]],
     ):
         """Collect our context for later gathering."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.outputs = outputs
 
@@ -2618,9 +2688,11 @@ class CWLGather(Job):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
-        
+
         # TODO: MyPy can't understand that this is the type we should get by unwrapping the promise
-        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs))
+        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(
+            Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs)
+        )
         for k in [sn(i) for i in self.step.tool["out"]]:
             outobj[k] = self.extract(outputs, k)
 
@@ -2687,7 +2759,9 @@ class CWLWorkflow(CWLNamedJob):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name)
+        super().__init__(
+            tool_id=cwlwf.tool.get("id"), parent_name=parent_name, local=True
+        )
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3208,6 +3282,11 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
+    extra_dockergroup = parser.add_argument_group()
+    extra_dockergroup.add_argument(
+        "--custom-net",
+        help="Specify docker network name to pass to docker run command",
+    )
     cidgroup = parser.add_argument_group(
         "Options for recording the Docker container identifier into a file."
     )
@@ -3452,13 +3531,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
     )
-    
+
     # Parse all the options once.
     options = parser.parse_args(args)
-    
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    
+
     # We need a workdir for the CWL runtime contexts.
     if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
         # if tmpdir_prefix is not the default value, move
@@ -3468,8 +3547,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Use a directory in the default tmpdir
         workdir = tempfile.mkdtemp()
     # Make sure workdir doesn't exist so it can be a job store
-    os.rmdir(workdir) 
-    
+    os.rmdir(workdir)
+
     if options.jobStore is None:
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available

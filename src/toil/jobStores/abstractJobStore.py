@@ -78,6 +78,21 @@ class InvalidImportExportUrlException(Exception):
         """
         super().__init__("The URL '%s' is invalid." % url.geturl())
 
+class UnimplementedURLException(RuntimeError):
+    def __init__(self, url: ParseResult, operation: str) -> None:
+        """
+        Make a new exception to report that a URL scheme is not implemented, or
+        that the implementation can't be loaded because its dependencies are
+        not installed.
+
+        :param url: The given URL
+        :param operation: Whether we are trying to 'import' or 'export'
+        """
+        super().__init__(
+            f"No available job store implementation can {operation} the URL "
+            f"'{url.geturl()}'. Ensure Toil has been installed "
+            f"with the appropriate extras."
+        )
 
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
@@ -339,8 +354,7 @@ class AbstractJobStore(ABC):
         for implementation in cls._get_job_store_classes():
             if implementation._supports_url(url, export):
                 return implementation
-        raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
-                           ('ex' if export else 'im', url.geturl()))
+        raise UnimplementedURLException(url, "export" if export else "import")
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
@@ -350,21 +364,21 @@ class AbstractJobStore(ABC):
                    srcUrl: str,
                    sharedFileName: str,
                    hardlink: bool = False,
-                   symlink: bool = False) -> None: ...
+                   symlink: bool = True) -> None: ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
                    hardlink: bool = False,
-                   symlink: bool = False) -> FileID: ...
+                   symlink: bool = True) -> FileID: ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
                    hardlink: bool = False,
-                   symlink: bool = False) -> Optional[FileID]:
+                   symlink: bool = True) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, hardlink, symlink)
 
     @overload
@@ -372,20 +386,20 @@ class AbstractJobStore(ABC):
                     src_uri: str,
                     shared_file_name: str,
                     hardlink: bool = False,
-                    symlink: bool = False) -> None: ...
+                    symlink: bool = True) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
                     hardlink: bool = False,
-                    symlink: bool = False) -> FileID: ...
+                    symlink: bool = True) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
                     hardlink: bool = False,
-                    symlink: bool = False) -> Optional[FileID]:
+                    symlink: bool = True) -> Optional[FileID]:
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
@@ -407,7 +421,8 @@ class AbstractJobStore(ABC):
                 e.g. gs://bucket/file
 
         :param str src_uri: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an AWS s3 bucket.
+                supported URL scheme e.g. a blob in an AWS s3 bucket. It must be a file, not a
+                directory or prefix.
 
         :param str shared_file_name: Optional name to assign to the imported file within the job store
 
@@ -431,7 +446,7 @@ class AbstractJobStore(ABC):
                      uri: ParseResult,
                      shared_file_name: Optional[str] = None,
                      hardlink: bool = False,
-                     symlink: bool = False) -> Optional[FileID]:
+                     symlink: bool = True) -> Optional[FileID]:
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
@@ -448,6 +463,7 @@ class AbstractJobStore(ABC):
         :return The FileID of imported file or None if sharedFileName was given
         :rtype: toil.fileStores.FileID or None
         """
+
         if shared_file_name is None:
             with self.write_file_stream() as (writable, jobStoreFileID):
                 size, executable = otherCls._read_from_url(uri, writable)
@@ -776,21 +792,20 @@ class AbstractJobStore(ABC):
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
                 for job_description in unprocessed_job_descriptions:
-                    for jobs in job_description.stack:
-                        for successor_jobstore_id in jobs:
-                            if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                                successor_job_description = getJobDescription(successor_jobstore_id)
+                    for successor_jobstore_id in job_description.allSuccessors():
+                        if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
+                            successor_job_description = getJobDescription(successor_jobstore_id)
 
-                                # Add each successor job.
-                                reachable_from_root.add(
-                                    str(successor_job_description.jobStoreID)
-                                )
-                                # Add all of the successor's linked service jobs as well.
-                                for service_jobstore_id in successor_job_description.services:
-                                    if haveJob(service_jobstore_id):
-                                        reachable_from_root.add(service_jobstore_id)
+                            # Add each successor job.
+                            reachable_from_root.add(
+                                str(successor_job_description.jobStoreID)
+                            )
+                            # Add all of the successor's linked service jobs as well.
+                            for service_jobstore_id in successor_job_description.services:
+                                if haveJob(service_jobstore_id):
+                                    reachable_from_root.add(service_jobstore_id)
 
-                                new_job_descriptions_to_process.append(successor_job_description)
+                            new_job_descriptions_to_process.append(successor_job_description)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
@@ -854,7 +869,7 @@ class AbstractJobStore(ABC):
             if jobDescription.command is None:
 
                 def stackSizeFn() -> int:
-                    return sum(map(len, jobDescription.stack))
+                    return len(list(jobDescription.allSuccessors()))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
                 jobDescription.filterSuccessors(haveJob)

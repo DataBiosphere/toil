@@ -71,10 +71,11 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
             batch_system_type.setOptions(set_option)
     # Options shared between multiple batch systems
     set_option("disableAutoDeployment", bool, default=False)
-    set_option("coalesceStatusCalls")
-    set_option("maxLocalJobs", int)
+    # Make limits maximum if set to 0
+    set_option("max_jobs", lambda x: int(x) or sys.maxsize)
+    set_option("max_local_jobs", lambda x: int(x) or sys.maxsize)
     set_option("manualMemArgs")
-    set_option("runCwlInternalJobsOnWorkers", bool, default=False)
+    set_option("run_local_jobs_on_workers", bool, default=False)
     set_option("statePollingWait")
     set_option("batch_logs_dir", env=["TOIL_BATCH_LOGS_DIR"])
 
@@ -106,13 +107,20 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "script/package should be present at the same location on all workers.  Default = False.",
     )
     parser.add_argument(
+        "--maxJobs",
+        dest="max_jobs",
+        default=sys.maxsize, # This is *basically* unlimited and saves a lot of Optional[]
+        help="Specifies the maximum number of jobs to submit to the "
+             "backing scheduler at once. Not supported on Mesos or "
+             "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
+    )
+    parser.add_argument(
         "--maxLocalJobs",
+        dest="max_local_jobs",
         default=cpu_count(),
-        help=f"For batch systems that support a local queue for housekeeping jobs "
-        f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
-        f"number of these housekeeping jobs to run on the local system.  The default "
-        f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
-        f"local housekeeping jobs.",
+        help=f"Specifies the maximum number of housekeeping jobs to "
+             f"run sumultaneously on the local system. Use 0 for "
+             f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
     )
     parser.add_argument(
         "--manualMemArgs",
@@ -124,13 +132,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
+        "--runLocalJobsOnWorkers"
         "--runCwlInternalJobsOnWorkers",
-        dest="runCwlInternalJobsOnWorkers",
+        dest="run_local_jobs_on_workers",
         action="store_true",
         default=None,
-        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-        "instead of the primary node. If false (default), then all such jobs are run on "
-        "the primary node. Setting this to true can speed up the pipeline for very large "
+        help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
+        "instead of the leader node. If false (default), then all such jobs are run on "
+        "the leader node. Setting this to true can speed up CWL pipelines for very large "
         "workflows with many sub-workflows and/or scatters, provided that the worker "
         "pool is large enough.",
     )
@@ -138,11 +147,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--coalesceStatusCalls",
         dest="coalesceStatusCalls",
         action="store_true",
-        default=None,
+        default=True,
         help=(
-            "Coalese status calls to prevent the batch system from being overloaded. "
-            "Currently only supported for LSF. "
-            "default=false"
+            "Ask for job statuses from the batch system in a batch. Deprecated; now always "
+            "enabled where supported."
         ),
     )
     parser.add_argument(
@@ -160,7 +168,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=None,
         help="Directory to tell the backing batch system to log into. Should be available "
              "on both the leader and the workers, if the backing batch system writes logs "
-             "to the worker machines' filesystems, as many HPC schedulers do. If unset, " 
+             "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
              "the Toil work directory will be used. Only works for grid engine batch "
              "systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
@@ -186,9 +194,9 @@ def set_batchsystem_config_defaults(config) -> None:
     # Do the global options across batch systems
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
-    config.maxLocalJobs = cpu_count()
+    config.max_jobs = sys.maxsize
+    config.max_local_jobs = cpu_count()
     config.manualMemArgs = False
-    config.coalesceStatusCalls = False
     config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 
     OptionType = TypeVar('OptionType')

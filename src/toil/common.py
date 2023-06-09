@@ -108,8 +108,9 @@ class Config:
     logFile: Optional[str]
     logRotating: bool
     cleanWorkDir: str
-    maxLocalJobs: int
-    runCwlInternalJobsOnWorkers: bool
+    max_jobs: int
+    max_local_jobs: int
+    run_local_jobs_on_workers: bool
     tes_endpoint: str
     tes_user: str
     tes_password: str
@@ -198,7 +199,7 @@ class Config:
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs: bool = False
-        self.write_messages: str = ""
+        self.write_messages: Optional[str] = None
 
         # Misc
         self.environment: Dict[str, str] = {}
@@ -221,6 +222,24 @@ class Config:
 
         # CWL
         self.cwl: bool = False
+
+    def prepare_start(self) -> None:
+        """
+        After options are set, prepare for initial start of workflow.
+        """
+        self.workflowAttemptNumber = 0
+
+    def prepare_restart(self) -> None:
+        """
+        Before restart options are set, prepare for a restart of a workflow.
+        Set up any execution-specific parameters and clear out any stale ones.
+        """
+        self.workflowAttemptNumber += 1
+        # We should clear the stored message bus path, because it may have been
+        # auto-generated and point to a temp directory that could no longer
+        # exist and that can't safely be re-made.
+        self.write_messages = None
+        
 
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
@@ -407,6 +426,8 @@ class Config:
         set_option("write_messages", os.path.abspath)
 
         if not self.write_messages:
+            # The user hasn't specified a place for the message bus so we
+            # should make one.
             self.write_messages = gen_message_bus_path()
 
         assert not (self.writeLogs and self.writeLogsGzip), \
@@ -418,7 +439,6 @@ class Config:
         set_option("environment", parseSetEnv)
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
-        set_option("runCwlInternalJobsOnWorkers")
         set_option("statusWait", int)
         set_option("disableProgress")
 
@@ -947,14 +967,14 @@ class Toil(ContextManager["Toil"]):
             self.options.caching = config.caching
 
         if not config.restart:
-            config.workflowAttemptNumber = 0
+            config.prepare_start()
             jobStore.initialize(config)
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
             config = jobStore.config
+            config.prepare_restart()
             config.setOptions(self.options)
-            config.workflowAttemptNumber += 1
             jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
@@ -1227,37 +1247,37 @@ class Toil(ContextManager["Toil"]):
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: str,
-                   symlink: bool = False) -> None: ...
+                   symlink: bool = True) -> None: ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
-                   symlink: bool = False) -> FileID: ...
+                   symlink: bool = True) -> FileID: ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: Optional[str] = None,
-                   symlink: bool = False) -> Optional[FileID]:
+                   symlink: bool = True) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, symlink)
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: str,
-                    symlink: bool = False) -> None: ...
+                    symlink: bool = True) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
-                    symlink: bool = False) -> FileID: ...
+                    symlink: bool = True) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: bool = False) -> Optional[FileID]:
+                    symlink: bool = True) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 
@@ -1365,6 +1385,11 @@ class Toil(ContextManager["Toil"]):
                  deleted.
         """
 
+        if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
+            # Slurm has been observed providing this variable but not keeping
+            # the directory live as long as we run for.
+            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!', os.environ['XDG_RUNTIME_DIR'])
+
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
         # succeeds.
@@ -1381,7 +1406,9 @@ class Toil(ContextManager["Toil"]):
             # session that has the env var set. Otherwise it might belong to a
             # different set of sessions and get cleaned up out from under us
             # when that session ends.
-            ('XDG_RUNTIME_DIR' in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
+            # We don't think Slurm XDG sessions are trustworthy, depending on
+            # the cluster's PAM configuration, so don't use them.
+            ('XDG_RUNTIME_DIR' in os.environ and 'SLURM_JOBID' not in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
             # Try under /run/lock. It might be a temp dir style sticky directory.
             try_path('/run/lock') or
             # Finally, fall back on the work dir and hope it's a legit filesystem.

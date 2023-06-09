@@ -277,11 +277,11 @@ class AbstractJobStoreTest:
 
             # Check equivalence between jobstore1 and jobstore2.
             # While job1 and job2 share a jobStoreID, job1 has not been "refreshed" to show the newly added child jobs.
-            self.assertNotEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertNotEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load_job(job1.jobStoreID)
-            self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)
@@ -1211,6 +1211,32 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 # Clean up download directory
                 shutil.rmtree(download_dir)
 
+    def test_file_link_imports(self):
+        """
+        Test that imported files are symlinked when when expected
+        """
+        store = self._externalStore()
+        size = 1
+        srcUrl, srcMd5 = self._prepareTestFile(store, size)
+        for symlink in [True, False]:
+            for link_imports in [True, False]:
+                self.jobstore_initialized.linkImports = link_imports
+                # Import into job store under test
+                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=symlink)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
+                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                    # gets abs path
+                    filename = f.name
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+                if link_imports and symlink:
+                    self.assertTrue(os.path.islink(filename))
+                else:
+                    self.assertFalse(os.path.islink(filename))
+
+                # Remove local Files
+                os.remove(filename)
+        os.remove(srcUrl[7:])
 
 
 @needs_google

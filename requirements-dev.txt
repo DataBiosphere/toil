@@ -3,13 +3,13 @@ pytest>=6.2.1,<8
 pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
-setuptools>=65.5.1,<66
+setuptools>=65.5.1,<68
 sphinx>=4,<6
 sphinx-autoapi
 sphinx-autodoc-typehints
 sphinxcontrib-autoprogram
 cwltest>=2.2.20211116163652
-mypy==1.0.1
+mypy==1.2.0
 types-requests
 types-setuptools
 types-boto

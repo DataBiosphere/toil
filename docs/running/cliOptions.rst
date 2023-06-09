@@ -140,13 +140,14 @@ levels in toil are based on priority from the logging module:
                         Should auto-deployment of the user script be deactivated?
                         If True, the user script/package should be present at
                         the same location on all workers.  Default = False.
+  --maxJobs MAXJOBS
+                        Specifies the maximum number of jobs to submit to the
+                        backing scheduler at once. Not supported on Mesos or
+                        AWS Batch. Use 0 for unlimited. Defaults to unlimited.
   --maxLocalJobs MAXLOCALJOBS
-                        For batch systems that support a local queue for
-                        housekeeping jobs (Mesos, GridEngine, htcondor, lsf,
-                        slurm, torque).  Specifies the maximum number of these
-                        housekeeping jobs to run on the local system.  The
-                        default (equal to the number of cores) is a maximum of
-                        concurrent local housekeeping jobs.
+                        Specifies the maximum number of housekeeping jobs to
+                        run simultaneously on the local system. Use 0 for
+                        unlimited. Defaults to the number of local cores.
   --manualMemArgs       Do not add the default arguments: 'hv=MEMORY' &
                         'h_vmem=MEMORY' to the qsub call, and instead rely on
                         TOIL_GRIDGENGINE_ARGS to supply alternative arguments.
@@ -158,9 +159,6 @@ levels in toil are based on priority from the logging module:
                         Setting this to true can speed up the pipeline for very
                         large workflows with many sub-workflows and/or scatters,
                         provided that the worker pool is large enough.
-  --coalesceStatusCalls
-                        Coalese status calls to prevent the batch system from
-                        being overloaded. Currently only supported for LSF.
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within
@@ -186,6 +184,12 @@ levels in toil are based on priority from the logging module:
   --mesosEndpoint MESOSENDPOINT
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
+  --mesosFrameworkId MESOSFRAMEWORKID
+                        Use a specific Mesos framework ID.
+  --mesosRole MESOSROLE
+                        Use a Mesos role.
+  --mesosName MESOSNAME
+                        The Mesos name to use. (default: toil)
   --kubernetesHostPath KUBERNETES_HOST_PATH
                         Path on Kubernetes hosts to use as shared inter-pod temp
                         directory.

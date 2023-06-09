@@ -68,7 +68,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             try:
-                output = call_command(subLine)
+                # Slurm is not quite clever enough to follow the XDG spec on
+                # its own. If the submission command sees e.g. XDG_RUNTIME_DIR
+                # in our environment, it will send it along (especially with
+                # --export=ALL), even though it makes a promise to the job that
+                # Slurm isn't going to keep. It also has a tendency to create
+                # /run/user/<uid> *at the start* of a job, but *not* keep it
+                # around for the duration of the job.
+                #
+                # So we hide the whole XDG universe from Slurm before we make
+                # the submission.
+                # Might as well hide DBUS also.
+                # This doesn't get us a trustworthy XDG session in Slurm, but
+                # it does let us see the one Slurm tries to give us.
+                no_session_environment = os.environ.copy()
+                session_names = [n for n in no_session_environment.keys() if n.startswith('XDG_') or n.startswith('DBUS_')]
+                for name in session_names:
+                    del no_session_environment[name]
+
+                output = call_command(subLine, env=no_session_environment)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -351,21 +369,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     ### The interface for SLURM
     ###
 
-    @classmethod
-    def getWaitDuration(cls):
-        # Extract the slurm batchsystem config for the appropriate value
-        lines = call_command(['scontrol', 'show', 'config']).split('\n')
-        time_value_list = []
-        for line in lines:
-            values = line.split()
-            if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):
-                time_name = values[values.index('=')+1:][1]
-                time_value = int(values[values.index('=')+1:][0])
-                if time_name == 'min':
-                    time_value *= 60
-                # Add a 20% ceiling on the wait duration relative to the scheduler update duration
-                time_value_list.append(math.ceil(time_value*1.2))
-        return max(time_value_list)
+    # `scontrol show config` can get us the slurm config, and there are values
+    # SchedulerTimeSlice and AcctGatherNodeFreq in there, but
+    # SchedulerTimeSlice is for time-sharing preemtion and AcctGatherNodeFreq
+    # is for reporting resource statistics (and can be 0). Slurm does not
+    # actually seem to have a scheduling granularity or tick rate. So we don't
+    # implement getWaitDuration().
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]):

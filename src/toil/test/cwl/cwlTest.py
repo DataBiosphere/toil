@@ -1121,6 +1121,52 @@ def test_filename_conflict_resolution(tmp_path: Path):
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
 
+@needs_cwl
+@needs_docker
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_detection(tmp_path: Path):
+    """
+    Make sure we don't just stage files over each other when using a container.
+    """
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_detection.cwl"
+    )
+    cmd = [toil] + options + [cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"File staging conflict" in stderr
+    assert p.returncode != 0
+
+@needs_cwl
+@needs_docker
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_detection_at_root(tmp_path: Path):
+    """
+    Make sure we don't just stage files over each other.
+
+    Specifically, when using a container and the files are at the root of the work dir.
+    """
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_detection_at_root.cwl"
+    )
+    cmd = [toil] + options + [cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"File staging conflict" in stderr
+    assert p.returncode != 0
+
 
 @needs_cwl
 @pytest.mark.cwl_small

@@ -827,6 +827,7 @@ class AbstractProvisioner(ABC):
         """
         Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
         """
+        cloud_provider = self.getKubernetesCloudProvider()
         return dict(
             ARCHITECTURE=architecture,
             CNI_VERSION="v0.8.2",
@@ -849,7 +850,7 @@ class AbstractProvisioner(ABC):
             METRICS_API_VERSION="v0.3.7",
             CLUSTER_NAME=self.clusterName,
             # YAML line that tells the Kubelet to use a cloud provider, if we need one.
-            CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
+            CLOUD_PROVIDER_SPEC=('cloud-provider: ' + cloud_provider) if cloud_provider else ''
         )
 
     def addKubernetesServices(self, config: InstanceConfiguration, architecture: str = 'amd64'):

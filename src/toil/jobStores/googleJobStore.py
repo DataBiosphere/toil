@@ -20,7 +20,7 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import List
+from typing import List, Optional
 from urllib.parse import ParseResult
 
 from google.api_core.exceptions import (GoogleAPICallError,
@@ -33,6 +33,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
+
+from toil.fileStores import FileID
+
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
