@@ -41,7 +41,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = call_command(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+            lines = call_command(['squeue', '-h', '--format', '%i %t %M'], quiet=True).split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
@@ -165,7 +165,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '--format', 'JobIDRaw,State,ExitCode',  # specify output columns
                     '-P',  # separate columns with pipes
                     '-S', '1970-01-01']  # override start time limit
-            stdout = call_command(args)
+            stdout = call_command(args, quiet=True)
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
@@ -174,7 +174,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 job_statuses[job_id] = (None, None)
 
             for line in stdout.splitlines():
-                #logger.debug("%s output %s", args[0], line)
                 values = line.strip().split('|')
                 if len(values) < 3:
                     continue
@@ -210,7 +209,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if len(job_id_list) == 1:
                 args.append(str(job_id_list[0]))
 
-            stdout = call_command(args)
+            stdout = call_command(args, quiet=True)
 
             # Job records are separated by a blank line.
             if isinstance(stdout, str):
@@ -233,7 +232,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 job = {}
                 for line in record.splitlines():
                     for item in line.split():
-                        #logger.debug("%s output %s", args[0], item)
                         # Output is in the form of many key=value pairs, multiple pairs on each line
                         # and multiple lines in the output. Each pair is pulled out of each line and
                         # added to a dictionary.
