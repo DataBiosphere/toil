@@ -60,10 +60,10 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.cwlprov
 import cwltool.job
 import cwltool.load_tool
 import cwltool.main
-import cwltool.provenance
 import cwltool.resolver
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
@@ -85,9 +85,9 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
-    DirectoryType,
     CWLObjectType,
     CWLOutputType,
+    DirectoryType,
     adjustDirObjs,
     aslist,
     downloadHttpFile,
@@ -110,6 +110,7 @@ from toil.cwl.utils import (
     download_structure,
     visit_cwl_class_and_reduce,
 )
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
@@ -119,8 +120,6 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
-from toil.exceptions import FailedJobsException
-
 
 logger = logging.getLogger(__name__)
 
@@ -2015,7 +2014,8 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.import_file(f.name, symlink=False).pack()
+                                "toilfile:"
+                                + toil.import_file(f.name, symlink=False).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -3625,7 +3625,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
     if options.provenance:
-        research_obj = cwltool.provenance.ResearchObject(
+        research_obj = cwltool.cwlprov.ro.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix,
             orcid=options.orcid,
             full_name=options.cwl_full_name,
@@ -3708,8 +3708,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             document_loader = loading_context.loader
 
             if options.provenance and runtime_context.research_obj:
-                runtime_context.research_obj.packed_workflow(
-                    cwltool.main.print_pack(loading_context, uri)
+                cwltool.cwlprov.writablebagfile.packed_workflow(
+                    runtime_context.research_obj,
+                    cwltool.main.print_pack(loading_context, uri),
                 )
 
             try:
@@ -3879,7 +3880,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
-            runtime_context.research_obj.create_job(outobj, True)
+            cwltool.cwlprov.writablebagfile.create_job(
+                runtime_context.research_obj, outobj, True
+            )
 
             def remove_at_id(doc: Any) -> None:
                 if isinstance(doc, MutableMapping):
@@ -3906,7 +3909,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 workflowobj, document_loader, uri
             )
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
-            runtime_context.research_obj.close(options.provenance)
+            cwltool.cwlprov.writablebagfile.close_ro(
+                runtime_context.research_obj, options.provenance
+            )
 
         if not options.destBucket and options.compute_checksum:
             visit_class(
