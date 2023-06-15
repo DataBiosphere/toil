@@ -129,6 +129,9 @@ def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeou
     :returns: Command standard output, decoded as utf-8.
     """
 
+    # NOTE: Interface MUST be kept in sync with call_sacct and call_scontrol in
+    # test_slurm.py, which monkey-patch this!
+
     # using non-C locales can cause GridEngine commands, maybe other to
     # generate errors
     if useCLocale:
