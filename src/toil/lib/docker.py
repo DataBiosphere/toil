@@ -155,7 +155,7 @@ def apiDockerCall(job,
                         not always able to abort ongoing reads and writes in order
                         to respect the timeout. Defaults to 1 year (i.e. wait
                         essentially indefinitely).
-    :param accelerators: Toil accelerator numbers (ususally GPUs) to forward to
+    :param accelerators: Toil accelerator numbers (usually GPUs) to forward to
                          the container. These are interpreted in the current
                          Python process's environment. See
                          toil.lib.accelerators.get_individual_local_accelerators()
@@ -256,7 +256,7 @@ def apiDockerCall(job,
             if our_number >= len(accelerator_mapping):
                 raise RuntimeError(
                     f"Cannot forward accelerator {our_number} because only "
-                    f"{len(accelerator_mapping)} accelerators are avaialble "
+                    f"{len(accelerator_mapping)} accelerators are available "
                     f"to this job."
                 )
             host_accelerators.append(accelerator_mapping[our_number])
