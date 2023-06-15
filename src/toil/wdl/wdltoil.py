@@ -1508,9 +1508,10 @@ class WDLWorkflowGraph:
         """
         return self._nodes[self.real_id(node_id)]
 
-    def get_dependencies(self, node_id: str) -> List[str]:
+    def get_dependencies(self, node_id: str) -> Set[str]:
         """
-        Get all the nodes that a node depends on.
+        Get all the nodes that a node depends on, recursively (into the node if
+        it has a body) but not transitively.
 
         Produces dependencies after resolving gathers and internal-to-section
         dependencies, on nodes that are also in this graph.
@@ -1535,8 +1536,32 @@ class WDLWorkflowGraph:
             if real_dependency in self._nodes:
                 dependencies.add(real_dependency)
 
-        return list(dependencies)
+    def get_transitive_dependencies(self, node_id: str) -> Set[str]:
+        """
+        Get all the nodes that a node depends on, transitively.
+        """
 
+        dependencies = set()
+        visited = set()
+        queue = [node_id]
+
+        while len(queue) > 0:
+            # Grab the enxt thing off the queue
+            here = queue[-1]
+            queue.pop()
+            if here in visited:
+                # Skip if we got it already
+                continue
+            # Get all its dependencies
+            here_deps = self.get_dependencies(here)
+            dependencies += here_deps
+            for dep in here_deps:
+                if dep not in visited:
+                    # And queue all the ones we haven't visited.
+                    queue.append(dep)
+
+        return dependencies
+            
     def topological_order(self) -> List[str]:
         """
         Get a topological order of the nodes, based on their dependencies.
@@ -1575,6 +1600,74 @@ class WDLSectionJob(WDLBaseJob):
         super().__init__(**kwargs)
         self._namespace = namespace
 
+    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> coalesced: List[List[str]]:
+        """
+        Given a topological order of WDL workflow node IDs, produce a list of
+        lists of IDs, still in topological order, where each list of IDs can be
+        run under a single Toil job.
+        """
+
+        # All the buckets of merged nodes
+        to_return: List[List[str]] = []
+        # The nodes we are currently merging, in topological order
+        current_bucket: List[str] = []
+        # All the non-decl transitive dependencies of nodes in the bucket
+        current_bucket_dependencies: Set[str] = set()
+
+        for next_id in order:
+            # Consider adding each node to the bucket
+            # Get all the dependencies on things that aren't decls.
+            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not isinstance(section_graph.get(dep), WDL.Tree.Decl}
+            if len(current_bucket) == 0:
+                # This is the first thing for the bucket
+                current_bucket.append(next_id)
+                current_bucket_dependencies |= next_dependencies
+            else:
+                # Get a node already in the bucket
+                current_id = current_bucket[0]
+                current_node = section_graph.get(current_id)
+
+                # And the node to maybe add
+                next_node = section_graph.get(next_id)
+                
+                if not isinstance(current_node, WDL.Tree.Decl) or not isinstance(next_node, WDL.Tree.Decl):
+                    # We can only combine decls with decls, so we can't go in
+                    # the bucket.
+                    
+                    # Finish the bucket.
+                    to_return.append(current_bucket)
+                    # Start a new one with this next node
+                    current_bucket = [next_id]
+                    current_bucket_dependencies = next_dependencies
+                else:
+                    # We have a decl in the bucket and a decl we could maybe
+                    # add. We know they are part of the same section, so we
+                    # aren't jumping in and out of conditionals or scatters.
+
+                    # We are going in a topological order, so we know the
+                    # bucket can't depend on the new node.
+
+                    if next_dependencies == current_bucket_dependencies:
+                        # We can add this node without adding more dependencies on non-decls on either side.
+                        # Nothing in the bucket can be in the dependency set because the bucket is only decls.
+                        # Put it in
+                        current_bucket.append(next_id)
+                        # TODO: With this condition, this is redundant.
+                        current_bucket_dependencies |= next_dependencies
+                    else:
+                        # Finish the bucket.
+                        to_return.append(current_bucket)
+                        # Start a new one with this next node
+                        current_bucket = [next_id]
+                        current_bucket_dependencies = next_dependencies
+
+        # Now finish the last bucket
+        to_return.append(current_bucket)
+
+        return to_return
+                        
+
+
     def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
         """
         Make a Toil job to evaluate a subgraph inside a workflow or workflow
@@ -1607,21 +1700,29 @@ class WDLSectionJob(WDLBaseJob):
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
 
         creation_order = section_graph.topological_order()
-
         logger.debug('Creation order: %s', creation_order)
 
-        for node_id in creation_order:
-            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in section_graph.get_dependencies(node_id)]
+        # Now we want to organize the linear list of nodes into collections of nodes that can be in the same Toil job.
+        creation_jobs = self.coalesce_nodes(creation_order, section_graph)
+        logger.debug('Creation jobs: %s', creation_jobs)
 
-            logger.debug('Make Toil job for %s', node_id)
+        for node_ids in creation_jobs:
+            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
+            prev_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
+            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in prev_ids]
+
+            logger.debug('Make Toil job for %s', node_ids)
 
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
-
-            # Use them to make a new job
-            job = WDLWorkflowNodeJob(section_graph.get(node_id), rvs, self._namespace)
+            
+            if len(node_ids) == 1:
+                # Make a one-node job
+                job: WDLBaseJob = WDLWorkflowNodeJob(section_graph.get(node_ids[0]), rvs, self._namespace)
+            else:
+                # Make a multi-node job
+                job = WDLWorkflowNodeListJob([section_graph.get(node_id) for node_id in node_ids], rvs, self._namespace)
             for prev_job in prev_jobs:
                 # Connect up the happens-after relationships to make sure the
                 # return values are available.
@@ -1632,15 +1733,26 @@ class WDLSectionJob(WDLBaseJob):
             if len(prev_jobs) == 0:
                 # Nothing came before this job, so connect it to the workflow.
                 self.addChild(job)
-
-            # Save the job
-            wdl_id_to_toil_job[node_id] = job
+            
+            for node_id in node_ids:
+                # Save the job
+                wdl_id_to_toil_job[node_id] = job
 
         # Find all the leaves
         leaf_ids = section_graph.leaves()
 
+        # Get a deduplicated list of TOil jobs that contain leaf nodes.
+        # TODO: Really we want the ones containign *only* leaf nodes.
+        leaf_jobs = []
+        leaf_job_object_ids = set()
+        for leaf_id in leaf_ids:
+            leaf_job = wdl_id_to_toil_job[leaf_id]
+            if id(leaf_job) not in leaf_job_object_ids:
+                leaf_jobs.append(leaf_job)
+                leaf_job_object_ids.add(id(leaf_job))
+
         # Make the sink job
-        leaf_rvs: List[Union[WDLBindings, Promise]] = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
+        leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in leaf_jobs]
         # Make sure to also send the section-level bindings
         leaf_rvs.append(environment)
         # And to fill in bindings from code not executed in this instantiation
@@ -1652,9 +1764,9 @@ class WDLSectionJob(WDLBaseJob):
         )
         # It runs inside us
         self.addChild(sink)
-        for node_id in leaf_ids:
+        for leaf_job in leaf_jobs:
             # And after all the leaf jobs.
-            wdl_id_to_toil_job[node_id].addFollowOn(sink)
+            leaf_job.addFollowOn(sink)
 
         return sink
 
