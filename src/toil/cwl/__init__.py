@@ -15,14 +15,16 @@ import logging
 from functools import lru_cache
 
 from pkg_resources import DistributionNotFound, get_distribution
+
 try:
     # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
     # See https://github.com/pypa/setuptools/issues/3772
-    from setuptools.extern.packaging.version import InvalidVersion # type: ignore
+    from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
 except ImportError:
     # It's not clear that this exception is really part fo the public API, so fake it.
-    class InvalidVersion(Exception): # type: ignore
+    class InvalidVersion(Exception):  # type: ignore
         pass
+
 
 from toil.version import cwltool_version
 
@@ -47,8 +49,10 @@ def check_cwltool_version() -> None:
     except DistributionNotFound:
         logger.debug("cwltool is not installed.")
     except InvalidVersion as e:
-        logger.warning(f"Could not determine the installed version of cwltool because a package "
-                       f"with an unacceptable version is installed: {e}")
+        logger.warning(
+            f"Could not determine the installed version of cwltool because a package "
+            f"with an unacceptable version is installed: {e}"
+        )
 
 
 check_cwltool_version()
