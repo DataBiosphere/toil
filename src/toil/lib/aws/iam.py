@@ -232,6 +232,16 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
         user_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'], user['User']['UserName'])
         allowed_actions = add_to_action_collection(allowed_actions, user_inline_policies)
 
+        # grab group policies associated with the user
+        groups = iam.list_groups_for_user(UserName=user['User']['UserName'])
+        for group in groups["Groups"]:
+            list_policies = iam.list_group_policies(GroupName=group['GroupName'])
+            attached_policies = iam.list_attached_group_policies(GroupName=group['GroupName'])
+            group_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
+            allowed_actions = add_to_action_collection(allowed_actions, group_attached_policies)
+            group_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'])
+            allowed_actions = add_to_action_collection(allowed_actions, group_inline_policies)
+
     except:
         # If not successful, we check the role associated with an instance profile
         # and grab the role's associated permissions
