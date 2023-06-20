@@ -239,7 +239,7 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
             attached_policies = iam.list_attached_group_policies(GroupName=group['GroupName'])
             group_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
             allowed_actions = add_to_action_collection(allowed_actions, group_attached_policies)
-            group_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'])
+            group_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'], user['User']['UserName'])
             allowed_actions = add_to_action_collection(allowed_actions, group_inline_policies)
 
     except:
