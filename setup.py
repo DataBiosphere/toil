@@ -99,12 +99,9 @@ def run_setup():
         install_requires=install_requires,
         extras_require=extras_require,
         package_dir={'': 'src'},
-        packages=find_packages(where='src',
-                               # Note that we intentionally include the top-level `test` package for
-                               # functionality like the @experimental and @integrative decorators:
-                               exclude=['*.test.*']),
+        packages=find_packages(where='src'),
         package_data={
-            '': ['*.yml', '*.yaml', 'cloud-config'],
+            '': ['*.yml', '*.yaml', 'cloud-config', '*.cwl'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus

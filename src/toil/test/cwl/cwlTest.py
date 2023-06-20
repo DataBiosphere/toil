@@ -37,6 +37,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import (download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.aws import zone_to_region
@@ -61,7 +62,6 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.exceptions import FailedJobsException
 from toil.test.provisioners.aws.awsProvisionerTest import \
     AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
