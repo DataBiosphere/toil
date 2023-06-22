@@ -1697,7 +1697,32 @@ class WDLSectionJob(WDLBaseJob):
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
 
+        # We also need to be able to map back and forth between the WDL workflow nodes and the Toil jobs that run them
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
+        toil_id_to_wdl_ids = {}
+        
+        def get_job_set_any(wdl_ids: Set[str]) -> List[WDLBaseJob]:
+            """
+            Get the distinct Toil jobs executing any of the given WDL nodes.
+            """
+            job_ids = set()
+            jobs = []
+            for job in (wdl_id_to_toil_job[wdl_id] for wdl_id in wdl_ids):
+                # For each job that is registered under any of these WDL IDs
+                if job.jobStoreID not in job_ids:
+                    # If we haven't taken it already, take it
+                    job_ids.add(job.jobStoreID)
+                    jobs.append(job)
+            return jobs
+
+        def get_job_set_only(wdl_ids: Set[str]) -> List[WDLBaseJob]:
+            """
+            Get the distinct Toil jobs executing only the given WDL nodes and
+            no others.
+            """
+            # Find the jobs that run any of the WDL nodes, and throw out the ones that run other stuff
+            return [job for job in get_job_set_any(wdl_ids) if any(wdl_id not in wdl_ids for wdl_id in toil_id_to_wdl_ids[job.jobStoreID])]
+        
 
         creation_order = section_graph.topological_order()
         logger.debug('Creation order: %s', creation_order)
@@ -1708,11 +1733,10 @@ class WDLSectionJob(WDLBaseJob):
 
         for node_ids in creation_jobs:
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            prev_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
-            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in prev_ids]
+            prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
+            logger.debug('Make Toil job for %s', prev_node_ids)
 
-            logger.debug('Make Toil job for %s', node_ids)
-
+            prev_jobs = get_job_set_any(prev_node_ids)
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
@@ -1735,22 +1759,13 @@ class WDLSectionJob(WDLBaseJob):
                 self.addChild(job)
             
             for node_id in node_ids:
-                # Save the job
+                # Save the job for everything it executes
                 wdl_id_to_toil_job[node_id] = job
+            # And remember everything it executes
+            toil_id_to_wdl_ids[job.jobStoreID] = set(node_ids) 
 
-        # Find all the leaves
-        leaf_ids = section_graph.leaves()
-
-        # Get a deduplicated list of TOil jobs that contain leaf nodes.
-        # TODO: Really we want the ones containign *only* leaf nodes.
-        leaf_jobs = []
-        leaf_job_object_ids = set()
-        for leaf_id in leaf_ids:
-            leaf_job = wdl_id_to_toil_job[leaf_id]
-            if id(leaf_job) not in leaf_job_object_ids:
-                leaf_jobs.append(leaf_job)
-                leaf_job_object_ids.add(id(leaf_job))
-
+        # Get a deduplicated list of Toil jobs that execute only leaf nodes.
+        leaf_jobs = get_job_set_only(section_graph.leaves())
         # Make the sink job
         leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in leaf_jobs]
         # Make sure to also send the section-level bindings
