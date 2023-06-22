@@ -968,7 +968,7 @@ class WDLBaseJob(Job):
 
         return bindings
 
-    def defer_postprocessing(self, other: WDLBaseJob) -> None:
+    def defer_postprocessing(self, other: "WDLBaseJob") -> None:
         """
         Give our postprocessing steps to a different job.
 
@@ -1650,7 +1650,7 @@ class WDLSectionJob(WDLBaseJob):
         super().__init__(**kwargs)
         self._namespace = namespace
 
-    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> coalesced: List[List[str]]:
+    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
         """
         Given a topological order of WDL workflow node IDs, produce a list of
         lists of IDs, still in topological order, where each list of IDs can be
@@ -1667,7 +1667,7 @@ class WDLSectionJob(WDLBaseJob):
         for next_id in order:
             # Consider adding each node to the bucket
             # Get all the dependencies on things that aren't decls.
-            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not isinstance(section_graph.get(dep), WDL.Tree.Decl}
+            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not isinstance(section_graph.get(dep), WDL.Tree.Decl)}
             if len(current_bucket) == 0:
                 # This is the first thing for the bucket
                 current_bucket.append(next_id)
