@@ -863,6 +863,11 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
 class WDLBaseJob(Job):
     """
     Base job class for all WDL-related jobs.
+
+    Responsible for post-processing returned bindings, to do things like add in
+    null values for things not defined in a section. Post-processing operations
+    can be added onto any job before it is saved, and will be applied as long
+    as the job's run method calls postprocess().
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -887,6 +892,11 @@ class WDLBaseJob(Job):
         # TODO: Make sure C-level stack size is also big enough for this.
         sys.setrecursionlimit(10000)
 
+        # We need an ordered list of postprocessing steps to apply, because we
+        # may ahve coalesced postprocessing steps deferred by several levels of
+        # jobs returing other jobs' promised RVs.
+        self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
+
     # TODO: We're not allowed by MyPy to override a method and widen the return
     # type, so this has to be Any.
     def run(self, file_store: AbstractFileStore) -> Any:
@@ -897,6 +907,77 @@ class WDLBaseJob(Job):
         # might take a lot of recursive calls. TODO: This might be because
         # bindings are actually linked lists or something?
         sys.setrecursionlimit(10000)
+
+    def then_underlay(self, underlay: Promised[WDLBindings]) -> None:
+        """
+        Apply an underlay of backup bindings to the result.
+        """
+        self._postprocessing_steps.append(("underlay", underlay))
+
+    def then_remove(self, remove: Promised[WDLBindings]) -> None:
+        """
+        Remove the given bindings from the result.
+        """
+        self._postprocessing_steps.append(("remove", remove))
+
+    def then_namespace(self, namespace: str) -> None:
+        """
+        Put the result bindings into a namespace.
+        """
+        self._postprocessing_steps.append(("namespace", namespace))
+
+    def then_overlay(self, overlay: Promised[WDLBindings]) -> None:
+        """
+        Overlay the given bindings on top of the (possibly namespaced) result.
+        """
+        self._postprocessing_steps.append(("overlay", overlay))
+
+    def postprocess(self, bindings: WDLBindings) -> WDLBindings:
+        """
+        Apply queued changes to bindings.
+
+        Should be applied by subclasses' run() implementations to their return
+        values.
+        """
+
+        for action, argument in self._postprocessing_steps:
+            # Interpret the mini language of postprocessing steps.
+            # These are too small to justify being their own separate jobs.
+            if action == "underlay":
+                if not isinstance(argument, WDLBindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We want to apply values from the underlay if not set in the bindings
+                bindings = combine_bindings([bindings, argument.subtract(bindings)])
+            elif action == "remove":
+                if not isinstance(argument, WDLBindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We need to take stuff out of scope
+                bindings = bindings.subtract(argument)
+            elif action == "namespace":
+                if not isinstance(argument, str):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We are supposed to put all our results in a namespace
+                bindings = bindings.wrap_namespace(argument)
+            elif action == "overlay":
+                if not isinstance(argument, WDLBindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We want to apply values from the overlay over the bindings
+                bindings = combine_bindings([bindings.subtract(argument), argument])
+            else:
+                raise RuntimeError(f"Unknown postprocessing action {action}")
+
+        return bindings
+
+    def defer_postprocessing(self, other: WDLBaseJob) -> None:
+        """
+        Give our postprocessing steps to a different job.
+
+        Use this when you are returning a promise for bindings, on the job that issues the promise.
+        """
+
+        other._postprocess_steps += self._postprocessing_steps
+        self._postprocessing_steps = []
+
 
 class WDLTaskJob(WDLBaseJob):
     """
@@ -1317,7 +1398,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             # This is a variable assignment
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
-            return incoming_bindings.bind(self._node.name, value)
+            return self.postprocess(incoming_bindings.bind(self._node.name, value))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -1344,26 +1425,23 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
 
             # We need to agregate outputs namespaced with our node name, and existing bindings
-            namespace_job = WDLNamespaceBindingsJob(self._node.name, [subjob.rv()])
-            subjob.addFollowOn(namespace_job)
-            self.addChild(namespace_job)
-
-            combine_job = WDLCombineBindingsJob([namespace_job.rv(), incoming_bindings])
-            namespace_job.addFollowOn(combine_job)
-            self.addChild(combine_job)
-
-            return combine_job.rv()
+            subjob.then_namespace(self._node.name)
+            subjob.then_overlay(incoming_bindings)
+            self.defer_postprocessing(subjob)
+            return subjob.rv()
         elif isinstance(self._node, WDL.Tree.Scatter):
             subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace)
             self.addChild(subjob)
             # Scatters don't really make a namespace, just kind of a scope?
             # TODO: Let stuff leave scope!
+            self.defer_postprocessing(subjob)
             return subjob.rv()
         elif isinstance(self._node, WDL.Tree.Conditional):
             subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace)
             self.addChild(subjob)
             # Conditionals don't really make a namespace, just kind of a scope?
             # TODO: Let stuff leave scope!
+            self.defer_postprocessing(subjob)
             return subjob.rv()
         else:
             raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
@@ -1408,7 +1486,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
             else:
                 raise WDL.Error.InvalidType(node, "Unimplemented WorkflowNode: " + str(type(node)))
 
-        return current_bindings
+        return self.postprocess(current_bindings)
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
@@ -1417,7 +1495,7 @@ class WDLCombineBindingsJob(WDLBaseJob):
     environment changes.
     """
 
-    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], underlay: Optional[Promised[WDLBindings]] = None, remove: Optional[Promised[WDLBindings]] = None, **kwargs: Any) -> None:
+    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
         """
         Make a new job to combine the results of previous jobs.
 
@@ -1428,8 +1506,6 @@ class WDLCombineBindingsJob(WDLBaseJob):
         super().__init__(**kwargs)
 
         self._prev_node_results = prev_node_results
-        self._underlay = underlay
-        self._remove = remove
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -1437,34 +1513,8 @@ class WDLCombineBindingsJob(WDLBaseJob):
         """
         super().run(file_store)
         combined = combine_bindings(unwrap_all(self._prev_node_results))
-        if self._underlay is not None:
-            # Fill in from the underlay anything not defined in anything else.
-            combined = combine_bindings([combined, unwrap(self._underlay).subtract(combined)])
-        if self._remove is not None:
-            # We need to take stuff out of scope
-            combined = combined.subtract(unwrap(self._remove))
-        return combined
-
-class WDLNamespaceBindingsJob(WDLBaseJob):
-    """
-    Job that puts a set of bindings into a namespace.
-    """
-
-    def __init__(self, namespace: str, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
-        """
-        Make a new job to namespace results.
-        """
-        super().__init__(**kwargs)
-
-        self._namespace = namespace
-        self._prev_node_results = prev_node_results
-
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
-        """
-        Apply the namespace
-        """
-        super().run(file_store)
-        return combine_bindings(unwrap_all(self._prev_node_results)).wrap_namespace(self._namespace)
+        # Make sure to run the universal postprocessing steps
+        return self.postprocess(combined)
 
 class WDLWorkflowGraph:
     """
@@ -1697,10 +1747,12 @@ class WDLSectionJob(WDLBaseJob):
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
 
-        # We also need to be able to map back and forth between the WDL workflow nodes and the Toil jobs that run them
+        # When a WDL node depends on another, we need to be able to find the Toil job we need an rv from.
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
-        toil_id_to_wdl_ids = {}
-        
+        # We need the set of Toil jobs not depended on so we can wire them up to the sink.
+        # This maps from Toil job store ID to job.
+        toil_leaves = {}
+
         def get_job_set_any(wdl_ids: Set[str]) -> List[WDLBaseJob]:
             """
             Get the distinct Toil jobs executing any of the given WDL nodes.
@@ -1715,15 +1767,6 @@ class WDLSectionJob(WDLBaseJob):
                     jobs.append(job)
             return jobs
 
-        def get_job_set_only(wdl_ids: Set[str]) -> List[WDLBaseJob]:
-            """
-            Get the distinct Toil jobs executing only the given WDL nodes and
-            no others.
-            """
-            # Find the jobs that run any of the WDL nodes, and throw out the ones that run other stuff
-            return [job for job in get_job_set_any(wdl_ids) if any(wdl_id not in wdl_ids for wdl_id in toil_id_to_wdl_ids[job.jobStoreID])]
-        
-
         creation_order = section_graph.topological_order()
         logger.debug('Creation order: %s', creation_order)
 
@@ -1735,8 +1778,15 @@ class WDLSectionJob(WDLBaseJob):
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
             prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
             logger.debug('Make Toil job for %s', prev_node_ids)
-
+            
+            # Get the Toil jobs we depend on
             prev_jobs = get_job_set_any(prev_node_ids)
+            for prev_job in prev_jobs:
+                if prev_job.jobStoreID in toil_leaves:
+                    # Mark them all as depended on
+                    del toil_leaves[prev_job.jobStoreID]
+
+            # Get their return values to feed into the new job
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
@@ -1761,28 +1811,33 @@ class WDLSectionJob(WDLBaseJob):
             for node_id in node_ids:
                 # Save the job for everything it executes
                 wdl_id_to_toil_job[node_id] = job
-            # And remember everything it executes
-            toil_id_to_wdl_ids[job.jobStoreID] = set(node_ids) 
+            
+            # It isn't depended on yet
+            toil_leaves[job.jobStoreID] = job
 
-        # Get a deduplicated list of Toil jobs that execute only leaf nodes.
-        leaf_jobs = get_job_set_only(section_graph.leaves())
-        # Make the sink job
-        leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in leaf_jobs]
-        # Make sure to also send the section-level bindings
-        leaf_rvs.append(environment)
-        # And to fill in bindings from code not executed in this instantiation
-        # with Null, and filter out stuff that should leave scope.
-        sink = WDLCombineBindingsJob(
-            leaf_rvs,
-            underlay=self.make_gather_bindings(gather_nodes, WDL.Value.Null()),
-            remove=local_environment
-        )
-        # It runs inside us
-        self.addChild(sink)
-        for leaf_job in leaf_jobs:
-            # And after all the leaf jobs.
-            leaf_job.addFollowOn(sink)
+        if len(toil_leaves) == 1:
+            # There's one final node so we can just tack postprocessing onto that.
+            sink: WDLBaseJob = next(toil_leaves.values())
+        else:
+            # We need to bring together with a new sink
+            # Make the sink job to collect all their results.
+            leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in toil_leaves.values()]
+            # Make sure to also send the section-level bindings
+            leaf_rvs.append(environment)
+            # And to fill in bindings from code not executed in this instantiation
+            # with Null, and filter out stuff that should leave scope.
+            sink: WDLBaseJob = WDLCombineBindingsJob(leaf_rvs)
+            # It runs inside us
+            self.addChild(sink)
+            for leaf_job in toil_leaves.values():
+                # And after all the leaf jobs.
+                leaf_job.addFollowOn(sink)
 
+
+        # Apply the final postprocessing for leaving the section.
+        sink.then_underlay(self.make_gather_bindings(gather_nodes, WDL.Value.Null()))
+        sink.then_remove(local_environment)
+        
         return sink
 
     def make_gather_bindings(self, gathers: Sequence[WDL.Tree.Gather], undefined: WDL.Value.Base) -> WDLBindings:
@@ -1906,6 +1961,7 @@ class WDLScatterJob(WDLSectionJob):
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
+        self.defer_postprocessing(gather_job)
         return gather_job.rv()
 
 class WDLArrayBindingsJob(WDLBaseJob):
@@ -1963,7 +2019,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
             result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
 
         # Base bindings are already included so return the result
-        return result
+        return self.postprocess(result)
 
 class WDLConditionalJob(WDLSectionJob):
     """
@@ -2005,13 +2061,14 @@ class WDLConditionalJob(WDLSectionJob):
             logger.info('Condition is true')
             # Run the body and return its effects
             body_job = self.create_subgraph(self._conditional.body, list(self._conditional.gathers.values()), bindings)
+            self.defer_postprocessing(body_job)
             return body_job.rv()
         else:
             logger.info('Condition is false')
             # Return the input bindings and null bindings for all our gathers.
             # Should not collide at all.
             gather_bindings = self.make_gather_bindings(list(self._conditional.gathers.values()), WDL.Value.Null())
-            return combine_bindings([bindings, gather_bindings])
+            return self.postprocess(combine_bindings([bindings, gather_bindings]))
 
 class WDLWorkflowJob(WDLSectionJob):
     """
@@ -2069,11 +2126,12 @@ class WDLWorkflowJob(WDLSectionJob):
             # Add evaluating the outputs after the sink
             outputs_job = WDLOutputsJob(self._workflow.outputs, sink.rv())
             sink.addFollowOn(outputs_job)
-            # Caller takes care of namespacing the result
+            # Caller is responsible for making sure namespaces are applied
+            self.defer_postprocessing(outputs_job)
             return outputs_job.rv()
         else:
             # No outputs from this workflow.
-            return WDL.Env.Bindings()
+            return self.postprocess(WDL.Env.Bindings())
 
 class WDLOutputsJob(WDLBaseJob):
     """
@@ -2103,7 +2161,7 @@ class WDLOutputsJob(WDLBaseJob):
         for output_decl in self._outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, unwrap(self._bindings), standard_library))
 
-        return output_bindings
+        return self.postprocess(output_bindings)
 
 class WDLRootJob(WDLSectionJob):
     """
@@ -2132,13 +2190,10 @@ class WDLRootJob(WDLSectionJob):
         # Run the workflow. We rely in this to handle entering the input
         # namespace if needed, or handling free-floating inputs.
         workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._namespace)
+        workflow_job.then_namespace(self._namespace)
         self.addChild(workflow_job)
-
-        # And namespace its outputs
-        namespace_job = WDLNamespaceBindingsJob(self._namespace, [workflow_job.rv()])
-        workflow_job.addFollowOn(namespace_job)
-
-        return namespace_job.rv()
+        self.defer_postprocessing(workflow_job)
+        return workflow_job.rv()
 
 def main() -> None:
     """
