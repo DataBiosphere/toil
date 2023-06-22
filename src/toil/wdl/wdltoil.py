@@ -975,7 +975,7 @@ class WDLBaseJob(Job):
         Use this when you are returning a promise for bindings, on the job that issues the promise.
         """
 
-        other._postprocess_steps += self._postprocessing_steps
+        other._postprocessing_steps += self._postprocessing_steps
         self._postprocessing_steps = []
 
 
@@ -1586,6 +1586,8 @@ class WDLWorkflowGraph:
             if real_dependency in self._nodes:
                 dependencies.add(real_dependency)
 
+        return dependencies
+
     def get_transitive_dependencies(self, node_id: str) -> Set[str]:
         """
         Get all the nodes that a node depends on, transitively.
@@ -1604,7 +1606,7 @@ class WDLWorkflowGraph:
                 continue
             # Get all its dependencies
             here_deps = self.get_dependencies(here)
-            dependencies += here_deps
+            dependencies |= here_deps
             for dep in here_deps:
                 if dep not in visited:
                     # And queue all the ones we haven't visited.
@@ -1650,7 +1652,7 @@ class WDLSectionJob(WDLBaseJob):
         super().__init__(**kwargs)
         self._namespace = namespace
 
-    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
+    def coalesce_nodes(self, order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
         """
         Given a topological order of WDL workflow node IDs, produce a list of
         lists of IDs, still in topological order, where each list of IDs can be
@@ -1817,7 +1819,7 @@ class WDLSectionJob(WDLBaseJob):
 
         if len(toil_leaves) == 1:
             # There's one final node so we can just tack postprocessing onto that.
-            sink: WDLBaseJob = next(toil_leaves.values())
+            sink: WDLBaseJob = next(iter(toil_leaves.values()))
         else:
             # We need to bring together with a new sink
             # Make the sink job to collect all their results.
