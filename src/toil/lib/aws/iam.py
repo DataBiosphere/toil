@@ -189,6 +189,9 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
 
 
 def collect_policy_actions(policy_documents: Sequence[Union[str, Dict[str, Any]]]) -> AllowedActionCollection:
+    """
+    Collect all of the actions allowed by the given policy documents into one AllowedActionCollection.
+    """
     allowed_actions: AllowedActionCollection = init_action_collection()
     for policy_str in policy_documents:
         # sometimes a string is returned from the api, so convert to a dictionary
