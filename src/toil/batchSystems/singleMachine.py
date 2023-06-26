@@ -601,7 +601,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if job_accelerators:
             # Try and find some accelerators to use.
             # Start with all the accelerators that are free right now
-            accelerator_set : ResourceSet = self.resource_sources[3]
+            accelerator_set : ResourceSet = self.resource_sources[-1]
             snapshot = accelerator_set.get_free_snapshot()
             # And build a plan of the ones we want
             accelerators_needed, problem = self._identify_sufficient_accelerators(job_accelerators, snapshot)

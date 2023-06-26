@@ -193,7 +193,7 @@ Making Your Own Toil Docker Image
 **Note!**  Toil checks if the docker image specified by TOIL_APPLIANCE_SELF
 exists prior to launching by using the docker v2 schema.  This should be
 valid for any major docker repository, but there is an option to override
-this if desired using the option: `-\\-forceDockerAppliance`.
+this if desired using the option: ``--forceDockerAppliance``.
 
 Here is a general workflow (similar instructions apply when using Docker Hub):
 
@@ -350,9 +350,9 @@ Naming Conventions
   pull requests with their associated branches at any given point in time and
   this convention ensures that we can easily identify branches.)
 
-  Say there is an issue numbered #123 titled `Foo does not work`. The branch name
+  Say there is an issue numbered #123 titled ``Foo does not work``. The branch name
   would be ``issues/123-fix-foo`` and the title of the commit would be
-  `Fix foo in case of bar (resolves #123).`
+  ``Fix foo in case of bar (resolves #123).``
 
 .. _great: https://chris.beams.io/posts/git-commit/#seven-rules
 

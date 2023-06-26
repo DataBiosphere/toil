@@ -10,7 +10,7 @@ are used for :ref:`runningAWS` and are comprised of ``toil launch-cluster``, ``t
 
 Cluster commands specific to ``toil`` are:
 
-    ``status`` --- Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the -\\-stats option).
+    ``status`` --- Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the ``--stats`` option).
 
     ``stats`` --- Inspects a job store to see which jobs have failed, run successfully, etc.
 
@@ -190,7 +190,7 @@ exist yet, Toil will create it for you.
   --owner OWNER
                         The owner tag for all instances. If not given, the value in
                         TOIL_OWNER_TAG will be used, or else the value of
-                        --keyPairName.
+                        ``--keyPairName``.
   --boto BOTOPATH       The path to the boto credentials directory. This is
                         transferred to all nodes in order to access the AWS
                         jobStore from non-AWS instances.
@@ -198,7 +198,7 @@ exist yet, Toil will create it for you.
                         KEYVALUE is specified as KEY=VALUE. -t KEY=VALUE also
                         accepted.  Tags are added to the AWS cluster for this
                         node and all of its children.
-                        Tags are of the form: -t key1=value1 --tag key2=value2.
+                        Tags are of the form: ``-t key1=value1`` ``--tag key2=value2``.
                         Multiple tags are allowed and each tag needs its own
                         flag. By default the cluster is tagged with:
                         { "Name": clusterName, "Owner": IAM username }.
@@ -213,7 +213,7 @@ exist yet, Toil will create it for you.
                         provisioner this is the name of an EC2 instance type
                         followed by a colon and the price in dollars to bid for
                         a spot instance, for example 'c3.8xlarge:0.42'. Must
-                        also provide the --workers argument to specify how
+                        also provide the ``--workers`` argument to specify how
                         many workers of each node type to create.
   --workers WORKERS
                         -w WORKERS also accepted.  Comma-separated list of the
@@ -230,13 +230,13 @@ exist yet, Toil will create it for you.
                         This is an EBS volume.
   --nodeStorageOverrides NODESTORAGEOVERRIDES
                         Comma-separated list of nodeType:nodeStorage that are used
-                        to override the default value from --nodeStorage for the
+                        to override the default value from ``--nodeStorage`` for the
                         specified nodeType(s). This is useful for heterogeneous jobs
                         where some tasks require much more disk than others.
 
 **Logging Options**
 
-  --logOff              Same as -\\-logCritical.
+  --logOff              Same as ``--logCritical``.
   --logCritical         Turn on logging at level CRITICAL and above. (default
                         is INFO)
   --logError            Turn on logging at level ERROR and above. (default is
