@@ -135,5 +135,5 @@ class IAMTest(ToilTest):
         notactions_set = set(actions_collection["*"]["NotAction"])
 
         expected_actions = {"iam:CreateRole", "iam:CreateInstanceProfile", "iam:TagInstanceProfile", "iam:DeleteRole"}
-        assert (actions_set == expected_actions)
-        assert (notactions_set == set())
+        assert actions_set == expected_actions
+        assert notactions_set == set()

@@ -196,10 +196,10 @@ def collect_policy_actions(policy_documents: Sequence[Union[str, Dict[str, Any]]
     for policy_str in policy_documents:
         # sometimes a string is returned from the api, so convert to a dictionary
         if isinstance(policy_str, dict):
-            policy_dic = policy_str
+            policy_dict = policy_str
         else:
-            policy_dic = json.loads(policy_str)
-        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_dic))
+            policy_dict = json.loads(policy_str)
+        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_dict))
     return allowed_actions
 
 
