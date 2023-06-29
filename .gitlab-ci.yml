@@ -272,11 +272,7 @@ wdl:
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
     - make test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
     # Run some WDL conformance tests.
-    # These are not set up as Toil PyTest tests (yet?)
-    - git clone https://github.com/adamnovak/wdl-conformance-tests.git
-    - cd wdl-conformance-tests
-    - git checkout 0ca00774331630d8eb06990caa8a1ba178cabecb
-    - python run.py --runner toil-wdl-runner --versions 1.0 --threads 8
+    - make test tests="src/toil/test/wdl/wdltoil_test.py::ToilConformanceTests_v10"
 
 jobstore_and_provisioning:
   stage: main_tests
