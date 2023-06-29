@@ -27,6 +27,7 @@ from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
                                         ServiceUnavailable)
 from google.cloud import exceptions, storage
+from google.auth.exceptions import DefaultCredentialsError
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
@@ -112,25 +113,49 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
         self.sseKey = None
+        self.storageClient = self.create_client()
+
+
+    @classmethod
+    def create_client(cls) -> storage.Client:
+        """
+        Produce a client for Google Sotrage with the highest level of access we can get.
+
+        Fall back to anonymous access if no project is available, unlike the
+        Google Storage module's behavior.
+
+        Warn if GOOGLE_APPLICATION_CREDENTIALS is set but not actually present.
+        """
 
         # Determine if we have an override environment variable for our credentials.
-        # We don't pull out the filename; we just see if a name is there.
-        self.credentialsFromEnvironment = bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS', False))
-
-        if self.credentialsFromEnvironment and not os.path.exists(os.getenv('GOOGLE_APPLICATION_CREDENTIALS')):
+        # We get the path to check existence, but Google Storage works out what
+        # to use later by looking at the environment again.
+        credentials_path: Optional[str] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', None)
+        if credentials_path is not None and not os.path.exists(credentials_path):
             # If the file is missing, complain.
             # This variable holds a file name and not any sensitive data itself.
             log.warning("File '%s' from GOOGLE_APPLICATION_CREDENTIALS is unavailable! "
                         "We may not be able to authenticate!",
-                        os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
+                        credentials_path)
 
-        if not self.credentialsFromEnvironment and os.path.exists(self.nodeServiceAccountJson):
-            # load credentials from a particular file on GCE nodes if an override path is not set
-            self.storageClient = storage.Client.from_service_account_json(self.nodeServiceAccountJson)
-        else:
-            # Either a filename is specified, or our fallback file isn't there.
+        if credentials_path is None and os.path.exists(cls.nodeServiceAccountJson):
+            try:
+                # load credentials from a particular file on GCE nodes if an override path is not set
+                return storage.Client.from_service_account_json(cls.nodeServiceAccountJson)
+            except OSError:
+                # Probably we don't have permission to use the file.
+                log.warning("File '%s' exists but didn't work to authenticate!",
+                            cls.nodeServiceAccountJson)
+                pass
+
+        # Either a filename is specified, or our fallback file isn't there.
+        try:
             # See if Google can work out how to authenticate.
-            self.storageClient = storage.Client()
+            return storage.Client()
+        except DefaultCredentialsError:
+            # Google can't, fall back to being anonymous.
+            # This is likely to happen all the time so don't warn.
+            return storage.Client.create_anonymous_client()
 
 
     @google_retry
@@ -244,10 +269,11 @@ class GoogleJobStore(AbstractJobStore):
 
         env = {}
 
-        if self.credentialsFromEnvironment:
+        credentials_path: Optional[str] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', None)
+        if credentials_path is not None:
             # Send along the environment variable that points to the credentials file.
             # It must be available in the same place on all nodes.
-            env['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            env['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
 
         return env
 
@@ -351,7 +377,7 @@ class GoogleJobStore(AbstractJobStore):
         if fileName.startswith('/'):
             fileName = fileName[1:]
 
-        storageClient = storage.Client()
+        storageClient = cls.create_client()
         bucket = storageClient.get_bucket(bucketName)
         blob = bucket.blob(compat_bytes(fileName))
 
