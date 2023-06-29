@@ -180,7 +180,7 @@ class GoogleJobStore(AbstractJobStore):
     @google_retry
     def resume(self):
         try:
-            self.bucket = self.storageClient.bucket(bucket_name=self.bucketName)
+            self.bucket = self.storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
         super().resume()
@@ -188,7 +188,7 @@ class GoogleJobStore(AbstractJobStore):
     @google_retry
     def destroy(self):
         try:
-            self.bucket = self.storageClient.bucket(bucket_name=self.bucketName)
+            self.bucket = self.storageClient.get_bucket(self.bucketName)
 
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
