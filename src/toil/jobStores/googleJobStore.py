@@ -152,8 +152,13 @@ class GoogleJobStore(AbstractJobStore):
         try:
             # See if Google can work out how to authenticate.
             return storage.Client()
-        except DefaultCredentialsError:
-            # Google can't, fall back to being anonymous.
+        except (DefaultCredentialsError, EnvironmentError):
+            # Depending on which Google codepath or module version (???)
+            # realizes we have no credentials, we can get an EnvironemntError,
+            # or the new DefaultCredentialsError we are supposedly specced to
+            # get.
+
+            # Google can't find credentials, fall back to being anonymous.
             # This is likely to happen all the time so don't warn.
             return storage.Client.create_anonymous_client()
 
