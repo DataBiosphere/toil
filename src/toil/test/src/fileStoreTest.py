@@ -36,7 +36,7 @@ from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.exceptions import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import ToilTest, needs_aws_ec2, needs_google, slow
+from toil.test import ToilTest, needs_aws_ec2, needs_google_project, needs_google_storage, slow
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -1350,13 +1350,15 @@ class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 
 
 @slow
-@needs_google
+@needs_google_project
+@needs_google_storage
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'

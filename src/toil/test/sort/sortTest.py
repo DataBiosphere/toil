@@ -30,7 +30,8 @@ from toil.exceptions import FailedJobsException
 from toil.lib.bioio import root_logger
 from toil.test import (ToilTest,
                        needs_aws_ec2,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_sotrage,
                        needs_gridengine,
                        needs_mesos,
                        needs_parasol,
@@ -197,11 +198,13 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testGoogleSingle(self):
         self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="single_machine")
 
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     @needs_mesos
     def testGoogleMesos(self):
         self._startMesos()
