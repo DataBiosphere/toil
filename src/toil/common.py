@@ -1277,37 +1277,16 @@ class Toil(ContextManager["Toil"]):
     def import_file(self,
                     src_uri: str,
                     shared_file_name: Optional[str] = None,
-                    symlink: bool = True,
-                    check_existence: bool = True) -> Optional[FileID]:
+                    symlink: bool = True) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
-
-        By default, returns None if the file does not exist.
-
-        :param check_existence: If true, raise FileNotFoundError if the file
-               does not exist. If false, return None when the file does not
-               exist.
 
         See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
         full description
         """
         self._assertContextManagerUsed()
-        full_uri = self.normalize_uri(src_uri, check_existence=check_existence)
-        try:
-            imported = self._jobStore.import_file(full_uri, shared_file_name=shared_file_name, symlink=symlink)
-        except FileNotFoundError:
-            # TODO: I thought we refactored the different job store import
-            # methods to not raise and instead return None, but that looks to
-            # not currently be the case.
-            if check_existence:
-                raise
-            else:
-                # So translate the raise-based API if needed.
-                return None
-        if impoted is None and check_existence:
-            # We need to protect the caller from missing files
-            raise FileNotFoundError(f'Could not find file {src_uri}')
-        return imported
+        src_uri = self.normalize_uri(src_uri, check_existence=True)
+        return self._jobStore.import_file(src_uri, shared_file_name=shared_file_name, symlink=symlink)
 
     @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
@@ -1329,7 +1308,7 @@ class Toil(ContextManager["Toil"]):
         """
         Given a URI, if it has no scheme, prepend "file:".
 
-        :param check_existence: If set, raise FileNotFoundError if a URI points to
+        :param check_existence: If set, raise an error if a URI points to
                a local file that does not exist.
         """
         if urlparse(uri).scheme == 'file':

@@ -587,8 +587,6 @@ class AbstractJobStore(ABC):
         """
         Read the given URL and write its content into the given writable stream.
 
-        Raises FileNotFoundError if the URL doesn't exist.
-
         :return: The size of the file in bytes and whether the executable permission bit is set
         :rtype: Tuple[int, bool]
         """
@@ -620,8 +618,6 @@ class AbstractJobStore(ABC):
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
-        Raises FileNotFoundError if the URL doesn't exist.
-
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         :param ParseResult url: URL that points to a file or object in the storage
@@ -639,7 +635,7 @@ class AbstractJobStore(ABC):
     def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
-        specified locationRaises FileNotFoundError if the URL doesn't exist..
+        specified location.
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
@@ -1711,27 +1707,20 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
         # So we don't have to worry about writing the start of the file twice.
-        try:
-            with closing(urlopen(url.geturl())) as readable:
-                # Make something to count the bytes we get
-                # We need to put the actual count in a container so our
-                # nested function can modify it without creating its own
-                # local with the same name.
-                size = [0]
-                def count(l: int) -> None:
-                    size[0] += l
-                counter = WriteWatchingStream(writable)
-                counter.onWrite(count)
+        with closing(urlopen(url.geturl())) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l: int) -> None:
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
 
-                # Do the download
-                shutil.copyfileobj(readable, counter)
-                return size[0], False
-        except HTTPError as e:
-            if e.code == 404:
-                # Need to translate into a universal error type for no file
-                raise FileNotFoundError(str(url)) from e
-            else:
-                raise
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0], False
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
