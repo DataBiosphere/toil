@@ -590,6 +590,8 @@ class AbstractJobStore(ABC):
         """
         Read the given URL and write its content into the given writable stream.
 
+        Raises FileNotFoundError if the URL doesn't exist.
+
         :return: The size of the file in bytes and whether the executable permission bit is set
         :rtype: Tuple[int, bool]
         """
@@ -621,6 +623,8 @@ class AbstractJobStore(ABC):
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
+        Raises FileNotFoundError if the URL doesn't exist.
+
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         Raises FileNotFoundError if the thing at the URL is not found.
@@ -640,7 +644,7 @@ class AbstractJobStore(ABC):
     def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
-        specified location.
+        specified locationRaises FileNotFoundError if the URL doesn't exist..
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
@@ -1709,11 +1713,10 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     def _read_from_url(
         cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
     ) -> Tuple[int, bool]:
-
+        # We can only retry on errors that happen as responses to the request.
+        # If we start getting file data, and the connection drops, we fail.
+        # So we don't have to worry about writing the start of the file twice.
         try:
-            # We can only retry on errors that happen as responses to the request.
-            # If we start getting file data, and the connection drops, we fail.
-            # So we don't have to worry about writing the start of the file twice.
             with closing(urlopen(url.geturl())) as readable:
                 # Make something to count the bytes we get
                 # We need to put the actual count in a container so our
@@ -1732,7 +1735,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             if e.code == 404:
                 # Translate into a FileNotFoundError for detecting
                 # un-importable files
-                raise FileNotFoundError from e
+                raise FileNotFoundError(str(url)) from e
             else:
                 raise
 
