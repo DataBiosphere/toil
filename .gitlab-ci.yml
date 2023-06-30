@@ -271,8 +271,6 @@ wdl:
     - make test tests=src/toil/test/wdl/wdltoil_test.py
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
     - make test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
-    # Run some WDL conformance tests.
-    - make test tests="src/toil/test/wdl/wdltoil_test.py::ToilConformanceTests_v10"
 
 jobstore_and_provisioning:
   stage: main_tests

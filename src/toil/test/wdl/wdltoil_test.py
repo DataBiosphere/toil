@@ -16,9 +16,9 @@ from toil.version import exactPython
 import toil.test.wdl.toilwdlTest
 
 
-class ToilConformanceTests_v10(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
+class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     """
-    New WDL tests for Toil for version 1.0
+    New WDL conformance tests for Toil
     """
     @classmethod
     def setUpClass(cls) -> None:
@@ -26,15 +26,18 @@ class ToilConformanceTests_v10(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         os.chdir("wdl-conformance-tests")
         cls.base_command = [exactPython, "run.py", "--version", "1.0", "--runner", "toil-wdl-runner"]
 
-    def test_all_conformance_tests(self):
+    def test_conformance_tests_v10(self):
         tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
+        subprocess.Popen(self.base_command + ["-n", tests_to_run])
+
+    def test_conformance_tests_v11(self):
+        tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
         subprocess.Popen(self.base_command + ["-n", tests_to_run])
 
     @classmethod
     def tearDownClass(cls) -> None:
         upper_dir = os.path.dirname(os.getcwd())
         os.chdir(upper_dir)
-        # uncomment later
         shutil.rmtree("wdl-conformance-tests")
 
 
