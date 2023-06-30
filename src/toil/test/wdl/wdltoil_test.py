@@ -24,23 +24,23 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     def setUpClass(cls) -> None:
         os.system("git clone -b move-toil-tests https://github.com/DataBiosphere/wdl-conformance-tests.git")
         os.chdir("wdl-conformance-tests")
-        cls.base_command = [exactPython, "run.py", "--version", "1.0", "--runner", "toil-wdl-runner"]
+        cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
     def test_conformance_tests_v10(self):
         tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
-        p = subprocess.Popen(self.base_command + ["-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         retval = p.returncode
-        assert retval == 0
-        assert b'FAILED' not in stdout
+        assert retval == 0, f"Process returned {retval}!"
+        assert b'FAILED' not in stdout, "At least one conformance test failed!"
 
     def test_conformance_tests_v11(self):
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
-        p = subprocess.Popen(self.base_command + ["-n", tests_to_run])
+        p = subprocess.Popen(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         retval = p.returncode
-        assert retval == 0
-        assert b'FAILED' not in stdout
+        assert retval == 0, f"Process returned {retval}!"
+        assert b'FAILED' not in stdout, "At least one conformance test failed!"
 
 
     @classmethod
