@@ -708,7 +708,9 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Try each place it could be according to WDL finding logic.
             tried.append(candidate_uri)
             try:
-                imported = toil.import_file(candidate_uri)
+                # Try to import the file. Don't raise if we can't find it, just
+                # return None!
+                imported = toil.import_file(candidate_uri, check_existence=False)
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
