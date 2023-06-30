@@ -1304,7 +1304,7 @@ class Toil(ContextManager["Toil"]):
             else:
                 # So translate the raise-based API if needed.
                 return None
-        if impoted is None and check_existence:
+        if imported is None and check_existence:
             # We need to protect the caller from missing files
             raise FileNotFoundError(f'Could not find file {src_uri}')
         return imported
