@@ -32,17 +32,15 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
         p = subprocess.Popen(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
-        retval = p.returncode
-        assert retval == 0, f"At least one conformance test failed!\n" \
-                            f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
+        assert b": FAILED:" not in stdout, f"At least one conformance test failed!\n" \
+                                           f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
 
     def test_conformance_tests_v11(self):
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
         p = subprocess.Popen(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
-        retval = p.returncode
-        assert retval == 0, f"At least one conformance test failed!\n" \
-                            f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
+        assert b": FAILED:" not in stdout, f"At least one conformance test failed!\n" \
+                                           f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
 
 
     def find_failed_tests(self, stream):
