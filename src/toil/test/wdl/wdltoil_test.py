@@ -9,6 +9,7 @@ import zipfile
 from urllib.request import urlretrieve
 
 import pytest
+import re
 
 from toil.test import ToilTest, needs_docker, needs_docker_cuda, needs_java, needs_singularity, slow
 from toil.version import exactPython
@@ -23,6 +24,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     @classmethod
     def setUpClass(cls) -> None:
         os.system("git clone -b move-toil-tests https://github.com/DataBiosphere/wdl-conformance-tests.git")
+        assert os.path.exists("wdl-conformance-tests"), "Failed to git clone!"
         os.chdir("wdl-conformance-tests")
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
@@ -31,16 +33,27 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p = subprocess.Popen(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         retval = p.returncode
-        assert retval == 0, f"Process returned {retval}!"
-        assert b'FAILED' not in stdout, "At least one conformance test failed!"
+        assert retval == 0, f"At least one conformance test failed!\n" \
+                            f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
 
     def test_conformance_tests_v11(self):
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
         p = subprocess.Popen(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         retval = p.returncode
-        assert retval == 0, f"Process returned {retval}!"
-        assert b'FAILED' not in stdout, "At least one conformance test failed!"
+        assert retval == 0, f"At least one conformance test failed!\n" \
+                            f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
+
+
+    def find_failed_tests(self, stream):
+        """
+        Parse output and find all tests that failed
+        :return:
+        """
+        pattern = rb"\d+: FAILED:"
+        matches = re.findall(pattern, stream)
+        failed_tests = [test[0:test.find(b":")].decode() for test in matches]
+        return failed_tests
 
 
     @classmethod
