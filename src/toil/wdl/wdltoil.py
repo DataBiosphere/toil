@@ -44,7 +44,7 @@ from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
-from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
+from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
@@ -1431,7 +1431,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
-                subjob: Job = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
+                subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
                 self.addChild(subjob)
             elif isinstance(self._node.callee, WDL.Tree.Task):
                 # This is a call of a task
@@ -1609,8 +1609,8 @@ class WDLWorkflowGraph:
         Get all the nodes that a node depends on, transitively.
         """
 
-        dependencies = set()
-        visited = set()
+        dependencies: Set[str] = set()
+        visited: Set[str] = set()
         queue = [node_id]
 
         while len(queue) > 0:
@@ -1620,6 +1620,8 @@ class WDLWorkflowGraph:
             if here in visited:
                 # Skip if we got it already
                 continue
+            # Mark it got
+            visited.add(here)
             # Get all its dependencies
             here_deps = self.get_dependencies(here)
             dependencies |= here_deps
@@ -1737,7 +1739,7 @@ class WDLSectionJob(WDLBaseJob):
                         
 
 
-    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
+    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> WDLBaseJob:
         """
         Make a Toil job to evaluate a subgraph inside a workflow or workflow
         section.
@@ -1770,7 +1772,7 @@ class WDLSectionJob(WDLBaseJob):
         wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
         # We need the set of Toil jobs not depended on so we can wire them up to the sink.
         # This maps from Toil job store ID to job.
-        toil_leaves = {}
+        toil_leaves: Dict[Union[str, TemporaryID], WDLBaseJob] = {}
 
         def get_job_set_any(wdl_ids: Set[str]) -> List[WDLBaseJob]:
             """
@@ -1845,7 +1847,7 @@ class WDLSectionJob(WDLBaseJob):
             leaf_rvs.append(environment)
             # And to fill in bindings from code not executed in this instantiation
             # with Null, and filter out stuff that should leave scope.
-            sink: WDLBaseJob = WDLCombineBindingsJob(leaf_rvs)
+            sink = WDLCombineBindingsJob(leaf_rvs)
             # It runs inside us
             self.addChild(sink)
             for leaf_job in toil_leaves.values():
