@@ -17,6 +17,7 @@ import os
 import re
 import struct
 from shlex import quote
+from typing import Optional, List
 
 import requests
 
@@ -26,6 +27,8 @@ from docker.errors import (ContainerError,
                            NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
+
+from toil.lib.accelerators import get_host_accelerator_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,7 @@ def apiDockerCall(job,
                   stream=False,
                   demux=False,
                   streamfile=None,
+                  accelerators: Optional[List[int]] = None,
                   timeout=365 * 24 * 60 * 60,
                   **kwargs):
     """
@@ -151,6 +155,11 @@ def apiDockerCall(job,
                         not always able to abort ongoing reads and writes in order
                         to respect the timeout. Defaults to 1 year (i.e. wait
                         essentially indefinitely).
+    :param accelerators: Toil accelerator numbers (usually GPUs) to forward to
+                         the container. These are interpreted in the current
+                         Python process's environment. See
+                         toil.lib.accelerators.get_individual_local_accelerators()
+                         for the menu of available accelerators.
     :param kwargs: Additional keyword arguments supplied to the docker API's
                    run command.  The list is 75 keywords total, for examples
                    and full documentation see:
@@ -238,6 +247,27 @@ def apiDockerCall(job,
     if auto_remove is None:
         auto_remove = remove
 
+    device_requests = []
+    if accelerators:
+        # Map accelerator numbers to host numbers
+        host_accelerators = []
+        accelerator_mapping = get_host_accelerator_numbers()
+        for our_number in accelerators:
+            if our_number >= len(accelerator_mapping):
+                raise RuntimeError(
+                    f"Cannot forward accelerator {our_number} because only "
+                    f"{len(accelerator_mapping)} accelerators are available "
+                    f"to this job."
+                )
+            host_accelerators.append(accelerator_mapping[our_number])
+        # TODO: Here we assume that the host accelerators are all GPUs
+        device_requests.append(
+            docker.types.DeviceRequest(
+                device_ids=[','.join(host_accelerators)],
+                capabilities=[['gpu']]
+            )
+        )
+
     try:
         if detach is False:
             # When detach is False, this returns stdout normally:
@@ -261,6 +291,7 @@ def apiDockerCall(job,
                                         log_config=log_config,
                                         user=user,
                                         environment=environment,
+                                        device_requests=device_requests,
                                         **kwargs)
 
             if demux is False:
@@ -303,6 +334,7 @@ def apiDockerCall(job,
                                               log_config=log_config,
                                               user=user,
                                               environment=environment,
+                                              device_requests=device_requests,
                                               **kwargs)
             if stdout or stderr:
                 if streamfile is None:
