@@ -1729,8 +1729,9 @@ class WDLSectionJob(WDLBaseJob):
                         current_bucket = [next_id]
                         current_bucket_dependencies = next_dependencies
 
-        # Now finish the last bucket
-        to_return.append(current_bucket)
+        if len(current_bucket) > 0:
+            # Now finish the last bucket
+            to_return.append(current_bucket)
 
         return to_return
                         
