@@ -1305,9 +1305,14 @@ class Toil(ContextManager["Toil"]):
                 raise
             else:
                 # So translate the raise-based API if needed.
+                # TODO: If check_existence is false but a shared file name is
+                # specified, we have no way to report the lack of file
+                # existence, since we also return None on success!
                 return None
-        if imported is None and check_existence:
-            # We need to protect the caller from missing files
+        if imported is None and shared_file_name is None and check_existence:
+            # We need to protect the caller from missing files.
+            # We think a file was missing, and we got None becasuse of it.
+            # We didn't get None instead because of usign a shared file name.
             raise FileNotFoundError(f'Could not find file {src_uri}')
         return imported
 
