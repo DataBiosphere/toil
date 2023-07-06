@@ -624,7 +624,7 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
         except Exception:
             # If something goes wrong, dump.
             logger.exception("Expression evaluation failed for %s: %s", name, expression)
-            log_bindings(logger.exception, "Expression was evaluated in:", [environment])
+            log_bindings(logger.error, "Expression was evaluated in:", [environment])
             raise
 
     if expected_type:
@@ -669,7 +669,7 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     except Exception:
         # If something goes wrong, dump.
         logger.exception("Evaluation failed for %s", node)
-        log_bindings(logger.exception, "Statement was evaluated in:", [environment])
+        log_bindings(logger.error, "Statement was evaluated in:", [environment])
         raise
 
 # TODO: make these stdlib methods???
@@ -912,24 +912,28 @@ class WDLBaseJob(Job):
         """
         Apply an underlay of backup bindings to the result.
         """
+        logger.debug("Underlay %s after %s", underlay, self)
         self._postprocessing_steps.append(("underlay", underlay))
 
     def then_remove(self, remove: Promised[WDLBindings]) -> None:
         """
         Remove the given bindings from the result.
         """
+        logger.debug("Remove %s after %s", remove, self)
         self._postprocessing_steps.append(("remove", remove))
 
     def then_namespace(self, namespace: str) -> None:
         """
         Put the result bindings into a namespace.
         """
+        logger.debug("Namespace %s after %s", namespace, self)
         self._postprocessing_steps.append(("namespace", namespace))
 
     def then_overlay(self, overlay: Promised[WDLBindings]) -> None:
         """
         Overlay the given bindings on top of the (possibly namespaced) result.
         """
+        logger.debug("Overlay %s after %s", overlay, self)
         self._postprocessing_steps.append(("overlay", overlay))
 
     def postprocess(self, bindings: WDLBindings) -> WDLBindings:
@@ -941,15 +945,18 @@ class WDLBaseJob(Job):
         """
 
         for action, argument in self._postprocessing_steps:
+
+            logger.debug("Apply postprocessing setp: (%s, %s)", action, argument)
+
             # Interpret the mini language of postprocessing steps.
             # These are too small to justify being their own separate jobs.
             if action == "underlay":
-                if not isinstance(argument, WDLBindings):
+                if not isinstance(argument, WDL.Env.Bindings):
                     raise RuntimeError("Wrong postprocessing argument type")
                 # We want to apply values from the underlay if not set in the bindings
                 bindings = combine_bindings([bindings, argument.subtract(bindings)])
             elif action == "remove":
-                if not isinstance(argument, WDLBindings):
+                if not isinstance(argument, WDL.Env.Bindings):
                     raise RuntimeError("Wrong postprocessing argument type")
                 # We need to take stuff out of scope
                 bindings = bindings.subtract(argument)
@@ -959,7 +966,7 @@ class WDLBaseJob(Job):
                 # We are supposed to put all our results in a namespace
                 bindings = bindings.wrap_namespace(argument)
             elif action == "overlay":
-                if not isinstance(argument, WDLBindings):
+                if not isinstance(argument, WDL.Env.Bindings):
                     raise RuntimeError("Wrong postprocessing argument type")
                 # We want to apply values from the overlay over the bindings
                 bindings = combine_bindings([bindings.subtract(argument), argument])
@@ -977,6 +984,8 @@ class WDLBaseJob(Job):
 
         other._postprocessing_steps += self._postprocessing_steps
         self._postprocessing_steps = []
+
+        logger.debug("Assigned postprocessing steps from %s to %s", self, other)
 
 
 class WDLTaskJob(WDLBaseJob):
@@ -1161,6 +1170,10 @@ class WDLTaskJob(WDLBaseJob):
             rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._namespace, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
             # Run that as a child
             self.addChild(rescheduled)
+
+            # Give it our postprocessing steps
+            self.defer_postprocessing(rescheduled)
+
             # And return its result.
             return rescheduled.rv()
 
@@ -1361,6 +1374,9 @@ class WDLTaskJob(WDLBaseJob):
 
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
+
+        # Do postprocessing steps to e.g. apply namespaces.
+        output_bindings = self.postprocess(output_bindings)
 
         return output_bindings
 
@@ -1779,7 +1795,7 @@ class WDLSectionJob(WDLBaseJob):
         for node_ids in creation_jobs:
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
             prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
-            logger.debug('Make Toil job for %s', prev_node_ids)
+            logger.debug('Make Toil job for %s', node_ids)
             
             # Get the Toil jobs we depend on
             prev_jobs = get_job_set_any(prev_node_ids)
@@ -1835,10 +1851,13 @@ class WDLSectionJob(WDLBaseJob):
                 # And after all the leaf jobs.
                 leaf_job.addFollowOn(sink)
 
+        logger.debug("Sink job is: %s", sink)
+
 
         # Apply the final postprocessing for leaving the section.
         sink.then_underlay(self.make_gather_bindings(gather_nodes, WDL.Value.Null()))
-        sink.then_remove(local_environment)
+        if local_environment is not None:
+            sink.then_remove(local_environment)
         
         return sink
 
