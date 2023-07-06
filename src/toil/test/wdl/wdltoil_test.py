@@ -24,18 +24,24 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     @classmethod
     def setUpClass(cls) -> None:
         os.system("git clone -b move-toil-tests https://github.com/DataBiosphere/wdl-conformance-tests.git")
-        assert os.path.exists("wdl-conformance-tests"), "Failed to git clone!"
-        os.chdir("wdl-conformance-tests")
+        cls.abs_path = os.path.join(os.getcwd(), "wdl-conformance-tests")
+        assert os.path.exists(cls.abs_path), "Failed to git clone!"
+        os.chdir(cls.abs_path)
+        os.system("git checkout a48fa68b1284f773c8ec91de765428cf14fe7628")
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
     def test_conformance_tests_v10(self):
-        tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
+        assert os.getcwd() == self.abs_path, "Not in the right directory!"
+
+        tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,60,62,67-69" # this should fail
         p = subprocess.Popen(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert b": FAILED:" not in stdout, f"At least one conformance test failed!\n" \
                                            f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
 
     def test_conformance_tests_v11(self):
+        assert os.getcwd() == self.abs_path, "Not in the right directory!"
+
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
         p = subprocess.Popen(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
@@ -56,7 +62,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        upper_dir = os.path.dirname(os.getcwd())
+        upper_dir = os.path.dirname(cls.abs_path)
         os.chdir(upper_dir)
         shutil.rmtree("wdl-conformance-tests")
 
