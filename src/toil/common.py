@@ -1266,13 +1266,15 @@ class Toil(ContextManager["Toil"]):
     def import_file(self,
                     src_uri: str,
                     shared_file_name: str,
-                    symlink: bool = True) -> None: ...
+                    symlink: bool = True,
+                    check_existence: bool = True) -> None: ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
-                    symlink: bool = True) -> FileID: ...
+                    symlink: bool = True,
+                    check_existence: bool = True) -> FileID: ...
 
     def import_file(self,
                     src_uri: str,
