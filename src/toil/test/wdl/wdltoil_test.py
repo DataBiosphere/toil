@@ -35,6 +35,9 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
 
         p.communicate()
 
+        if p.returncode > 0:
+            raise RuntimeError
+
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
     def test_conformance_tests_v10(self):
