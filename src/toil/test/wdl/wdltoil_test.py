@@ -21,32 +21,32 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     """
     New WDL conformance tests for Toil
     """
+    wdl_dir = "wdl-conformance-tests"
     @classmethod
     def setUpClass(cls) -> None:
-        os.system("git clone -b move-toil-tests https://github.com/DataBiosphere/wdl-conformance-tests.git")
-        cls.abs_path = os.path.join(os.getcwd(), "wdl-conformance-tests")
-        assert os.path.exists(cls.abs_path), "Failed to git clone!"
-        os.chdir(cls.abs_path)
-        os.system("git checkout a48fa68b1284f773c8ec91de765428cf14fe7628")
+
+        url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
+        commit = "a48fa68b1284f773c8ec91de765428cf14fe7628"
+
+        p = subprocess.Popen(
+            f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",
+            shell=True,
+        )
+
+        p.communicate()
+
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
     def test_conformance_tests_v10(self):
-        assert os.getcwd() == self.abs_path, "Not in the right directory!"
+        # raise RuntimeError
 
         tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,60,62,67-69" # this should fail
-        p = subprocess.Popen(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert b": FAILED:" not in stdout, f"At least one conformance test failed!\n" \
-                                           f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
+        p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
     def test_conformance_tests_v11(self):
-        assert os.getcwd() == self.abs_path, "Not in the right directory!"
 
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
-        p = subprocess.Popen(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert b": FAILED:" not in stdout, f"At least one conformance test failed!\n" \
-                                           f"Failed tests: {' '.join(self.find_failed_tests(stdout))}"
+        p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
 
     def find_failed_tests(self, stream):
@@ -62,7 +62,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        upper_dir = os.path.dirname(cls.abs_path)
+        upper_dir = os.path.dirname(os.getcwd())
         os.chdir(upper_dir)
         shutil.rmtree("wdl-conformance-tests")
 
