@@ -46,7 +46,7 @@ stages:
   - basic_tests
 #  - main_tests
 #  - integration
-#
+
 #
 #lint:
 #  stage: linting_and_dependencies
