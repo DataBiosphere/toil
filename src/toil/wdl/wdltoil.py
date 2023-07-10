@@ -51,6 +51,9 @@ from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
 
+from WDL.runtime.error import OutputError
+from WDL._util import StructuredLogMessage
+
 logger = logging.getLogger(__name__)
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
@@ -601,6 +604,56 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         return super()._virtualize_filename(filename)
 
+class ToilWDLStdLibTask(ToilWDLStdLibBase, WDL.StdLib.Base):
+    def __init__(self, file_store: AbstractFileStore, task_container: Optional[TaskContainer] = None):
+        super().__init__(file_store)
+
+        self.container = task_container
+        self.inputs_only = True
+        self.logger = logger
+
+    # This function is from MiniWDL
+    def _devirtualize_filename_miniwdl(self, filename: str) -> str:
+        # check allowability of reading this file, & map from in-container to host
+        ans = self.container.host_path(filename, inputs_only=self.inputs_only)
+        if ans is None:
+            raise OutputError("function was passed non-existent file " + filename)
+        self.logger.debug(StructuredLogMessage("read_", container=filename, host=ans))
+        return ans
+
+    def _devirtualize_filename_toil(self, filename: str) -> str:
+        return super()._devirtualize_filename(filename)
+
+    def _devirtualize_filename(self, filename: str) -> str:
+        # switch between two cases
+        # if container is not set, then that means the runner is importing the inputs, as the container is not created
+        # yet
+        if self.container is None:
+            return self._devirtualize_filename_toil(filename)
+        else:
+            return self._devirtualize_filename_miniwdl(filename)
+
+    # This function is from MiniWDL
+    def _virtualize_filename_miniwdl(self, filename: str) -> str:
+        # register new file with container input_path_map
+        self.container.add_paths([filename])
+        self.logger.debug(
+            StructuredLogMessage("write_", host=filename, container=self.container.input_path_map[filename])
+        )
+        self.logger.info(StructuredLogMessage("wrote", file=self.container.input_path_map[filename]))
+        return self.container.input_path_map[filename]
+
+    def _virtualize_filename_toil(self, filename: str) -> str:
+        return super()._virtualize_filename(filename)
+
+    def _virtualize_filename(self, filename: str) -> str:
+        # switch between two cases
+        if self.container is None:
+            return self._virtualize_filename_toil(filename)
+        else:
+            return self._virtualize_filename_miniwdl(filename)
+
+
 def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
     """
     Evaluate an expression when we know the name of it.
@@ -956,7 +1009,7 @@ class WDLTaskJob(WDLBaseJob):
         # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store)
+        standard_library = ToilWDLStdLibTask(file_store)
 
         if self._task.inputs:
             logger.debug("Evaluating task inputs")
@@ -1151,6 +1204,8 @@ class WDLTaskJob(WDLBaseJob):
             # Container working directory is guaranteed (?) to be at "work" inside there
             workdir_in_container = os.path.join(host_dir, "work")
             task_container = TaskContainerImplementation(miniwdl_config, run_id, host_dir)
+
+            standard_library.container = task_container
 
             if isinstance(task_container, SingularityContainer):
                 # We need to patch the Singularity container run invocation
