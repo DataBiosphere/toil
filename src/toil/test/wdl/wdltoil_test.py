@@ -49,9 +49,10 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p.check_returncode()
 
     def test_conformance_tests_v11(self):
-
         tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
         p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
+        print(p.stdout.decode())
+        p.check_returncode()
 
     @classmethod
     def tearDownClass(cls) -> None:
