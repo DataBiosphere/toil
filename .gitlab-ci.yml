@@ -127,8 +127,8 @@ py310_main:
   script:
     - pwd
     - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make marker="${MARKER}" test tests="src/toil/test/src src/toil/test/utils"
-    - TOIL_SKIP_DOCKER=true make marker="${MARKER}" test tests=src/toil/test/lib
+    - make test tests="src/toil/test/src src/toil/test/utils"
+    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
 
 batch_systems:
   stage: main_tests
@@ -178,7 +178,7 @@ cwl_v1.0:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make marker="${MARKER}" test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 cwl_v1.1:
   stage: main_tests
@@ -187,7 +187,7 @@ cwl_v1.1:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make marker="${MARKER}" test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 cwl_v1.2:
   stage: main_tests
@@ -195,7 +195,7 @@ cwl_v1.2:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make marker="${MARKER}" test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
 
 cwl_on_arm:
   stage: main_tests
@@ -206,7 +206,7 @@ cwl_on_arm:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    - make marker="${MARKER}" test tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+    - make test tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_misc:
   stage: main_tests
@@ -214,7 +214,7 @@ cwl_misc:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make marker="${MARKER}" test tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
+    - make test tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
 
 cwl_v1.0_kubernetes:
   stage: main_tests
@@ -229,7 +229,7 @@ cwl_v1.0_kubernetes:
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - echo Singularity mirror is ${SINGULARITY_DOCKER_HUB_MIRROR}
     - mkdir -p ${TOIL_WORKDIR}
-    - make marker="${MARKER}" test tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
 
 cwl_v1.1_kubernetes:
   stage: main_tests
@@ -243,7 +243,7 @@ cwl_v1.1_kubernetes:
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - mkdir -p ${TOIL_WORKDIR}
-    - make marker="${MARKER}" test tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
 cwl_v1.2_kubernetes:
   stage: main_tests
@@ -256,7 +256,7 @@ cwl_v1.2_kubernetes:
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - mkdir -p ${TOIL_WORKDIR}
-    - make marker="${MARKER}" test tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
   artifacts:
     reports:
       junit: "*.junit.xml"
@@ -298,7 +298,7 @@ integration:
     - chmod 400 /root/.ssh/id_rsa
     # Test integration with job stores
     # Test server and its integration with AWS
-    - make marker="${MARKER}" test tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/server"
+    - make test tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/server"
 
 provisioner_integration:
   stage: integration
@@ -312,7 +312,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make marker="${MARKER}" test tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py"
+    - make test tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
@@ -327,7 +327,7 @@ google_jobstore:
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
     - export TOIL_GOOGLE_PROJECTID=toil-dev
-    - make marker="${MARKER}" test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
+    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
