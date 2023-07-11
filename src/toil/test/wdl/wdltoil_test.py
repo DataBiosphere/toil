@@ -25,7 +25,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     def setUpClass(cls) -> None:
 
         url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "a48fa68b1284f773c8ec91de765428cf14fe7628"
+        commit = "032fb99a1458d456b6d5f17d27928469ec1a1c68"
 
         p = subprocess.Popen(
             f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",
