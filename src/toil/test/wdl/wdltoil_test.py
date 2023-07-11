@@ -42,8 +42,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
     def test_conformance_tests_v10(self):
-        # tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,60,62,67-69" # this should fail
-        tests_to_run = "60"
+        tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
         p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
         print(p.stdout.decode())
         p.check_returncode()
