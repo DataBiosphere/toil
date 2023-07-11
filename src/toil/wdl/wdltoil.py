@@ -1487,6 +1487,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         """
         Actually execute the workflow nodes.
         """
+        super().run(file_store)
 
         # Combine the bindings we get from previous jobs
         current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
