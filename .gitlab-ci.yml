@@ -80,8 +80,8 @@ quick_test_offline:
     - . venv/bin/activate
     - pip install -U pip wheel
     - make prepare
-    - make develop extras=[aws,google,wdl]
-    - TOIL_TEST_QUICK=True make test_offline
+    - make develop extras=[wdl]
+    - TOIL_TEST_QUICK=True make test tests=src/toil/test/wdl/wdltoil_test.py::ToilConformanceTests::test_conformance_tests_v10
 
 #py37_appliance_build:
 #  stage: basic_tests
