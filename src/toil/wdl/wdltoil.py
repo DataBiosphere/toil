@@ -523,6 +523,10 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
         # use the out-of-container equivalent.
         result = self.container.host_path(filename)
 
+        if result is None:
+            # We really shouldn't have files in here that we didn't virtualize.
+            raise RuntimeError(f"File {filename} in container is not mounted from the host and can't be opened form the host")
+
         logger.debug('Devirtualized %s as out-of-container file %s', filename, result)
         return result
 
@@ -534,8 +538,8 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
         """
 
         if filename not in self.container.input_path_map:
-            # Mount the file
-            task_container.add_paths([filename])
+            # Mount the file.
+            self.container.add_paths([filename])
 
         result = self.container.input_path_map[filename]
         
