@@ -377,6 +377,32 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
+
+# Both the WDL code itself **and** the commands that it runs will deal in
+# "virtualized" filenames.
+
+# We have to guarantee that "When a WDL author uses a File input in their
+# Command Section, the fully qualified, localized path to the file is
+# substituted when that declaration is referenced in the command template."
+
+# This has to be true even if the File is the result of a WDL function that is
+# run *during* the evaluation of the command string, via a placeholder
+# expression evaluation.
+
+# Really there are 3 filename spaces in play: Toil filestore URLs,
+# outside-the-container host filenames, and inside-the-container filenames. But
+# the MiniWDL machinery only gives us 2 levels to work with: "virtualized"
+# (visible to the workflow) and "devirtualized" (openable by this process).
+
+# So we sneakily swap out what "virtualized" means. Usually (as provided by
+# ToilWDLStdLibBase) a "virtualized" filename is the Toil filestore URL space.
+# But when evaluating a task command, we switch things so that the
+# "virtualized" space is the inside-the-container filename space (by
+# devirtualizing and then host-to-container-mapping all the visible files, and
+# then using ToilWDLStdLibTaskCommand for evaluating expressions, and then
+# going back from container to host space after the command). At all times the
+# "devirtualized" space is outside-the-container host filenames.
+
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
@@ -398,14 +424,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self.size = NonDownloadingSize(self)
 
         # Keep the file store around so we can access files.
-        self._file_store = file_store
-
-    # Both the WDL code itself **and** the commands that it runs will deal in
-    # "virtualized" filenames by default, so when making commands we need to
-    # make sure to devirtualize filenames.
-    # We have to guarantee that "When a WDL author uses a File input in their
-    # Command Section, the fully qualified, localized path to the file is
-    # substituted when that declaration is referenced in the command template."
+        self._file_store = file_store 
 
     def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
