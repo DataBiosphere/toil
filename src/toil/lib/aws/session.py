@@ -37,7 +37,7 @@ import boto.connection
 import botocore
 from boto3 import Session
 from botocore.client import Config
-from botocore.credentials import JSONFileCache
+from botocore.utils import JSONFileCache
 from botocore.session import get_session
 
 logger = logging.getLogger(__name__)
