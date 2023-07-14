@@ -57,7 +57,6 @@ def mainCacheTag():
     A Docker tag where the Toil mainline builds cache their layers.
     """
 
-    import os
     return ''.join([
         "cache-master",
         _pythonVersionSuffix()
