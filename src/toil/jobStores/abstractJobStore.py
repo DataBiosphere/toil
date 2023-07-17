@@ -644,7 +644,7 @@ class AbstractJobStore(ABC):
     def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
-        specified locationRaises FileNotFoundError if the URL doesn't exist..
+        specified location. Raises FileNotFoundError if the URL doesn't exist..
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
