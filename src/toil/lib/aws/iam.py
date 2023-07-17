@@ -7,12 +7,7 @@ from typing import Any, Dict, List, Optional, Set, cast, Union, Sequence
 
 import boto3
 from mypy_boto3_iam import IAMClient
-try:
-    from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
-except ImportError:
-    # mypy_boto3_iam==1.28.3.post1 shipped this under a different name. It
-    # might move again in the future?
-    from mypy_boto3_iam.type_defs import AttachedPolicyOutputTypeDef as AttachedPolicyTypeDef
+from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
 from mypy_boto3_sts import STSClient
 
 from toil.lib.aws import zone_to_region
