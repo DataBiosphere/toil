@@ -48,18 +48,17 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_aws_s3,
                        needs_encryption,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_storage,
                        slow)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 
-# Need google_retry decorator even if google is not available, so make one up.
-# Unconventional use of decorator to determine if google is enabled by seeing if
-# it returns the parameter passed in.
-if needs_google(needs_google) is needs_google:
+try:
     from toil.jobStores.googleJobStore import google_retry
-else:
+except ImportError:
+    # Need google_retry decorator even if google is not available, so make one up.
     def google_retry(x):
         return x
 
@@ -1239,7 +1238,8 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         os.remove(srcUrl[7:])
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 @pytest.mark.xfail
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')

@@ -409,18 +409,25 @@ def needs_aws_batch(test_item: MT) -> MT:
         )
     return test_item
 
-
-def needs_google(test_item: MT) -> MT:
+def needs_google_storage(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if Google
-    Cloud is usable.
+    Cloud is installed and we ought to be able to access public Google Storage
+    URIs.
     """
-    test_item = _mark_test('google', test_item)
+    test_item = _mark_test('google-storage', test_item)
     try:
         from google.cloud import storage  # noqa
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
 
+    return test_item
+
+def needs_google_project(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
+    """
+    test_item = _mark_test('google-project', test_item)
     test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
     return test_item
 
@@ -582,6 +589,21 @@ def needs_singularity(test_item: MT) -> MT:
         return test_item
     else:
         return unittest.skip("Install singularity to include this test.")(test_item)
+
+def needs_singularity_or_docker(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to only run them if
+    docker is installed and docker-based tests are enabled, or if Singularity
+    is installed.
+    """
+    
+    # TODO: Is there a good way to OR decorators?
+    if which('singularity'):
+        # Singularity is here, say it's a Singularity test
+        return needs_singularity(test_item)
+    else:
+        # Otherwise say it's a Docker test.
+        return needs_docker(test_item)
         
 def needs_local_cuda(test_item: MT) -> MT:
     """
