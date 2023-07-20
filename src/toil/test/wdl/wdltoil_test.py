@@ -90,7 +90,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
-        base_uri = 'https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f'
+        base_uri = 'https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a'
 
         wdl_file = f"{base_uri}/workflows/giraffe_and_deepvariant.wdl"
         json_file = os.path.abspath(os.path.join(json_dir, 'inputs.json'))
@@ -133,7 +133,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
-        base_uri = 'https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f'
+        base_uri = 'https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a'
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
 
