@@ -723,7 +723,6 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 raise
             if imported is None:
                 # Wasn't found there
-                logger.info('Looked for %s at %s but did not find it', uri, candidate_uri)
                 continue
             logger.info('Imported %s', candidate_uri)
 
