@@ -85,9 +85,8 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
 
     @slow
     @needs_docker_cuda
-    @needs_singularity_or_docker
     def test_giraffe_deepvariant(self):
-        """Test if Giraffe and CPU DeepVariant run. This could take 25 minutes."""
+        """Test if Giraffe and GPU DeepVariant run. This could take 25 minutes."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
