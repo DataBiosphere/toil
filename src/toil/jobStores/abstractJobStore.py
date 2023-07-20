@@ -43,10 +43,9 @@ else:
     from typing_extensions import Literal
 
 from urllib.parse import ParseResult, urlparse
+from urllib.error import HTTPError
 from urllib.request import urlopen
 from uuid import uuid4
-
-from requests.exceptions import HTTPError
 
 from toil.common import Config, getNodeID, safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -420,6 +419,8 @@ class AbstractJobStore(ABC):
             - 'gs'
                 e.g. gs://bucket/file
 
+        Raises FileNotFoundError if the file does not exist.
+
         :param str src_uri: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an AWS s3 bucket. It must be a file, not a
                 directory or prefix.
@@ -452,6 +453,8 @@ class AbstractJobStore(ABC):
         See also :meth:`.importFile`. This method applies a generic approach to importing: it
         asks the other job store class for a stream and writes that stream as either a regular or
         a shared file.
+
+        Raises FileNotFoundError if the file does not exist.
 
         :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
                reading from the given URL and getting the file size from the URL.
@@ -587,6 +590,8 @@ class AbstractJobStore(ABC):
         """
         Read the given URL and write its content into the given writable stream.
 
+        Raises FileNotFoundError if the URL doesn't exist.
+
         :return: The size of the file in bytes and whether the executable permission bit is set
         :rtype: Tuple[int, bool]
         """
@@ -618,7 +623,11 @@ class AbstractJobStore(ABC):
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
+        Raises FileNotFoundError if the URL doesn't exist.
+
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        Raises FileNotFoundError if the thing at the URL is not found.
 
         :param ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
@@ -635,7 +644,7 @@ class AbstractJobStore(ABC):
     def _write_to_url(cls, readable: Union[IO[bytes], IO[str]], url: ParseResult, executable: bool = False) -> None:
         """
         Reads the contents of the given readable stream and writes it to the object at the
-        specified location.
+        specified location. Raises FileNotFoundError if the URL doesn't exist..
 
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
@@ -1707,20 +1716,28 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
         # So we don't have to worry about writing the start of the file twice.
-        with closing(urlopen(url.geturl())) as readable:
-            # Make something to count the bytes we get
-            # We need to put the actual count in a container so our
-            # nested function can modify it without creating its own
-            # local with the same name.
-            size = [0]
-            def count(l: int) -> None:
-                size[0] += l
-            counter = WriteWatchingStream(writable)
-            counter.onWrite(count)
+        try:
+            with closing(urlopen(url.geturl())) as readable:
+                # Make something to count the bytes we get
+                # We need to put the actual count in a container so our
+                # nested function can modify it without creating its own
+                # local with the same name.
+                size = [0]
+                def count(l: int) -> None:
+                    size[0] += l
+                counter = WriteWatchingStream(writable)
+                counter.onWrite(count)
 
-            # Do the download
-            shutil.copyfileobj(readable, counter)
-            return size[0], False
+                # Do the download
+                shutil.copyfileobj(readable, counter)
+                return size[0], False
+        except HTTPError as e:
+            if e.code == 404:
+                # Translate into a FileNotFoundError for detecting
+                # un-importable files
+                raise FileNotFoundError(str(url)) from e
+            else:
+                raise
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:

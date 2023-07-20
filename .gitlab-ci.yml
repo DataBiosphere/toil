@@ -20,6 +20,8 @@ before_script:
         echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
         export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
     fi
+  # Restart or start the Docker daemon
+  - stopdocker || true
   - startdocker || true
   - docker info
   - cat /etc/hosts
@@ -29,9 +31,9 @@ before_script:
   # a service account bearer token for auth and triggers https://github.com/docker/buildx/issues/267
   # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
   # of using the system's service account.
-  - KUBECONFIG=/dev/null docker buildx create --use --name toilbuilder --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64"
-  # Dump the builder info, and make sure it exists.
-  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found in our Kubernetes namespace! Are we on the right Gitlab runner?" && exit 1)
+  - if [[ "${CI_BUILDKIT_DRIVER}" == "kubernetes" ]] ; then KUBECONFIG=/dev/null docker buildx create --use --name=buildkit --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64" ; else docker buildx create --use --name=container-builder --driver=docker-container ; fi
+  # Report on the builders, and make sure they exist.
+  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found! Are we on the right Gitlab runner?" && exit 1)
   # This will hang if we can't talk to the builder
   - (echo "y" | docker buildx prune --keep-storage 80G) || true
 
