@@ -15,6 +15,8 @@ SHELL=bash
 export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
 export TOIL_DOCKER_NAME?=toil
 export TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
+export TOIL_DOCKER_CACHE_TAG?=$(shell python version_template.py cacheTag)
+export TOIL_DOCKER_MAIN_CACHE_TAG?=$(shell python version_template.py mainCacheTag)
 export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
 
 # TOIL_CHECK_ENV=''  # Determines whether toil refers to the same virtualenv paths it spawned from (across machines)

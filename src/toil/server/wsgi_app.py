@@ -41,7 +41,7 @@ class GunicornApplication(BaseApplication):  # type: ignore
 
         # TODO: also read from the Gunicorn config file?
 
-        for key, value in {**self.options, **vars(env_args)}.items():
+        for key, value in {**vars(env_args), **self.options}.items():
             if key in self.cfg.settings and value is not None:
                 self.cfg.set(key.lower(), value)
 

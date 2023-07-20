@@ -39,6 +39,28 @@ def version():
     """
     return '-'.join(filter(None, [distVersion(), currentCommit(), ('dirty' if dirty() else None)]))
 
+def cacheTag():
+    """
+    A Docker tag that we should use to cache Docker image build layers for this commit.
+    """
+
+    import os
+    return ''.join([
+        "cache-",
+        # Pick up branch or tag from Gitlagb CI, or just use "local" for everyone.
+        ((os.getenv('CI_COMMIT_BRANCH', '') + os.getenv('CI_COMMIT_TAG', '')) or 'local').replace('/', '-'),
+        _pythonVersionSuffix()
+    ])
+
+def mainCacheTag():
+    """
+    A Docker tag where the Toil mainline builds cache their layers.
+    """
+
+    return ''.join([
+        "cache-master",
+        _pythonVersionSuffix()
+    ])
 
 def distVersion():
     """The distribution version identifying a published release on PyPI."""

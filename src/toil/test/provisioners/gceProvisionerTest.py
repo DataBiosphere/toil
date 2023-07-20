@@ -22,7 +22,8 @@ import pytest
 from toil.test import (ToilTest,
                        integrative,
                        needs_fetchable_appliance,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_storage,
                        slow,
                        timeLimit)
 from toil.version import exactPython
@@ -30,7 +31,8 @@ from toil.version import exactPython
 log = logging.getLogger(__name__)
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 @integrative
 @needs_fetchable_appliance
 @slow
@@ -68,7 +70,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
     def __init__(self, methodName):
         super().__init__(methodName=methodName)
-        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google or ssh with SA account
+        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google_project or ssh with SA account
         self.keyName = os.getenv('TOIL_GOOGLE_KEYNAME')
         # TODO: remove this when switching to google jobstore
         self.botoDir = os.getenv('TOIL_BOTO_DIR')
@@ -210,14 +212,16 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     # TODO: aren't these checks inherited?
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testAutoScale(self):
         self.instanceTypes = ["n1-standard-2"]
         self.numWorkers = ['2']
         self._test()
 
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
         # Some spot workers have a stopped state after being started, strangely.
@@ -293,7 +297,8 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         self.sshUtil(runCommand)
 
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testAutoScale(self):
         self.instanceTypes = ["n1-standard-2", "n1-standard-4"]
         self.numWorkers = ['2','1']
