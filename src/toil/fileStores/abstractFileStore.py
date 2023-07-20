@@ -346,7 +346,14 @@ class AbstractFileStore(ABC):
                 # For each access record
                 if len(item) == 2:
                     # If it has a name, dump wit the name
-                    logger.warning('Downloaded file \'%s\' to path \'%s\'', *item)
+                    file_id, dest_path = item
+                    if os.path.exists(dest_path):
+                        if os.path.islink(dest_path):
+                            logger.warning('Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
+                        else:
+                            logger.warning('Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
+                    else:
+                        logger.warning('Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
                 else:
                     # Otherwise dump without the name
                     logger.warning('Streamed file \'%s\'', *item)
