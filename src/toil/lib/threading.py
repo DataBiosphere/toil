@@ -108,9 +108,12 @@ def cpu_count() -> int:
         return cast(int, cached)
 
     # Get the fallback answer of all the CPUs on the machine
-    total_machine_size = cast(int, psutil.cpu_count(logical=True))
+    psutil_cpu_count = cast(Optional[int], psutil.cpu_count(logical=True))
+    if psutil_cpu_count is None:
+        logger.debug('Could not retrieve the logical CPU count.')
 
-    logger.debug('Total machine size: %d cores', total_machine_size)
+    total_machine_size = psutil_cpu_count if psutil_cpu_count is not None else 1
+    logger.debug('Total machine size: %d core(s)', total_machine_size)
 
     # cgroups may limit the size
     cgroup_size: Union[float, int] = float('inf')
