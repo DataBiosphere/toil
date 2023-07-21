@@ -169,7 +169,7 @@ slurm_test:
   script:
     - pwd
     - cd contrib/slurm-test/
-    - docker compose version 
+    - docker compose version
     - ./slurm_test.sh
 
 cwl_v1.0:
