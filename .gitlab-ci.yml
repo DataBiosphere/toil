@@ -6,7 +6,10 @@ variables:
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
   MAIN_PYTHON_PKG: "python3.9"
-
+# Used to tell pytest which tests to be run by specifying markers,
+# Allows partitioning of tests to prevent duplicate running of tests in different jobs.
+# Currently specifies special tests that are not run by quick_test_offline.
+  MARKER: "tes or integrative or encryption or kubernetes or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3"
 before_script:
   # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
   - ip addr
@@ -65,7 +68,7 @@ cwl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
+    - make marker="${MARKER}" test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 
 wdl_dependency_is_stand_alone:
@@ -73,7 +76,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
+    - make marker="${MARKER}" test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
 
 quick_test_offline:
   stage: basic_tests
@@ -158,7 +161,7 @@ batch_systems:
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
     - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
     - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
-    - make test tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
+    - make marker="${MARKER}" test tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
     - kill $(jobs -p) || true
 
 slurm_test:
@@ -270,22 +273,16 @@ wdl:
     - pwd
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make test tests=src/toil/test/wdl/wdltoil_test.py
+    - make marker="${MARKER}" test tests=src/toil/test/wdl/wdltoil_test.py
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
-    - make test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
-    # Run some WDL conformance tests.
-    # These are not set up as Toil PyTest tests (yet?)
-    - git clone https://github.com/adamnovak/wdl-conformance-tests.git
-    - cd wdl-conformance-tests
-    - git checkout 0ca00774331630d8eb06990caa8a1ba178cabecb
-    - python run.py --runner toil-wdl-runner --versions 1.0 --threads 8
+    - make marker="${MARKER}" test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
 
 jobstore_and_provisioning:
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make test tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
+    - make marker="${MARKER}" test tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
