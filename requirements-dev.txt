@@ -1,4 +1,4 @@
-mock>=4.0.3,<5
+mock>=4.0.3,<6
 pytest>=6.2.1,<8
 pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
