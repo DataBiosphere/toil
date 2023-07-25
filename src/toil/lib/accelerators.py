@@ -77,7 +77,7 @@ def have_working_nvidia_docker_runtime() -> bool:
     try:
         # The runtime injects nvidia-smi; it doesn't seem to have to be in the image we use here
         subprocess.check_call(['docker', 'run', '--rm', '--runtime', 'nvidia', '--gpus', 'all', 'ubuntu:20.04', 'nvidia-smi'])
-    except subprocess.CalledProcessError:
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return False
     return True
 
