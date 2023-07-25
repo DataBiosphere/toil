@@ -525,7 +525,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
 
         if result is None:
             # We really shouldn't have files in here that we didn't virtualize.
-            raise RuntimeError(f"File {filename} in container is not mounted from the host and can't be opened form the host")
+            raise RuntimeError(f"File {filename} in container is not mounted from the host and can't be opened from the host")
 
         logger.debug('Devirtualized %s as out-of-container file %s', filename, result)
         return result
