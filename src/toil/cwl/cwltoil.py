@@ -2222,13 +2222,13 @@ class CWLJob(CWLNamedJob):
                     f"expected true or false but got what appears to be an expression: {repr(parsed_value)}. "
                     f"Note that expressions are not allowed here by Arvados's schema."
                 )
-            if parsed_value not in [True, False]:
+            if not isinstance(parsed_value, bool):
                 # If we have a value it has to be a bool flag
                 raise ValidationException(
                     f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
                     f"expected true or false but got: {repr(parsed_value)}"
                 )
-            preemptible = preemptible_req["usePreemptible"]
+            preemptible = parsed_value
 
         super().__init__(
             cores=req["cores"],
