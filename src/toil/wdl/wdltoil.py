@@ -891,8 +891,8 @@ class WDLBaseJob(Job):
         sys.setrecursionlimit(10000)
 
         # We need an ordered list of postprocessing steps to apply, because we
-        # may ahve coalesced postprocessing steps deferred by several levels of
-        # jobs returing other jobs' promised RVs.
+        # may have coalesced postprocessing steps deferred by several levels of
+        # jobs returning other jobs' promised RVs.
         self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
 
     # TODO: We're not allowed by MyPy to override a method and widen the return
