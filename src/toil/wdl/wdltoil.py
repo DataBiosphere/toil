@@ -1567,6 +1567,13 @@ class WDLWorkflowGraph:
         """
         return self._gather_to_section.get(node_id, node_id)
 
+    def is_decl(self, node_id: str) -> bool:
+        """
+        Return True if a node represents a WDL declaration, and false
+        otherwise.
+        """
+        return isinstance(self.get(node_id), WDL.Tree.Decl)
+
     def get(self, node_id: str) -> WDL.Tree.WorkflowNode:
         """
         Get a node by ID.
@@ -1669,7 +1676,8 @@ class WDLSectionJob(WDLBaseJob):
         super().__init__(**kwargs)
         self._namespace = namespace
 
-    def coalesce_nodes(self, order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
+    @staticmethod
+    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
         """
         Given a topological order of WDL workflow node IDs, produce a list of
         lists of IDs, still in topological order, where each list of IDs can be
@@ -1686,7 +1694,7 @@ class WDLSectionJob(WDLBaseJob):
         for next_id in order:
             # Consider adding each node to the bucket
             # Get all the dependencies on things that aren't decls.
-            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not isinstance(section_graph.get(dep), WDL.Tree.Decl)}
+            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not section_graph.is_decl(dep)}
             if len(current_bucket) == 0:
                 # This is the first thing for the bucket
                 current_bucket.append(next_id)
@@ -1694,12 +1702,8 @@ class WDLSectionJob(WDLBaseJob):
             else:
                 # Get a node already in the bucket
                 current_id = current_bucket[0]
-                current_node = section_graph.get(current_id)
 
-                # And the node to maybe add
-                next_node = section_graph.get(next_id)
-                
-                if not isinstance(current_node, WDL.Tree.Decl) or not isinstance(next_node, WDL.Tree.Decl):
+                if not section_graph.is_decl(current_id) or not section_graph.is_decl(next_id):
                     # We can only combine decls with decls, so we can't go in
                     # the bucket.
                     

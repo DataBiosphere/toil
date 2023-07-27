@@ -3,8 +3,10 @@ import os
 import shutil
 import subprocess
 import unittest
+from unittest.mock import patch
 import uuid
 import zipfile
+from typing import Any, Dict, List, Set
 from urllib.request import urlretrieve
 
 import pytest
@@ -13,6 +15,8 @@ from toil.test import ToilTest, needs_docker_cuda, needs_google_storage, needs_j
 from toil.version import exactPython
 # Don't import the test case directly or pytest will test it again.
 import toil.test.wdl.toilwdlTest
+
+from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
 class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     """
@@ -180,6 +184,99 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
 
         assert retval != 0
         assert b'Could not find' in stderr
+
+    def test_coalesce(self):
+        """
+        Test if WDLSectionJob can coalesce WDL decls.
+
+        White box test; will need to be changed or removed if the WDL interpreter changes.
+        """
+
+        all_decls: Set[str] = set()
+        all_deps: Dict[str, Set[str]] = {}
+
+        def mock_is_decl(self: Any, node_id: str) -> bool:
+            return node_id in all_decls
+
+        def mock_get_transitive_dependencies(self: Any, node_id: str) -> Set[str]:
+            return all_deps[node_id]
+
+        # These are the only two methods coalesce_nodes calls.
+        # Can we enforce that somehow?
+        with patch.object(WDLWorkflowGraph, 'is_decl', mock_is_decl):
+            with patch.object(WDLWorkflowGraph, 'get_transitive_dependencies', mock_get_transitive_dependencies):
+
+                with self.subTest(msg="Two unrelated decls can coalesce"):
+                    # Set up two unrelated decls
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": set(),
+                        "decl2": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl1", "decl2"], WDLWorkflowGraph([]))
+                    
+                    # Make sure they coalesced
+                    assert len(result) == 1
+                    assert "decl1" in result[0]
+                    assert "decl2" in result[0]
+
+                with self.subTest(msg="A decl will not coalesce with a non-decl"):
+                    all_decls = {"decl"}
+                    all_deps = {
+                        "decl": set(),
+                        "nondecl": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl", "nondecl"], WDLWorkflowGraph([]))
+                    
+                    assert len(result) == 2
+                    assert len(result[0]) == 1
+                    assert len(result[1]) == 1
+
+
+                with self.subTest(msg="Two adjacent decls with a common dependency can coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": {"base"},
+                        "decl2": {"base"},
+                        "base": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
+                    
+                    assert len(result) == 2
+                    assert "base" in result[0]
+                    assert "decl1" in result[1]
+                    assert "decl2" in result[1]
+
+                with self.subTest(msg="Two adjacent decls with different dependencies will not coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": {"base"},
+                        "decl2": set(),
+                        "base": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
+                    
+                    assert len(result) == 3
+                    assert "base" in result[0]
+
+                with self.subTest(msg="Two adjacent decls with different successors will coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": set(),
+                        "decl2": set(),
+                        "successor": {"decl2"}
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl1", "decl2", "successor"], WDLWorkflowGraph([]))
+                    
+                    assert len(result) == 2
+                    assert "decl1" in result[0]
+                    assert "decl2" in result[0]
+                    assert "successor" in result[1]
 
 if __name__ == "__main__":
     unittest.main()  # run all tests
