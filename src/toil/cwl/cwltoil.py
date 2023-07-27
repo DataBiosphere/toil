@@ -2489,7 +2489,7 @@ def makeJob(
         # Decied if we have any requirements we care about that are dynamic
         REQUIREMENT_TYPES = [
             "ResourceRequirement",
-            "http://commonwl.org/cwltool#CUDARequirement"
+            "http://commonwl.org/cwltool#CUDARequirement",
         ]
         for requirement_type in REQUIREMENT_TYPES:
             req, _ = tool.get_requirement(requirement_type)
