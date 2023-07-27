@@ -9,7 +9,7 @@ sphinx-autoapi
 sphinx-autodoc-typehints
 sphinxcontrib-autoprogram
 cwltest>=2.2.20211116163652
-mypy==1.2.0
+mypy==1.4.1
 types-requests
 types-setuptools
 types-boto
