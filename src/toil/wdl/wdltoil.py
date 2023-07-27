@@ -377,6 +377,32 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
+
+# Both the WDL code itself **and** the commands that it runs will deal in
+# "virtualized" filenames.
+
+# We have to guarantee that "When a WDL author uses a File input in their
+# Command Section, the fully qualified, localized path to the file is
+# substituted when that declaration is referenced in the command template."
+
+# This has to be true even if the File is the result of a WDL function that is
+# run *during* the evaluation of the command string, via a placeholder
+# expression evaluation.
+
+# Really there are 3 filename spaces in play: Toil filestore URLs,
+# outside-the-container host filenames, and inside-the-container filenames. But
+# the MiniWDL machinery only gives us 2 levels to work with: "virtualized"
+# (visible to the workflow) and "devirtualized" (openable by this process).
+
+# So we sneakily swap out what "virtualized" means. Usually (as provided by
+# ToilWDLStdLibBase) a "virtualized" filename is the Toil filestore URL space.
+# But when evaluating a task command, we switch things so that the
+# "virtualized" space is the inside-the-container filename space (by
+# devirtualizing and then host-to-container-mapping all the visible files, and
+# then using ToilWDLStdLibTaskCommand for evaluating expressions, and then
+# going back from container to host space after the command). At all times the
+# "devirtualized" space is outside-the-container host filenames.
+
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
@@ -398,14 +424,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self.size = NonDownloadingSize(self)
 
         # Keep the file store around so we can access files.
-        self._file_store = file_store
-
-    # Both the WDL code itself **and** the commands that it runs will deal in
-    # "virtualized" filenames by default, so when making commands we need to
-    # make sure to devirtualize filenames.
-    # We have to guarantee that "When a WDL author uses a File input in their
-    # Command Section, the fully qualified, localized path to the file is
-    # substituted when that declaration is referenced in the command template."
+        self._file_store = file_store 
 
     def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
@@ -467,6 +486,63 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
         result = pack_toil_uri(file_id, os.path.basename(filename))
+        logger.debug('Virtualized %s as WDL file %s', filename, result)
+        return result
+
+class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
+    """
+    Standard library implementation to use inside a WDL task command evaluation.
+
+    Expects all the filenames in variable bindings to be container-side paths;
+    these are the "virtualized" filenames, while the "devirtualized" filenames
+    are host-side paths.
+    """
+
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer):
+        """
+        Set up the standard library for the task command section.
+        """
+
+        # TODO: Don't we want to make sure we don't actually use the file store?
+        super().__init__(file_store)
+        self.container = container
+
+    def _devirtualize_filename(self, filename: str) -> str:
+        """
+        Go from a virtualized WDL-side filename to a local disk filename.
+
+        Any WDL-side filenames which are paths will be paths in the container. 
+        """
+        if self._is_url(filename):
+            # We shouldn't have to deal with URLs here; we want to have exactly
+            # two nicely stacked/back-to-back layers of virtualization, joined
+            # on the out-of-container paths.
+            raise RuntimeError(f"File {filename} is a URL but should already be an in-container-virtualized filename")
+        
+        # If this is a local path it will be in the container. Make sure we
+        # use the out-of-container equivalent.
+        result = self.container.host_path(filename)
+
+        if result is None:
+            # We really shouldn't have files in here that we didn't virtualize.
+            raise RuntimeError(f"File {filename} in container is not mounted from the host and can't be opened from the host")
+
+        logger.debug('Devirtualized %s as out-of-container file %s', filename, result)
+        return result
+
+
+    def _virtualize_filename(self, filename: str) -> str:
+        """
+        From a local path in write_dir, 'virtualize' into the filename as it should present in a
+        File value, when substituted into a command in the container.
+        """
+
+        if filename not in self.container.input_path_map:
+            # Mount the file.
+            self.container.add_paths([filename])
+
+        result = self.container.input_path_map[filename]
+        
         logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
@@ -1312,8 +1388,11 @@ class WDLTaskJob(WDLBaseJob):
             # TODO: MiniWDL deals with directory paths specially here.
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
+            # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
+            command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+
             # Work out the command string, and unwrap it
-            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, standard_library).coerce(WDL.Type.String()).value
+            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
