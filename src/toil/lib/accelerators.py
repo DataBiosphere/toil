@@ -16,7 +16,7 @@
 
 import os
 import subprocess
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, cast
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -92,10 +92,21 @@ def count_nvidia_gpus() -> int:
     # <https://github.com/common-workflow-language/cwltool/blob/6f29c59fb1b5426ef6f2891605e8fa2d08f1a8da/cwltool/cuda.py>
     # Some example output is here: <https://gist.github.com/loretoparisi/2620b777562c2dfd50d6b618b5f20867>
     try:
-        return int(minidom.parseString(
-            subprocess.check_output(["nvidia-smi", "-q", "-x"])
-        ).getElementsByTagName("attached_gpus")[0].firstChild.data)
-    except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError, PermissionError):
+        return int(
+            cast(
+                minidom.Text,
+                minidom.parseString(subprocess.check_output(["nvidia-smi", "-q", "-x"]))
+                .getElementsByTagName("attached_gpus")[0]
+                .firstChild,
+            ).data
+        )
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        IndexError,
+        ValueError,
+        PermissionError,
+    ):
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some
