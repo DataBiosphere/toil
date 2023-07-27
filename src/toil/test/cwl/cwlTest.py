@@ -66,6 +66,8 @@ from toil.test.provisioners.aws.awsProvisionerTest import \
     AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
+from schema_salad.exceptions import ValidationException
+
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 3600
 
@@ -518,6 +520,53 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+    def test_preemptible(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is supported.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible.cwl"
+        jobfile = "src/toil/test/cwl/empty.json"
+        out_name = "output"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        cwltoil.main(args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        with open(out[out_name]["location"][len("file://") :]) as f:
+            self.assertEqual(f.read().strip(), "hello")
+
+    def test_preemptible_expression(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is validated.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible_expression.cwl"
+        jobfile = "src/toil/test/cwl/preemptible_expression.json"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        try:
+            cwltoil.main(args, stdout=st)
+            raise RuntimeError("Did not raise correct exception")
+        except ValidationException as e:
+            # Make sure we chastise the user appropriately.
+            assert "expressions are not allowed" in str(e)
+        
 
     @staticmethod
     def _expected_seqtk_output(outDir):
