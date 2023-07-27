@@ -192,17 +192,30 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         White box test; will need to be changed or removed if the WDL interpreter changes.
         """
 
+        # Set up data structures for our fake workflow graph to pull from.
+        # This has all decl-type nodes
         all_decls: Set[str] = set()
+        # And this has all transitive dependencies for all nodes.
         all_deps: Dict[str, Set[str]] = {}
 
         def mock_is_decl(self: Any, node_id: str) -> bool:
+            """
+            Replacement function to determine if a node is a decl or not.
+            """
             return node_id in all_decls
 
         def mock_get_transitive_dependencies(self: Any, node_id: str) -> Set[str]:
+            """
+            Replacement function to get all the transitive dependencies of a node.
+            """
             return all_deps[node_id]
 
-        # These are the only two methods coalesce_nodes calls.
-        # Can we enforce that somehow?
+        # These are the only two methods coalesce_nodes calls, so we can
+        # replace them to ensure our graph is used without actually needing to
+        # make any WDL objects for it.
+        #
+        # If that changes, the test will need to change! Maybe then it will be
+        # worth extracting a base type for this interface.
         with patch.object(WDLWorkflowGraph, 'is_decl', mock_is_decl):
             with patch.object(WDLWorkflowGraph, 'get_transitive_dependencies', mock_get_transitive_dependencies):
 
