@@ -114,7 +114,7 @@ def parse_jobstore(jobstore_uri: str) -> str:
         return jobstore_uri
 
 
-def parse_str_list(s: Optional[str]) -> List[str]:
+def parse_str_list(s: str) -> List[str]:
     return [str(x) for x in s.split(",")]
 
 
@@ -135,12 +135,10 @@ class Config:
     tes_user: str
     tes_password: str
     tes_bearer_token: str
-    jobStore: str
     batchSystem: str
     batch_logs_dir: Optional[str] = None
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
-    workflowAttemptNumber: int
     disableAutoDeployment: bool
 
     # Core options
@@ -150,7 +148,7 @@ class Config:
     self.jobStore is the same, e.g. when a job store name is reused after a previous run has
     finished successfully and its job store has been clean up."""
     workflowAttemptNumber: int
-    jobStore: Optional[str]
+    jobStore: str
     logLevel: str
     workDir: Optional[str]
     coordination_dir: Optional[str]
@@ -176,8 +174,8 @@ class Config:
     # Autoscaling options
     provisioner: Optional[str]
     nodeTypes: List[Tuple[Set[str], Optional[float]]]
-    minNodes: int
-    maxNodes: int
+    minNodes: List[int]
+    maxNodes: List[int]
     targetTime: float
     betaInertia: float
     scaleInterval: int
@@ -243,16 +241,14 @@ class Config:
     # CWL
     cwl: bool
 
-    def __init__(self, options=None) -> None:
+    def __init__(self) -> None:
         # only default options that are not CLI options defined here (thus CLI options are centralized)
         self.cwl = False
         self.workflowID = None
         self.kill_polling_interval = 5
-        if options is not None:
-            self.setOptions(options)
         set_batchsystem_config_defaults(self)
 
-    def set_cli_default_options(self):
+    def set_cli_default_options(self) -> None:
         # get default CLI option values by simulating an argparse run
         parser = ArgParser()
         addOptions(parser)
@@ -504,7 +500,7 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
 
 def parser_with_common_options(
     provisioner_options: bool = False, jobstore_option: bool = True
-) -> ArgumentParser:
+) -> ArgParser:
     parser = ArgParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
@@ -701,7 +697,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
                                           f"space.  (default: {50}).")
-    autoscaling_options.add_argument('--nodeStorageOverrides', default=[], type=parse_str_list,
+    autoscaling_options.add_argument('--nodeStorageOverrides', default="", type=parse_str_list,
                                      help="Comma-separated list of nodeType:nodeStorage that are used to override "
                                           "the default value from --nodeStorage for the specified nodeType(s).  "
                                           "This is useful for heterogeneous jobs where some tasks require much more "
@@ -829,7 +825,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                              help="Whether to write logs from all jobs (including the successful ones) without "
                                   "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
                                   "or --writeLogsGzip is set if enabling this option.")
-    log_options.add_argument("--writeMessages", dest="write_messages", default=None, type=os.path.abspath,
+    log_options.add_argument("--writeMessages", dest="write_messages", default=None, type=lambda x: None if x is None else os.path.abspath(x),
                              help="File to send messages from the leader's message bus to.")
     log_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                              help="Enable real-time logging from workers to leader")

@@ -55,7 +55,6 @@ from typing import (
 )
 from urllib.parse import ParseResult, quote, unquote, urlparse, urlsplit
 
-import configargparse
 import cwl_utils.errors
 import cwl_utils.expression
 import cwltool.builder
@@ -67,6 +66,7 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
+from configargparse import ArgParser
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -3222,7 +3222,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     config = Config()
     config.disableChaining = True
     config.cwl = True
-    parser = configargparse.ArgParser()
+    parser = ArgParser()
     addOptions(parser, config, jobstore_as_flag=True)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
