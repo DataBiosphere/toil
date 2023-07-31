@@ -114,11 +114,15 @@ def parse_jobstore(jobstore_uri: str) -> str:
         return jobstore_uri
 
 
-def parse_str_list(s: str) -> List[str]:
+def parse_str_list(s: Union[list, str]) -> List[str]:
+    if isinstance(s, list):
+        return s
     return [str(x) for x in s.split(",")]
 
 
-def parse_int_list(s: str) -> List[int]:
+def parse_int_list(s: Union[list, str]) -> List[int]:
+    if isinstance(s, list):
+        return s
     return [int(x) for x in s.split(",")]
 
 
@@ -697,7 +701,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
                                           f"space.  (default: {50}).")
-    autoscaling_options.add_argument('--nodeStorageOverrides', default="", type=parse_str_list,
+    autoscaling_options.add_argument('--nodeStorageOverrides', default=[], type=parse_str_list,
                                      help="Comma-separated list of nodeType:nodeStorage that are used to override "
                                           "the default value from --nodeStorage for the specified nodeType(s).  "
                                           "This is useful for heterogeneous jobs where some tasks require much more "
