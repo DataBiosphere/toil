@@ -43,6 +43,8 @@ from typing import (TYPE_CHECKING,
                     cast,
                     overload)
 
+from configargparse import ArgParser
+
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
@@ -422,6 +424,7 @@ class Requirer:
         if self._config is not None:
             raise RuntimeError(f"Config assigned multiple times to {self}")
         self._config = config
+
 
     def __getstate__(self) -> Dict[str, Any]:
         """Return the dict to use as the instance's __dict__ when pickling."""
@@ -2115,7 +2118,7 @@ class Job:
 
             :returns: The argument parser used by a toil workflow with added Toil options.
             """
-            parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+            parser = ArgParser(formatter_class=ArgumentDefaultsHelpFormatter)
             Job.Runner.addToilOptions(parser)
             return parser
 

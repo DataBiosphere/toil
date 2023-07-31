@@ -36,6 +36,7 @@ from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequen
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
+import configargparse
 from WDL._util import byte_size_units
 from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.backend.singularity import SingularityContainer
@@ -1945,7 +1946,7 @@ def main() -> None:
     A Toil workflow to interpret WDL input files.
     """
 
-    parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
+    parser = configargparse.ArgParser(description='Runs WDL files with toil.')
     addOptions(parser, jobstore_as_flag=True)
 
     parser.add_argument("wdl_uri", type=str,
