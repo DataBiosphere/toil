@@ -1,15 +1,15 @@
-mock>=4.0.3,<5
+mock>=4.0.3,<6
 pytest>=6.2.1,<8
 pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
-setuptools>=65.5.1,<68
+setuptools>=65.5.1,<69
 sphinx>=4,<6
 sphinx-autoapi
 sphinx-autodoc-typehints
 sphinxcontrib-autoprogram
 cwltest>=2.2.20211116163652
-mypy==1.2.0
+mypy==1.4.1
 types-requests
 types-setuptools
 types-boto
@@ -23,6 +23,6 @@ autoflake
 isort
 diff_cover
 lxml
-docutils>=0.16,<0.18
+docutils>=0.16,<0.21
 pyupgrade
 pytest-xdist

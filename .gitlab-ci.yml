@@ -6,7 +6,10 @@ variables:
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
   MAIN_PYTHON_PKG: "python3.9"
-
+# Used to tell pytest which tests to be run by specifying markers,
+# Allows partitioning of tests to prevent duplicate running of tests in different jobs.
+# Currently specifies special tests that are not run by quick_test_offline.
+  MARKER: "tes or integrative or encryption or kubernetes or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3"
 before_script:
   # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
   - ip addr
@@ -17,6 +20,8 @@ before_script:
         echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
         export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
     fi
+  # Restart or start the Docker daemon
+  - stopdocker || true
   - startdocker || true
   - docker info
   - cat /etc/hosts
@@ -26,9 +31,9 @@ before_script:
   # a service account bearer token for auth and triggers https://github.com/docker/buildx/issues/267
   # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
   # of using the system's service account.
-  - KUBECONFIG=/dev/null docker buildx create --use --name toilbuilder --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64"
-  # Dump the builder info, and make sure it exists.
-  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found in our Kubernetes namespace! Are we on the right Gitlab runner?" && exit 1)
+  - if [[ "${CI_BUILDKIT_DRIVER}" == "kubernetes" ]] ; then KUBECONFIG=/dev/null docker buildx create --use --name=buildkit --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64" ; else docker buildx create --use --name=container-builder --driver=docker-container ; fi
+  # Report on the builders, and make sure they exist.
+  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found! Are we on the right Gitlab runner?" && exit 1)
   # This will hang if we can't talk to the builder
   - (echo "y" | docker buildx prune --keep-storage 80G) || true
 
@@ -63,7 +68,7 @@ cwl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
+    - make marker="${MARKER}" test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 
 wdl_dependency_is_stand_alone:
@@ -71,7 +76,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
+    - make marker="${MARKER}" test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
 
 quick_test_offline:
   stage: basic_tests
@@ -156,7 +161,7 @@ batch_systems:
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
     - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
     - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
-    - make test tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
+    - make marker="${MARKER}" test tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
     - kill $(jobs -p) || true
 
 slurm_test:
@@ -164,7 +169,7 @@ slurm_test:
   script:
     - pwd
     - cd contrib/slurm-test/
-    - docker compose version 
+    - docker compose version
     - ./slurm_test.sh
 
 cwl_v1.0:
@@ -268,22 +273,16 @@ wdl:
     - pwd
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make test tests=src/toil/test/wdl/wdltoil_test.py
+    - make marker="${MARKER}" test tests=src/toil/test/wdl/wdltoil_test.py
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
-    - make test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
-    # Run some WDL conformance tests.
-    # These are not set up as Toil PyTest tests (yet?)
-    - git clone https://github.com/adamnovak/wdl-conformance-tests.git
-    - cd wdl-conformance-tests
-    - git checkout 0ca00774331630d8eb06990caa8a1ba178cabecb
-    - python run.py --runner toil-wdl-runner --versions 1.0 --threads 8
+    - make marker="${MARKER}" test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
 
 jobstore_and_provisioning:
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make test tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
+    - make marker="${MARKER}" test tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.

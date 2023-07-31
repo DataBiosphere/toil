@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, cast, Union, Sequence
 
 import boto3
 from mypy_boto3_iam import IAMClient
-from mypy_boto3_iam.type_defs import AttachedPolicyOutputTypeDef
+from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
 from mypy_boto3_sts import STSClient
 
 from toil.lib.aws import zone_to_region
@@ -145,7 +145,7 @@ def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActio
                             allowed_actions[resource][key].append(statement[key])
 
     return allowed_actions
-def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyOutputTypeDef]) -> AllowedActionCollection:
+def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
     """
     Go through all attached policy documents and create an AllowedActionCollection representing granted permissions.
 
