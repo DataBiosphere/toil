@@ -29,6 +29,8 @@ import traceback
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, List, Optional
 
+import configargparse
+
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -41,7 +43,7 @@ from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
-from toil.statsAndLogging import configure_root_logger, set_log_level
+from toil.statsAndLogging import configure_root_logger, set_log_level, root_logger
 
 logger = logging.getLogger(__name__)
 
@@ -656,7 +658,7 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     args = args[1:]
 
     # Make the parser
-    parser = argparse.ArgumentParser()
+    parser = configargparse.ArgumentParser()
 
     # Now add all the options to it
 
@@ -725,6 +727,8 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     jobStore = Toil.resumeJobStore(options.jobStoreLocator)
     config = jobStore.config
+
+    config.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
 
     with in_contexts(options.context):
         # Call the worker
