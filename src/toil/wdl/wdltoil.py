@@ -424,7 +424,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self.size = NonDownloadingSize(self)
 
         # Keep the file store around so we can access files.
-        self._file_store = file_store 
+        self._file_store = file_store
 
     def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
@@ -511,14 +511,14 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
         """
         Go from a virtualized WDL-side filename to a local disk filename.
 
-        Any WDL-side filenames which are paths will be paths in the container. 
+        Any WDL-side filenames which are paths will be paths in the container.
         """
         if self._is_url(filename):
             # We shouldn't have to deal with URLs here; we want to have exactly
             # two nicely stacked/back-to-back layers of virtualization, joined
             # on the out-of-container paths.
             raise RuntimeError(f"File {filename} is a URL but should already be an in-container-virtualized filename")
-        
+
         # If this is a local path it will be in the container. Make sure we
         # use the out-of-container equivalent.
         result = self.container.host_path(filename)
@@ -542,7 +542,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
             self.container.add_paths([filename])
 
         result = self.container.input_path_map[filename]
-        
+
         logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
@@ -1716,7 +1716,7 @@ class WDLWorkflowGraph:
                     queue.append(dep)
 
         return dependencies
-            
+
     def topological_order(self) -> List[str]:
         """
         Get a topological order of the nodes, based on their dependencies.
@@ -1785,7 +1785,7 @@ class WDLSectionJob(WDLBaseJob):
                 if not section_graph.is_decl(current_id) or not section_graph.is_decl(next_id):
                     # We can only combine decls with decls, so we can't go in
                     # the bucket.
-                    
+
                     # Finish the bucket.
                     to_return.append(current_bucket)
                     # Start a new one with this next node
@@ -1818,7 +1818,7 @@ class WDLSectionJob(WDLBaseJob):
             to_return.append(current_bucket)
 
         return to_return
-                        
+
 
 
     def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> WDLBaseJob:
@@ -1878,10 +1878,12 @@ class WDLSectionJob(WDLBaseJob):
         logger.debug('Creation jobs: %s', creation_jobs)
 
         for node_ids in creation_jobs:
-            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id)}
             logger.debug('Make Toil job for %s', node_ids)
-            
+            # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
+            # Don't inlude stuff in the current batch.
+            prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id) if prev_node_id not in node_ids}
+
+
             # Get the Toil jobs we depend on
             prev_jobs = get_job_set_any(prev_node_ids)
             for prev_job in prev_jobs:
@@ -1893,7 +1895,7 @@ class WDLSectionJob(WDLBaseJob):
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
-            
+
             if len(node_ids) == 1:
                 # Make a one-node job
                 job: WDLBaseJob = WDLWorkflowNodeJob(section_graph.get(node_ids[0]), rvs, self._namespace)
@@ -1910,11 +1912,11 @@ class WDLSectionJob(WDLBaseJob):
             if len(prev_jobs) == 0:
                 # Nothing came before this job, so connect it to the workflow.
                 self.addChild(job)
-            
+
             for node_id in node_ids:
                 # Save the job for everything it executes
                 wdl_id_to_toil_job[node_id] = job
-            
+
             # It isn't depended on yet
             toil_leaves[job.jobStoreID] = job
 
@@ -1943,7 +1945,7 @@ class WDLSectionJob(WDLBaseJob):
         sink.then_underlay(self.make_gather_bindings(gather_nodes, WDL.Value.Null()))
         if local_environment is not None:
             sink.then_remove(local_environment)
-        
+
         return sink
 
     def make_gather_bindings(self, gathers: Sequence[WDL.Tree.Gather], undefined: WDL.Value.Base) -> WDLBindings:

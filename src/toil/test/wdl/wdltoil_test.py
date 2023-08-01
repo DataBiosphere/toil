@@ -50,7 +50,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
 
         if p.returncode != 0:
-            print(p.stdout)
+            print(p.stdout.decode('utf-8', errors='replace'))
 
         p.check_returncode()
 
@@ -61,7 +61,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
 
         if p.returncode != 0:
-            print(p.stdout)
+            print(p.stdout.decode('utf-8', errors='replace'))
 
         p.check_returncode()
 
