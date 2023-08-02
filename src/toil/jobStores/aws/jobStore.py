@@ -757,7 +757,7 @@ class AWSJobStore(AbstractJobStore):
                                 bucket_tagging.put(Tagging={'TagSet': flat_tags})
 
                             # Configure bucket so that we can make objects in
-                            # it public, which was the historical default. 
+                            # it public, which was the historical default.
                             enable_public_objects(bucket_name)
                         elif block:
                             raise
