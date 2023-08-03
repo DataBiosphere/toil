@@ -255,7 +255,7 @@ class Config:
         # get default CLI option values by simulating an argparse run
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=jobstore_as_flag, config=self)
-        options = parser.parse_args()
+        options = parser.parse_args(args="")
         self.setOptions(options)
 
 
@@ -868,7 +868,13 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
     # If using argparse instead of configargparse, this should just not parse when calling parse_args()
-    misc_options.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
+    # env_config = os.getenv("TOIL_CONFIG")
+    # home_config_path = os.path.join(os.path.expanduser("~"), "/.config/toil.cfg")
+    # home_config = home_config_path if os.path.exists(home_config_path) else None
+    # default_config_list = [env_config, home_config]
+    # default_config = None if len(default_config_list) == 0 else default_config_list[0]
+    default_config = None
+    misc_options.add_argument('--config', dest='config', is_config_file_arg=True, default=default_config,
                               help="Get options from a config file.")
 
     # Debug options
