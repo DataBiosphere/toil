@@ -812,8 +812,10 @@ class JobDescription(Requirer):
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this
-        # job, and which should be deleted when this job finally is deleted.
-        self.jobsToDelete = []
+        # job, and which should be deleted when this job finally is deleted
+        # (but not before). The successor relationships with them will have
+        # been cut, so we need to hold onto them somehow.
+        self.merged_jobs = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -1037,14 +1039,15 @@ class JobDescription(Requirer):
         logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
         self.successor_phases = old_phases + self.successor_phases
 
+        # When deleting, we need to delete the files for our old ID, and also
+        # anything that needed to be deleted for the job we are replacing.
+        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
         self.jobStoreID = other.jobStoreID
 
         if len(other.filesToDelete) > 0:
             raise RuntimeError("Trying to take on the ID of a job that is in the process of being committed!")
         if len(self.filesToDelete) > 0:
             raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
-
-        self.jobsToDelete += other.jobsToDelete
 
         self._job_version = other._job_version
 
