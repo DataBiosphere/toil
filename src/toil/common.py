@@ -246,12 +246,15 @@ class Config:
         self.cwl = False
         self.workflowID = None
         self.kill_polling_interval = 5
+
         set_batchsystem_config_defaults(self)
+
+        self.set_cli_default_options(jobstore_as_flag=True) # so jobstore isn't a required positional arg
 
     def set_cli_default_options(self, jobstore_as_flag: bool = False) -> None:
         # get default CLI option values by simulating an argparse run
         parser = ArgParser()
-        addOptions(parser, jobstore_as_flag=jobstore_as_flag)
+        addOptions(parser, jobstore_as_flag=jobstore_as_flag, config=self)
         options = parser.parse_args()
         self.setOptions(options)
 
