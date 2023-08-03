@@ -839,7 +839,6 @@ class AbstractJobStore(ABC):
                 # Delete any files that should already be deleted
                 logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.delete_file(fileID)
-            # TODO: Should we also delete the jobs marked in these as jobsToDetete?
             # Delete the job from us and the cache
             deleteJob(str(jobDescription.jobStoreID))
 
