@@ -248,10 +248,10 @@ class Config:
         self.kill_polling_interval = 5
         set_batchsystem_config_defaults(self)
 
-    def set_cli_default_options(self) -> None:
+    def set_cli_default_options(self, jobstore_as_flag: bool = False) -> None:
         # get default CLI option values by simulating an argparse run
         parser = ArgParser()
-        addOptions(parser)
+        addOptions(parser, jobstore_as_flag=jobstore_as_flag)
         options = parser.parse_args()
         self.setOptions(options)
 

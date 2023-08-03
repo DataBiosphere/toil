@@ -102,7 +102,7 @@ class AbstractJobStoreTest:
 
         def _createConfig(self):
             config = Config()
-            config.set_cli_default_options()
+            config.set_cli_default_options(jobstore_as_flag=True)
             return config
 
         @abstractmethod
