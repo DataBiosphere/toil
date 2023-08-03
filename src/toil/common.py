@@ -114,17 +114,13 @@ def parse_jobstore(jobstore_uri: str) -> str:
         return jobstore_uri
 
 
-def parse_str_list(s: Union[list, str]) -> List[str]:
-    if isinstance(s, list):
-        return s
+def parse_str_list(s: str) -> List[str]:
+    if s == "":
+        return []
     return [str(x) for x in s.split(",")]
 
-
-def parse_int_list(s: Union[list, str]) -> List[int]:
-    if isinstance(s, list):
-        return s
+def parse_int_list(s: str) -> List[int]:
     return [int(x) for x in s.split(",")]
-
 
 
 class Config:
@@ -458,7 +454,7 @@ class Config:
             "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
         # Misc
-        set_option("environment", parseSetEnv) # does this work?
+        set_option("environment")
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
         set_option("statusWait")
@@ -573,7 +569,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     core_options.add_argument("--stats", dest="stats", action="store_true", default=False,
                               help="Records statistics about the toil workflow to be used by 'toil stats'.")
     clean_choices = ['always', 'onError', 'never', 'onSuccess']
-    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default=None,
+    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default="onSuccess",
                               help=f"Determines the deletion of the jobStore upon completion of the program.  "
                                    f"Choices: {clean_choices}.  The --stats option requires information from the "
                                    f"jobStore upon completion so the jobStore will never be deleted with that flag.  "
@@ -666,11 +662,11 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                           "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
                                           "\ttreated interchangeably, while they are available at that price,\n"
                                           "\tand buy t2.large instances at full price")
-    autoscaling_options.add_argument('--minNodes', default=0, type=parse_int_list,
+    autoscaling_options.add_argument('--minNodes', default="0", type=parse_int_list,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "
                                           "same length as the list of node types. default=0")
-    autoscaling_options.add_argument('--maxNodes', default=10, type=parse_int_list,
+    autoscaling_options.add_argument('--maxNodes', default="10", type=parse_int_list,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
                                           f"provided as a comma-separated list.  The first value is used as a default "
                                           f"if the list length is less than the number of nodeTypes.  "
@@ -701,7 +697,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
                                           f"space.  (default: {50}).")
-    autoscaling_options.add_argument('--nodeStorageOverrides', default=[], type=parse_str_list,
+    autoscaling_options.add_argument('--nodeStorageOverrides', default="", type=parse_str_list, # default is empty list
                                      help="Comma-separated list of nodeType:nodeStorage that are used to override "
                                           "the default value from --nodeStorage for the specified nodeType(s).  "
                                           "This is useful for heterogeneous jobs where some tasks require much more "
@@ -850,7 +846,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     misc_options.add_argument("--sseKey", dest="sseKey", default=None,
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
-    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment", default=[],
+
+    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment", default={},
                               action="append", type=(lambda x : parseSetEnv([str(x) for x in x.split(",")])),
                               help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
