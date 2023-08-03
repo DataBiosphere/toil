@@ -402,6 +402,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             # versions of Cactus.
                             job._runner(jobGraph=None, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
+                            # When the executor for the job finishes it will
+                            # kick off a commit with the command link to the
+                            # job body cut.
+
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
 
@@ -436,8 +440,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # We have a single successor job that is not a checkpoint job. We
             # reassign the ID of the current JobDescription to the successor.
             # We can then delete the successor JobDescription (under its old
-            # ID) in the jobStore, as it is wholly incorporated into the
-            # current one.
+            # ID) in the jobStore, when we delete this job.
             ##########################################
 
             # Make sure nothing has gone wrong and we can really chain

@@ -795,10 +795,20 @@ class JobDescription(Requirer):
         # default value for this workflow execution.
         self._remainingTryCount = None
 
-        # Holds FileStore FileIDs of the files that this job has deleted. Used
-        # to journal deletions of files and recover from a worker crash between
-        # committing a JobDescription update and actually executing the
-        # requested deletions.
+        # Holds FileStore FileIDs of the files that should be seen as deleted,
+        # as part of a transaction with the writing of this version of the job
+        # to the job store. Used to journal deletions of files and recover from
+        # a worker crash between committing a JobDescription update (for
+        # example, severing the body of a completed job from the
+        # JobDescription) and actually executing the requested deletions (i.e.
+        # the deletions made by executing the body).
+        #
+        # Since the files being deleted might be required to execute the job
+        # body, we can't delete them first, but we also don't want to leave
+        # them behind if we die right after saving the JobDescription.
+        #
+        # This will be empty at all times except when a new version of a job is
+        # in the process of being committed. 
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this
@@ -1027,14 +1037,13 @@ class JobDescription(Requirer):
         logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
         self.successor_phases = old_phases + self.successor_phases
 
-        # TODO: also be able to take on the successors of the other job, under
-        # ours on the stack, somehow.
-
         self.jobStoreID = other.jobStoreID
 
-        # Save files and jobs to delete from the job we replaced, so we can
-        # roll up a whole chain of jobs and delete them when they're all done.
-        self.filesToDelete += other.filesToDelete
+        if len(other.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of a job that is in the process of being committed!")
+        if len(self.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
+
         self.jobsToDelete += other.jobsToDelete
 
         self._job_version = other._job_version
