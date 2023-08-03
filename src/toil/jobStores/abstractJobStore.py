@@ -824,13 +824,14 @@ class AbstractJobStore(ABC):
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
         # TODO: Avoid reiterating reachable_from_root (which may be very large)
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
-        for jobDescription in jobsToDelete:
+        unreachable = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
+        for jobDescription in unreachable:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted
                 logger.warning(f"Deleting file '{fileID}'. It is marked for deletion but has not yet been removed.")
                 self.delete_file(fileID)
+            # TODO: Should we also delete the jobs marked in these as jobsToDetete?
             # Delete the job from us and the cache
             deleteJob(str(jobDescription.jobStoreID))
 
