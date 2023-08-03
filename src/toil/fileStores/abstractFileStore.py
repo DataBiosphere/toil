@@ -120,10 +120,6 @@ class AbstractFileStore(ABC):
         # job is re-run it will need to be able to re-delete these files.
         # This is a set of str objects, not FileIDs.
         self.filesToDelete: Set[str] = set()
-        # Records IDs of jobs that need to be deleted when the currently
-        # running job is cleaned up.
-        # May be modified by the worker to actually delete jobs!
-        self.jobsToDelete: Set[str] = set()
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
         self._accessLog: List[Tuple[str, ...]] = []
