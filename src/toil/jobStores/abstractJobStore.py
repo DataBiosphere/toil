@@ -797,8 +797,7 @@ class AbstractJobStore(ABC):
             for merged_jobstore_id in root_job_description.merged_jobs:
                 # Keep merged-in jobs around themselves, but don't bother
                 # exploring them, since we took their successors.
-                #reachable_from_root.add(merged_jobstore_id)
-                pass
+                reachable_from_root.add(merged_jobstore_id)
 
             # Unprocessed means it might have successor jobs we need to add.
             unprocessed_job_descriptions = [root_job_description]
@@ -823,8 +822,7 @@ class AbstractJobStore(ABC):
                     for merged_jobstore_id in job_description.merged_jobs:
                         # Keep merged-in jobs around themselves, but don't bother
                         # exploring them, since we took their successors.
-                        #reachable_from_root.add(merged_jobstore_id)
-                        pass
+                        reachable_from_root.add(merged_jobstore_id)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
