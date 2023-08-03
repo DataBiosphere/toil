@@ -247,6 +247,7 @@ class Config:
         self.workflowID = None
         self.kill_polling_interval = 5
         set_batchsystem_config_defaults(self)
+        self.set_cli_default_options()
 
     def set_cli_default_options(self) -> None:
         # get default CLI option values by simulating an argparse run
