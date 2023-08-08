@@ -259,15 +259,16 @@ class Config:
         # get defaults from a config file by simulating an argparse run
         # as Config often expects defaults to already be instantiated
         if not os.path.exists(default_config_file):
-            self.generate_from_argparse()
+            self.generate_config_file()
         parser = ArgParser()
         addOptions(parser, self, jobstore_as_flag=True)
         ns = parser.parse_args(f"--config={default_config_file}")
         self.setOptions(ns)
 
-    def generate_from_argparse(self) -> None:
+    def generate_config_file(self) -> None:
         # if the default config file does not exist, create a new one in the home directory
         check_and_create_toil_home_dir()
+        # importing from toil.utils causes a circular import, so do this instead
         p = subprocess.run(["toil", "config", f"{default_config_file}"])
 
         try:
@@ -420,7 +421,7 @@ class Config:
         self.run_legacy_checks()
 
     def run_legacy_checks(self) -> None:
-        """Checks that cannot be fit into an action class for argparse"""
+        """Old checks that cannot be fit into an action class for argparse"""
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
         assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
@@ -508,15 +509,16 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     parser._config_file_parser = YAMLConfigFileParser() # bit more user friendly than making the user declare the config parser type each toil script
     opt_convert_bool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
-    def make_closed_interval_check_action(min: int | float, max: Optional[int | float]=None) -> Type[_StoreAction]: # names could be better, maybe separate int and float
+    def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]: # names could be better, maybe separate int and float
         class RangeValidation(_StoreAction):
             def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                try:
+                def is_within(x: Union[int, float]) -> bool:
                     if max is None:
-                        is_within = lambda x: min <= x
+                        return min <= x
                     else:
-                        is_within = lambda x: min <= x <= max
-                    if not is_within(values): # type: ignore
+                        return min <= x <= max
+                try:
+                    if not is_within(values):
                         raise parser.error(f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max}]")
                 except AssertionError:
                     raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
