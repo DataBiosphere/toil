@@ -430,7 +430,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
                 logger.info("Not chaining from job %s", jobDesc)
 
-                # TODO: Somehow the commit happens even if we don't start it here.
+                # No need to commit because the _executor context manager did it.
 
                 break
 
@@ -472,15 +472,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
             # This will update the job once the previous job is done updating
             fileStore.startCommit(jobState=True)
-
-            # Clone the current job description again, so that further updates
-            # to it (such as new successors being added when it runs) occur
-            # after the commit process we just kicked off, and aren't committed
-            # early or partially.
-            jobDesc = copy.deepcopy(jobDesc)
-            # Bump its version since saving will do that too and we don't want duplicate versions.
-            jobDesc.pre_update_hook()
-
 
             logger.debug("Starting the next job")
 

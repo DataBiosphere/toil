@@ -602,7 +602,13 @@ class AbstractFileStore(ABC):
         """
         Update the status of the job on the disk.
 
-        May start an asynchronous process. Call waitForCommit() to wait on that process.
+        May bump the version number of the job.
+
+        May start an asynchronous process. Call waitForCommit() to wait on that
+        process. You must waitForCommit() before committing any further updates
+        to the job. During the asynchronous process, it is safe to modify the
+        job; modifications after this call will not be committed until the next
+        call.
 
         :param jobState: If True, commit the state of the FileStore's job,
                     and file deletes. Otherwise, commit only file creates/updates.

@@ -194,25 +194,24 @@ class NonCachingFileStore(AbstractFileStore):
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
 
-        try:
-            if jobState:
-                # Indicate any files that should be seen as deleted once the
-                # update of the job description is visible.
-                if len(self.jobDesc.filesToDelete) > 0:
-                    raise RuntimeError("Job is already in the process of being committed!")
-                self.jobDesc.filesToDelete = list(self.filesToDelete)
-                # Complete the job
+        # We are going to commit synchronously, so no need to clone a snapshot
+        # of the job description or mess with its version numbering.
+
+        if jobState:
+            # Indicate any files that should be seen as deleted once the
+            # update of the job description is visible.
+            if len(self.jobDesc.filesToDelete) > 0:
+                raise RuntimeError("Job is already in the process of being committed!")
+            self.jobDesc.filesToDelete = list(self.filesToDelete)
+            # Complete the job
+            self.jobStore.update_job(self.jobDesc)
+            # Delete any remnant files
+            list(map(self.jobStore.delete_file, self.filesToDelete))
+            # Remove the files to delete list, having successfully removed the files
+            if len(self.filesToDelete) > 0:
+                self.jobDesc.filesToDelete = []
+                # Update, removing emptying files to delete
                 self.jobStore.update_job(self.jobDesc)
-                # Delete any remnant files
-                list(map(self.jobStore.delete_file, self.filesToDelete))
-                # Remove the files to delete list, having successfully removed the files
-                if len(self.filesToDelete) > 0:
-                    self.jobDesc.filesToDelete = []
-                    # Update, removing emptying files to delete
-                    self.jobStore.update_job(self.jobDesc)
-        except:
-            self._terminateEvent.set()
-            raise
 
     def __del__(self) -> None:
         """

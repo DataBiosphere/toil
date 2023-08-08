@@ -1796,11 +1796,38 @@ class CachingFileStore(AbstractFileStore):
         # value?) wait on it, so we can't forget to join it later.
         self.waitForCommit()
 
-        # Start the commit thread
-        self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,))
-        self.commitThread.start()
+        logger.debug('Requesting asynchronous commit')
 
-    def startCommitThread(self, jobState):
+        if len(self.jobDesc.filesToDelete) > 0:
+            raise RuntimeError("Job is already in the process of being committed!")
+
+        state_to_commit: Optional[JobSescription] = None
+        
+        if jobState:
+            # Clone the current job description, so that further updates to it
+            # (such as new successors being added when it runs) occur after the
+            # commit process, and aren't committed early or partially.
+            state_to_commit = copy.deepcopy(self.jobDesc)
+            # Also snapshot the files that should be seen as deleted once the
+            # update of the job description is visible.
+            state_to_commit.filesToDelete = list(self.filesToDelete)
+            # TODO: We never clear this out on the file store itself. This
+            # might be necessary for later jobs to see earlier jobs' deleted
+            # before they are committed?
+
+            # Bump the original's version since saving will do that too and we
+            # don't want duplicate versions.
+            self.jobDesc.pre_update_hook()
+            if len(state_to_commit.filesToDelete) > 0:
+                # Bump the version again because we will save twice for delete
+                # journaling.
+                self.jobDesc.pre_update_hook()
+
+        # Start the commit thread
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit,))
+        self.commitThread.start()
+       
+    def startCommitThread(self, state_to_commit: Optional[JobDescription]):
         """
         Run in a thread to actually commit the current job.
         """
@@ -1823,25 +1850,24 @@ class CachingFileStore(AbstractFileStore):
             # Finish all deletions out of the cache (not from the job store)
             self._executePendingDeletions(self.coordination_dir, con, cur)
 
-            if jobState:
+            if state_to_commit is not None:
                 # Do all the things that make this job not redoable
 
                 logger.debug('Committing file deletes and job state changes asynchronously')
-
-                # Indicate any files that should be seen as deleted once the
-                # update of the job description is visible.
-                if len(self.jobDesc.filesToDelete) > 0:
-                    raise RuntimeError("Job is already in the process of being committed!")
-                self.jobDesc.filesToDelete = list(self.filesToDelete)
+                
                 # Complete the job
-                self.jobStore.update_job(self.jobDesc)
+                self.jobStore.update_job(state_to_commit)
+                logger.debug('Job committed asynchronously')
                 # Delete the files
-                list(map(self.jobStore.delete_file, self.filesToDelete))
+                list(map(self.jobStore.delete_file, state_to_commit.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
-                if len(self.filesToDelete) > 0:
-                    self.jobDesc.filesToDelete = []
+                if len(state_to_commit.filesToDelete) > 0:
+                    state_to_commit.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update_job(self.jobDesc)
+                    self.jobStore.update_job(state_to_commit)
+                    logger.debug('File deletions committed asynchronously')
+                else:
+                    logger.debug('No files deleted')
         except:
             self._terminateEvent.set()
             raise
