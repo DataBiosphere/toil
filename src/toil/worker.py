@@ -405,6 +405,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             # When the executor for the job finishes it will
                             # kick off a commit with the command link to the
                             # job body cut.
+                            assert jobDesc.command == None
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
@@ -489,6 +490,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
 
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
+        logger.debug("Final job: %s", jobDesc)
+        if not jobDesc.is_subtree_done():
+           logger.debug("Final job still has command %s and subtree %s", jobDesc.command, list(jobDesc.successorsAndServiceHosts())) 
 
     ##########################################
     #Trapping where worker goes wrong

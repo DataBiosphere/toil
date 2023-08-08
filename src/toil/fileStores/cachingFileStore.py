@@ -23,6 +23,7 @@ import stat
 import tempfile
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, Optional, Tuple
 
@@ -1797,14 +1798,16 @@ class CachingFileStore(AbstractFileStore):
         # value?) wait on it, so we can't forget to join it later.
         self.waitForCommit()
 
-        logger.debug('Requesting asynchronous commit')
-
         if len(self.jobDesc.filesToDelete) > 0:
             raise RuntimeError("Job is already in the process of being committed!")
+
+        # Name the commit requests so we can trace them in the logs
+        commit_cookie = str(uuid.uuid4()) 
 
         state_to_commit: Optional[JobSescription] = None
 
         if jobState:
+            logger.debug('Requesting asynchronous commit %s of %s with command %s', commit_cookie, self.jobDesc, self.jobDesc.command)
             # Clone the current job description, so that further updates to it
             # (such as new successors being added when it runs) occur after the
             # commit process, and aren't committed early or partially.
@@ -1818,17 +1821,16 @@ class CachingFileStore(AbstractFileStore):
 
             # Bump the original's version since saving will do that too and we
             # don't want duplicate versions.
-            self.jobDesc.pre_update_hook()
-            if len(state_to_commit.filesToDelete) > 0:
-                # Bump the version again because we will save twice for delete
-                # journaling.
-                self.jobDesc.pre_update_hook()
+            self.jobDesc.reserve_versions(1 if len(state_to_commit.filesToDelete) == 0 else 2)
+            logger.debug('Continuing on with %s after commit %s', self.jobDesc, commit_cookie)
+        else:
+            logger.debug('Requesting asynchronous commit %s of new files', commit_cookie)
 
         # Start the commit thread
-        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit,))
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit, commit_cookie))
         self.commitThread.start()
 
-    def startCommitThread(self, state_to_commit: Optional[JobDescription]):
+    def startCommitThread(self, state_to_commit: Optional[JobDescription], commit_cookie: str):
         """
         Run in a thread to actually commit the current job.
         """
@@ -1844,7 +1846,7 @@ class CachingFileStore(AbstractFileStore):
             con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
             cur = con.cursor()
 
-            logger.debug('Committing file uploads asynchronously')
+            logger.debug('Commit %s: Committing file uploads asynchronously', commit_cookie)
 
             # Finish all uploads
             self._executePendingUploads(con, cur)
@@ -1854,11 +1856,11 @@ class CachingFileStore(AbstractFileStore):
             if state_to_commit is not None:
                 # Do all the things that make this job not redoable
 
-                logger.debug('Committing file deletes and job state changes asynchronously')
+                logger.debug('Commit %s: Committing file deletes and job state changes asynchronously for %s', commit_cookie, state_to_commit)
 
                 # Complete the job
                 self.jobStore.update_job(state_to_commit)
-                logger.debug('Job committed asynchronously')
+                logger.debug('Commit %s: Job committed asynchronously: %s with command %s', commit_cookie, state_to_commit, state_to_commit.command)
                 # Delete the files
                 list(map(self.jobStore.delete_file, state_to_commit.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
@@ -1866,9 +1868,11 @@ class CachingFileStore(AbstractFileStore):
                     state_to_commit.filesToDelete = []
                     # Update, removing emptying files to delete
                     self.jobStore.update_job(state_to_commit)
-                    logger.debug('File deletions committed asynchronously')
+                    logger.debug('Commit %s: File deletions committed asynchronously for %s', commit_cookie, state_to_commit)
                 else:
-                    logger.debug('No files deleted')
+                    logger.debug('Commit %s: No files deleted', commit_cookie)
+
+            logger.debug('Commit %s: Done!', commit_cookie)
         except:
             self._terminateEvent.set()
             raise

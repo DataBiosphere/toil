@@ -1229,6 +1229,13 @@ class JobDescription(Requirer):
     def __repr__(self):
         return f'{self.__class__.__name__}( **{self.__dict__!r} )'
 
+    def reserve_versions(self, count: int) -> None:
+        """
+        Reserve a job version number for later, for journaling asynchronously.
+        """
+        self._job_version += count
+        logger.debug("Skip ahead to job version: %s", self)
+
     def pre_update_hook(self) -> None:
         """
         Run before pickling and saving a created or updated version of this job.
