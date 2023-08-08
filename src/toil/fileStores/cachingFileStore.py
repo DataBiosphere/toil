@@ -1804,7 +1804,7 @@ class CachingFileStore(AbstractFileStore):
         # Name the commit requests so we can trace them in the logs
         commit_cookie = str(uuid.uuid4()) 
 
-        state_to_commit: Optional[JobSescription] = None
+        state_to_commit: Optional[JobDescription] = None
 
         if jobState:
             logger.debug('Requesting asynchronous commit %s of %s with command %s', commit_cookie, self.jobDesc, self.jobDesc.command)
@@ -1823,17 +1823,25 @@ class CachingFileStore(AbstractFileStore):
             # don't want duplicate versions.
             self.jobDesc.reserve_versions(1 if len(state_to_commit.filesToDelete) == 0 else 2)
             logger.debug('Continuing on with %s after commit %s', self.jobDesc, commit_cookie)
+            logger.debug('For commit %s, we will keep %s with command %s and save %s with command %s', commit_cookie, self.jobDesc, self.jobDesc.command, state_to_commit, state_to_commit.command)
+            if state_to_commit.command != self.jobDesc.command:
+                raise RuntimeError(f"Command changed from {self.jobDesc.command} to {state_to_commit.command} during copy!")
         else:
             logger.debug('Requesting asynchronous commit %s of new files', commit_cookie)
 
         # Start the commit thread
         self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit, commit_cookie))
         self.commitThread.start()
+        logger.debug('For commit %s, we started thread to save %s', commit_cookie, state_to_commit)
 
     def startCommitThread(self, state_to_commit: Optional[JobDescription], commit_cookie: str):
         """
         Run in a thread to actually commit the current job.
         """
+
+        logger.debug('Commit %s: Got %s to save', commit_cookie, state_to_commit)
+        if state_to_commit is not None:
+            logger.debug('Commit %s: Saving with command %s', commit_cookie, state_to_commit.command)
 
         # Make sure the previous job is committed, if any
         if self.waitForPreviousCommit is not None:
