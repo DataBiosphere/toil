@@ -319,7 +319,7 @@ class Config:
             If the option gets a non-None value, sets it as an attribute in
             this Config.
             """
-            option_value = getattr(options, option_name)
+            option_value = getattr(options, option_name, None)
 
             if old_names is not None:
                 for old_name in old_names:
@@ -370,11 +370,12 @@ class Config:
 
         set_option("nodeStorageOverrides")
 
-        # Parameters to limit service jobs / detect deadlocks
-        set_option("maxServiceJobs")
-        set_option("maxPreemptibleServiceJobs")
-        set_option("deadlockWait")
-        set_option("deadlockCheckInterval")
+        if self.cwl is False:
+            # Parameters to limit service jobs / detect deadlocks
+            set_option("maxServiceJobs")
+            set_option("maxPreemptibleServiceJobs")
+            set_option("deadlockWait")
+            set_option("deadlockCheckInterval")
 
         set_option("defaultMemory")
         set_option("defaultCores")
