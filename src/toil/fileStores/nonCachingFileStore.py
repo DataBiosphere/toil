@@ -197,7 +197,11 @@ class NonCachingFileStore(AbstractFileStore):
         # We are going to commit synchronously, so no need to clone a snapshot
         # of the job description or mess with its version numbering.
 
-        if jobState:
+        if not jobState:
+            # All our operations that need committing are job state related
+            return
+
+        try:
             # Indicate any files that should be seen as deleted once the
             # update of the job description is visible.
             if len(self.jobDesc.filesToDelete) > 0:
@@ -212,6 +216,10 @@ class NonCachingFileStore(AbstractFileStore):
                 self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
                 self.jobStore.update_job(self.jobDesc)
+        except:
+            self._terminateEvent.set()
+            raise
+
 
     def __del__(self) -> None:
         """

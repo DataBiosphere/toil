@@ -74,7 +74,7 @@ class ResumabilityTest(ToilTest):
             log_content = f.read()
             # Make sure we actually did do chaining
             assert "Chaining from" in log_content
-        
+
         # Because of the chaining, the problem we are looking for is the job
         # with the root ID not being able to load the body of a job with a
         # different ID. That doesn't look like a job deleted despite failure.

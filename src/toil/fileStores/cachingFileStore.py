@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import errno
 import hashlib
 import logging
@@ -1802,7 +1803,7 @@ class CachingFileStore(AbstractFileStore):
             raise RuntimeError("Job is already in the process of being committed!")
 
         state_to_commit: Optional[JobSescription] = None
-        
+
         if jobState:
             # Clone the current job description, so that further updates to it
             # (such as new successors being added when it runs) occur after the
@@ -1826,7 +1827,7 @@ class CachingFileStore(AbstractFileStore):
         # Start the commit thread
         self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit,))
         self.commitThread.start()
-       
+
     def startCommitThread(self, state_to_commit: Optional[JobDescription]):
         """
         Run in a thread to actually commit the current job.
@@ -1854,7 +1855,7 @@ class CachingFileStore(AbstractFileStore):
                 # Do all the things that make this job not redoable
 
                 logger.debug('Committing file deletes and job state changes asynchronously')
-                
+
                 # Complete the job
                 self.jobStore.update_job(state_to_commit)
                 logger.debug('Job committed asynchronously')
@@ -1878,14 +1879,14 @@ class CachingFileStore(AbstractFileStore):
     def shutdown(cls, shutdown_info: Tuple[str, str]) -> None:
         """
         :param shutdown_info: Tuple of the coordination directory (where the
-               cache database is) and the cache directory (where the cached data is). 
-                     
+               cache database is) and the cache directory (where the cached data is).
+
         Job local temp directories will be removed due to their appearance in
         the database.
         """
-        
+
         coordination_dir, cache_dir = shutdown_info
-        
+
         if os.path.isdir(cache_dir):
             # There is a directory to clean up
 
@@ -1903,7 +1904,7 @@ class CachingFileStore(AbstractFileStore):
             # and use that.
             dbFilename = None
             dbAttempt = float('-inf')
-            
+
             # We also need to remember all the plausible database files and
             # journals
             all_db_files = []
@@ -1955,7 +1956,7 @@ class CachingFileStore(AbstractFileStore):
             for filename in all_db_files:
                 # And delete everything related to the caching database
                 robust_rmtree(filename)
-                
+
     def __del__(self):
         """
         Cleanup function that is run when destroying the class instance that ensures that all the
