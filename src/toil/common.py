@@ -658,7 +658,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     )
     provisioner_choices = ['aws', 'gce', None]
 
-    def parse_node_type(node_type_spec: Optional[str]) -> Tuple[Set[str], Optional[float]] | None: # move later
+    def parse_node_type(node_type_spec: Optional[str]) -> Optional[Tuple[Set[str], Optional[float]]]: # move later
         """
         Parse a specification for zero or more node types.
 
