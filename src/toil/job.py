@@ -22,6 +22,7 @@ import os
 import pickle
 import sys
 import time
+import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -449,8 +450,15 @@ class Requirer:
 
     def __deepcopy__(self, memo: Any) -> "Requirer":
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
-        # See https://stackoverflow.com/a/40484215 for how to do an override
-        # that uses the base implementation
+        # We used to use <https://stackoverflow.com/a/40484215> but that was
+        # discovered to not actually work right, because you would get the
+        # copy, if later copied again, stamping out copies of the *original*
+        # object, due to putting back a method as a member that was already
+        # bound to a self parameter.
+
+        # So we have to also tinker with the method binding as noted in
+        # <https://stackoverflow.com/a/71125311>.
+        # TODO: What's the default implementation actually?
 
         # Hide this override
         implementation = self.__deepcopy__
@@ -459,9 +467,11 @@ class Requirer:
         # Do the deepcopy which omits the config via __getstate__ override
         clone = copy.deepcopy(self, memo)
 
-        # Put back the override on us and the copy
+        # Put back the override on us
         self.__deepcopy__ = implementation  # type: ignore[assignment]
-        clone.__deepcopy__ = implementation  # type: ignore[assignment]
+
+        # Bind the override to the copy and put it on the copy
+        clone.__deepcopy__ = types.MethodType(implementation.__func__, clone) # type: ignore[assignment]
 
         if self._config is not None:
             # Share a config reference
