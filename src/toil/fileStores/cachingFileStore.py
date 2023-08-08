@@ -23,7 +23,6 @@ import stat
 import tempfile
 import threading
 import time
-import uuid
 from contextlib import contextmanager
 from typing import Any, Callable, Generator, Optional, Tuple
 
@@ -1801,13 +1800,9 @@ class CachingFileStore(AbstractFileStore):
         if len(self.jobDesc.filesToDelete) > 0:
             raise RuntimeError("Job is already in the process of being committed!")
 
-        # Name the commit requests so we can trace them in the logs
-        commit_cookie = str(uuid.uuid4()) 
-
         state_to_commit: Optional[JobDescription] = None
 
         if jobState:
-            logger.debug('Requesting asynchronous commit %s of %s with command %s', commit_cookie, self.jobDesc, self.jobDesc.command)
             # Clone the current job description, so that further updates to it
             # (such as new successors being added when it runs) occur after the
             # commit process, and aren't committed early or partially.
@@ -1822,26 +1817,15 @@ class CachingFileStore(AbstractFileStore):
             # Bump the original's version since saving will do that too and we
             # don't want duplicate versions.
             self.jobDesc.reserve_versions(1 if len(state_to_commit.filesToDelete) == 0 else 2)
-            logger.debug('Continuing on with %s after commit %s', self.jobDesc, commit_cookie)
-            logger.debug('For commit %s, we will keep %s with command %s and save %s with command %s', commit_cookie, self.jobDesc, self.jobDesc.command, state_to_commit, state_to_commit.command)
-            if state_to_commit.command != self.jobDesc.command:
-                raise RuntimeError(f"Command changed from {self.jobDesc.command} to {state_to_commit.command} during copy!")
-        else:
-            logger.debug('Requesting asynchronous commit %s of new files', commit_cookie)
 
         # Start the commit thread
-        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit, commit_cookie))
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit,))
         self.commitThread.start()
-        logger.debug('For commit %s, we started thread to save %s', commit_cookie, state_to_commit)
 
-    def startCommitThread(self, state_to_commit: Optional[JobDescription], commit_cookie: str):
+    def startCommitThread(self, state_to_commit: Optional[JobDescription]):
         """
         Run in a thread to actually commit the current job.
         """
-
-        logger.debug('Commit %s: Got %s to save', commit_cookie, state_to_commit)
-        if state_to_commit is not None:
-            logger.debug('Commit %s: Saving with command %s', commit_cookie, state_to_commit.command)
 
         # Make sure the previous job is committed, if any
         if self.waitForPreviousCommit is not None:
@@ -1854,7 +1838,7 @@ class CachingFileStore(AbstractFileStore):
             con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
             cur = con.cursor()
 
-            logger.debug('Commit %s: Committing file uploads asynchronously', commit_cookie)
+            logger.debug('Committing file uploads asynchronously')
 
             # Finish all uploads
             self._executePendingUploads(con, cur)
@@ -1864,11 +1848,10 @@ class CachingFileStore(AbstractFileStore):
             if state_to_commit is not None:
                 # Do all the things that make this job not redoable
 
-                logger.debug('Commit %s: Committing file deletes and job state changes asynchronously for %s', commit_cookie, state_to_commit)
+                logger.debug('Committing file deletes and job state changes asynchronously')
 
                 # Complete the job
                 self.jobStore.update_job(state_to_commit)
-                logger.debug('Commit %s: Job committed asynchronously: %s with command %s', commit_cookie, state_to_commit, state_to_commit.command)
                 # Delete the files
                 list(map(self.jobStore.delete_file, state_to_commit.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
@@ -1876,11 +1859,7 @@ class CachingFileStore(AbstractFileStore):
                     state_to_commit.filesToDelete = []
                     # Update, removing emptying files to delete
                     self.jobStore.update_job(state_to_commit)
-                    logger.debug('Commit %s: File deletions committed asynchronously for %s', commit_cookie, state_to_commit)
-                else:
-                    logger.debug('Commit %s: No files deleted', commit_cookie)
 
-            logger.debug('Commit %s: Done!', commit_cookie)
         except:
             self._terminateEvent.set()
             raise
