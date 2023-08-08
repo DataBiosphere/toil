@@ -578,7 +578,7 @@ def needs_docker(test_item: MT) -> MT:
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
-        
+
 def needs_singularity(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
