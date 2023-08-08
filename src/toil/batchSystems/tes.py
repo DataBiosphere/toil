@@ -74,7 +74,8 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
-        self.tes = tes.HTTPClient(config.tes_endpoint,
+        tes_endpoint = config.tes_endpoint if config.tes_endpoint is not None else self.get_default_tes_endpoint()
+        self.tes = tes.HTTPClient(tes_endpoint,
                                   user=config.tes_user,
                                   password=config.tes_password,
                                   token=config.tes_bearer_token)
@@ -439,7 +440,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=cls.get_default_tes_endpoint(),
+        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=None,
                             help="The http(s) URL of the TES server.  (default: %(default)s)")
         parser.add_argument("--tesUser", dest="tes_user", default=None,
                             help="User name to use for basic authentication to TES server.")
@@ -453,7 +454,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
         # Because we use the keyword arguments, we can't specify a type for setOption without using Protocols.
         # TODO: start using Protocols, or just start returning objects to represent the options.
         # When actually parsing options, remember to check the environment variables
-        setOption("tes_endpoint", default=cls.get_default_tes_endpoint(), env=["TOIL_TES_ENDPOINT"])
+        setOption("tes_endpoint", default=None, env=["TOIL_TES_ENDPOINT"])
         setOption("tes_user", default=None, env=["TOIL_TES_USER"])
         setOption("tes_password", default=None, env=["TOIL_TES_PASSWORD"])
         setOption("tes_bearer_token", default=None, env=["TOIL_TES_BEARER_TOKEN"])

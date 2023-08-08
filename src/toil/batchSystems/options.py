@@ -19,6 +19,8 @@ from typing import Any, Callable, List, Optional, TypeVar, Union, cast
 
 from configargparse import ArgParser
 
+SYS_MAX_SIZE = 9223372036854775807
+
 if sys.version_info >= (3, 8):
     from typing import Protocol
 else:
@@ -79,7 +81,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     set_option("manualMemArgs")
     set_option("run_local_jobs_on_workers")
     set_option("statePollingWait")
-    set_option("batch_logs_dir", env=["TOIL_BATCH_LOGS_DIR"])
+    set_option("batch_logs_dir")
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
@@ -95,7 +97,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--disableHotDeployment",
         dest="disableAutoDeployment",
-        action="store_true",
         default=False,
         help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
         "--disableAutoDeployment.  Left in for backwards compatibility.",
@@ -103,7 +104,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--disableAutoDeployment",
         dest="disableAutoDeployment",
-        action="store_true",
         default=False,
         help="Should auto-deployment of the user script be deactivated? If True, the user "
         "script/package should be present at the same location on all workers.  Default = False.",
@@ -111,8 +111,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--maxJobs",
         dest="max_jobs",
-        default=sys.maxsize, # This is *basically* unlimited and saves a lot of Optional[]
-        type=lambda x: int(x) or sys.maxsize,
+        default=SYS_MAX_SIZE, # This is *basically* unlimited and saves a lot of Optional[]
+        type=lambda x: int(x) or SYS_MAX_SIZE,
         help="Specifies the maximum number of jobs to submit to the "
              "backing scheduler at once. Not supported on Mesos or "
              "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
@@ -120,8 +120,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--maxLocalJobs",
         dest="max_local_jobs",
-        default=cpu_count(),
-        type=lambda x: int(x) or sys.maxsize,
+        default=None,
+        type=lambda x: int(x) or 0,
         help=f"Specifies the maximum number of housekeeping jobs to "
              f"run sumultaneously on the local system. Use 0 for "
              f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
@@ -129,17 +129,15 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--manualMemArgs",
         default=False,
-        action="store_true",
         dest="manualMemArgs",
         help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
         "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
-        "--runLocalJobsOnWorkers"
         "--runCwlInternalJobsOnWorkers",
+        "--runLocalJobsOnWorkers",
         dest="run_local_jobs_on_workers",
-        action="store_true",
         default=False,
         help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
         "instead of the leader node. If false (default), then all such jobs are run on "
@@ -200,7 +198,7 @@ def set_batchsystem_config_defaults(config) -> None:
     config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.max_jobs = sys.maxsize
-    config.max_local_jobs = cpu_count()
+    config.max_local_jobs = None
     config.manualMemArgs = False
     config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
 

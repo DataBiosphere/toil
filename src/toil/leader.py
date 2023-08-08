@@ -35,7 +35,7 @@ from toil.bus import (JobAnnotationMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       JobUpdatedMessage,
-                      QueueSizeMessage)
+                      QueueSizeMessage, gen_message_bus_path)
 from toil.common import Config, Toil, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (CheckpointJobDescription,
@@ -114,6 +114,11 @@ class Leader:
         # in the jobStore, and its bus is the one true place to listen for
         # state change information about jobs.
         self.toilState = ToilState(self.jobStore)
+
+        if self.config.write_messages is None:
+            # The user hasn't specified a place for the message bus so we
+            # should make one.
+            self.config.write_messages = gen_message_bus_path()
 
         if self.config.write_messages is not None:
             # Message bus messages need to go to the given file.

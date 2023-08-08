@@ -181,7 +181,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.pod_timeout = config.kubernetes_pod_timeout
 
         # Get the username to mark jobs with
-        username = config.kubernetes_owner
+        username = config.kubernetes_owner if config.kubernetes_owner is not None else self.get_default_kubernetes_owner()
         # And a unique ID for the run
         self.unique_id = uuid.uuid4()
 
@@ -1867,7 +1867,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
                             help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
+        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=None,
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
         parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
@@ -1881,7 +1881,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
-        setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
+        setOption("kubernetes_owner", default=None, env=['TOIL_KUBERNETES_OWNER'])
         setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
         setOption("kubernetes_pod_timeout", default=120, env=['TOIL_KUBERNETES_POD_TIMEOUT'])
 

@@ -93,7 +93,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self.jobQueues = JobQueue()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
-        self.mesos_endpoint = config.mesos_endpoint
+        self.mesos_endpoint = config.mesos_endpoint if config.mesos_endpoint is not None else self.get_default_mesos_endpoint()
         if config.mesos_role is not None:
             self.mesos_role = config.mesos_role
         self.mesos_name = config.mesos_name
@@ -846,7 +846,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=cls.get_default_mesos_endpoint(),
+        parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=None,
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
         parser.add_argument("--mesosFrameworkId", dest="mesos_framework_id",
                             help="Use a specific Mesos framework ID.")
@@ -857,8 +857,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
-        setOption("mesos_name", None, None, "toil")
+        setOption("mesos_endpoint", old_names=["mesosMasterAddress"])
+        setOption("mesos_name", )
         setOption("mesos_role")
         setOption("mesos_framework_id")
 

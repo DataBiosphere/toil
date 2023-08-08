@@ -19,7 +19,7 @@ import signal
 import subprocess
 import time
 import traceback
-from argparse import ArgumentParser, _ArgumentGroup
+from argparse import ArgumentParser, _ArgumentGroup, _StoreAction
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
@@ -843,7 +843,18 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--scale", dest="scale", default=1,
+        def make_scale_check_action(min: float, max: Optional[float]=None):
+            class ScaleCheck(_StoreAction):
+                def __call__(self, parser, namespace, values, option_string=None) -> None:
+                    try:
+                        if not fC(min, max)(values):
+                            raise parser.error(f"The {option_string} option is out of range: {values}")
+                    except AssertionError:
+                        raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+                    setattr(namespace, self.dest, values)
+            return ScaleCheck
+
+        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_scale_check_action(0.0),
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                                  "Used in the single_machine batch system. Useful for running workflows on "
                                  "smaller machines than they were designed for, by setting a value less than 1. "
@@ -851,7 +862,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        setOption("scale", float, fC(0.0), default=1)
+        setOption("scale")
 
 
 class Info:
