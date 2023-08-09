@@ -15,7 +15,7 @@
 A simple user script for Toil
 """
 
-import argparse
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -56,7 +56,7 @@ def hello_world_child(job, hw):
 def main():
     # Boilerplate -- startToil requires options
 
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args()
 

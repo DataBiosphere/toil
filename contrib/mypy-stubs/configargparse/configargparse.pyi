@@ -2,6 +2,11 @@ import argparse
 # from _typeshed import Incomplete
 from typing import Sequence, Dict, Any, Tuple, List, overload, TypeVar, OrderedDict, Type
 
+__all__ = [
+    "ArgumentParser",
+    "YAMLConfigFileParser",
+    "ConfigFileParser"
+]
 _N = TypeVar("_N")
 
 # ACTION_TYPES_THAT_DONT_NEED_A_VALUE: Incomplete
@@ -12,7 +17,7 @@ _N = TypeVar("_N")
 #
 # class ArgumentDefaultsRawHelpFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawTextHelpFormatter, argparse.RawDescriptionHelpFormatter): ...
 #
-class ConfigFileParser:
+class ConfigFileParser(object):
     def get_syntax_description(self) -> Any: ...
     def parse(self, stream: Any) -> Any: ...
     def serialize(self, items: OrderedDict[Any, Any]) -> Any: ...
@@ -62,8 +67,10 @@ class YAMLConfigFileParser(ConfigFileParser):
 #     def get_syntax_description(self): ...
 
 class ArgumentParser(argparse.ArgumentParser):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self._config_file_parser: Any
+    @property
+    def _config_file_parser(self) -> Any: ...
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None: ...
     # def parse_args(self, args: Sequence[str] | None = ..., namespace: Namespace | None = ..., config_file_contents: str | None = ..., env_vars: Any=...) -> Namespace: ...
     @overload
     def parse_args(self, args: Sequence[str] | None = None, namespace: None = None, config_file_contents: str | None = ..., env_vars: Any=...) -> Namespace: ...  # type: ignore[misc]

@@ -17,6 +17,8 @@ Invoke like:
 """
 
 import argparse
+from configargparse import ArgumentParser
+
 import collections
 import os
 import random
@@ -30,7 +32,7 @@ from toil.realtimeLogger import RealtimeLogger
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('--minSleep', type=int, default=1,
                         help="Minimum seconds to sleep")

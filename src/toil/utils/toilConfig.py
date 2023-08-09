@@ -19,7 +19,7 @@ import os
 from argparse import _StoreFalseAction, _StoreTrueAction
 from typing import Set, Dict, Optional
 
-from configargparse import ArgParser, YAMLConfigFileParser # type: ignore
+from configargparse import ArgParser, YAMLConfigFileParser
 
 from toil.common import Toil, parser_with_common_options, addOptions, Config
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
@@ -71,9 +71,10 @@ def generate_config(filepath: str) -> None:
     for action in parser._actions:
         if any(s.replace("-", "") in omit for s in action.option_strings):
             continue
-        # all StoreFalseActions will have a StoreTrueActions counterpart
-        # only include True action as they are the defaults
-        if isinstance(action, _StoreFalseAction):
+        # if action is StoreFalse and default is True then don't include
+        if isinstance(action, _StoreFalseAction) and action.default is True:
+            continue
+        if isinstance(action, _StoreFalseAction) and action.default is False:
             continue
         if len(action.option_strings) == 0:
             continue

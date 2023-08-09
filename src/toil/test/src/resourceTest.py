@@ -27,6 +27,8 @@ from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest
 from toil.version import exactPython
+from configargparse import ArgumentParser
+
 
 
 @contextmanager
@@ -218,7 +220,7 @@ class ResourceTest(ToilTest):
                 pass
 
             if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
+                parser = ArgumentParser()
                 Job.Runner.addToilOptions(parser)
                 options = parser.parse_args()
                 job = Job.wrapFn(fn, memory='10M', cores=0.1, disk='10M')

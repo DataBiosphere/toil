@@ -20,6 +20,7 @@ from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
+from configargparse import ArgumentParser
 
 import pytest
 
@@ -422,7 +423,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                     raise RuntimeError('failed on purpose')
 
             if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
+                parser = ArgumentParser()
                 Job.Runner.addToilOptions(parser)
                 options = parser.parse_args()
                 rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')

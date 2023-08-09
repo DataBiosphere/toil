@@ -24,9 +24,8 @@ import time
 import uuid
 import warnings
 
-import configargparse
 import ruamel.yaml as yaml
-from configargparse import ArgParser, YAMLConfigFileParser # type: ignore
+from configargparse import ArgParser, YAMLConfigFileParser
 from argparse import (ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
@@ -507,7 +506,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     if not isinstance(parser, ArgParser):
         print(parser.__class__)
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: configargparse.ArgumentParser.")
-    parser._config_file_parser = YAMLConfigFileParser() # bit more user friendly than making the user declare the config parser type each toil script
+    # bit more user friendly than making the user declare the config parser type each toil script
+    parser._config_file_parser = YAMLConfigFileParser() # type: ignore[misc]
     opt_convert_bool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
     def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]: # names could be better, maybe separate int and float
@@ -1014,7 +1014,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                     "are not forked and stderr/stdout are not redirected to the log.")
     debug_options.add_argument("--disable-worker-output-capture", "--disableWorkerOutputCapture", dest="disableWorkerOutputCapture", default=False, type=convert_bool,
                                help="Let worker output go to worker's standard out/error instead of per-job logs.")
-    debug_options.add_argument("--bad-worker", "--badWorker", dest="badWorker", default=0.0, type=float, action=make_float_range_validation_action(0.0, 1.0),
+    debug_options.add_argument("--bad-worker", "--badWorker", dest="badWorker", default=0.0, type=float, action=make_closed_interval_check_action(0.0, 1.0),
                                help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
                                     f"SIGKILL.  default={0.0}")
     debug_options.add_argument("--bad-worker-fail-interval", "--badWorkerFailInterval", dest="badWorkerFailInterval", default=0.01, type=float, action=make_float_range_validation_action(0.0, 1.0),
