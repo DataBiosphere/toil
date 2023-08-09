@@ -728,8 +728,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     jobStore = Toil.resumeJobStore(options.jobStoreLocator)
     config = jobStore.config
 
-    config.logLevel = logging.getLevelName(root_logger.getEffectiveLevel())
-
     with in_contexts(options.context):
         # Call the worker
         exit_code = workerScript(jobStore, config, options.jobName, options.jobStoreID)

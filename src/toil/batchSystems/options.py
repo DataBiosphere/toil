@@ -98,6 +98,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--disableHotDeployment",
         dest="disableAutoDeployment",
         default=False,
+        action="store_true",
         help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
         "--disableAutoDeployment.  Left in for backwards compatibility.",
     )
@@ -130,6 +131,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--manualMemArgs",
         default=False,
         dest="manualMemArgs",
+        action="store_true",
         help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
         "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
@@ -139,6 +141,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--runLocalJobsOnWorkers",
         dest="run_local_jobs_on_workers",
         default=False,
+        action="store_true",
         help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
         "instead of the leader node. If false (default), then all such jobs are run on "
         "the leader node. Setting this to true can speed up CWL pipelines for very large "

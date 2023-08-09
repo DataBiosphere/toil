@@ -246,7 +246,7 @@ class Config:
 
     def __init__(self) -> None:
         # only default options that are not CLI options defined here (thus CLI options are centralized)
-        self.cwl = False
+        self.cwl = False # will probably remove later
         self.workflowID = None
         self.kill_polling_interval = 5
 
@@ -257,8 +257,9 @@ class Config:
     def set_from_default_config(self) -> None:
         # get defaults from a config file by simulating an argparse run
         # as Config often expects defaults to already be instantiated
-        if not os.path.exists(default_config_file):
-            self.generate_config_file()
+        # gitlab CI may cache/keep the home directory, so generate the config file each run just in case (it seems like CI fails while local passes)
+        # if not os.path.exists(default_config_file):
+        self.generate_config_file()
         parser = ArgParser()
         addOptions(parser, self, jobstore_as_flag=True)
         ns = parser.parse_args(f"--config={default_config_file}")
@@ -416,7 +417,7 @@ class Config:
         set_option("disableWorkerOutputCapture")
         set_option("badWorker")
         set_option("badWorkerFailInterval")
-        set_option("logLevel") # have to add this as config.loglevel is accessed later (athough only in one spot), maybe I broke something?
+        set_option("logLevel")
 
         self.run_legacy_checks()
 
@@ -490,7 +491,7 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False) -> None:
+def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False, cwl: bool = False) -> None:
     """
     Add Toil command line options to a parser.
 
@@ -501,8 +502,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
     """
 
-    if config is None:
-        config = Config()
+    # if config is None:
+    #     config = Config()
     if not isinstance(parser, ArgParser):
         print(parser.__class__)
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: configargparse.ArgumentParser.")
@@ -736,13 +737,13 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                           "\tand buy t2.large instances at full price")
     autoscaling_options.add_argument('--nodeTypes', default=[], dest="nodeTypes", type=parse_node_types,
                                      help="DEPRECATED: Sets node types. Argument is a single string with elements separated by commas.")
-    autoscaling_options.add_argument('--min-nodes', default=[0], nargs="+", dest="minNodes",
+    autoscaling_options.add_argument('--min-nodes', default=[0], nargs="+", dest="minNodes", type=int,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "
                                           "same length as the list of node types. default=0")
     autoscaling_options.add_argument('--minNodes', default=[0], dest="minNodes", type=parse_int_list,
                                      help="DEPRECATED: Sets --min-nodes.")
-    autoscaling_options.add_argument('--max-nodes', default=[10], nargs="+", dest="maxNodes",
+    autoscaling_options.add_argument('--max-nodes', default=[10], nargs="+", dest="maxNodes", type=int,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
                                           f"provided as a comma-separated list.  The first value is used as a default "
                                           f"if the list length is less than the number of nodeTypes.  "
@@ -792,7 +793,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                           "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
-    if not config.cwl:
+    # if not config.cwl:
+    if not cwl:
         service_options = parser.add_argument_group(
             title="Toil options for limiting the number of service jobs and detecting service deadlocks",
             description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "

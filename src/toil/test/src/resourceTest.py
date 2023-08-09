@@ -211,7 +211,7 @@ class ResourceTest(ToilTest):
         """
 
         def script():
-            import argparse
+            from configargparse import ArgumentParser
 
             from toil.common import Toil
             from toil.job import Job
