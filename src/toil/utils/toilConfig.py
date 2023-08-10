@@ -21,7 +21,7 @@ from typing import Set, Dict, Optional
 
 from configargparse import ArgParser, YAMLConfigFileParser
 
-from toil.common import Toil, parser_with_common_options, addOptions, Config
+from toil.common import Toil, parser_with_common_options, addOptions, Config, generate_config
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.statsAndLogging import set_logging_from_options
 logger = logging.getLogger(__name__)
@@ -56,41 +56,3 @@ def main() -> None:
     options = parser.parse_args()
     logger.info("Writing a default config file to %s.", options.output)
     generate_config(os.path.abspath(options.output))
-
-class EmptyConfig(Config):
-    def set_from_default_config(self) -> None:
-        # remove set_from_default_config so it doesn't try to call toil config again if the default config file does not exist
-        pass
-
-def generate_config(filepath: str) -> None:
-    omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning")
-    parser = ArgParser(YAMLConfigFileParser())
-    config = EmptyConfig()
-    addOptions(parser, config=config)
-    cfg = dict()
-    for action in parser._actions:
-        if any(s.replace("-", "") in omit for s in action.option_strings):
-            continue
-        # if action is StoreFalse and default is True then don't include
-        if isinstance(action, _StoreFalseAction) and action.default is True:
-            continue
-        if isinstance(action, _StoreFalseAction) and action.default is False:
-            continue
-        if len(action.option_strings) == 0:
-            continue
-        option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else action.option_strings[1]
-        option = option_string[2:]
-        # deal with
-        # "--runLocalJobsOnWorkers"
-        # "--runCwlInternalJobsOnWorkers"
-        # as they are the same argument
-        if option_string == "--runLocalJobsOnWorkers--runCwlInternalJobsOnWorkers":
-            # prefer runCwlInternalJobsOnWorkers as it is included in the documentation
-            option = "runCwlInternalJobsOnWorkers"
-
-        default = action.default
-
-        cfg[option] = default
-
-    with open(filepath, "w") as f:
-        yaml.dump(cfg, f)

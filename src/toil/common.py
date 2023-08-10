@@ -30,7 +30,7 @@ from argparse import (ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
                       _ArgumentGroup,
-                      Action, _StoreAction, _AppendAction)
+                      Action, _StoreAction, _AppendAction, _StoreFalseAction)
 from distutils.util import strtobool
 from functools import lru_cache
 from types import TracebackType
@@ -268,14 +268,7 @@ class Config:
     def generate_config_file(self) -> None:
         # if the default config file does not exist, create a new one in the home directory
         check_and_create_toil_home_dir()
-        # importing from toil.utils causes a circular import, so do this instead
-        p = subprocess.run(["toil", "config", f"{default_config_file}"])
-
-        try:
-            p.check_returncode()
-        except subprocess.CalledProcessError:
-            logger.critical("Failed to create the default config file!")
-            sys.exit(1)
+        generate_config(default_config_file)
 
 
     def prepare_start(self) -> None:
@@ -456,6 +449,38 @@ def check_and_create_toil_home_dir() -> None:
     dir_path = os.path.join(os.path.expanduser("~"), ".toil")
     if not os.path.exists(dir_path):
         os.mkdir(dir_path)
+
+def generate_config(filepath: str) -> None:
+    omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning")
+    parser = ArgParser(YAMLConfigFileParser())
+    addOptions(parser)
+    cfg = dict()
+    for action in parser._actions:
+        if any(s.replace("-", "") in omit for s in action.option_strings):
+            continue
+        # if action is StoreFalse and default is True then don't include
+        if isinstance(action, _StoreFalseAction) and action.default is True:
+            continue
+        if isinstance(action, _StoreFalseAction) and action.default is False:
+            continue
+        if len(action.option_strings) == 0:
+            continue
+        option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else action.option_strings[1]
+        option = option_string[2:]
+        # deal with
+        # "--runLocalJobsOnWorkers"
+        # "--runCwlInternalJobsOnWorkers"
+        # as they are the same argument
+        if option_string == "--runLocalJobsOnWorkers--runCwlInternalJobsOnWorkers":
+            # prefer runCwlInternalJobsOnWorkers as it is included in the documentation
+            option = "runCwlInternalJobsOnWorkers"
+
+        default = action.default
+
+        cfg[option] = default
+
+    with open(filepath, "w") as f:
+        yaml.dump(cfg, f)
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
                  "A job store holds persistent information about the jobs, stats, and files in a "
