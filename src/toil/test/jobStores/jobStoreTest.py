@@ -224,11 +224,14 @@ class AbstractJobStoreTest:
 
         def testPersistantFilesToDelete(self):
             """
-            Make sure that updating a job carries over filesToDelete.
+            Make sure that updating a job persists filesToDelete.
 
-            The following demonstrates the job update pattern, where files to be deleted are referenced in
-            "filesToDelete" array, which is persisted to disk first. If things go wrong during the update, this list of
-            files to delete is used to remove the unneeded files.
+            The following demonstrates the job update pattern, where files to
+            be deleted atomically with a job update are referenced in
+            "filesToDelete" array, which is persisted to disk first. If things
+            go wrong during the update, this list of files to delete is used to
+            ensure that the updated job and the files are never both visible at
+            the same time.
             """
 
             # Create a job.

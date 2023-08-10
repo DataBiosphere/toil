@@ -402,6 +402,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             # versions of Cactus.
                             job._runner(jobGraph=None, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
+                            # When the executor for the job finishes it will
+                            # kick off a commit with the command link to the
+                            # job body cut.
+
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
 
@@ -426,7 +430,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
                 logger.info("Not chaining from job %s", jobDesc)
 
-                # TODO: Somehow the commit happens even if we don't start it here.
+                # No need to commit because the _executor context manager did it.
 
                 break
 
@@ -434,10 +438,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
             ##########################################
             # We have a single successor job that is not a checkpoint job. We
-            # reassign the ID of the current JobDescription to the successor.
-            # We can then delete the successor JobDescription (under its old
-            # ID) in the jobStore, as it is wholly incorporated into the
-            # current one.
+            # reassign the ID of the current JobDescription to the successor,
+            # and take responsibility for both jobs' associated files in the
+            # combined job.
             ##########################################
 
             # Make sure nothing has gone wrong and we can really chain
@@ -455,12 +458,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             successor.replace(jobDesc)
             jobDesc = successor
 
-            # Problem: successor's job body is a file that will be cleaned up
-            # when we delete the successor job by ID. We can't just move it. So
-            # we need to roll up the deletion of the successor job by ID with
-            # the deletion of the job ID we're currently working on.
-            jobDesc.jobsToDelete.append(successorID)
-
             # Clone the now-current JobDescription (which used to be the successor).
             # TODO: Why??? Can we not?
             jobDesc = copy.deepcopy(jobDesc)
@@ -475,15 +472,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
             # This will update the job once the previous job is done updating
             fileStore.startCommit(jobState=True)
-
-            # Clone the current job description again, so that further updates
-            # to it (such as new successors being added when it runs) occur
-            # after the commit process we just kicked off, and aren't committed
-            # early or partially.
-            jobDesc = copy.deepcopy(jobDesc)
-            # Bump its version since saving will do that too and we don't want duplicate versions.
-            jobDesc.pre_update_hook()
-
 
             logger.debug("Starting the next job")
 
@@ -638,7 +626,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     # This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.is_subtree_done():
         # We can now safely get rid of the JobDescription, and all jobs it chained up
-        for otherID in jobDesc.jobsToDelete:
+        for otherID in jobDesc.merged_jobs:
             jobStore.delete_job(otherID)
         jobStore.delete_job(str(jobDesc.jobStoreID))
 

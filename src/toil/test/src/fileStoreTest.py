@@ -633,6 +633,8 @@ class hidden:
 
             Attempting to get the file from the jobstore should not fail.
             """
+            print("Testing")
+            logger.debug("Testing testing 123")
             self.options.retryCount = 0
             self.options.logLevel = 'DEBUG'
             A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk='1G')
