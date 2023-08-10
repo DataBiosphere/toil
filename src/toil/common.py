@@ -260,6 +260,10 @@ class Config:
         # gitlab CI may cache/keep the home directory, so generate the config file each run just in case (it seems like CI fails while local passes)
         # if not os.path.exists(default_config_file):
         self.generate_config_file()
+        with open(default_config_file, "r") as f:
+            s = yaml.safe_load(f)
+        logger.debug(json.dumps(s, indent=4))
+        print(s)
         parser = ArgParser()
         addOptions(parser, self, jobstore_as_flag=True)
         ns = parser.parse_args(f"--config={default_config_file}")
@@ -529,11 +533,21 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
 
     # if config is None:
     #     config = Config()
-    if not isinstance(parser, ArgParser):
-        print(parser.__class__)
-        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: configargparse.ArgumentParser.")
     # bit more user friendly than making the user declare the config parser type each toil script
-    parser._config_file_parser = YAMLConfigFileParser() # type: ignore[misc]
+
+    if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
+        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
+
+    if isinstance(parser, ArgParser):
+        parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
+    else:
+        # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
+        # through this code still seems to work (with the exception of config file and environmental variables)
+        warnings.warn(f'Using deprecated library argparse for options parsing.'
+                      f'This will not parse config files or use environmental variables.'
+                      f'Use configargparse instead or call Job.Runner.getDefaultArgumentParser()',
+                      DeprecationWarning)
+
     opt_convert_bool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
     def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]: # names could be better, maybe separate int and float
