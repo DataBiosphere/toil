@@ -76,7 +76,7 @@ from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
-from toil.lib.io import try_path
+from toil.lib.io import try_path, AtomicFileCreate 
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                cluster_factory,
@@ -106,7 +106,10 @@ SYS_MAX_SIZE = 9223372036854775807
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
-default_config_file: str = os.path.join(os.path.expanduser("~"), ".toil/default.yaml")
+# TODO: should this use an XDG config directory or ~/.config to not clutter the
+# base home directory?
+TOIL_HOME_DIR : str = os.path.join(os.path.expanduser("~"), ".toil")
+DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
 
 def parse_jobstore(jobstore_uri: str) -> str:
     name, rest = Toil.parseLocator(jobstore_uri)
@@ -257,22 +260,45 @@ class Config:
     def set_from_default_config(self) -> None:
         # get defaults from a config file by simulating an argparse run
         # as Config often expects defaults to already be instantiated
-        # gitlab CI may cache/keep the home directory, so generate the config file each run just in case (it seems like CI fails while local passes)
-        # if not os.path.exists(default_config_file):
-        self.generate_config_file()
-        with open(default_config_file, "r") as f:
-            s = yaml.safe_load(f)
-        logger.debug(json.dumps(s, indent=4))
+        if not os.path.exists(DEFAULT_CONFIG_FILE):
+            # The default config file did not appear to exist when we checked.
+            # It might exist now, though. Try creating it.
+            self.generate_config_file()
+        # Check on the config file to make sure it is sensible
+        config_status = os.stat(DEFAULT_CONFIG_FILE)
+        if config_status.st_size == 0:
+            # If we have an empty config file, someone has to manually delete
+            # it before we will work again.
+            raise RuntimeError(f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
+        logger.debug("Loading %s byte default configuration", config_status.st_size) 
+        try:
+            with open(DEFAULT_CONFIG_FILE, "r") as f:
+                s = yaml.safe_load(f)
+                logger.debug("Loaded default configuration: %s", json.dumps(s, indent=4))
+        except:
+            # Something went wrong reading the default config, so dump its
+            # contents to the log.
+            logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
+            raise
         print(s)
         parser = ArgParser()
         addOptions(parser, self, jobstore_as_flag=True)
-        ns = parser.parse_args(f"--config={default_config_file}")
+        ns = parser.parse_args(f"--config={DEFAULT_CONFIG_FILE}")
         self.setOptions(ns)
 
     def generate_config_file(self) -> None:
-        # if the default config file does not exist, create a new one in the home directory
+        """
+        If the default config file does not exist, create it.
+
+        Raises an error if the default config file cannot be created.
+        Safe to run simultaneously in multiple processes. If this process runs
+        this function, it will always see the default config file existing with
+        parseable contents, even if other processes are racing to create it.
+
+        No process will see an empty or partially-written default config file.
+        """
         check_and_create_toil_home_dir()
-        generate_config(default_config_file)
+        generate_config(DEFAULT_CONFIG_FILE)
 
 
     def prepare_start(self) -> None:
@@ -449,12 +475,24 @@ class Config:
 
 
 def check_and_create_toil_home_dir() -> None:
-    # create a .toil directory in the home directory
-    dir_path = os.path.join(os.path.expanduser("~"), ".toil")
-    if not os.path.exists(dir_path):
-        os.mkdir(dir_path)
+    """
+    Ensure that TOIL_HOME_DIR exists.
+
+    Raises an error if it does not exist and cannot be created. Safe to run
+    simultaneously in multiple processes.
+    """
+
+    dir_path = try_path(TOIL_HOME_DIR)
+    if dir_path is None:
+        raise RuntimeError(f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}")
 
 def generate_config(filepath: str) -> None:
+    """
+    Write a Toil config file to the given path.
+
+    Safe to run simultaneously in multiple processes. No process will see an
+    empty or partially-written file at the given path.
+    """
     omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning")
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser)
@@ -475,6 +513,7 @@ def generate_config(filepath: str) -> None:
         # "--runLocalJobsOnWorkers"
         # "--runCwlInternalJobsOnWorkers"
         # as they are the same argument
+        # TODO: Since options are no longer being concatenated, is this still needed?
         if option_string == "--runLocalJobsOnWorkers--runCwlInternalJobsOnWorkers":
             # prefer runCwlInternalJobsOnWorkers as it is included in the documentation
             option = "runCwlInternalJobsOnWorkers"
@@ -483,8 +522,17 @@ def generate_config(filepath: str) -> None:
 
         cfg[option] = default
 
-    with open(filepath, "w") as f:
-        yaml.dump(cfg, f)
+    # Now we need to put the config file in place at filepath.
+    # But someone else may have already created a file at that path, or may be
+    # about to open the file at that path and read it before we can finish
+    # writing the contents. So we write the config file at a temporary path and
+    # atomically move it over. There's still a race to see which process's
+    # config file actually is left at the name in the end, but nobody will ever
+    # see an empty or partially-written file at that name (if there wasn't one
+    # there to begin with).
+    with AtomicFileCreate(filepath) as temp_path:
+        with open(temp_path, "w") as f:
+            yaml.dump(cfg, f)
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
                  "A job store holds persistent information about the jobs, stats, and files in a "
