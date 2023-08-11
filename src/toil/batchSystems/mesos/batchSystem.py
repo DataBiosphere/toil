@@ -846,13 +846,13 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=None,
+        parser.add_argument("--mesos_endpoint", "--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=None,
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
-        parser.add_argument("--mesosFrameworkId", dest="mesos_framework_id",
+        parser.add_argument("--mesos-framework-id", "--mesosFrameworkId", dest="mesos_framework_id",
                             help="Use a specific Mesos framework ID.")
-        parser.add_argument("--mesosRole", dest="mesos_role",
+        parser.add_argument("--mesos-role", "--mesosRole", dest="mesos_role",
                             help="Use a Mesos role.")
-        parser.add_argument("--mesosName", dest="mesos_name", default="toil",
+        parser.add_argument("--mesos-name", "--mesosName", dest="mesos_name", default="toil",
                             help="The Mesos name to use. (default: %(default)s)")
 
     @classmethod

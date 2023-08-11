@@ -440,13 +440,13 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=None,
+        parser.add_argument("--tes_endpoint", "--tesEndpoint", dest="tes_endpoint", default=None,
                             help="The http(s) URL of the TES server.  (default: %(default)s)")
-        parser.add_argument("--tesUser", dest="tes_user", default=None,
+        parser.add_argument("--tes_user", "--tesUser", dest="tes_user", default=None,
                             help="User name to use for basic authentication to TES server.")
-        parser.add_argument("--tesPassword", dest="tes_password", default=None,
+        parser.add_argument("--tes_password", "--tesPassword", dest="tes_password", default=None,
                             help="Password to use for basic authentication to TES server.")
-        parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None,
+        parser.add_argument("--tes_bearer_token", "--tesBearerToken", dest="tes_bearer_token", default=None,
                             help="Bearer token to use for authentication to TES server.")
 
     @classmethod

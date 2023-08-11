@@ -1864,16 +1864,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
+        parser.add_argument("--kubernetes_host_path", "--kubernetesHostPath", dest="kubernetes_host_path", default=None,
                             help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=None,
+        parser.add_argument("--kubernetes_owner", "--kubernetesOwner", dest="kubernetes_owner", default=None,
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
+        parser.add_argument("--kubernetes_service_account", "--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
                             help="Service account to run jobs as.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120,
+        parser.add_argument("--kubernetes_pod_timeout", "--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120,
                             help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
                                  "(default: %(default)s)")
 

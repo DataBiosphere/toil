@@ -225,9 +225,9 @@ def add_logging_options(parser: ArgumentParser) -> None:
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
     group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
                        action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
-    group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
+    group.add_argument("--log_level", "--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
                        help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
-    group.add_argument("--logFile", dest="logFile", help="File to log in.")
+    group.add_argument("--log_file", "--logFile", dest="logFile", help="File to log in.")
     group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                        help="Turn on rotating logging, which prevents log files from getting too big.")
 

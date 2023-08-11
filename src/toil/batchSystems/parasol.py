@@ -365,10 +365,10 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
+        parser.add_argument("--parasol_command", "--parasolCommand", dest="parasolCommand", default='parasol',
                             help="The name or path of the parasol program. Will be looked up on PATH "
                                  "unless it starts with a slash.  (default: %(default)s).")
-        parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
+        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
                             help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 

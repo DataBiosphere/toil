@@ -12,18 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Create a config file with all default Toil options."""
-import ruamel.yaml as yaml
 import logging
 import os
 
-from argparse import _StoreFalseAction, _StoreTrueAction
-from typing import Set, Dict, Optional
+from configargparse import ArgParser
 
-from configargparse import ArgParser, YAMLConfigFileParser
+from toil.common import generate_config
+from toil.statsAndLogging import set_logging_from_options, add_logging_options
 
-from toil.common import Toil, parser_with_common_options, addOptions, Config, generate_config
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException
-from toil.statsAndLogging import set_logging_from_options
 logger = logging.getLogger(__name__)
 
 # groups and arguments according to documentation
@@ -41,18 +37,14 @@ logger = logging.getLogger(__name__)
 #     "debug": {"debugWorker", "disableWorkerOutputCapture", "badWorker", "badWorker", "badWorkerFailInterval", "badWorkerFailInterval", "kill_polling_interval"}
 # }
 
-# def find_group(option: str) -> str:
-#     for group, options in groups.items():
-#         if option in options:
-#             return group
-#     return "other"
-
 def main() -> None:
     # configargparse's write_config does not write options with a None value, so do this instead
 
     parser = ArgParser()
 
     parser.add_argument("output", default="config.yaml")
+    add_logging_options(parser)
     options = parser.parse_args()
-    logger.info("Writing a default config file to %s.", options.output)
+    set_logging_from_options(options)
+    logger.info("Writing a default config file to %s.", os.path.abspath(options.output))
     generate_config(os.path.abspath(options.output))
