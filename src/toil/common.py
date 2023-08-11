@@ -498,7 +498,6 @@ def generate_config(filepath: str) -> None:
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser)
     cfg = dict()
-    comments = dict()
     for action in parser._actions:
         if any(s.replace("-", "") in omit for s in action.option_strings):
             continue
@@ -1055,7 +1054,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
     # yaml.safe_load is being deprecated, this is the suggested workaround
-    def yaml_safe_load(stream):
+    def yaml_safe_load(stream: Any) -> Any:
         yaml = YAML(typ='safe', pure=True)
         return yaml.load(stream)
     misc_options.add_argument("--set_env", '-e', dest="environment", default={}, type=yaml_safe_load, # this changes the CLI option from a str to a dictionary, note -e is moved from --setEnv
