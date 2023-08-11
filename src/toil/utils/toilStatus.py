@@ -360,6 +360,7 @@ def main() -> None:
         sys.exit(0)
 
     config = Config()
+    config.clean = "never"
     config.setOptions(options)
 
     try:

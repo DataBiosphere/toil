@@ -47,10 +47,10 @@ after_script:
   - stopdocker || true
 
 stages:
-#  - linting_and_dependencies
+  - linting_and_dependencies
   - basic_tests
-#  - main_tests
-#  - integration
+  - main_tests
+  - integration
 
 
 lint:
