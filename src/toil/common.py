@@ -459,13 +459,10 @@ class Config:
 
         if self.stats:
             if self.clean != "never" and self.clean is not None:
-                raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
+                logger.warning("Contradicting options passed: Clean flag is set to %s "
                                    "despite the stats flag requiring "
                                    "the jobStore to be intact at the end of the run. "
-                                   "Set clean to \'never\'" % self.clean)
-            self.clean = "never"
-        elif self.clean is None:
-            self.clean = "onSuccess"
+                                   "Setting clean to \'never\'." % self.clean)
 
 
     def __eq__(self, other: object) -> bool:
@@ -672,7 +669,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     core_options.add_argument("--stats", dest="stats", default=False, action="store_true",
                               help="Records statistics about the toil workflow to be used by 'toil stats'.")
     clean_choices = ['always', 'onError', 'never', 'onSuccess']
-    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default=None,
+    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default="onSuccess",
                               help=f"Determines the deletion of the jobStore upon completion of the program.  "
                                    f"Choices: {clean_choices}.  The --stats option requires information from the "
                                    f"jobStore upon completion so the jobStore will never be deleted with that flag.  "
