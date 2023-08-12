@@ -463,6 +463,7 @@ class Config:
                                    "despite the stats flag requiring "
                                    "the jobStore to be intact at the end of the run. "
                                    "Setting clean to \'never\'." % self.clean)
+            self.clean = "never"
 
 
     def __eq__(self, other: object) -> bool:
