@@ -1061,9 +1061,9 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
-    def make_dict_append_action():
+    def make_dict_append_action() -> Type[_AppendAction]:
         class DictAppend(_AppendAction):
-            def __call__(self, parser, namespace, values, option_string=None):
+            def __call__(self, parser, namespace, values, option_string=None) -> None:
                 items = getattr(namespace, self.dest, None)
                 from argparse import _copy_items
                 items = _copy_items(items)
