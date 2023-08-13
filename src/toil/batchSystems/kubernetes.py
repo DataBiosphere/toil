@@ -152,7 +152,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Re-type the config to make sure it has all the fields we need.
-        assert isinstance(config, KubernetesBatchSystem.KubernetesConfig)
+        assert isinstance(config, KubernetesBatchSystem.KubernetesConfig) # wat
 
         # Turn down log level for Kubernetes modules and dependencies.
         # Otherwise if we are at debug log level, we dump every
@@ -1864,24 +1864,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetes_host_path", "--kubernetesHostPath", dest="kubernetes_host_path", default=None,
+        parser.add_argument("--kubernetes_host_path", "--kubernetesHostPath", dest="kubernetes_host_path", default=None, env_var="TOIL_KUBERNETES_HOST_PATH",
                             help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetes_owner", "--kubernetesOwner", dest="kubernetes_owner", default=None,
+        parser.add_argument("--kubernetes_owner", "--kubernetesOwner", dest="kubernetes_owner", default=None, env_var="TOIL_KUBERNETES_OWNER",
                             help="Username to mark Kubernetes jobs with.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetes_service_account", "--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
+        parser.add_argument("--kubernetes_service_account", "--kubernetesServiceAccount", dest="kubernetes_service_account", default=None, env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
                             help="Service account to run jobs as.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetes_pod_timeout", "--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120,
+        parser.add_argument("--kubernetes_pod_timeout", "--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT",
                             help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
                                  "(default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
-        setOption("kubernetes_owner", default=None, env=['TOIL_KUBERNETES_OWNER'])
-        setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
-        setOption("kubernetes_pod_timeout", default=120, env=['TOIL_KUBERNETES_POD_TIMEOUT'])
+        setOption("kubernetes_host_path")
+        setOption("kubernetes_owner")
+        setOption("kubernetes_service_account",)
+        setOption("kubernetes_pod_timeout")
 

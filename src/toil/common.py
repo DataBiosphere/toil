@@ -372,7 +372,7 @@ class Config:
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
+        set_batchsystem_options(None, cast("OptionSetter", set_option)) # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
 
         # File store options
         set_option("linkImports")
@@ -1025,7 +1025,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                              help="Enable real-time logging from workers to leader")
 
     def make_check_ssekey_action() -> Type[_StoreAction]:
-        class SseKeyValidation(_StoreAction):
+        class SSEKeyValidation(_StoreAction):
             def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
                 if values is not None:
                     sse_key = values
@@ -1034,7 +1034,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                     with open(sse_key) as f:
                         assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
                 setattr(namespace, self.dest, values)
-        return SseKeyValidation
+        return SSEKeyValidation
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options.",
@@ -1061,7 +1061,19 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
-    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="environment", default={}, action="append",
+    def make_dict_append_action():
+        class DictAppend(_AppendAction):
+            def __call__(self, parser, namespace, values, option_string=None):
+                items = getattr(namespace, self.dest, None)
+                from argparse import _copy_items
+                items = _copy_items(items)
+                k, v = values
+                items[k] = v
+                setattr(namespace, self.dest, items)
+        return DictAppend
+
+
+    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="environment", default={}, action=make_dict_append_action(), type=parse_set_env_elem,
                               help=argparse.SUPPRESS)
     misc_options.add_argument("--service_polling_interval", "--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float, action=make_float_range_validation_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "
@@ -1089,10 +1101,10 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
         title="Toil debug options.",
         description="Debug options for finding problems or helping with testing."
     )
-    debug_options.add_argument("--debug_worker", "--debugWorker", dest="debugWorker", default=False, type=convert_bool,
+    debug_options.add_argument("--debugWorker", dest="debugWorker", default=False, action="store_true",
                                help="Experimental no forking mode for local debugging.  Specifically, workers "
                                     "are not forked and stderr/stdout are not redirected to the log.")
-    debug_options.add_argument("--disable_worker_output_capture", "--disableWorkerOutputCapture", dest="disableWorkerOutputCapture", default=False, type=convert_bool,
+    debug_options.add_argument("--disableWorkerOutputCapture", dest="disableWorkerOutputCapture", default=False, action="store_true",
                                help="Let worker output go to worker's standard out/error instead of per-job logs.")
     debug_options.add_argument("--bad_worker", "--badWorker", dest="badWorker", default=0.0, type=float, action=make_closed_interval_check_action(0.0, 1.0),
                                help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
@@ -2001,6 +2013,20 @@ class ToilMetrics:
             logger.debug('Stopped node exporter')
         self._listeners = []
 
+def parse_set_env_elem(s: str) -> Tuple[str, Optional[str]]:
+    """
+    Parse a string of the form "NAME=VALUE" or just "NAME" into a tuple.
+
+    Strings of the latter from will result in a tuple entriy whose value is None.
+    """
+    v: Optional[str] = None
+    try:
+        k, v = s.split('=', 1)
+    except ValueError:
+        k, v = s, None
+    if not k:
+        raise ValueError('Empty name')
+    return k, v
 
 def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
     """

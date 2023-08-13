@@ -196,7 +196,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         logger.debug('Add options for %s', batch_system_type)
         batch_system_type.add_options(parser)
 
-def set_batchsystem_config_defaults(config) -> None:
+def set_batchsystem_config_defaults(config) -> None: # no longer used
     """
     Set default and environment-based options for builtin batch systems. This
     is required if a Config object is not constructed from an Options object.

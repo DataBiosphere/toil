@@ -91,7 +91,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
+        result_json = subprocess.check_output(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'])
         result = json.loads(result_json)
 
         assert 'ga4ghMd5.value' in result
