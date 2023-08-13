@@ -572,14 +572,11 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
     """
 
-    # if config is None:
-    #     config = Config()
-    # bit more user friendly than making the user declare the config parser type each toil script
-
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
         raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
 
     if isinstance(parser, ArgParser):
+        # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
@@ -1056,19 +1053,20 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
         yaml = YAML(typ='safe', pure=True)
         return yaml.load(stream)
     misc_options.add_argument("--set_env", '-e', dest="environment", default={}, type=yaml_safe_load, # this changes the CLI option from a str to a dictionary, note -e is moved from --setEnv
-                              help = "Set an environment variable early on in the worker. If VALUE is omitted, it will "
+                              help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
     def make_dict_append_action() -> Type[_AppendAction]:
         class DictAppend(_AppendAction):
-            def __call__(self, parser, namespace, values, option_string=None) -> None:
+            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
                 items = getattr(namespace, self.dest, None)
-                from argparse import _copy_items
-                items = _copy_items(items)
-                k, v = values
-                items[k] = v
+                if not isinstance(items, dict):
+                    items = {}
+                else:
+                    k, v = values
+                    items[k] = v
                 setattr(namespace, self.dest, items)
         return DictAppend
 
