@@ -794,6 +794,10 @@ class AbstractJobStore(ABC):
             for service_jobstore_id in root_job_description.services:
                 if haveJob(service_jobstore_id):
                     reachable_from_root.add(service_jobstore_id)
+            for merged_jobstore_id in root_job_description.merged_jobs:
+                # Keep merged-in jobs around themselves, but don't bother
+                # exploring them, since we took their successors.
+                reachable_from_root.add(merged_jobstore_id)
 
             # Unprocessed means it might have successor jobs we need to add.
             unprocessed_job_descriptions = [root_job_description]
@@ -815,6 +819,10 @@ class AbstractJobStore(ABC):
                                     reachable_from_root.add(service_jobstore_id)
 
                             new_job_descriptions_to_process.append(successor_job_description)
+                    for merged_jobstore_id in job_description.merged_jobs:
+                        # Keep merged-in jobs around themselves, but don't bother
+                        # exploring them, since we took their successors.
+                        reachable_from_root.add(merged_jobstore_id)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
@@ -824,8 +832,8 @@ class AbstractJobStore(ABC):
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
         # TODO: Avoid reiterating reachable_from_root (which may be very large)
-        jobsToDelete = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
-        for jobDescription in jobsToDelete:
+        unreachable = [x for x in getJobDescriptions() if x.jobStoreID not in reachable_from_root]
+        for jobDescription in unreachable:
             # clean up any associated files before deletion
             for fileID in jobDescription.filesToDelete:
                 # Delete any files that should already be deleted

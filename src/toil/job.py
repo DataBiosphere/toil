@@ -22,6 +22,7 @@ import os
 import pickle
 import sys
 import time
+import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -452,8 +453,15 @@ class Requirer:
 
     def __deepcopy__(self, memo: Any) -> "Requirer":
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
-        # See https://stackoverflow.com/a/40484215 for how to do an override
-        # that uses the base implementation
+        # We used to use <https://stackoverflow.com/a/40484215> but that was
+        # discovered to not actually work right, because you would get the
+        # copy, if later copied again, stamping out copies of the *original*
+        # object, due to putting back a method as a member that was already
+        # bound to a self parameter.
+
+        # So we have to also tinker with the method binding as noted in
+        # <https://stackoverflow.com/a/71125311>.
+        # TODO: What's the default implementation actually?
 
         # Hide this override
         implementation = self.__deepcopy__
@@ -462,9 +470,11 @@ class Requirer:
         # Do the deepcopy which omits the config via __getstate__ override
         clone = copy.deepcopy(self, memo)
 
-        # Put back the override on us and the copy
+        # Put back the override on us
         self.__deepcopy__ = implementation  # type: ignore[assignment]
-        clone.__deepcopy__ = implementation  # type: ignore[assignment]
+
+        # Bind the override to the copy and put it on the copy
+        clone.__deepcopy__ = types.MethodType(implementation.__func__, clone) # type: ignore[assignment]
 
         if self._config is not None:
             # Share a config reference
@@ -798,15 +808,27 @@ class JobDescription(Requirer):
         # default value for this workflow execution.
         self._remainingTryCount = None
 
-        # Holds FileStore FileIDs of the files that this job has deleted. Used
-        # to journal deletions of files and recover from a worker crash between
-        # committing a JobDescription update and actually executing the
-        # requested deletions.
+        # Holds FileStore FileIDs of the files that should be seen as deleted,
+        # as part of a transaction with the writing of this version of the job
+        # to the job store. Used to journal deletions of files and recover from
+        # a worker crash between committing a JobDescription update (for
+        # example, severing the body of a completed job from the
+        # JobDescription) and actually executing the requested deletions (i.e.
+        # the deletions made by executing the body).
+        #
+        # Since the files being deleted might be required to execute the job
+        # body, we can't delete them first, but we also don't want to leave
+        # them behind if we die right after saving the JobDescription.
+        #
+        # This will be empty at all times except when a new version of a job is
+        # in the process of being committed. 
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this
-        # job, and which should be deleted when this job finally is deleted.
-        self.jobsToDelete = []
+        # job, and which should be deleted when this job finally is deleted
+        # (but not before). The successor relationships with them will have
+        # been cut, so we need to hold onto them somehow.
+        self.merged_jobs = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -1030,15 +1052,15 @@ class JobDescription(Requirer):
         logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
         self.successor_phases = old_phases + self.successor_phases
 
-        # TODO: also be able to take on the successors of the other job, under
-        # ours on the stack, somehow.
-
+        # When deleting, we need to delete the files for our old ID, and also
+        # anything that needed to be deleted for the job we are replacing.
+        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
         self.jobStoreID = other.jobStoreID
 
-        # Save files and jobs to delete from the job we replaced, so we can
-        # roll up a whole chain of jobs and delete them when they're all done.
-        self.filesToDelete += other.filesToDelete
-        self.jobsToDelete += other.jobsToDelete
+        if len(other.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of a job that is in the process of being committed!")
+        if len(self.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
 
         self._job_version = other._job_version
 
@@ -1219,6 +1241,13 @@ class JobDescription(Requirer):
 
     def __repr__(self):
         return f'{self.__class__.__name__}( **{self.__dict__!r} )'
+
+    def reserve_versions(self, count: int) -> None:
+        """
+        Reserve a job version number for later, for journaling asynchronously.
+        """
+        self._job_version += count
+        logger.debug("Skip ahead to job version: %s", self)
 
     def pre_update_hook(self) -> None:
         """
