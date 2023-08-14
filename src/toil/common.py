@@ -969,7 +969,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
         title="Toil options for rescuing/killing/restarting jobs.",
         description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)."
     )
-    job_options.add_argument("--retry_count", "--retryCount", dest="retryCount", default=1, type=int, action=make_int_range_validation_action(1),
+    job_options.add_argument("--retry_count", "--retryCount", dest="retryCount", default=1, type=int, action=make_int_range_validation_action(0),
                              help=f"Number of times to retry a failing job before giving up and "
                                   f"labeling job failed. default={1}")
     job_options.add_argument("--enable_unlimited_preemptible_retries", "--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptibleRetries",
