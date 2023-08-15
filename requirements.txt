@@ -13,3 +13,4 @@ enlighten>=1.5.2, <2
 typing-extensions
 configargparse<2
 ruamel.yaml>=0.15,<=0.17.32
+pyyaml>=6
