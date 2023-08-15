@@ -2732,11 +2732,7 @@ class Job:
             startClock = get_total_cpu_time()
         baseDir = os.getcwd()
 
-        logger.debug("On entering executor, file store job is: %s", fileStore.jobDesc)
-
         yield
-
-        logger.debug("On leaving executor, file store job is: %s", fileStore.jobDesc)
 
         # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete

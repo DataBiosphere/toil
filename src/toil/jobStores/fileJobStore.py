@@ -227,7 +227,6 @@ class FileJobStore(AbstractJobStore):
         jobFile = self._get_job_file_name(job_id)
         try:
             with open(jobFile, 'rb') as fileHandle:
-                job_stat = os.stat(fileHandle.fileno())
                 job = pickle.load(fileHandle)
         except FileNotFoundError:
             # We were racing a delete on a non-POSIX-compliant filesystem.
@@ -238,8 +237,6 @@ class FileJobStore(AbstractJobStore):
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
-
-        logger.debug("Read %s from %s at %s", job, jobFile, job_stat)
 
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
@@ -265,12 +262,9 @@ class FileJobStore(AbstractJobStore):
         # Atomicity guarantees use the fact the underlying file system's "move"
         # function is atomic.
         with open(dest_filename + ".new", 'xb') as f:
-            job_stat = os.stat(f.fileno())
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(dest_filename + ".new", dest_filename)
-        logger.debug("Wrote %s to %s at %s", job, dest_filename, job_stat)
-
     def delete_job(self, job_id):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
