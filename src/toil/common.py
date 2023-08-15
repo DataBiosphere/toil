@@ -426,7 +426,11 @@ class Config:
         set_option("write_messages")
 
         # Misc
-        set_option("environment")
+        if isinstance(options.environment, list):
+            setattr(self, "environment", parseSetEnv(options.environment))
+        else:
+            set_option("environment")
+
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
         set_option("statusWait")
@@ -492,7 +496,7 @@ def generate_config(filepath: str) -> None:
     Safe to run simultaneously in multiple processes. No process will see an
     empty or partially-written file at the given path.
     """
-    omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports")
+    omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports", "disableCaching")
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser)
     cfg = dict()
@@ -586,7 +590,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                       f'Use configargparse instead or call Job.Runner.getDefaultArgumentParser()',
                       DeprecationWarning)
 
-    opt_convert_bool = lambda b: b if b is None else bool(strtobool(b))
+    opt_strtobool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
     def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]:
         class RangeValidation(_StoreAction):
@@ -714,8 +718,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                          "Toil will protect the file automatically by changing the permissions to read-only.")
     link_imports.add_argument("--link_imports", dest="linkImports", type=convert_bool, default=True, help=link_imports_help)
     # Deprecated:
-    link_imports.add_argument("--noLinkImports", dest="linkImports", action="store_false", help=argparse.SUPPRESS)
-    link_imports.add_argument("--linkImports", dest="linkImports", action="store_true", help=argparse.SUPPRESS)
+    link_imports.add_argument("--noLinkImports", dest="linkImports", action="store_false", help=argparse.SUPPRESS)  # deprecated
+    link_imports.add_argument("--linkImports", dest="linkImports", action="store_true", help=argparse.SUPPRESS)  # deprecated
 
 
     move_exports = file_store_options.add_mutually_exclusive_group()
@@ -725,13 +729,14 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                          'Applies to filesystem-based job stores only.')
     move_exports.add_argument("--move_exports", dest="moveExports", type=convert_bool, default=False, help=move_exports_help)
     # Deprecated:
-    move_exports.add_argument("--moveExports", dest="moveExports", action="store_true", help=argparse.SUPPRESS)
-    move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false", help=argparse.SUPPRESS)
+    move_exports.add_argument("--moveExports", dest="moveExports", action="store_true", help=argparse.SUPPRESS)  # deprecated
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false", help=argparse.SUPPRESS)  # deprecated
 
     caching = file_store_options.add_mutually_exclusive_group()
     caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
-    caching.add_argument('--caching', dest='caching', type=opt_convert_bool, default=None, help=caching_help)
-    # caching.set_defaults(caching=None) # default is None according to pull 4299, seems to be generated at runtime
+    caching.add_argument('--caching', dest='caching', type=opt_strtobool, default=None, help=caching_help)
+    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=argparse.SUPPRESS) # deprecated
+    # caching.set_defaults(caching=None) # default is None according to PR 4299, seems to be generated at runtime
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -1058,20 +1063,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
-    def make_dict_append_action() -> Type[_AppendAction]:
-        class DictAppend(_AppendAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                items = getattr(namespace, self.dest, None)
-                if not isinstance(items, dict):
-                    items = {}
-                else:
-                    k, v = values
-                    items[k] = v
-                setattr(namespace, self.dest, items)
-        return DictAppend
 
-
-    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="environment", default={}, action=make_dict_append_action(), type=parse_set_env_elem,
+    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="environment", default=[], action="append",
                               help=argparse.SUPPRESS)
     misc_options.add_argument("--service_polling_interval", "--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float, action=make_float_range_validation_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "
