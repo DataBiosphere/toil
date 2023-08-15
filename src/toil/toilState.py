@@ -183,6 +183,8 @@ class ToilState:
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
+            logger.debug("Replacing %s with %s", old_truth, new_truth)
+            old_truth.check_new_version(new_truth)
             old_truth.__dict__.update(new_truth.__dict__)
         else:
             # Just keep the new one
