@@ -195,29 +195,6 @@ def delete_s3_bucket(
         printq(f'\n * S3 bucket no longer exists: {bucket}\n\n', quiet)
 
 
-def create_s3_bucket(
-    s3_resource: "S3ServiceResource",
-    bucket_name: str,
-    region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
-) -> "Bucket":
-    """
-    Create an AWS S3 bucket, using the given Boto3 S3 session, with the
-    given name, in the given region.
-
-    Supports the us-east-1 region, where bucket creation is special.
-
-    *ALL* S3 bucket creation should use this function.
-    """
-    logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
-    if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket = s3_resource.create_bucket(Bucket=bucket_name)
-    else:
-        bucket = s3_resource.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
-    return bucket
-
 @retry(errors=[ClientError])
 def enable_public_objects(bucket_name: str) -> None:
     """
