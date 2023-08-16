@@ -426,8 +426,9 @@ class Config:
         set_option("write_messages")
 
         # Misc
-        if isinstance(options.environment, list):
-            setattr(self, "environment", parseSetEnv(options.environment))
+        legacy_environment = getattr(options, "legacy_environment", [])
+        if len(legacy_environment) > 0:
+            setattr(self, "environment", parseSetEnv(legacy_environment))
         else:
             set_option("environment")
 
@@ -1057,14 +1058,14 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     def yaml_safe_load(stream: Any) -> Any:
         yaml = YAML(typ='safe', pure=True)
         return yaml.load(stream)
-    misc_options.add_argument("--set_env", '-e', dest="environment", default={}, type=yaml_safe_load, # this changes the CLI option from a str to a dictionary, note -e is moved from --setEnv
+    misc_options.add_argument("--set_env", dest="environment", default={}, type=yaml_safe_load, # this changes the CLI option from a str to a dictionary
                               help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
 
-    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="environment", default=[], action="append",
+    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="legacy_environment", default=[], action="append", # -e is kept here as --setEnv should be used for the command line instead of --set_env
                               help=argparse.SUPPRESS)
     misc_options.add_argument("--service_polling_interval", "--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float, action=make_float_range_validation_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "
