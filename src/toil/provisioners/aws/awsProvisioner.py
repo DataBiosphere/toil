@@ -44,13 +44,13 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from botocore.exceptions import ClientError
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
                               get_policy_permissions,
                               policy_permissions_allow)
 from toil.lib.aws.session import AWSConnectionManager
-from toil.lib.aws.utils import create_s3_bucket
+from toil.lib.aws.s3 import create_s3_bucket
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -259,14 +259,13 @@ class AWSProvisioner(AbstractProvisioner):
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
             if get_error_status(err) == 404:
-                bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=self._region)
-                bucket.wait_until_exists()
+                bucket = create_s3_bucket(
+                    s3_resource=s3,
+                    bucket_name=bucket_name,
+                    region=self._region,
+                    tags=build_tag_dict_from_env()
+                )
                 bucket.Versioning().enable()
-
-                owner_tag = os.environ.get('TOIL_OWNER_TAG')
-                if owner_tag:
-                    bucket_tagging = s3.BucketTagging(bucket_name)
-                    bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
             else:
                 raise
 

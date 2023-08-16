@@ -33,6 +33,7 @@ except ImportError:
     # extra wasn't installed. We'll then skip them all.
     pass
 
+from toil.lib.aws import build_tag_dict_from_env
 from toil.test import ToilTest, needs_aws_s3, needs_celery_broker, needs_server
 
 logger = logging.getLogger(__name__)
@@ -206,14 +207,13 @@ class BucketUsingTest(ToilTest):
         super().setUpClass()
 
         from toil.lib.aws import get_current_aws_region, session
-        from toil.lib.aws.utils import create_s3_bucket
+        from toil.lib.aws.s3 import create_s3_bucket
 
         cls.region = get_current_aws_region()
         cls.s3_resource = session.resource("s3", region_name=cls.region)
 
         cls.bucket_name = f"toil-test-{uuid.uuid4()}"
-        cls.bucket = create_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
-        cls.bucket.wait_until_exists()
+        cls.bucket = create_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region, tags=build_tag_dict_from_env())
 
     @classmethod
     def tearDownClass(cls) -> None:
