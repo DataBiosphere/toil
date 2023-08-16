@@ -20,7 +20,6 @@ from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
 from uuid import uuid4
-from configargparse import ArgumentParser
 
 import pytest
 
@@ -413,7 +412,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def restartScript():
-            import argparse
+            from configargparse import ArgumentParser
             import os
 
             from toil.job import Job
