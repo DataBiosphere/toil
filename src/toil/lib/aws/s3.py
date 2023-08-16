@@ -14,15 +14,25 @@
 import logging
 import sys
 
-from typing import (Dict,
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Hashable,
+                    Iterable,
+                    Iterator,
+                    List,
                     Optional,
-                    Union)
+                    Set,
+                    Union,
+                    cast,
+                    MutableMapping)
 
-from toil.lib.retry import retry
+from toil.lib.retry import retry, get_error_status, ErrorCondition
 from toil.lib.aws.utils import (enable_public_objects,
                                 flatten_tags,
                                 get_bucket_region)
-
+from toil.lib.misc import printq
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
@@ -88,3 +98,60 @@ def create_s3_bucket(
         enable_public_objects(bucket_name)
 
     return bucket
+
+
+@retry(errors=[BotoServerError, S3ResponseError, ClientError])
+def delete_s3_bucket(
+    s3_resource: "S3ServiceResource",
+    bucket_name: str,
+    quiet: bool = True
+) -> None:
+    """
+    Delete the bucket with 'bucket_name'.
+
+    Note: 'quiet' is False when used for a clean up utility script (contrib/admin/cleanup_aws_resources.py)
+         that prints progress rather than logging.  Logging should be used for all other internal Toil usage.
+    """
+    logger.debug("Deleting bucket '%s'.", bucket_name)
+    printq(f'\n * Deleted s3 bucket successfully: {bucket_name}\n\n', quiet)
+
+    s3_client = s3_resource.meta.client
+
+    try:
+        for u in s3_client.list_multipart_uploads(Bucket=bucket_name).get('Uploads', []):
+            s3_client.abort_multipart_upload(
+                Bucket=bucket_name,
+                Key=u["Key"],
+                UploadId=u["UploadId"]
+            )
+
+        paginator = s3_client.get_paginator('list_object_versions')
+        for response in paginator.paginate(Bucket=bucket_name):
+            # Versions and delete markers can both go in here to be deleted.
+            # They both have Key and VersionId, but there's no shared base type
+            # defined for them in the stubs to express that. See
+            # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
+            # have to do gymnastics to get them into the same list.
+            to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
+                                              cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
+            for entry in to_delete:
+                printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
+                s3_client.delete_object(
+                    Bucket=bucket_name,
+                    Key=entry['Key'],
+                    VersionId=entry['VersionId']
+                )
+        bucket = s3_resource.Bucket(bucket_name)
+        bucket.objects.all().delete()
+        bucket.object_versions.delete()
+        bucket.delete()
+        printq(f'\n * Deleted s3 bucket successfully: {bucket_name}\n\n', quiet)
+        logger.debug("Deleted s3 bucket successfully '%s'.", bucket_name)
+    except s3_client.exceptions.NoSuchBucket:
+        printq(f'\n * S3 bucket no longer exists: {bucket_name}\n\n', quiet)
+        logger.debug("S3 bucket no longer exists '%s'.", bucket_name)
+    except ClientError as e:
+        if get_error_status(e) != 404:
+            raise
+        printq(f'\n * S3 bucket no longer exists: {bucket_name}\n\n', quiet)
+        logger.debug("S3 bucket no longer exists '%s'.", bucket_name)

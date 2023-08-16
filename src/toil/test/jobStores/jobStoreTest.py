@@ -40,7 +40,7 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws.s3 import create_s3_bucket
+from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
 from toil.lib.aws.utils import get_object_for_url
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
@@ -1325,21 +1325,21 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
             # Create the bucket at the external region
-            bucketName = 'domain-test-' + testJobStoreUUID + '--files'
+            bucket_name = 'domain-test-' + testJobStoreUUID + '--files'
             client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
             resource = establish_boto3_session().resource('s3', region_name=externalAWSLocation)
 
             for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
                 with attempt:
                     # Create the bucket at the home region
-                    client.create_bucket(Bucket=bucketName,
+                    client.create_bucket(Bucket=bucket_name,
                                          CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
 
             owner_tag = os.environ.get('TOIL_OWNER_TAG')
             if owner_tag:
                 for attempt in retry_s3(delays=(1, 1, 2, 4, 8, 16), timeout=33):
                     with attempt:
-                        bucket_tagging = resource.BucketTagging(bucketName)
+                        bucket_tagging = resource.BucketTagging(bucket_name)
                         bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
 
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' + testJobStoreUUID)
@@ -1363,17 +1363,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            client.delete_bucket(Bucket=bucketName)
-                except ClientError as e:
-                    # The actual HTTP code of the error is in status.
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
+                delete_s3_bucket(s3_resource=resource, bucket_name=bucket_name)
 
     @slow
     def testInlinedFiles(self):

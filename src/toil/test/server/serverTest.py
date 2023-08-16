@@ -217,9 +217,9 @@ class BucketUsingTest(ToilTest):
 
     @classmethod
     def tearDownClass(cls) -> None:
-        from toil.lib.aws.utils import delete_s3_bucket
+        from toil.lib.aws.s3 import delete_s3_bucket
         if cls.bucket_name:
-            delete_s3_bucket(cls.s3_resource, cls.bucket_name, cls.region)
+            delete_s3_bucket(cls.s3_resource, cls.bucket_name)
         super().tearDownClass()
 
 class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
