@@ -50,7 +50,7 @@ def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
     region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
-    tags: Optional[Dict[str]] = None,
+    tags: Optional[Dict[str, str]] = None,
     public: bool = True
 ) -> "Bucket":
     """
