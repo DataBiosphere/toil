@@ -33,7 +33,6 @@ from botocore.exceptions import ClientError
 from mypy_boto3_s3.service_resource import Bucket
 
 import toil.lib.encryption as encryption
-from toil.lib.aws import build_tag_dict_from_env
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
@@ -727,12 +726,7 @@ class AWSJobStore(AbstractJobStore):
                 bucketExisted = False
                 logger.debug("Bucket '%s' does not exist.", bucket_name)
                 if create:
-                    bucket = create_s3_bucket(
-                        s3_resource=self.s3_resource,
-                        bucket_name=bucket_name,
-                        region=self.region,
-                        tags=build_tag_dict_from_env()
-                    )
+                    bucket = create_s3_bucket(self.s3_resource, bucket_name, self.region)
                 elif block:
                     raise
                 else:

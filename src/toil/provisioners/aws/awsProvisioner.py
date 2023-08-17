@@ -44,7 +44,7 @@ from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
 from botocore.exceptions import ClientError
 
-from toil.lib.aws import zone_to_region, build_tag_dict_from_env
+from toil.lib.aws import zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
                               get_policy_permissions,
@@ -259,12 +259,7 @@ class AWSProvisioner(AbstractProvisioner):
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
             if get_error_status(err) == 404:
-                bucket = create_s3_bucket(
-                    s3_resource=s3,
-                    bucket_name=bucket_name,
-                    region=self._region,
-                    tags=build_tag_dict_from_env()
-                )
+                bucket = create_s3_bucket(s3, bucket_name, self._region)
                 bucket.Versioning().enable()
             else:
                 raise

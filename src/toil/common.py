@@ -69,7 +69,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       QueueSizeMessage,
                       gen_message_bus_path)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region, build_tag_dict_from_env
+from toil.lib.aws import zone_to_region
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.io import try_path
