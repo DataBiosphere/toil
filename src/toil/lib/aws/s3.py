@@ -14,7 +14,8 @@
 import logging
 import sys
 
-from typing import (Dict,
+from typing import (Any,
+                    Dict,
                     Optional,
                     Union)
 
@@ -74,7 +75,7 @@ def create_s3_bucket(
 
     tags = tags_from_env() if tags is None else tags
     bucket_tagging = s3_resource.BucketTagging(bucket_name)
-    bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})
+    bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})  # type: ignore
 
     # enabling public objects is the historical default
     if public:
