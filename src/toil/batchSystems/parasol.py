@@ -27,7 +27,7 @@ from typing import Dict, Optional, Union, Type, Any
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-from toil.common import SYS_MAX_SIZE, Toil
+from toil.common import SYS_MAX_SIZE, Toil, make_int_range_validation_action
 from toil.lib.iterables import concat
 from toil.test import get_temp_file
 
@@ -368,21 +368,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         parser.add_argument("--parasol_command", "--parasolCommand", dest="parasolCommand", default='parasol',
                             help="The name or path of the parasol program. Will be looked up on PATH "
                                  "unless it starts with a slash.  (default: %(default)s).")
-        from toil.common import iC
-        # this is copied straight from common.py
-        # todo: move this into one centralized location along with the other action classes
-        def make_int_range_validation_action(min: int, max: Optional[int] = None) -> Type[_StoreAction]:
-            class RangeValidation(_StoreAction):
-                def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
-                    try:
-                        if not iC(min, max)(values):
-                            raise parser.error(f"The {option_string} option is out of range: {values}")
-                    except AssertionError:
-                        raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
-                    setattr(namespace, self.dest, values)
-
-            return RangeValidation
-        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000, type=int,
+        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000, type=int, action=make_int_range_validation_action(1),
                             help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 

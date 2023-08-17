@@ -27,7 +27,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 import toil
 from toil import resolveEntryPoint
-from toil.common import Config, Toil
+from toil.common import Config, Toil, addOptions
 from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import (ToilTest,
@@ -114,6 +114,25 @@ class UtilsTest(ToilTest):
         if failIfNotComplete:
             commandTokens.append('--failIfNotComplete')
         return commandTokens
+
+    def test_config_functionality(self):
+        """Ensure that creating and reading back the config file works"""
+        config_file = os.path.abspath("config.yaml")
+        config_command = [self.toilMain, 'config', config_file]
+        try:
+            system(config_command)
+        except subprocess.CalledProcessError:  # This happens when the script fails due to having unfinished jobs
+            self.assertRaises(subprocess.CalledProcessError, system)
+            self.fail("The toil config utility failed!")
+
+        parser = Job.Runner.getDefaultArgumentParser()
+        try:
+            parser.parse_args(["--config", config_file])
+        except SystemExit:
+            self.fail("Failed to parse the default generated config file!")
+        finally:
+            os.remove(config_file)
+
 
     @needs_rsync3
     @pytest.mark.timeout(1200)

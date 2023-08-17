@@ -81,10 +81,9 @@ from toil.lib.io import try_path, AtomicFileCreate
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                cluster_factory,
-                               parse_node_types)
+                               parse_node_type, parse_node_types)
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
-                                  root_logger,
                                   set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 
@@ -497,6 +496,9 @@ def generate_config(filepath: str) -> None:
     Safe to run simultaneously in multiple processes. No process will see an
     empty or partially-written file at the given path.
     """
+    # this is placed in common.py rather than toilConfig.py to prevent circular imports
+
+    # configargparse's write_config does not write options with a None value, so do this instead
     omit = ("help", "config", "defaultAccelerators", "nodeTypes", "nodeStorageOverrides", "setEnv", "minNodes", "maxNodes", "logCritical", "logDebug", "logError", "logInfo", "logOff", "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports", "disableCaching")
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser)
@@ -566,6 +568,89 @@ def parser_with_common_options(
     return parser
 
 
+def make_coordinationdir_check_action() -> Type[_StoreAction]:
+    class CheckCoordinationDir(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            coordination_dir = values
+            if coordination_dir is not None:
+                coordination_dir = os.path.abspath(coordination_dir)
+                if not os.path.exists(coordination_dir):
+                    raise RuntimeError(
+                        f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
+            setattr(namespace, self.dest, values)
+    return CheckCoordinationDir
+
+
+def make_workdir_check_action() -> Type[_StoreAction]:
+    class CheckWorkDir(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            workDir = values
+            if workDir is not None:
+                workDir = os.path.abspath(workDir)
+                if not os.path.exists(workDir):
+                    raise RuntimeError(f"The path provided to --workDir ({workDir}) does not exist.")
+
+                if len(workDir) > 80:
+                    logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
+                                   f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
+                                   f'like "/tmp" to avoid overly long paths.')
+            setattr(namespace, self.dest, values)
+    return CheckWorkDir
+
+
+def make_int_range_validation_action(min: int, max: Optional[int]=None) -> Type[_StoreAction]:
+    class RangeValidation(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            try:
+                if not iC(min, max)(values):
+                    raise parser.error(f"The {option_string} option is out of range: {values}")
+            except AssertionError:
+                raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+            setattr(namespace, self.dest, values)
+    return RangeValidation
+
+
+def make_float_range_validation_action(min: float, max: Optional[float]=None) -> Type[_StoreAction]:
+
+    class RangeValidation(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            try:
+                if not fC(min, max)(values):
+                    raise parser.error(f"The {option_string} option is out of range: {values}")
+            except AssertionError:
+                raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+            setattr(namespace, self.dest, values)
+    return RangeValidation
+
+
+def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]:
+    class RangeValidation(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            def is_within(x: Union[int, float]) -> bool:
+                if max is None:
+                    return min <= x
+                else:
+                    return min <= x <= max
+            try:
+                if not is_within(values):
+                    raise parser.error(f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max}]")
+            except AssertionError:
+                raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+            setattr(namespace, self.dest, values)
+    return RangeValidation
+
+
+def make_check_ssekey_action() -> Type[_StoreAction]:
+    class SSEKeyValidation(_StoreAction):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
+            if values is not None:
+                sse_key = values
+                if sse_key is None:
+                    return
+                with open(sse_key) as f:
+                    assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
+            setattr(namespace, self.dest, values)
+    return SSEKeyValidation
 def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False, cwl: bool = False) -> None:
     """
     Add Toil command line options to a parser.
@@ -593,21 +678,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
 
     opt_strtobool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
-    def make_closed_interval_check_action(min: Union[int, float], max: Optional[Union[int, float]]=None) -> Type[_StoreAction]:
-        class RangeValidation(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                def is_within(x: Union[int, float]) -> bool:
-                    if max is None:
-                        return min <= x
-                    else:
-                        return min <= x <= max
-                try:
-                    if not is_within(values):
-                        raise parser.error(f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max}]")
-                except AssertionError:
-                    raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
-                setattr(namespace, self.dest, values)
-        return RangeValidation
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
 
@@ -622,21 +692,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     else:
         core_options.add_argument('jobStore', type=parse_jobstore, help=JOBSTORE_HELP)
 
-    def make_workdir_check_action() -> Type[_StoreAction]:
-        class CheckWorkDir(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                workDir = values
-                if workDir is not None:
-                    workDir = os.path.abspath(workDir)
-                    if not os.path.exists(workDir):
-                        raise RuntimeError(f"The path provided to --workDir ({workDir}) does not exist.")
-
-                    if len(workDir) > 80:
-                        logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
-                                       f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
-                                       f'like "/tmp" to avoid overly long paths.')
-                setattr(namespace, self.dest, values)
-        return CheckWorkDir
 
     core_options.add_argument("--work_dir", "--workDir", dest="workDir", default=None, env_var="TOIL_WORKDIR", action=make_workdir_check_action(),
                               help="Absolute path to directory where temporary files generated during the Toil "
@@ -651,17 +706,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
 
-    def make_coordinationdir_check_action() -> Type[_StoreAction]:
-        class CheckCoordinationDir(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                coordination_dir = values
-                if coordination_dir is not None:
-                    coordination_dir = os.path.abspath(coordination_dir)
-                    if not os.path.exists(coordination_dir):
-                        raise RuntimeError(
-                            f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
-                setattr(namespace, self.dest, values)
-        return CheckCoordinationDir
 
     core_options.add_argument("--coordination_dir", "--coordinationDir", dest="coordination_dir", default=None, env_var="TOIL_COORDINATION_DIR", action=make_coordinationdir_check_action(),
                               help="Absolute path to directory where Toil will keep state and lock files."
@@ -729,14 +773,14 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                          'location.  Specifying this option instead copies the files into the output directory.  '
                          'Applies to filesystem-based job stores only.')
     move_exports.add_argument("--move_exports", dest="moveExports", type=convert_bool, default=False, help=move_exports_help)
-    # Deprecated:
-    move_exports.add_argument("--moveExports", dest="moveExports", action="store_true", help=argparse.SUPPRESS)  # deprecated
-    move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false", help=argparse.SUPPRESS)  # deprecated
+    move_exports.add_argument("--moveExports", dest="moveExports", action="store_true", help=argparse.SUPPRESS)
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false", help=argparse.SUPPRESS)
 
     caching = file_store_options.add_mutually_exclusive_group()
     caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
     caching.add_argument('--caching', dest='caching', type=opt_strtobool, default=None, help=caching_help)
-    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=argparse.SUPPRESS) # deprecated
+    caching.add_argument('--enableCaching', dest='caching', action='store_true', help=argparse.SUPPRESS)
+    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=argparse.SUPPRESS)
     # caching.set_defaults(caching=None) # default is None according to PR 4299, seems to be generated at runtime
 
     # Auto scaling options
@@ -746,60 +790,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                     "as well as parameters to control the level of provisioning."
     )
     provisioner_choices = ['aws', 'gce', None]
-
-    def parse_node_type(node_type_spec: Optional[str]) -> Optional[Tuple[Set[str], Optional[float]]]: # move later
-        """
-        Parse a specification for one (or zero) node types.
-
-        Takes a singular node types. The node type can have at least one instance type name (like 'm5a.large'
-        for AWS), and an optional bid in dollars after a colon.
-
-        Raises ValueError if the node type cannot be parsed.
-
-        Inputs should look something like this:
-
-        >>> parse_node_types('c5.4xlarge/c5a.4xlarge:0.42,t2.large')
-        ({'c5.4xlarge', 'c5a.4xlarge'}, 0.42)
-        >>> parse_node_types('t2.large')
-        ({'t2.large'}, None)
-
-        :param node_type_specs: A string defining a node type
-
-        :returns: the parsed node type, where the type is the set of
-                  instance types, and the float bid, or None.
-        """
-        # Collect together all the node types
-        parsed = None
-
-        if node_type_spec:
-            # Some node types were actually specified
-            try:
-                # Types are comma-separated
-                # Then we have the colon and the bid
-                parts = node_type_spec.split(':')
-
-                if len(parts) > 2:
-                    # Only one bid allowed
-                    raise ValueError(f'Could not parse node type "{node_type_spec}": multiple bids')
-
-                # Instance types are slash-separated within an equivalence
-                # class
-                instance_types = set(parts[0].split('/'))
-
-                for instance_type in instance_types:
-                    if instance_type == '':
-                        # No empty instance types allowed
-                        raise ValueError(f'Could not parse node type "{node_type_spec}": empty instance type')
-
-                # Build the node type tuple
-                parsed = (instance_types, float(parts[1]) if len(parts) > 1 else None)
-            except Exception as e:
-                if isinstance(e, ValueError):
-                    raise
-                else:
-                    raise ValueError(f'Could not parse node type "{node_type_spec}"')
-
-        return parsed
 
     # TODO: Better consolidate this provisioner arg and the one in provisioners/__init__.py?
     autoscaling_options.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices, default=None,
@@ -927,29 +917,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
 
     h2b = lambda x: human2bytes(str(x))
 
-    def make_int_range_validation_action(min: int, max: Optional[int]=None) -> Type[_StoreAction]:
-        class RangeValidation(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                try:
-                    if not iC(min, max)(values):
-                        raise parser.error(f"The {option_string} option is out of range: {values}")
-                except AssertionError:
-                    raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
-                setattr(namespace, self.dest, values)
-        return RangeValidation
-
-    def make_float_range_validation_action(min: float, max: Optional[float]=None) -> Type[_StoreAction]:
-
-        class RangeValidation(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                try:
-                    if not fC(min, max)(values):
-                        raise parser.error(f"The {option_string} option is out of range: {values}")
-                except AssertionError:
-                    raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
-                setattr(namespace, self.dest, values)
-        return RangeValidation
-
     resource_options.add_argument("--default_memory", '--defaultMemory', dest='defaultMemory', default=2147483648, type=h2b, action=make_int_range_validation_action(1),
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note, bytes2human(2147483648)))
     resource_options.add_argument("--default_cores", '--defaultCores', dest='defaultCores', default=1, metavar='FLOAT', type=float, action=make_float_range_validation_action(1.0),
@@ -1027,17 +994,6 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     log_options.add_argument("--real_time_logging", "--realTimeLogging", dest="realTimeLogging", type=convert_bool, default=False,
                              help="Enable real-time logging from workers to leader")
 
-    def make_check_ssekey_action() -> Type[_StoreAction]:
-        class SSEKeyValidation(_StoreAction):
-            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any=None) -> None:
-                if values is not None:
-                    sse_key = values
-                    if sse_key is None:
-                        return
-                    with open(sse_key) as f:
-                        assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
-                setattr(namespace, self.dest, values)
-        return SSEKeyValidation
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options.",
@@ -1063,7 +1019,8 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
-                                   "be injected into the worker process itself before it is started.")
+                                   "be injected into the worker process itself before it is started. Use --setEnv to"
+                                   "declare variables on the CLI.")
 
     misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="legacy_environment", default=[], action="append", # -e is kept here as --setEnv should be used for the command line instead of --set_env
                               help=argparse.SUPPRESS)
@@ -1210,6 +1167,8 @@ class Toil(ContextManager["Toil"]):
         set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
+        if config.jobStore is None:
+            raise RuntimeError("No jobstore provided!")
         jobStore = self.getJobStore(config.jobStore)
         if config.caching is None:
             config.caching = jobStore.default_caching()

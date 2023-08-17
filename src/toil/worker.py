@@ -43,7 +43,7 @@ from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
-from toil.statsAndLogging import configure_root_logger, set_log_level, root_logger
+from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 
