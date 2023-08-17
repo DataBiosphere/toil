@@ -40,7 +40,6 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.s3 import create_s3_bucket
 from toil.lib.aws.utils import get_object_for_url
 from toil.lib.memoize import memoize
@@ -1330,12 +1329,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
             resource = establish_boto3_session().resource('s3', region_name=externalAWSLocation)
 
-            create_s3_bucket(
-                s3_resource=resource,
-                bucket_name=bucket_name,
-                region=externalAWSLocation,
-                tags=build_tag_dict_from_env()
-            )
+            create_s3_bucket(resource, bucket_name, externalAWSLocation)
 
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' + testJobStoreUUID)
             options.logLevel = 'DEBUG'

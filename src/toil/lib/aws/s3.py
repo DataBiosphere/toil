@@ -19,9 +19,8 @@ from typing import (Dict,
                     Union)
 
 from toil.lib.retry import retry
-from toil.lib.aws.utils import (enable_public_objects,
-                                flatten_tags,
-                                get_bucket_region)
+from toil.lib.aws import tags_from_env
+from toil.lib.aws.utils import enable_public_objects, flatten_tags
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -51,7 +50,7 @@ def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
     region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
-    tags: Optional[Dict[str]],
+    tags: Optional[Dict[str]] = None,
     public: bool = True
 ) -> "Bucket":
     """
@@ -70,20 +69,14 @@ def create_s3_bucket(
             Bucket=bucket_name,
             CreateBucketConfiguration={"LocationConstraint": region},
         )
-    # wait until the bucket exists before checking the region and adding tags
+    # wait until the bucket exists before adding tags
     bucket.wait_until_exists()
 
-    # do we really this?  do we need to doubt AWS creating a bucket in the correct region?
-    check_region = get_bucket_region(bucket_name)
-    if region != check_region:
-        raise RuntimeError(f"s3 bucket does not match region: {bucket_name}, {region} != {check_region}")
+    tags = tags_from_env() if tags is None else tags
+    bucket_tagging = s3_resource.BucketTagging(bucket_name)
+    bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})
 
-    if tags:
-        bucket_tagging = s3_resource.BucketTagging(bucket_name)
-        bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})
-
-    # Configure bucket so that we can make objects in
-    # it public, which was the historical default.
+    # enabling public objects is the historical default
     if public:
         enable_public_objects(bucket_name)
 
