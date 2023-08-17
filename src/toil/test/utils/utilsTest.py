@@ -127,7 +127,7 @@ class UtilsTest(ToilTest):
 
         parser = Job.Runner.getDefaultArgumentParser()
         try:
-            parser.parse_args(["--config", config_file])
+            parser.parse_args(["random_jobstore", "--config", config_file])
         except SystemExit:
             self.fail("Failed to parse the default generated config file!")
         finally:
