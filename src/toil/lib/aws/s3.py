@@ -54,7 +54,7 @@ def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
     region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
-    tags: Optional[Dict[str]] = None,
+    tags: Optional[Dict[str, str]] = None,
     public: bool = True
 ) -> "Bucket":
     """
@@ -78,7 +78,7 @@ def create_s3_bucket(
 
     tags = tags_from_env() if tags is None else tags
     bucket_tagging = s3_resource.BucketTagging(bucket_name)
-    bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})
+    bucket_tagging.put(Tagging={'TagSet': flatten_tags(tags)})  # type: ignore
 
     # enabling public objects is the historical default
     if public:
