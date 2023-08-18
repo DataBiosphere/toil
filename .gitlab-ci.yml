@@ -229,7 +229,7 @@ cwl_v1.0_kubernetes:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - echo Singularity mirror is ${SINGULARITY_DOCKER_HUB_MIRROR}
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
 
@@ -244,6 +244,7 @@ cwl_v1.1_kubernetes:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
@@ -257,6 +258,7 @@ cwl_v1.2_kubernetes:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
     - make test tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
   artifacts:
@@ -357,5 +359,6 @@ cactus_integration:
     - pip install --upgrade 'setuptools<66' pip
     - pip install --upgrade .
     - pip install --upgrade numpy psutil # Cactus installs an old psutil that Toil isn't compatible with. TODO: Do we really need Numpy?
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - toil clean aws:us-west-2:${BUCKET_NAME}
     - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --retryCount=3 --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
