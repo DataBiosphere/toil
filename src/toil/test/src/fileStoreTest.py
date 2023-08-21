@@ -477,7 +477,7 @@ class hidden:
                     # filesystem to the path (/path/to/file vs file:/path/to/file)
                     # The options namespace and the Config object now have the exact same behavior
                     # which means parse_jobstore will be called with argparse rather than with the config object
-                    # so remove the prepended filesystem
+                    # so remove the prepended file: scheme
                     jobStoreDev = os.stat(os.path.dirname(self.options.jobStore[5:])).st_dev
                 else:
                     jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev

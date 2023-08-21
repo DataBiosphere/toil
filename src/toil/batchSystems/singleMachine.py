@@ -844,6 +844,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         def make_scale_check_action(min: float, max: Optional[float]=None):
+            """
+
+            :param min:
+            :param max:
+            :return:
+            """
             class ScaleCheck(_StoreAction):
                 def __call__(self, parser, namespace, values, option_string=None) -> None:
                     try:

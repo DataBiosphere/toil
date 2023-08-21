@@ -35,7 +35,8 @@ from toil.bus import (JobAnnotationMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       JobUpdatedMessage,
-                      QueueSizeMessage, gen_message_bus_path)
+                      QueueSizeMessage,
+                      gen_message_bus_path)
 from toil.common import Config, Toil, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (CheckpointJobDescription,

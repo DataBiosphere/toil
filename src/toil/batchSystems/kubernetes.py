@@ -181,7 +181,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.pod_timeout = config.kubernetes_pod_timeout
 
         # Get the username to mark jobs with
-        username = config.kubernetes_owner if config.kubernetes_owner is not None else self.get_default_kubernetes_owner()
+        username = config.kubernetes_owner or self.get_default_kubernetes_owner()
         # And a unique ID for the run
         self.unique_id = uuid.uuid4()
 

@@ -81,62 +81,6 @@ def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
                                            "Must be lowercase and may not contain the '_' character.")
 
 
-def parse_node_type(node_type_spec: Optional[str]) -> Optional[Tuple[Set[str], Optional[float]]]: # move later
-    """
-    Similar to parse_node_types, except for <= 1 node type specifications.
-
-    Parse a specification for one (or zero) node types.
-
-    Takes a singular node types. The node type can have at least one instance type name (like 'm5a.large'
-    for AWS), and an optional bid in dollars after a colon.
-
-    Raises ValueError if the node type cannot be parsed.
-
-    Inputs should look something like this:
-
-    >>> parse_node_types('c5.4xlarge/c5a.4xlarge:0.42,t2.large')
-    ({'c5.4xlarge', 'c5a.4xlarge'}, 0.42)
-    >>> parse_node_types('t2.large')
-    ({'t2.large'}, None)
-
-    :param node_type_specs: A string defining a node type
-
-    :returns: the parsed node type, where the type is the set of
-              instance types, and the float bid, or None.
-    """
-    # Collect together all the node types
-    parsed = None
-
-    if node_type_spec:
-        # Some node types were actually specified
-        try:
-            # Types are comma-separated
-            # Then we have the colon and the bid
-            parts = node_type_spec.split(':')
-
-            if len(parts) > 2:
-                # Only one bid allowed
-                raise ValueError(f'Could not parse node type "{node_type_spec}": multiple bids')
-
-            # Instance types are slash-separated within an equivalence
-            # class
-            instance_types = set(parts[0].split('/'))
-
-            for instance_type in instance_types:
-                if instance_type == '':
-                    # No empty instance types allowed
-                    raise ValueError(f'Could not parse node type "{node_type_spec}": empty instance type')
-
-            # Build the node type tuple
-            parsed = (instance_types, float(parts[1]) if len(parts) > 1 else None)
-        except Exception as e:
-            if isinstance(e, ValueError):
-                raise
-            else:
-                raise ValueError(f'Could not parse node type "{node_type_spec}"')
-
-    return parsed
-
 def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Optional[float]]]:
     """
     Parse a specification for zero or more node types.

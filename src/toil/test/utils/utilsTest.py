@@ -120,7 +120,7 @@ class UtilsTest(ToilTest):
         config_file = os.path.abspath("config.yaml")
         config_command = [self.toilMain, 'config', config_file]
         try:
-            system(config_command)
+            subprocess.check_call(config_command)
         except subprocess.CalledProcessError:  # This happens when the script fails due to having unfinished jobs
             self.assertRaises(subprocess.CalledProcessError, system)
             self.fail("The toil config utility failed!")

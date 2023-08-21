@@ -11,6 +11,6 @@ addict>=2.2.1, <2.5
 pytz>=2012
 enlighten>=1.5.2, <2
 typing-extensions
-configargparse<2
+configargparse>=1.7,<2
 ruamel.yaml>=0.15,<=0.17.32
-pyyaml>=6
+pyyaml>=6,<7
