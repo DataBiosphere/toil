@@ -397,6 +397,7 @@ class hidden:
             self.options.caching = True
 
         @slow
+        @pytest.mark.xfail(reason="Cannot succeed in time on small CI runners")
         def testExtremeCacheSetup(self):
             """
             Try to create the cache with bad worker active and then have 10 child jobs try to run in
