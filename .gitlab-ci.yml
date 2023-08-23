@@ -6,9 +6,9 @@ variables:
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
   MAIN_PYTHON_PKG: "python3.9"
-# Used to tell pytest which tests to be run by specifying markers,
-# Allows partitioning of tests to prevent duplicate running of tests in different jobs.
-# Currently specifies special tests that are not run by quick_test_offline.
+  # Used to tell pytest which tests to be run by specifying markers,
+  # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
+  # Currently specifies special tests that are not run by quick_test_offline.
   MARKER: "tes or integrative or encryption or kubernetes or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3"
   TEST_THREADS: "3"
 before_script:

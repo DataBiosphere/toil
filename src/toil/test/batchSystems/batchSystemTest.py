@@ -849,7 +849,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             if len(sys.argv) < 3:
                 count(1)
                 try:
-                    time.sleep(1)
+                    time.sleep(10)
                 finally:
                     count(-1)
             else:
