@@ -356,7 +356,7 @@ class Config:
                 for old_name in old_names:
                     # If the option is already set with the new name and not the old name
                     # prioritize the new name over the old name and break
-                    if option_value is not None:
+                    if option_value is not None and option_value != [] and option_value != {}:
                         break
                     # Try all the old names in case user code is setting them
                     # in an options object.
@@ -512,7 +512,7 @@ def generate_config(filepath: str) -> None:
 
     # configargparse's write_config function does not write options with a None value
     # Thus, certain CLI options that use None as it's default not be written to the config file
-    # it also does not support printing config elements in nonalphabetical order, todo: add comments to config file
+    # it also does not support printing config elements in nonalphabetical order
 
     # Instead, mimic configargparser's write_config behavior and also make it output arguments with
     # a default value of None
@@ -539,7 +539,8 @@ def generate_config(filepath: str) -> None:
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser, jobstore_as_flag=True)
 
-    ordered = CommentedMap()
+    data = CommentedMap() # to preserve order
+    group_title_key: Dict[str, str] = dict()
     for action in parser._actions:
         if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
             continue
@@ -549,15 +550,23 @@ def generate_config(filepath: str) -> None:
         # if action is StoreTrue and default is False then don't include
         if isinstance(action, _StoreTrueAction) and action.default is False:
             continue
-        if len(action.option_strings) == 0:
-            continue
+
         option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else \
             action.option_strings[1]
         option = option_string[2:]
 
         default = action.default
 
-        ordered[option] = default
+        data[option] = default
+
+        # store where each argparse group starts
+        group_title = action.container.title # type: ignore[attr-defined]
+        group_title_key.setdefault(group_title, option)
+
+    # add comment for when each argparse group starts
+    for group_title, key in group_title_key.items():
+        data.yaml_set_comment_before_after_key(key, group_title)
+
     # Now we need to put the config file in place at filepath.
     # But someone else may have already created a file at that path, or may be
     # about to open the file at that path and read it before we can finish
@@ -569,7 +578,7 @@ def generate_config(filepath: str) -> None:
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
             yaml = YAML()
-            yaml.dump(ordered, f)
+            yaml.dump(data, f)
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
@@ -1085,14 +1094,14 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
     misc_options.add_argument("--environment", '-e', metavar='"{NAME1: VALUE1, NAME2: None}"', dest="environment",
                               default={}, type=yaml_safe_load,
-                              help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
+                              help="Set an environment variable early on in the worker. If VALUE is null, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started."
                                    "If declaring from the command line, the space after the colon and quotation "
                                    "marks are required."
-                                   "Ex: -e='NAME: VALUE'")
+                                   "Ex: -e='NAME: VALUE', -e='NAME: null'")
     misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float,
                               action=make_open_interval_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "

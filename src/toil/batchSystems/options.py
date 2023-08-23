@@ -137,8 +137,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
-        "--runCwlInternalJobsOnWorkers",
         "--runLocalJobsOnWorkers",
+        "--runCwlInternalJobsOnWorkers",
         dest="run_local_jobs_on_workers",
         default=False,
         action="store_true",
