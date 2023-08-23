@@ -101,6 +101,8 @@ cyan=\033[0;36m
 # expression to tell pytest what tests to run based on their marks
 # the empty string means all tests will be run
 marker=""
+# Number of tests to run in parallel.
+threads:="auto"
 
 develop: check_venv
 	pip install -e .$(extras) $(packages)
@@ -131,7 +133,7 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n auto --dist loadscope $(tests) -m "$(marker)"
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 
 # This target will skip building docker and all docker based tests
@@ -139,7 +141,7 @@ test: check_venv check_build_reqs
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n auto --dist loadscope $(tests) -m "$(marker)"
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs

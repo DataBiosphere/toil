@@ -10,6 +10,7 @@ variables:
 # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
 # Currently specifies special tests that are not run by quick_test_offline.
   MARKER: "tes or integrative or encryption or kubernetes or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3"
+  TEST_THREADS: "3"
 before_script:
   # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
   - ip addr
@@ -68,7 +69,7 @@ cwl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make marker="${MARKER}" test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 
 wdl_dependency_is_stand_alone:
@@ -76,7 +77,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make marker="${MARKER}" test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
 
 quick_test_offline:
   stage: basic_tests
@@ -86,7 +87,7 @@ quick_test_offline:
     - pip install -U pip wheel
     - make prepare
     - make develop extras=[aws,google,wdl]
-    - TOIL_TEST_QUICK=True make test_offline
+    - TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
 
 py37_appliance_build:
   stage: basic_tests
@@ -129,8 +130,8 @@ py310_main:
   script:
     - pwd
     - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make test tests="src/toil/test/src src/toil/test/utils"
-    - TOIL_SKIP_DOCKER=true make test tests=src/toil/test/lib
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
+    - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
 batch_systems:
   stage: main_tests
@@ -161,7 +162,7 @@ batch_systems:
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
     - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
     - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
-    - make marker="${MARKER}" test tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
     - kill $(jobs -p) || true
 
 slurm_test:
@@ -180,7 +181,7 @@ cwl_v1.0:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 cwl_v1.1:
   stage: main_tests
@@ -189,7 +190,7 @@ cwl_v1.1:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 cwl_v1.2:
   stage: main_tests
@@ -197,7 +198,7 @@ cwl_v1.2:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
 
 cwl_on_arm:
   stage: main_tests
@@ -208,7 +209,7 @@ cwl_on_arm:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_misc:
   stage: main_tests
@@ -216,7 +217,7 @@ cwl_misc:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
+    - make test threads="${TEST_THREADS}" tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
 
 cwl_v1.0_kubernetes:
   stage: main_tests
@@ -231,7 +232,7 @@ cwl_v1.0_kubernetes:
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
-    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
 
 cwl_v1.1_kubernetes:
   stage: main_tests
@@ -246,7 +247,7 @@ cwl_v1.1_kubernetes:
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
-    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
 cwl_v1.2_kubernetes:
   stage: main_tests
@@ -260,7 +261,7 @@ cwl_v1.2_kubernetes:
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
     - mkdir -p ${TOIL_WORKDIR}
-    - make test tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
   artifacts:
     reports:
       junit: "*.junit.xml"
@@ -275,17 +276,16 @@ wdl:
     - pwd
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make marker="${MARKER}" test tests=src/toil/test/wdl/wdltoil_test.py
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
-    - make marker="${MARKER}" test tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
 
 jobstore_and_provisioning:
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make marker="${MARKER}" test tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
-#    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
@@ -302,7 +302,7 @@ integration:
     - chmod 400 /root/.ssh/id_rsa
     # Test integration with job stores
     # Test server and its integration with AWS
-    - make test tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/server"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/server"
 
 provisioner_integration:
   stage: integration
@@ -316,7 +316,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
@@ -331,7 +331,7 @@ google_jobstore:
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
     - export TOIL_GOOGLE_PROJECTID=toil-dev
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
