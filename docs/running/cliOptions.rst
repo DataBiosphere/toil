@@ -7,9 +7,22 @@ Commandline Options
 
 A quick way to see all of Toil's commandline options is by executing the following on a toil script::
 
-    $ toil example.py --help
+    $ python example.py --help
 
 For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
+
+The Config File
+-------------
+Instead of changing the arguments on the CLI, Toil offers support for using a configuration file (Note: Support for the
+configuration file and environmental variables require the use of ``configargparse``).
+
+To generate a default configuration file::
+
+    $ toil config [filepath]
+
+After editing the config file, make Toil take in the new options::
+
+    $ python example.py --config=[filepath]
 
 The Job Store
 -------------
