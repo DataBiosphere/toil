@@ -87,7 +87,6 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     # Do the global cross-batch-system arguments
     parser.add_argument(
-        "--batch_system",
         "--batchSystem",
         dest="batchSystem",
         default=DEFAULT_BATCH_SYSTEM,
@@ -111,7 +110,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "script/package should be present at the same location on all workers.  Default = False.",
     )
     parser.add_argument(
-        "--max_jobs",
         "--maxJobs",
         dest="max_jobs",
         default=SYS_MAX_SIZE, # This is *basically* unlimited and saves a lot of Optional[]
@@ -121,7 +119,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
              "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
     )
     parser.add_argument(
-        "--max_local_jobs",
         "--maxLocalJobs",
         dest="max_local_jobs",
         default=None,
@@ -162,7 +159,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         ),
     )
     parser.add_argument(
-        "--state_polling_wait",
         "--statePollingWait",
         dest="statePollingWait",
         type=int,
@@ -172,7 +168,6 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
              "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
     parser.add_argument(
-        "--batch_logs_dir",
         "--batchLogsDir",
         dest="batch_logs_dir",
         default=None,

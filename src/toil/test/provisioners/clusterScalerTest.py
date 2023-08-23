@@ -272,14 +272,14 @@ class ClusterScalerTest(ToilTest):
         super().setUp()
         self.config = Config()
         self.config.targetTime = 1800
-        self.config.nodeTypes = [r3_8xlarge, c4_8xlarge_preemptible]
+        self.config.node_types = [r3_8xlarge, c4_8xlarge_preemptible]
 
         # Set up the mock leader
         self.leader = MockBatchSystemAndProvisioner(config=self.config, secondsPerJob=1)
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
 
     def testRounding(self):
         """
@@ -289,7 +289,7 @@ class ClusterScalerTest(ToilTest):
         # Get a ClusterScaler
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
-        self.config.maxNodes = [2, 3]
+        self.config.max_nodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
 
         # Exact integers round to themselves
@@ -320,7 +320,7 @@ class ClusterScalerTest(ToilTest):
         """
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
-        self.config.maxNodes = [2, 3]
+        self.config.max_nodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         jobShapes = [Shape(wallTime=3600,
                            cores=2,
@@ -342,7 +342,7 @@ class ClusterScalerTest(ToilTest):
         Without any jobs queued, the scaler should still estimate "minNodes" nodes.
         """
         self.config.betaInertia = 0.0
-        self.config.minNodes = [2, 3]
+        self.config.min_nodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         jobShapes = []
         estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
@@ -358,7 +358,7 @@ class ClusterScalerTest(ToilTest):
         """
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
-        self.config.maxNodes = [10, 10]
+        self.config.max_nodes = [10, 10]
         # This should mean that one non-preemptible node is launched
         # for every two preemptible nodes "missing".
         self.config.preemptibleCompensation = 0.5
@@ -366,8 +366,8 @@ class ClusterScalerTest(ToilTest):
         # that we can have preemptible and non-preemptible nodes of
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
-        self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.config.node_types = [c4_8xlarge_preemptible, c4_8xlarge]
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
 
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -403,8 +403,8 @@ class ClusterScalerTest(ToilTest):
         # that we can have preemptible and non-preemptible nodes of
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
-        self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.config.node_types = [c4_8xlarge_preemptible, c4_8xlarge]
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptible: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -548,7 +548,7 @@ class ClusterScalerTest(ToilTest):
         self.config.targetTime = 1
         self.config.betaInertia = 0.0
         # We only need up to one node
-        self.config.maxNodes = [1] * len(nodes)
+        self.config.max_nodes = [1] * len(nodes)
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
 
         jobs = [
@@ -581,7 +581,7 @@ class ScalerThreadTest(ToilTest):
         # number of worker nodes used.
 
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.node_types])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
@@ -648,9 +648,9 @@ class ScalerThreadTest(ToilTest):
         config.maxPreemptibleNodes = []  # No preemptible nodes
 
         # Non-preemptible parameters
-        config.nodeTypes = [Shape(20, h2b('10Gi'), 10, h2b('100Gi'), False)]
-        config.minNodes = [0]
-        config.maxNodes = [10]
+        config.node_types = [Shape(20, h2b('10Gi'), 10, h2b('100Gi'), False)]
+        config.min_nodes = [0]
+        config.max_nodes = [10]
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
@@ -685,9 +685,9 @@ class ScalerThreadTest(ToilTest):
         config.maxPreemptibleNodes = []  # No preemptible nodes
 
         # Make sure the node types don't have to be ordered
-        config.nodeTypes = [large_node, small_node, medium_node]
-        config.minNodes = [0, 0, 0]
-        config.maxNodes = [10, 10]  # test expansion of this list
+        config.node_types = [large_node, small_node, medium_node]
+        config.min_nodes = [0, 0, 0]
+        config.max_nodes = [10, 10]  # test expansion of this list
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
@@ -695,7 +695,7 @@ class ScalerThreadTest(ToilTest):
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.node_types])
         clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
         mock.start()
@@ -750,9 +750,9 @@ class ScalerThreadTest(ToilTest):
         config.defaultDisk = h2b('1Gi')
 
         # non-preemptible node parameters
-        config.nodeTypes = [node_shape, preemptible_node_shape]
-        config.minNodes = [0, 0]
-        config.maxNodes = [10, 10]
+        config.node_types = [node_shape, preemptible_node_shape]
+        config.min_nodes = [0, 0]
+        config.max_nodes = [10, 10]
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime

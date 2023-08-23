@@ -269,7 +269,8 @@ def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> Acce
         elif possible_description in APIS:
             parsed['api'] = possible_description
         else:
-            parsed['model'] = possible_description
+            if possible_description is not None:
+                parsed['model'] = possible_description
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
         parsed.update(spec)
@@ -611,7 +612,8 @@ class Requirer:
                 )
             return value
         elif self._config is not None:
-            value = getattr(self._config, 'default' + requirement.capitalize())
+            values = [getattr(self._config, 'default_' + requirement, None), getattr(self._config, 'default' + requirement.capitalize(), None)]
+            value = values[0] if values[0] is not None else values[1]
             if value is None:
                 raise AttributeError(
                     f"Encountered None for default '{requirement}' requirement "

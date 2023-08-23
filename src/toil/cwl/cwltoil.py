@@ -3262,7 +3262,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     config.disableChaining = True
     config.cwl = True
     parser = ArgParser()
-    addOptions(parser, config, jobstore_as_flag=True, cwl=True)
+    addOptions(parser, jobstore_as_flag=True, cwl=True)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 

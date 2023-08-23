@@ -1864,16 +1864,17 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetes_host_path", "--kubernetesHostPath", dest="kubernetes_host_path", default=None, env_var="TOIL_KUBERNETES_HOST_PATH",
+        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None, env_var="TOIL_KUBERNETES_HOST_PATH",
                             help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetes_owner", "--kubernetesOwner", dest="kubernetes_owner", default=None, env_var="TOIL_KUBERNETES_OWNER",
-                            help="Username to mark Kubernetes jobs with.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetes_service_account", "--kubernetesServiceAccount", dest="kubernetes_service_account", default=None, env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
+        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=None, env_var="TOIL_KUBERNETES_OWNER",
+                            help=f"Username to mark Kubernetes jobs with. If the provided value is None, the value will "
+                                 f"be generated at runtime. "
+                                 f"(Generated default: {cls.get_default_kubernetes_owner()})")
+        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None, env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
                             help="Service account to run jobs as.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetes_pod_timeout", "--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT", type=float,
+        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT", type=float,
                             help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
                                  "(default: %(default)s)")
 

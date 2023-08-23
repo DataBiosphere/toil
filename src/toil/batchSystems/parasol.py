@@ -27,7 +27,7 @@ from typing import Dict, Optional, Union, Type, Any
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-from toil.common import SYS_MAX_SIZE, Toil, make_int_range_validation_action
+from toil.common import SYS_MAX_SIZE, Toil, make_open_interval_action
 from toil.lib.iterables import concat
 from toil.test import get_temp_file
 
@@ -368,7 +368,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         parser.add_argument("--parasol_command", "--parasolCommand", dest="parasolCommand", default='parasol',
                             help="The name or path of the parasol program. Will be looked up on PATH "
                                  "unless it starts with a slash.  (default: %(default)s).")
-        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000, type=int, action=make_int_range_validation_action(1),
+        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000, type=int, action=make_open_interval_action(1),
                             help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 

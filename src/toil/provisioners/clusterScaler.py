@@ -436,10 +436,10 @@ class ClusterScaler:
         assert len(self.nodeShapes) > 0
 
         # Minimum/maximum number of either preemptible or non-preemptible nodes in the cluster
-        minNodes = config.minNodes
+        minNodes = config.min_nodes
         if minNodes is None:
             minNodes = [0 for node in self.instance_types]
-        maxNodes = config.maxNodes
+        maxNodes = config.max_nodes
         while len(maxNodes) < len(self.instance_types):
             # Pad out the max node counts if we didn't get one per type.
             maxNodes.append(maxNodes[0])
@@ -471,7 +471,7 @@ class ClusterScaler:
 
         logger.debug('Starting with the following nodes in the cluster: %s' % totalNodes)
 
-        if not sum(config.maxNodes) > 0:
+        if not sum(config.max_nodes) > 0:
             raise RuntimeError('Not configured to create nodes of any type.')
 
     def _round(self, number: float) -> int:

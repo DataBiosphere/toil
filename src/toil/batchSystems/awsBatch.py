@@ -559,11 +559,11 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--aws_batch_region", "--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
+        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
                             help="The AWS region containing the AWS Batch queue to submit to.")
-        parser.add_argument("--aws_batch_queue", "--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
+        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
                             help="The name or ARN of the AWS Batch queue to submit to.")
-        parser.add_argument("--aws_batch_job_role_arn", "--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
+        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
                             help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
                                   "can e.g. access a job store. Must be assumable by "
                                   "ecs-tasks.amazonaws.com."))

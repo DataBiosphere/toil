@@ -74,7 +74,7 @@ class TESBatchSystem(BatchSystemCleanupSupport):
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         # Connect to TES, using Funnel-compatible environment variables to fill in credentials if not specified.
-        tes_endpoint = config.tes_endpoint if config.tes_endpoint is not None else self.get_default_tes_endpoint()
+        tes_endpoint = config.tes_endpoint or self.get_default_tes_endpoint()
         self.tes = tes.HTTPClient(tes_endpoint,
                                   user=config.tes_user,
                                   password=config.tes_password,
@@ -440,13 +440,15 @@ class TESBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--tes_endpoint", "--tesEndpoint", dest="tes_endpoint", default=None, env_var="TOIL_TES_ENDPOINT",
-                            help="The http(s) URL of the TES server.  (default: %(default)s)")
-        parser.add_argument("--tes_user", "--tesUser", dest="tes_user", default=None, env_var="TOIL_TES_USER",
+        parser.add_argument("--tesEndpoint", dest="tes_endpoint", default=None, env_var="TOIL_TES_ENDPOINT",
+                            help=f"The http(s) URL of the TES server. If the provided value is None, the value will be "
+                                 f"generated at runtime.  "
+                                 f"(Generated default: {cls.get_default_tes_endpoint()})")
+        parser.add_argument("--tesUser", dest="tes_user", default=None, env_var="TOIL_TES_USER",
                             help="User name to use for basic authentication to TES server.")
-        parser.add_argument("--tes_password", "--tesPassword", dest="tes_password", default=None, env_var="TOIL_TES_PASSWORD",
+        parser.add_argument("--tesPassword", dest="tes_password", default=None, env_var="TOIL_TES_PASSWORD",
                             help="Password to use for basic authentication to TES server.")
-        parser.add_argument("--tes_bearer_token", "--tesBearerToken", dest="tes_bearer_token", default=None, env_var="TOIL_TES_BEARER_TOKEN",
+        parser.add_argument("--tesBearerToken", dest="tes_bearer_token", default=None, env_var="TOIL_TES_BEARER_TOKEN",
                             help="Bearer token to use for authentication to TES server.")
 
     @classmethod

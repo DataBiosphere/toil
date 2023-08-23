@@ -104,7 +104,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            if maxMemory != SYS_MAX_SIZE:
+            if maxMemory < SYS_MAX_SIZE:  # todo: looks like humans2bytes converts SYS_MAX_SIZE to SYS_MAX_SIZE+1
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
@@ -112,7 +112,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
-            if maxDisk != SYS_MAX_SIZE:
+            if maxDisk < SYS_MAX_SIZE:  # same as maxMemory logger.warning
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
