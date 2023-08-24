@@ -164,32 +164,25 @@ endef
 
 docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
-pre_pull_docker:
-	# Pre-pull everything
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:22.04 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
-
-toil_docker: pre_pull_docker docker/Dockerfile
+toil_docker: docker/Dockerfile
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd docker \
 	; docker buildx build --platform=$(arch) --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../.docker-cache/toil --cache-to type=local,dest=../.docker-cache/toil -f Dockerfile .
 
-prometheus_docker: pre_pull_docker
+prometheus_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/prometheus \
 	; docker buildx build --platform=$(arch) --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/prometheus --cache-to type=local,dest=../../.docker-cache/prometheus -f Dockerfile .
 
-grafana_docker: pre_pull_docker
+grafana_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/grafana \
 	; docker buildx build --platform=$(arch) --tag=$(grafana_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/grafana --cache-to type=local,dest=../../.docker-cache/grafana -f Dockerfile .
 
-mtail_docker: pre_pull_docker
+mtail_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/mtail \
