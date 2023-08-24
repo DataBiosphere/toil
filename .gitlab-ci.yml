@@ -22,7 +22,8 @@ before_script:
         export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
         echo "debug = true" >buildkitd.toml
         echo "[registry.\"docker.io\"]" >>buildkitd.toml
-        echo "  mirrors = [\"${DOCKER_HUB_MIRROR}\"]" >>buildkitd.toml
+        echo "  mirrors = [\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
+        echo "[registry.\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
         echo "  http = true" >>buildkitd.toml
         echo "  insecure = true" >>buildkitd.toml
     else
