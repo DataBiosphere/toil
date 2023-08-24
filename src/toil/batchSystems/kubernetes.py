@@ -152,7 +152,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Re-type the config to make sure it has all the fields we need.
-        assert isinstance(config, KubernetesBatchSystem.KubernetesConfig) # wat
+        # This convinces MyPy we really do have this type.
+        assert isinstance(config, KubernetesBatchSystem.KubernetesConfig)
 
         # Turn down log level for Kubernetes modules and dependencies.
         # Otherwise if we are at debug log level, we dump every
