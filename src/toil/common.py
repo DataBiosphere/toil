@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import json
 import logging
 import os
@@ -28,7 +27,8 @@ import warnings
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from configargparse import ArgParser, YAMLConfigFileParser
-from argparse import (ArgumentDefaultsHelpFormatter,
+from argparse import (SUPPRESS,
+                      ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
                       _ArgumentGroup, _StoreAction, _AppendAction, _StoreFalseAction, _StoreTrueAction)
@@ -390,7 +390,7 @@ class Config:
         # File store options
         set_option("linkImports", old_names=["linkImports"])
         set_option("moveExports", old_names=["moveExports"])
-        set_option("caching", old_names=["disableCaching"])
+        set_option("caching", old_names=["enableCaching"])
 
         # Autoscaling options
         set_option("provisioner")
@@ -1130,11 +1130,11 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                action="store_true",
                                help="Let worker output go to worker's standard out/error instead of per-job logs.")
     debug_options.add_argument("--badWorker", dest="badWorker", default=0.0, type=float,
-                               action=make_open_interval_action(0.0, 1.0),
+                               action=make_closed_interval_action(0.0, 1.0),
                                help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
                                     f"SIGKILL.  default={0.0}")
     debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=0.01, type=float,
-                               action=make_open_interval_action(0.0, 1.0),
+                               action=make_open_interval_action(0.0),
                                help=f"When killing the job pick uniformly within the interval from 0.0 to "
                                     f"--badWorkerFailInterval seconds after the worker starts.  "
                                     f"default={0.01}")
@@ -1144,19 +1144,19 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # These are deprecated in favor of a simpler option
     #   ex: noLinkImports and linkImports can be simplified into a single link_imports argument
     link_imports.add_argument("--noLinkImports", dest="linkImports", action="store_false",
-                              help=argparse.SUPPRESS)
+                              help=SUPPRESS)
     link_imports.add_argument("--linkImports", dest="linkImports", action="store_true",
-                              help=argparse.SUPPRESS)
+                              help=SUPPRESS)
     link_imports.set_defaults(linkImports=None)
 
     move_exports.add_argument("--moveExports", dest="moveExports", action="store_true",
-                              help=argparse.SUPPRESS)
+                              help=SUPPRESS)
     move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false",
-                              help=argparse.SUPPRESS)
+                              help=SUPPRESS)
     link_imports.set_defaults(moveExports=None)
 
-    # dest is set to disableCaching to not conflict with the current --caching destination
-    caching.add_argument('--disableCaching', dest='disableCaching', action='store_false', help=argparse.SUPPRESS)
+    # dest is set to enableCaching to not conflict with the current --caching destination
+    caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
     caching.set_defaults(disableCaching=None)
 
     # These are deprecated in order to have the defaults in the config file and the argparse be the same
@@ -1166,22 +1166,22 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     #   function on [], rather than the empty string
     misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="setEnv", default=None,
                               action="append", type=parse_set_env_elem,
-                              help=argparse.SUPPRESS)
+                              help=SUPPRESS)
     autoscaling_options.add_argument('--nodeStorageOverrides', default=None, dest="nodeStorageOverrides",
                                      type=parse_str_list,
-                                     help=argparse.SUPPRESS)
+                                     help=SUPPRESS)
 
     autoscaling_options.add_argument('--minNodes', dest="minNodes", default=None, type=parse_int_list,
-                                     help=argparse.SUPPRESS)
+                                     help=SUPPRESS)
     autoscaling_options.add_argument('--maxNodes', dest="maxNodes", default=None, type=parse_int_list,
-                                     help=argparse.SUPPRESS)
+                                     help=SUPPRESS)
 
     autoscaling_options.add_argument('--nodeTypes', default=None, dest="nodeTypes", type=parse_node_types,
-                                     help=argparse.SUPPRESS)
+                                     help=SUPPRESS)
 
     resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None,
                                   type=parse_accelerator_list, metavar='ACCELERATOR[,ACCELERATOR...]',
-                                  help=argparse.SUPPRESS)
+                                  help=SUPPRESS)
 
 
 def parseBool(val: str) -> bool:
