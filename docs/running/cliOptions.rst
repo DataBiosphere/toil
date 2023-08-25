@@ -18,11 +18,17 @@ configuration file and environmental variables require the use of ``configargpar
 
 To generate a default configuration file::
 
-    $ toil config [filepath]
+    $ toil config [file].yaml
 
 After editing the config file, make Toil take in the new options::
 
-    $ python example.py --config=[filepath]
+    $ python example.py --config=[file].yaml
+
+If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
+options::
+
+    $ python example.py --config=[file].yaml --maxNodes 20
+    # maxNodes=[20] even though default maxNodes=[10]
 
 The Job Store
 -------------
@@ -269,7 +275,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         for running on single_machine and non-auto-scaling batch
                         systems. The currently supported choices are 'aws' or
                         'gce'.
-  --node_types NODETYPES_LIST
+  --nodeTypes NODETYPES
                         Specifies a list of comma-separated node types, each of which is
                         composed of slash-separated instance types, and an optional spot
                         bid set off by a colon, making the node type preemptible. Instance
@@ -277,7 +283,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         may appear as both preemptible and non-preemptible.
                         
                         Valid argument specifying two node types:
-                            ``--node_types=[c5.4xlarge/c5a.4xlarge:0.42,t2.large]``
+                            c5.4xlarge/c5a.4xlarge:0.42,t2.large
                         Node types:
                             c5.4xlarge/c5a.4xlarge:0.42 and t2.large
                         Instance types:
@@ -286,17 +292,15 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                             Bid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,
                             treated interchangeably, while they are available at that price,
                             and buy t2.large instances at full price
-  --min_nodes MINNODES_LIST
-                        Minimum number of nodes of each type in the cluster,
+--minNodes MINNODES     Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
-                        list of the same length as the list of node types, ex. ``--min_nodes=[1,2...]``.
-                        default=[0]
-  --max_nodes MAXNODES_LIST
-                        Maximum number of nodes of each type in the cluster,
-                        if using autoscaling, provided as a list, ex. ``--max_nodes=[1,2...]``.
-                        The first value is used as a default if the list
+                        comma-separated list of the same length as the list of
+                        node types. default=0
+--maxNodes MAXNODES     Maximum number of nodes of each type in the cluster,                        Maximum number of nodes of each type in the cluster,
+                        if using autoscaling, provided as a comma-separated
+                        list. The first value is used as a default if the list
                         length is less than the number of nodeTypes.
-                        default=[10]
+                        default=10
   --targetTime TARGETTIME
                         Sets how rapidly you aim to complete jobs in seconds.
                         Shorter times mean more aggressive parallelization.
@@ -329,8 +333,8 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         when they are launched in gigabytes. You may want to
                         set this if your jobs require a lot of disk space. The
                         default value is 50.
-  --node_storage_overrides NODESTORAGEOVERRIDES_LIST
-                        List of nodeType:nodeStorage that are used
+--nodeStorageOverrides NODESTORAGEOVERRIDES
+                        Comma-separated list of nodeType:nodeStorage that are used
                         to override the default value from ``--nodeStorage`` for the
                         specified nodeType(s). This is useful for heterogeneous
                         jobs where some tasks require much more disk than others.
@@ -387,7 +391,7 @@ from the batch system.
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
                         2.0G
-  --default_accelerators ACCELERATOR_LIST
+  --defaultAccelerators ACCELERATOR
                         The default amount of accelerators to request for a
                         job. Only applicable to jobs that do not specify an
                         explicit value for this requirement. Each accelerator
@@ -395,10 +399,8 @@ from the batch system.
                         amd, cuda, rocm, opencl, or a specific model like
                         nvidia-tesla-k80), and a count [default: 1]. If both a
                         type and a count are used, they must be separated by a
-                        colon, ex. ``--default_accelerators=["nvidia-tesla-k80:2"]``.
-                        If multiple types of accelerators are used, the
-                        specifications are appended onto the list.
-                        Default is [].
+                        colon. If multiple types of accelerators are used, the
+                        specifications are separated by commas. Default is [].
   --defaultPreemptible BOOL
                         Make all jobs able to run on preemptible (spot) nodes
                         by default.
@@ -477,10 +479,10 @@ systems have issues!).
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
                         not passed.
-  --environment NAME_DICT, -e NAME_DICT
-                        ``-e="{NAME: VALUE,...}"`` or ``-e="{NAME: null,...}"``.
+  --setEnv NAME, -e NAME
+                        NAME=VALUE or NAME, -e NAME=VALUE or NAME are also valid.
                         Set an environment variable early on in the worker. If
-                        VALUE is null, it will be looked up in the current
+                        VALUE is omitted, it will be looked up in the current
                         environment. Independently of this option, the worker
                         will try to emulate the leader's environment before
                         running a job, except for some variables known to vary

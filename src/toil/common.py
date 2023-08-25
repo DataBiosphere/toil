@@ -31,7 +31,7 @@ from argparse import (SUPPRESS,
                       ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
-                      _ArgumentGroup, _StoreAction, _AppendAction, _StoreFalseAction, _StoreTrueAction)
+                      _ArgumentGroup, Action, _StoreFalseAction, _StoreTrueAction, _AppendAction)
 from distutils.util import strtobool
 from functools import lru_cache
 from types import TracebackType
@@ -70,8 +70,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage,
-                      gen_message_bus_path)
+                      QueueSizeMessage)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
@@ -80,8 +79,7 @@ from toil.lib.io import try_path, AtomicFileCreate
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                cluster_factory,
-                               parse_node_types,
-                               parse_one_node_type)
+                               parse_node_types)
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   set_logging_from_options)
@@ -190,15 +188,15 @@ class Config:
 
     # Autoscaling options
     provisioner: Optional[str]
-    node_types: List[Tuple[Set[str], Optional[float]]]
-    min_nodes: List[int]
-    max_nodes: List[int]
+    nodeTypes: List[Tuple[Set[str], Optional[float]]]
+    minNodes: List[int]
+    maxNodes: List[int]
     targetTime: float
     betaInertia: float
     scaleInterval: int
     preemptibleCompensation: float
     nodeStorage: int
-    node_storage_overrides: List[str]
+    nodeStorageOverrides: List[str]
     metrics: bool
     assume_zero_overhead: bool
 
@@ -217,7 +215,7 @@ class Config:
     # TODO: These names are generated programmatically in
     # Requirer._fetchRequirement so we can't use snake_case until we fix
     # that (and add compatibility getters/setters?)
-    default_accelerators: List['AcceleratorRequirement']
+    defaultAccelerators: List['AcceleratorRequirement']
     maxCores: int
     maxMemory: int
     maxDisk: int
@@ -388,15 +386,15 @@ class Config:
                                            set_option))  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
 
         # File store options
-        set_option("linkImports", old_names=["linkImports"])
-        set_option("moveExports", old_names=["moveExports"])
+        set_option("link_imports", old_names=["linkImports"])
+        set_option("move_exports", old_names=["moveExports"])
         set_option("caching", old_names=["enableCaching"])
 
         # Autoscaling options
         set_option("provisioner")
-        set_option("node_types", old_names=["nodeTypes"])
-        set_option("min_nodes", old_names=["minNodes"])
-        set_option("max_nodes", old_names=["maxNodes"])
+        set_option("nodeTypes")
+        set_option("minNodes")
+        set_option("maxNodes")
         set_option("targetTime")
         set_option("betaInertia")
         set_option("scaleInterval")
@@ -405,7 +403,7 @@ class Config:
         set_option("preemptibleCompensation")
         set_option("nodeStorage")
 
-        set_option("node_storage_overrides", old_names=["nodeStorageOverrides"])
+        set_option("nodeStorageOverrides")
 
         if self.cwl is False:
             # Parameters to limit service jobs / detect deadlocks
@@ -417,7 +415,7 @@ class Config:
         set_option("defaultMemory")
         set_option("defaultCores")
         set_option("defaultDisk")
-        set_option("default_accelerators", old_names=["defaultAccelerators"])
+        set_option("defaultAccelerators")
         # set_option("readGlobalFileMutableByDefault") # does not exist?
         set_option("maxCores")
         set_option("maxMemory")
@@ -439,10 +437,7 @@ class Config:
         set_option("write_messages")
 
         # Misc
-        set_option("environment", old_names=["setEnv"])
-        # deal with deprecated setEnv
-        if not isinstance(self.environment, dict):
-            self.environment = dict(self.environment)
+        set_option("environment")
 
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
@@ -468,10 +463,10 @@ class Config:
             raise ValueError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
         if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
             raise ValueError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
-        for override in self.node_storage_overrides:
+        for override in self.nodeStorageOverrides:
             tokens = override.split(":")
-            if not any(tokens[0] in n[0] for n in self.node_types):
-                raise ValueError("Instance type in --node_storage_overrides must be in --node_types")
+            if not any(tokens[0] in n[0] for n in self.nodeTypes):
+                raise ValueError("Instance type in --nodeStorageOverrides must be in --nodeTypes")
 
         if self.stats:
             if self.clean != "never" and self.clean is not None:
@@ -523,23 +518,16 @@ def generate_config(filepath: str) -> None:
     #   Various log options are skipped as they are store_const arguments that are redundant to --logLevel
     #   linkImports, moveExports, disableCaching, are deprecated in favor of --link_imports, --move_exports,
     #   and --caching respectively
-    # Skip these two to ensure that values from the config file and argparse defaults are one to one:
-    # (ex: an argparse option that parsed a string list of "1,2,3" -> [1,2,3] has been changed to just have its list
-    # representation)
-    #   setEnv is deprecated in favor of --environment, as this lets the config file have a native dictionary
-    #   minNodes, maxNodes, and nodeStorageOverrides, and nodeTypes are deprecated in favor of min_nodes, max_nodes,
-    #   node_storage_overrides, and node_types in order for the argument to be represented as a native list
-    # Also skip StoreTrue and StoreFalse options that have opposite defaults as including it in the config would
+    # Skip StoreTrue and StoreFalse options that have opposite defaults as including it in the config would
     # override those defaults
     deprecated_or_redundant_options = ("help", "config", "logCritical", "logDebug", "logError", "logInfo", "logOff",
                                        "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports",
-                                       "enableCaching", "disableCaching", "setEnv", "minNodes", "maxNodes",
-                                       "nodeStorageOverrides", "nodeTypes", "defaultAccelerators")
+                                       "enableCaching", "disableCaching")
 
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser, jobstore_as_flag=True)
 
-    data = CommentedMap() # to preserve order
+    data = CommentedMap()  # to preserve order
     group_title_key: Dict[str, str] = dict()
     for action in parser._actions:
         if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
@@ -560,7 +548,7 @@ def generate_config(filepath: str) -> None:
         data[option] = default
 
         # store where each argparse group starts
-        group_title = action.container.title # type: ignore[attr-defined]
+        group_title = action.container.title  # type: ignore[attr-defined]
         group_title_key.setdefault(group_title, option)
 
     # add comment for when each argparse group starts
@@ -615,8 +603,9 @@ def parser_with_common_options(
                              "by default generates a fresh tmp dir with 'tempfile.gettempdir()'.")
     return parser
 
+
 # This is kept in the outer scope as batchSystems/parasol.py uses this
-def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[_StoreAction]:
+def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[Action]:
     """
     Returns an argparse action class to check if the input is within the given half-open interval.
     ex:
@@ -628,7 +617,7 @@ def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, f
     :return: argparse action class
     """
 
-    class IntOrFloatOpenAction(_StoreAction):
+    class IntOrFloatOpenAction(Action):
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             if isinstance(min, int):
                 if max is not None:  # for mypy
@@ -691,10 +680,11 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     else:
         core_options.add_argument('jobStore', type=parse_jobstore, help=JOBSTORE_HELP)
 
-    class WorkDirAction(_StoreAction):
+    class WorkDirAction(Action):
         """
         Argparse action class to check that the provided --workDir exists
         """
+
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             workDir = values
             if workDir is not None:
@@ -708,10 +698,11 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                    f'like "/tmp" to avoid overly long paths.')
             setattr(namespace, self.dest, values)
 
-    class CoordinationDirAction(_StoreAction):
+    class CoordinationDirAction(Action):
         """
         Argparse action class to check that the provided --coordinationDir exists
         """
+
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             coordination_dir = values
             if coordination_dir is not None:
@@ -722,7 +713,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
             setattr(namespace, self.dest, values)
 
     def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[
-        _StoreAction]:
+        Action]:
         """
         Returns an argparse action class to check if the input is within the given half-open interval.
         ex:
@@ -732,7 +723,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         :param max: optional int/float
         :return: argparse action
         """
-        class ClosedIntOrFloatAction(_StoreAction):
+
+        class ClosedIntOrFloatAction(Action):
             def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
                 def is_within(x: Union[int, float]) -> bool:
                     if max is None:
@@ -847,14 +839,15 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           f"'--provisioner' option, and defaults to None for running on single "
                                           f"machine and non-auto-scaling batch systems.  The currently supported "
                                           f"choices are {provisioner_choices}.  The default is %(default)s.")
-    autoscaling_options.add_argument('--node_types', default=[], dest="node_types", type=parse_one_node_type, nargs="*",
+    autoscaling_options.add_argument('--nodeTypes', default=[], dest="nodeTypes", type=parse_node_types,
+                                     action="extend",
                                      help="Specifies a list of comma-separated node types, each of which is "
                                           "composed of slash-separated instance types, and an optional spot "
                                           "bid set off by a colon, making the node type preemptible. Instance "
                                           "types may appear in multiple node types, and the same node type "
                                           "may appear as both preemptible and non-preemptible.\n"
                                           "Valid argument specifying two node types:\n"
-                                          "\t[c5.4xlarge/c5a.4xlarge:0.42, t2.large]\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42, t2.large\n"
                                           "Node types:\n"
                                           "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
                                           "Instance types:\n"
@@ -864,12 +857,33 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           "\ttreated interchangeably, while they are available at that price,\n"
                                           "\tand buy t2.large instances at full price.\n"
                                           "default=%(default)s")
-    autoscaling_options.add_argument('--max_nodes', default=[10], dest="max_nodes", type=int, nargs="*",
+    class NodeExtendAction(_AppendAction):
+        """
+        argparse Action class to remove the default value on first call, and act as an extend action after
+        """
+        # with action=append/extend, the argparse default is always prepended to the option
+        # so make the CLI have priority by rewriting the option on the first run
+        def __init__(self, option_strings: Any, dest: Any, **kwargs):
+            super().__init__(option_strings, dest, **kwargs)
+            self.is_default = True
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            if self.is_default:
+                setattr(namespace, self.dest, values)
+                self.is_default = False
+            else:
+                # copied from argparse
+                from copy import copy
+                items = getattr(namespace, self.dest, None)
+                items = copy(items)
+                items.extend(values)
+                setattr(namespace, self.dest, items)
+
+    autoscaling_options.add_argument('--maxNodes', default=[10], dest="maxNodes", type=parse_int_list, action=NodeExtendAction,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
                                           f"provided as a comma-separated list.  The first value is used as a default "
                                           f"if the list length is less than the number of nodeTypes.  "
                                           f"default=%(default)s")
-    autoscaling_options.add_argument('--min_nodes', default=[0], dest="min_nodes", type=int, nargs="*",
+    autoscaling_options.add_argument('--minNodes', default=[0], dest="minNodes", type=parse_int_list, action=NodeExtendAction,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "
                                           "same length as the list of node types. default=%(default)s")
@@ -903,7 +917,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
                                           f"space.  (default=%(default)s).")
-    autoscaling_options.add_argument('--node_storage_overrides', dest="node_storage_overrides", default=[], nargs="*",
+    autoscaling_options.add_argument('--nodeStorageOverrides', dest="nodeStorageOverrides", default=[],
+                                     type=parse_str_list, action="extend",
                                      help="Comma-separated list of nodeType:nodeStorage that are used to override "
                                           "the default value from --nodeStorage for the specified nodeType(s).  "
                                           "This is useful for heterogeneous jobs where some tasks require much more "
@@ -977,8 +992,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                   action=make_open_interval_action(1),
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
                                                                 bytes2human(SYS_MAX_SIZE)))
-    resource_options.add_argument('--default_accelerators', dest='default_accelerators', default=[],
-                                  metavar='ACCELERATOR[,ACCELERATOR...]', type=parse_accelerator, nargs="*",
+    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=[],
+                                  metavar='ACCELERATOR[,ACCELERATOR...]', type=parse_accelerator_list, action="extend",
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, []))
     resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible',
                                   metavar='BOOL',
@@ -1073,7 +1088,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                    "Checksum verification is a safety check to ensure the data is not corrupted "
                                    "during transfer. Currently only supported for non-streaming AWS files.")
 
-    class SSEKeyAction(_StoreAction):
+    class SSEKeyAction(Action):
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             if values is not None:
                 sse_key = values
@@ -1090,18 +1105,31 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # yaml.safe_load is being deprecated, this is the suggested workaround
     def yaml_safe_load(stream: Any) -> Any:
         yaml = YAML(typ='safe', pure=True)
-        return yaml.load(stream)
+        d = yaml.load(stream)
+        if isinstance(d, dict):
+            # this means the argument was a dictionary and is valid yaml (for configargparse)
+            return d
+        else:
+            # this means the argument is likely in it's string format (for CLI)
+            return parseSetEnv(parse_str_list(stream))
 
-    misc_options.add_argument("--environment", '-e', metavar='"{NAME1: VALUE1, NAME2: None}"', dest="environment",
-                              default={}, type=yaml_safe_load,
+    class ExtendActionDict(Action):
+        """
+        Argparse action class to implement the action="extend" functionality on dictionaries
+        """
+
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            items = getattr(namespace, self.dest, None)
+            # note: this will overwrite existing entries
+            items.update(values)
+
+    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment",
+                              default={}, type=yaml_safe_load, action=ExtendActionDict,
                               help="Set an environment variable early on in the worker. If VALUE is null, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
-                                   "be injected into the worker process itself before it is started."
-                                   "If declaring from the command line, the space after the colon and quotation "
-                                   "marks are required."
-                                   "Ex: -e='NAME: VALUE', -e='NAME: null'")
+                                   "be injected into the worker process itself before it is started.")
     misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float,
                               action=make_open_interval_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "
@@ -1158,30 +1186,6 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # dest is set to enableCaching to not conflict with the current --caching destination
     caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
     caching.set_defaults(disableCaching=None)
-
-    # These are deprecated in order to have the defaults in the config file and the argparse be the same
-    # Functions such as parse_int_list are supposed to parse a string representation into another type
-    #   In this case, parse_int_list(str) -> list[int]
-    #   Assuming the default is [], putting it into the config will result in argparse attempting to run the
-    #   function on [], rather than the empty string
-    misc_options.add_argument("--setEnv", metavar='NAME=VALUE or NAME', dest="setEnv", default=None,
-                              action="append", type=parse_set_env_elem,
-                              help=SUPPRESS)
-    autoscaling_options.add_argument('--nodeStorageOverrides', default=None, dest="nodeStorageOverrides",
-                                     type=parse_str_list,
-                                     help=SUPPRESS)
-
-    autoscaling_options.add_argument('--minNodes', dest="minNodes", default=None, type=parse_int_list,
-                                     help=SUPPRESS)
-    autoscaling_options.add_argument('--maxNodes', dest="maxNodes", default=None, type=parse_int_list,
-                                     help=SUPPRESS)
-
-    autoscaling_options.add_argument('--nodeTypes', default=None, dest="nodeTypes", type=parse_node_types,
-                                     help=SUPPRESS)
-
-    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None,
-                                  type=parse_accelerator_list, metavar='ACCELERATOR[,ACCELERATOR...]',
-                                  help=SUPPRESS)
 
 
 def parseBool(val: str) -> bool:
@@ -1440,9 +1444,9 @@ class Toil(ContextManager["Toil"]):
                                                 clusterName=None,
                                                 zone=None,  # read from instance meta-data
                                                 nodeStorage=self.config.nodeStorage,
-                                                nodeStorageOverrides=self.config.node_storage_overrides,
+                                                nodeStorageOverrides=self.config.nodeStorageOverrides,
                                                 sseKey=self.config.sseKey)
-            self._provisioner.setAutoscaledNodeTypes(self.config.node_types)
+            self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
     def getJobStore(cls, locator: str) -> "AbstractJobStore":
@@ -2095,22 +2099,6 @@ class ToilMetrics:
         self._listeners = []
 
 
-def parse_set_env_elem(s: str) -> Tuple[str, Optional[str]]:
-    """
-    Parse a string of the form "NAME=VALUE" or just "NAME" into a tuple.
-
-    Strings of the latter from will result in a tuple entry whose value is None.
-    """
-    v: Optional[str] = None
-    try:
-        k, v = s.split('=', 1)
-    except ValueError:
-        k, v = s, None
-    if not k:
-        raise ValueError('Empty name')
-    return k, v
-
-
 def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
     """
     Parse a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary.
@@ -2183,11 +2171,6 @@ def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement
     from toil.job import parse_accelerator
 
     return [parse_accelerator(r) for r in specs.split(',')]
-
-
-def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> 'AcceleratorRequirement':
-    from toil.job import parse_accelerator
-    return parse_accelerator(spec)
 
 
 def cacheDirName(workflowID: str) -> str:
