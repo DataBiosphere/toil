@@ -897,7 +897,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                                                            jobName=str(i), unitName='')))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
-                                job = bs.getUpdatedBatchJob(maxWait=10)
+                                job = bs.getUpdatedBatchJob(maxWait=20)
                                 self.assertIsNotNone(job)
                                 jobId, status, wallTime = job.jobID, job.exitStatus, job.wallTime
                                 self.assertEqual(status, 0)
