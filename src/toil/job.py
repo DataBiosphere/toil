@@ -454,28 +454,15 @@ class Requirer:
 
     def __deepcopy__(self, memo: Any) -> "Requirer":
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
-        # We used to use <https://stackoverflow.com/a/40484215> but that was
-        # discovered to not actually work right, because you would get the
-        # copy, if later copied again, stamping out copies of the *original*
-        # object, due to putting back a method as a member that was already
-        # bound to a self parameter.
+        # We used to use <https://stackoverflow.com/a/40484215> and
+        # <https://stackoverflow.com/a/71125311> but that would result in
+        # copies sometimes resurrecting weirdly old job versions. So now we
+        # just actually implement __deepcopy__.
 
-        # So we have to also tinker with the method binding as noted in
-        # <https://stackoverflow.com/a/71125311>.
-        # TODO: What's the default implementation actually?
-
-        # Hide this override
-        implementation = self.__deepcopy__
-        self.__deepcopy__ = None  # type: ignore[assignment]
-
-        # Do the deepcopy which omits the config via __getstate__ override
-        clone = copy.deepcopy(self, memo)
-
-        # Put back the override on us
-        self.__deepcopy__ = implementation  # type: ignore[assignment]
-
-        # Bind the override to the copy and put it on the copy
-        clone.__deepcopy__ = types.MethodType(implementation.__func__, clone) # type: ignore[assignment]
+        clone = type(self).__new__(self.__class__)
+        state = self.__getstate__()
+        clone_state = copy.deepcopy(state, memo)
+        clone.__dict__.update(clone_state)
 
         if self._config is not None:
             # Share a config reference
@@ -876,6 +863,8 @@ class JobDescription(Requirer):
         # Every time we update a job description in place in the job store, we
         # increment this.
         self._job_version = 0
+        # And we log who made the version (by PID)
+        self._job_version_writer = 0
 
         # Human-readable names of jobs that were run as part of this job's
         # invocation, starting with this job
@@ -1065,6 +1054,14 @@ class JobDescription(Requirer):
             raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
 
         self._job_version = other._job_version
+        self._job_version_writer = os.getpid()
+
+    def check_new_version(self, other: "JobDescription") -> None:
+        """
+        Make sure a prospective new version of the JobDescription is actually moving forward in time and not backward.
+        """
+        if other._job_version < self._job_version:
+            raise RuntimeError(f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}")
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1249,6 +1246,7 @@ class JobDescription(Requirer):
         Reserve a job version number for later, for journaling asynchronously.
         """
         self._job_version += count
+        self._job_version_writer = os.getpid()
         logger.debug("Skip ahead to job version: %s", self)
 
     def pre_update_hook(self) -> None:
@@ -1258,6 +1256,7 @@ class JobDescription(Requirer):
         Called by the job store.
         """
         self._job_version += 1
+        self._job_version_writer = os.getpid()
         logger.debug("New job version: %s", self)
 
     def get_job_kind(self) -> str:

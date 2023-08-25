@@ -1814,6 +1814,11 @@ class CachingFileStore(AbstractFileStore):
             # might be necessary for later jobs to see earlier jobs' deleted
             # before they are committed?
 
+            logger.debug('Starting commit of %s forked from %s', state_to_commit, self.jobDesc)
+            # Make sure the deep copy isn't summoning ghosts of old job
+            # versions. It must be as new or newer at this point.
+            self.jobDesc.check_new_version(state_to_commit)
+
             # Bump the original's version since saving will do that too and we
             # don't want duplicate versions.
             self.jobDesc.reserve_versions(1 if len(state_to_commit.filesToDelete) == 0 else 2)
@@ -1848,7 +1853,7 @@ class CachingFileStore(AbstractFileStore):
             if state_to_commit is not None:
                 # Do all the things that make this job not redoable
 
-                logger.debug('Committing file deletes and job state changes asynchronously')
+                logger.debug('Committing file deletes and job state changes asynchronously from %s', state_to_commit)
 
                 # Complete the job
                 self.jobStore.update_job(state_to_commit)
