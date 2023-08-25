@@ -151,7 +151,7 @@ def run_conformance_tests(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
 
-        if batch_system is None or batch_system == "single_machine":
+        if batchSystem is None or batchSystem == "single_machine":
             # Make sure we can run on small machines
             args_passed_directly_to_runner.append("--scale=0.1")
 
