@@ -165,7 +165,8 @@ def run_conformance_tests(
         else:
             # Run tests in parallel on the local machine. Don't run too many
             # tests at once; we want at least a couple cores for each.
-            parallel_tests = max(int(cpu_count() / 2), 1)
+            # But we need to have at least a few going in parallel or we risk hitting our timeout.
+            parallel_tests = max(int(cpu_count() / 2), 4)
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
