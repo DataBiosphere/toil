@@ -506,7 +506,7 @@ def generate_config(filepath: str) -> None:
     # this is placed in common.py rather than toilConfig.py to prevent circular imports
 
     # configargparse's write_config function does not write options with a None value
-    # Thus, certain CLI options that use None as it's default not be written to the config file
+    # Thus, certain CLI options that use None as their default won't be written to the config file.
     # it also does not support printing config elements in nonalphabetical order
 
     # Instead, mimic configargparser's write_config behavior and also make it output arguments with

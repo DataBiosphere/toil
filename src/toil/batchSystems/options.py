@@ -12,14 +12,9 @@
 # See the License for the specific language governing permissions and
 
 import logging
-import os
 import sys
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, TypeVar, Union, cast
-
-from configargparse import ArgParser
-
-SYS_MAX_SIZE = 9223372036854775807
 
 if sys.version_info >= (3, 8):
     from typing import Protocol
@@ -85,6 +80,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    from toil.common import SYS_MAX_SIZE
     # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",
