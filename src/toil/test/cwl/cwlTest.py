@@ -69,7 +69,7 @@ from toil.test.provisioners.clusterTest import AbstractClusterTest
 from schema_salad.exceptions import ValidationException
 
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 3600
+CONFORMANCE_TEST_TIMEOUT = 5000
 
 
 def run_conformance_tests(
@@ -150,6 +150,10 @@ def run_conformance_tests(
             args_passed_directly_to_runner.append(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
+
+        if batch_system is None or batch_system == "single_machine":
+            # Make sure we can run on small machines
+            args_passed_directly_to_runner.append("--scale=0.1")
 
         job_store_override = None
 

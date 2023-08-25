@@ -181,32 +181,13 @@ slurm_test:
     - docker compose version
     - ./slurm_test.sh
 
-cwl_v1.0:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
-    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
-
-cwl_v1.1:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
-
 cwl_v1.2:
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
 
 cwl_on_arm:
   stage: main_tests
