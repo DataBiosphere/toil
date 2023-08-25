@@ -50,7 +50,7 @@ from typing import (IO,
                     TypeVar,
                     Union,
                     cast,
-                    overload)
+                    overload, Sequence)
 from urllib.parse import urlparse
 
 import requests
@@ -863,7 +863,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         """
         # with action=append/extend, the argparse default is always prepended to the option
         # so make the CLI have priority by rewriting the option on the first run
-        def __init__(self, option_strings: Any, dest: Any, **kwargs):
+        def __init__(self, option_strings: Any, dest: Any, **kwargs: Any):
             super().__init__(option_strings, dest, **kwargs)
             self.is_default = True
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
@@ -874,6 +874,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                 # copied from argparse
                 from copy import copy
                 items = getattr(namespace, self.dest, None)
+                assert items is not None # for mypy, this should never be none esp. if in maxNodes and minNodes
                 items = copy(items)
                 items.extend(values)
                 setattr(namespace, self.dest, items)
@@ -1120,6 +1121,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             items = getattr(namespace, self.dest, None)
+            assert items is not None # for mypy, this should never be NOne, esp. if called in setEnv
             # note: this will overwrite existing entries
             items.update(values)
 
