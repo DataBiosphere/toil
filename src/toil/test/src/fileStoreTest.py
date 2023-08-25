@@ -837,7 +837,10 @@ class hidden:
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
             with open(x.name) as y:
-                assert int(y.read()) > 2
+                # At least one job at a time should have been observed.
+                # We can't actually guarantee that any of our jobs will
+                # see each other currently running.
+                assert int(y.read()) > 1
 
         @staticmethod
         def _multipleFileReader(job, diskMB, fsID, maxWriteFile):
