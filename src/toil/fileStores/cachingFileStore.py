@@ -921,7 +921,7 @@ class CachingFileStore(AbstractFileStore):
         # soon as we hit the cache limit.
 
         # Find something that has no non-mutable references and is not already being deleted.
-        self._static_read("""
+        self._read("""
             SELECT files.id FROM files WHERE files.state = 'cached' AND NOT EXISTS (
                 SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             ) LIMIT 1
