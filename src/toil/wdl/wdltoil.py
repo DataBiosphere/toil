@@ -31,7 +31,7 @@ import sys
 import tempfile
 import uuid
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
 from urllib.parse import urlsplit, urljoin, quote, unquote
@@ -480,7 +480,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if self._is_url(filename):
             # Already virtual
-            logger.debug('Virtualized %s as WDL file %s', filename, filename)
+            logger.debug('Already virtualized %s as WDL file %s', filename, filename)
             return filename
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
@@ -1467,6 +1467,10 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         Make a new job to run a workflow node to completion.
         """
         super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
+        # Always run workflow nodes on the leader for issue #4554
+        # https://github.com/DataBiosphere/toil/issues/4554
+        if 'local' not in kwargs:
+            kwargs['local'] = True
 
         self._node = node
         self._prev_node_results = prev_node_results
@@ -1486,58 +1490,58 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
+        with monkeypatch_coerce(standard_library):
+            if isinstance(self._node, WDL.Tree.Decl):
+                # This is a variable assignment
+                logger.info('Setting %s to %s', self._node.name, self._node.expr)
+                value = evaluate_decl(self._node, incoming_bindings, standard_library)
+                return self.postprocess(incoming_bindings.bind(self._node.name, value))
+            elif isinstance(self._node, WDL.Tree.Call):
+                # This is a call of a task or workflow
 
-        if isinstance(self._node, WDL.Tree.Decl):
-            # This is a variable assignment
-            logger.info('Setting %s to %s', self._node.name, self._node.expr)
-            value = evaluate_decl(self._node, incoming_bindings, standard_library)
-            return self.postprocess(incoming_bindings.bind(self._node.name, value))
-        elif isinstance(self._node, WDL.Tree.Call):
-            # This is a call of a task or workflow
+                # Fetch all the inputs we are passing and bind them.
+                # The call is only allowed to use these.
+                logger.debug("Evaluating step inputs")
+                input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
 
-            # Fetch all the inputs we are passing and bind them.
-            # The call is only allowed to use these.
-            logger.debug("Evaluating step inputs")
-            input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
+                # Bindings may also be added in from the enclosing workflow inputs
+                # TODO: this is letting us also inject them from the workflow body.
+                # TODO: Can this result in picking up non-namespaced values that
+                # aren't meant to be inputs, by not changing their names?
+                passed_down_bindings = incoming_bindings.enter_namespace(self._node.name)
 
-            # Bindings may also be added in from the enclosing workflow inputs
-            # TODO: this is letting us also inject them from the workflow body.
-            # TODO: Can this result in picking up non-namespaced values that
-            # aren't meant to be inputs, by not changing their names?
-            passed_down_bindings = incoming_bindings.enter_namespace(self._node.name)
+                if isinstance(self._node.callee, WDL.Tree.Workflow):
+                    # This is a call of a workflow
+                    subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
+                    self.addChild(subjob)
+                elif isinstance(self._node.callee, WDL.Tree.Task):
+                    # This is a call of a task
+                    subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
+                    self.addChild(subjob)
+                else:
+                    raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
 
-            if isinstance(self._node.callee, WDL.Tree.Workflow):
-                # This is a call of a workflow
-                subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
+                # We need to agregate outputs namespaced with our node name, and existing bindings
+                subjob.then_namespace(self._node.name)
+                subjob.then_overlay(incoming_bindings)
+                self.defer_postprocessing(subjob)
+                return subjob.rv()
+            elif isinstance(self._node, WDL.Tree.Scatter):
+                subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace)
                 self.addChild(subjob)
-            elif isinstance(self._node.callee, WDL.Tree.Task):
-                # This is a call of a task
-                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
+                # Scatters don't really make a namespace, just kind of a scope?
+                # TODO: Let stuff leave scope!
+                self.defer_postprocessing(subjob)
+                return subjob.rv()
+            elif isinstance(self._node, WDL.Tree.Conditional):
+                subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace)
                 self.addChild(subjob)
+                # Conditionals don't really make a namespace, just kind of a scope?
+                # TODO: Let stuff leave scope!
+                self.defer_postprocessing(subjob)
+                return subjob.rv()
             else:
-                raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
-
-            # We need to agregate outputs namespaced with our node name, and existing bindings
-            subjob.then_namespace(self._node.name)
-            subjob.then_overlay(incoming_bindings)
-            self.defer_postprocessing(subjob)
-            return subjob.rv()
-        elif isinstance(self._node, WDL.Tree.Scatter):
-            subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace)
-            self.addChild(subjob)
-            # Scatters don't really make a namespace, just kind of a scope?
-            # TODO: Let stuff leave scope!
-            self.defer_postprocessing(subjob)
-            return subjob.rv()
-        elif isinstance(self._node, WDL.Tree.Conditional):
-            subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace)
-            self.addChild(subjob)
-            # Conditionals don't really make a namespace, just kind of a scope?
-            # TODO: Let stuff leave scope!
-            self.defer_postprocessing(subjob)
-            return subjob.rv()
-        else:
-            raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
+                raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
 
 class WDLWorkflowNodeListJob(WDLBaseJob):
     """
@@ -1551,6 +1555,10 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         Make a new job to run a list of workflow nodes to completion.
         """
         super().__init__(unitName=nodes[0].workflow_node_id + '+', displayName=nodes[0].workflow_node_id + '+', **kwargs)
+        # Always run workflow nodes on the leader for issue #4554
+        # https://github.com/DataBiosphere/toil/issues/4554
+        if 'local' not in kwargs:
+            kwargs['local'] = True
 
         self._nodes = nodes
         self._prev_node_results = prev_node_results
@@ -1571,14 +1579,15 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store)
 
-        for node in self._nodes:
-            if isinstance(node, WDL.Tree.Decl):
-                # This is a variable assignment
-                logger.info('Setting %s to %s', node.name, node.expr)
-                value = evaluate_decl(node, current_bindings, standard_library)
-                current_bindings = current_bindings.bind(node.name, value)
-            else:
-                raise WDL.Error.InvalidType(node, "Unimplemented WorkflowNode: " + str(type(node)))
+        with monkeypatch_coerce(standard_library):
+            for node in self._nodes:
+                if isinstance(node, WDL.Tree.Decl):
+                    # This is a variable assignment
+                    logger.info('Setting %s to %s', node.name, node.expr)
+                    value = evaluate_decl(node, current_bindings, standard_library)
+                    current_bindings = current_bindings.bind(node.name, value)
+                else:
+                    raise WDL.Error.InvalidType(node, "Unimplemented WorkflowNode: " + str(type(node)))
 
         return self.postprocess(current_bindings)
 
@@ -2031,7 +2040,8 @@ class WDLScatterJob(WDLSectionJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         # Get what to scatter over
-        scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
+        with monkeypatch_coerce(standard_library):
+            scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
 
         assert isinstance(scatter_value, WDL.Value.Array)
 
@@ -2162,7 +2172,8 @@ class WDLConditionalJob(WDLSectionJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         # Get the expression value. Fake a name.
-        expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
+        with monkeypatch_coerce(standard_library):
+            expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
 
         if expr_value.value:
             # Evaluated to true!
@@ -2223,9 +2234,10 @@ class WDLWorkflowJob(WDLSectionJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._workflow.inputs:
-            for input_decl in self._workflow.inputs:
-                # Evaluate all the inputs that aren't pre-set
-                bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+            with monkeypatch_coerce(standard_library):
+                for input_decl in self._workflow.inputs:
+                    # Evaluate all the inputs that aren't pre-set
+                    bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
 
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
@@ -2266,8 +2278,9 @@ class WDLOutputsJob(WDLBaseJob):
         # Evaluate all the outputs in the normal, non-task-outputs library context
         standard_library = ToilWDLStdLibBase(file_store)
         output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
-        for output_decl in self._outputs:
-            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, unwrap(self._bindings), standard_library))
+        with monkeypatch_coerce(standard_library):
+            for output_decl in self._outputs:
+                output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, unwrap(self._bindings), standard_library))
 
         return self.postprocess(output_bindings)
 
@@ -2302,6 +2315,26 @@ class WDLRootJob(WDLSectionJob):
         self.addChild(workflow_job)
         self.defer_postprocessing(workflow_job)
         return workflow_job.rv()
+
+# monkey patch miniwdl's WDL.Value.Base.coerce() function
+# miniwdl recognizes when a string needs to be converted into a file
+# However miniwdl's string to file conversions is to just store the filepath
+# Toil needs to virtualize the file into the jobstore
+# So monkey patch coerce to always virtualize whenever a file is expected
+#   _virtualize_filename should detect if the value is already a file and return immediately if so
+@contextmanager
+def monkeypatch_coerce(standard_library: ToilWDLStdLibBase):
+    def coerce(self, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
+        if isinstance(desired_type, WDL.Type.File):
+            self.value = standard_library._virtualize_filename(self.value)
+            return self
+        return old_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
+    old_coerce = WDL.Value.Base.coerce
+    try:
+        WDL.Value.Base.coerce = coerce
+        yield
+    finally:
+        WDL.Value.Base.coerce = old_coerce
 
 def main() -> None:
     """
