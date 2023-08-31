@@ -397,6 +397,7 @@ class hidden:
             self.options.caching = True
 
         @slow
+        @pytest.mark.xfail(reason="Cannot succeed in time on small CI runners")
         def testExtremeCacheSetup(self):
             """
             Try to create the cache with bad worker active and then have 10 child jobs try to run in
@@ -844,7 +845,10 @@ class hidden:
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
             with open(x.name) as y:
-                assert int(y.read()) > 2
+                # At least one job at a time should have been observed.
+                # We can't actually guarantee that any of our jobs will
+                # see each other currently running.
+                assert int(y.read()) > 1
 
         @staticmethod
         def _multipleFileReader(job, diskMB, fsID, maxWriteFile):

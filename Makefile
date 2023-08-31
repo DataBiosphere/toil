@@ -101,6 +101,8 @@ cyan=\033[0;36m
 # expression to tell pytest what tests to run based on their marks
 # the empty string means all tests will be run
 marker=""
+# Number of tests to run in parallel.
+threads:="auto"
 
 develop: check_venv
 	pip install -e .$(extras) $(packages)
@@ -131,7 +133,7 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n auto --dist loadscope $(tests) -m "$(marker)"
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 
 # This target will skip building docker and all docker based tests
@@ -139,7 +141,7 @@ test: check_venv check_build_reqs
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n auto --dist loadscope $(tests) -m "$(marker)"
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
@@ -162,32 +164,25 @@ endef
 
 docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
-pre_pull_docker:
-	# Pre-pull everything
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:22.04 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.24.1 && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
-	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
-
-toil_docker: pre_pull_docker docker/Dockerfile
+toil_docker: docker/Dockerfile
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd docker \
 	; docker buildx build --platform=$(arch) --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(docker_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../.docker-cache/toil --cache-to type=local,dest=../.docker-cache/toil -f Dockerfile .
 
-prometheus_docker: pre_pull_docker
+prometheus_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/prometheus \
 	; docker buildx build --platform=$(arch) --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(prometheus_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/prometheus --cache-to type=local,dest=../../.docker-cache/prometheus -f Dockerfile .
 
-grafana_docker: pre_pull_docker
+grafana_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/grafana \
 	; docker buildx build --platform=$(arch) --tag=$(grafana_image):$(TOIL_DOCKER_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_MAIN_CACHE_TAG) --cache-from type=registry,ref=$(grafana_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../../.docker-cache/grafana --cache-to type=local,dest=../../.docker-cache/grafana -f Dockerfile .
 
-mtail_docker: pre_pull_docker
+mtail_docker:
 	mkdir -p .docker_cache
 	@set -ex \
 	; cd dashboard/mtail \
