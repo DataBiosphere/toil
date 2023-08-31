@@ -250,8 +250,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
     if redirectOutputToLogFile:
         # Announce that we are redirecting logging, and where it will now go.
-        # This is important if we are trying to manually trace a faulty worker invocation.
-        logger.info("Redirecting logging to %s", tempWorkerLogPath)
+        # This is only important if we are trying to manually trace a faulty worker invocation.
+        logger.debug("Redirecting logging to %s", tempWorkerLogPath)
         sys.stdout.flush()
         sys.stderr.flush()
 
