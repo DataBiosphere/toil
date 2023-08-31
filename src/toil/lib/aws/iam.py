@@ -186,7 +186,11 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
             PolicyName=policy_name
         )
         logger.debug("Checking role policy")
-        policy_document = role_policy["PolicyDocument"]
+        # PolicyDocument is now a TypedDict, but an instance of TypedDict is not an instance of dict?
+        if isinstance(role_policy["PolicyDocument"], str):
+            policy_document = json.loads(role_policy["PolicyDocument"])
+        else:
+            policy_document = role_policy["PolicyDocument"]
 
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
@@ -200,10 +204,10 @@ def collect_policy_actions(policy_documents: List[Union[str, PolicyDocumentDictT
     allowed_actions: AllowedActionCollection = init_action_collection()
     for policy_str in policy_documents:
         # sometimes a string is returned from the api, so convert to a dictionary
-        if isinstance(policy_str, dict):
-            policy_dict = policy_str
-        else:
+        if isinstance(policy_str, str):
             policy_dict = json.loads(policy_str)
+        else:
+            policy_dict = policy_str
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_dict))
     return allowed_actions
 
