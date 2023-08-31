@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import urllib.request
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from typing import Dict, Optional, Iterator, cast
 
 from botocore.client import BaseClient
@@ -107,6 +107,12 @@ def flatcar_release_feed_amis(region: str, architecture: str = 'amd64', source: 
         except json.JSONDecodeError:
             # Feed is not JSON
             logger.exception(f'Could not decode {source} Flatcar release feed JSON')
+            # Try again
+            try_number += 1
+            continue
+        except URLError:
+            # Could be a connection timeout
+            logger.exception(f'Failed to retrieve {source} Flatcar release feed JSON')
             # Try again
             try_number += 1
             continue

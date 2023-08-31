@@ -69,7 +69,7 @@ from toil.test.provisioners.clusterTest import AbstractClusterTest
 from schema_salad.exceptions import ValidationException
 
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 3600
+CONFORMANCE_TEST_TIMEOUT = 5000
 
 
 def run_conformance_tests(
@@ -151,6 +151,10 @@ def run_conformance_tests(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
 
+        if batchSystem is None or batchSystem == "single_machine":
+            # Make sure we can run on small machines
+            args_passed_directly_to_runner.append("--scale=0.1")
+
         job_store_override = None
 
         if batchSystem == "kubernetes":
@@ -161,7 +165,8 @@ def run_conformance_tests(
         else:
             # Run tests in parallel on the local machine. Don't run too many
             # tests at once; we want at least a couple cores for each.
-            parallel_tests = max(int(cpu_count() / 2), 1)
+            # But we need to have at least a few going in parallel or we risk hitting our timeout.
+            parallel_tests = max(int(cpu_count() / 2), 4)
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
