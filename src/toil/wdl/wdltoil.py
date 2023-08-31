@@ -2322,9 +2322,9 @@ def main() -> None:
                               "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory in which to save output files. By default a new directory is created in the current directory."))
+                        help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
-                        help="File to save output JSON to.")
+                        help="File or URI to save output JSON to.")
 
     options = parser.parse_args(sys.argv[1:])
 

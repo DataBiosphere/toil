@@ -100,11 +100,12 @@ Toil WDL Runner Options
 ``--jobStore``: Specifies where to keep the Toil state information while
 running the workflow. Must be accessible from all machines.
 
-``-o`` or ``--outputDirectory``: Specifies the output folder to save
-workflow output files in. Defaults to a new directory in the current directory.
+``-o`` or ``--outputDirectory``: Specifies the output folder or URI prefix to
+save workflow output files in. Defaults to a new directory in the current
+directory.
 
-``-m`` or ``--outputFile``: Specifies a JSON file to save workflow output
-values to. Defaults to standard output.
+``-m`` or ``--outputFile``: Specifies a JSON file name or URI to save workflow
+output values at. Defaults to standard output.
 
 ``-i`` or ``--input``: Alternative to the positional argument for the
 input JSON file, for compatibility with other WDL runners.
