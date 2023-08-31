@@ -30,6 +30,7 @@ import boto.s3.connection
 import boto.sdb
 from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
+from mypy_boto3_s3.service_resource import Bucket
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
@@ -53,7 +54,7 @@ from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.s3 import create_s3_bucket
+from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
 from toil.lib.aws.utils import (get_bucket_region,
                                 get_object_for_url,
                                 list_objects_for_url,
@@ -1585,7 +1586,7 @@ class AWSJobStore(AbstractJobStore):
         # TODO: Add other failure cases to be ignored here.
         self._registered = None
         if self.filesBucket is not None:
-            self._delete_bucket(self.filesBucket)
+            delete_s3_bucket(s3_resource=s3_boto3_resource, bucket_name=self.filesBucket)
             self.filesBucket = None
         for name in 'filesDomain', 'jobsDomain':
             domain = getattr(self, name)
@@ -1601,30 +1602,6 @@ class AWSJobStore(AbstractJobStore):
                     domain.delete()
                 except SDBResponseError as e:
                     if not no_such_sdb_domain(e):
-                        raise
-
-    @staticmethod
-    def _delete_bucket(bucket):
-        """
-        :param bucket: S3.Bucket
-        """
-        for attempt in retry_s3():
-            with attempt:
-                try:
-                    uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
-                    if uploads:
-                        for u in uploads:
-                            s3_boto3_client.abort_multipart_upload(Bucket=bucket.name,
-                                                                   Key=u["Key"],
-                                                                   UploadId=u["UploadId"])
-
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
-                except s3_boto3_client.exceptions.NoSuchBucket:
-                    pass
-                except ClientError as e:
-                    if get_error_status(e) != 404:
                         raise
 
 

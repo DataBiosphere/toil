@@ -40,7 +40,7 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws.s3 import create_s3_bucket
+from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
 from toil.lib.aws.utils import get_object_for_url
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
@@ -1352,17 +1352,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            client.delete_bucket(Bucket=bucket_name)
-                except ClientError as e:
-                    # The actual HTTP code of the error is in status.
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
+                delete_s3_bucket(s3_resource=resource, bucket_name=bucket_name)
+
 
     @slow
     def testInlinedFiles(self):
