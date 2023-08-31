@@ -183,8 +183,8 @@ class Config:
 
     # File store options
     caching: Optional[bool]
-    link_imports: bool
-    move_exports: bool
+    symlinkImports: bool
+    moveOutputs: bool
 
     # Autoscaling options
     provisioner: Optional[str]
@@ -386,8 +386,8 @@ class Config:
                                            set_option))  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
 
         # File store options
-        set_option("link_imports", old_names=["linkImports"])
-        set_option("move_exports", old_names=["moveExports"])
+        set_option("symlinkImports", old_names=["linkImports"])
+        set_option("moveOutputs", old_names=["moveExports"])
         set_option("caching", old_names=["enableCaching"])
 
         # Autoscaling options
@@ -516,7 +516,7 @@ def generate_config(filepath: str) -> None:
     # Skip --help and --config as they should not be included in the config file
     # Skip deprecated/redundant options
     #   Various log options are skipped as they are store_const arguments that are redundant to --logLevel
-    #   linkImports, moveExports, disableCaching, are deprecated in favor of --link_imports, --move_exports,
+    #   linkImports, moveExports, disableCaching, are deprecated in favor of --symlinkImports, --moveOutputs,
     #   and --caching respectively
     # Skip StoreTrue and StoreFalse options that have opposite defaults as including it in the config would
     # override those defaults
@@ -806,17 +806,19 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     )
     link_imports = file_store_options.add_mutually_exclusive_group()
     link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
-                         "Specifying this option instead copies the files into the job store, which may protect "
-                         "them from being modified externally.  When not specified and as long as caching is enabled, "
-                         "Toil will protect the file automatically by changing the permissions to read-only.")
-    link_imports.add_argument("--link_imports", dest="link_imports", type=convert_bool, default=True,
+                         "Specifying this option to True instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When specified as False and as long as caching is enabled, "
+                         "Toil will protect the file automatically by changing the permissions to read-only."
+                         "default=%(default)s")
+    link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=convert_bool, default=True,
                               help=link_imports_help)
     move_exports = file_store_options.add_mutually_exclusive_group()
     move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
                          'output directory, and a symlink to the moved exported file is created at the initial '
-                         'location.  Specifying this option instead copies the files into the output directory.  '
-                         'Applies to filesystem-based job stores only.')
-    move_exports.add_argument("--move_exports", dest="move_exports", type=convert_bool, default=False,
+                         'location.  Specifying this option to True instead copies the files into the output directory.  '
+                         'Applies to filesystem-based job stores only.'
+                         'default=%(default)s')
+    move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=convert_bool, default=False,
                               help=move_exports_help)
 
     caching = file_store_options.add_mutually_exclusive_group()
@@ -1121,7 +1123,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             items = getattr(namespace, self.dest, None)
-            assert items is not None # for mypy, this should never be NOne, esp. if called in setEnv
+            assert items is not None # for mypy. This should never be None, esp. if called in setEnv
             # note: this will overwrite existing entries
             items.update(values)
 

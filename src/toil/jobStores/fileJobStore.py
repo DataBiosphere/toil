@@ -121,8 +121,8 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.filesDir, exist_ok=True)
         os.makedirs(self.jobFilesDir, exist_ok=True)
         os.makedirs(self.sharedFilesDir, exist_ok=True)
-        self.linkImports = config.link_imports
-        self.moveExports = config.move_exports
+        self.linkImports = config.symlinkImports
+        self.moveExports = config.moveOutputs
         super().initialize(config)
 
     def resume(self):
