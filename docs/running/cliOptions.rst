@@ -292,11 +292,11 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                             Bid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,
                             treated interchangeably, while they are available at that price,
                             and buy t2.large instances at full price
---minNodes MINNODES     Minimum number of nodes of each type in the cluster,
+  --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
                         node types. default=0
---maxNodes MAXNODES     Maximum number of nodes of each type in the cluster,                        Maximum number of nodes of each type in the cluster,
+  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,                        Maximum number of nodes of each type in the cluster,
                         if using autoscaling, provided as a comma-separated
                         list. The first value is used as a default if the list
                         length is less than the number of nodeTypes.
@@ -333,7 +333,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         when they are launched in gigabytes. You may want to
                         set this if your jobs require a lot of disk space. The
                         default value is 50.
---nodeStorageOverrides NODESTORAGEOVERRIDES
+  --nodeStorageOverrides NODESTORAGEOVERRIDES
                         Comma-separated list of nodeType:nodeStorage that are used
                         to override the default value from ``--nodeStorage`` for the
                         specified nodeType(s). This is useful for heterogeneous

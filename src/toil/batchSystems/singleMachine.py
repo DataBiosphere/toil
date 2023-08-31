@@ -19,7 +19,7 @@ import signal
 import subprocess
 import time
 import traceback
-from argparse import ArgumentParser, _ArgumentGroup, _StoreAction
+from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
@@ -36,7 +36,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
 
-from toil.common import SYS_MAX_SIZE, Config, Toil, fC
+from toil.common import SYS_MAX_SIZE, Config, Toil, make_open_interval_action
 from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
 from toil.lib.threading import cpu_count
@@ -843,24 +843,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        def make_scale_check_action(min: float, max: Optional[float]=None):
-            """
-
-            :param min:
-            :param max:
-            :return:
-            """
-            class ScaleCheck(_StoreAction):
-                def __call__(self, parser, namespace, values, option_string=None) -> None:
-                    try:
-                        if not fC(min, max)(values):
-                            raise parser.error(f"The {option_string} option is out of range: {values}")
-                    except AssertionError:
-                        raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
-                    setattr(namespace, self.dest, values)
-            return ScaleCheck
-
-        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_scale_check_action(0.0),
+        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_open_interval_action(0.0),
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                                  "Used in the single_machine batch system. Useful for running workflows on "
                                  "smaller machines than they were designed for, by setting a value less than 1. "

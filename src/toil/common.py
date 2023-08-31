@@ -806,8 +806,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     )
     link_imports = file_store_options.add_mutually_exclusive_group()
     link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
-                         "Specifying this option to True instead copies the files into the job store, which may protect "
-                         "them from being modified externally.  When specified as False and as long as caching is enabled, "
+                         "Setting this option to True instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When set to False, as long as caching is enabled, "
                          "Toil will protect the file automatically by changing the permissions to read-only."
                          "default=%(default)s")
     link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=convert_bool, default=True,
@@ -815,7 +815,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     move_exports = file_store_options.add_mutually_exclusive_group()
     move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
                          'output directory, and a symlink to the moved exported file is created at the initial '
-                         'location.  Specifying this option to True instead copies the files into the output directory.  '
+                         'location.  Setting this option to True instead copies the files into the output directory.  '
                          'Applies to filesystem-based job stores only.'
                          'default=%(default)s')
     move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=convert_bool, default=False,
@@ -849,7 +849,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           "types may appear in multiple node types, and the same node type "
                                           "may appear as both preemptible and non-preemptible.\n"
                                           "Valid argument specifying two node types:\n"
-                                          "\tc5.4xlarge/c5a.4xlarge:0.42, t2.large\n"
+                                          "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
                                           "Node types:\n"
                                           "\tc5.4xlarge/c5a.4xlarge:0.42 and t2.large\n"
                                           "Instance types:\n"
@@ -873,13 +873,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                 setattr(namespace, self.dest, values)
                 self.is_default = False
             else:
-                # copied from argparse
-                from copy import copy
-                items = getattr(namespace, self.dest, None)
-                assert items is not None # for mypy, this should never be none esp. if in maxNodes and minNodes
-                items = copy(items)
-                items.extend(values)
-                setattr(namespace, self.dest, items)
+                super().__call__(parser, namespace, values, option_string)
 
     autoscaling_options.add_argument('--maxNodes', default=[10], dest="maxNodes", type=parse_int_list, action=NodeExtendAction,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
@@ -985,16 +979,15 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
     resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=2147483648, type=h2b,
                                   action=make_open_interval_action(1),
-                                  # setting defaultMemory and defaultDisk to SYS_MAX_SIZE results in InsufficientSystemResources
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note,
-                                                                bytes2human(SYS_MAX_SIZE)))
+                                                                bytes2human(2147483648)))
     resource_options.add_argument('--defaultCores', dest='defaultCores', default=1, metavar='FLOAT', type=float,
                                   action=make_open_interval_action(1.0),
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(1)))
     resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=2147483648, metavar='INT', type=h2b,
                                   action=make_open_interval_action(1),
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
-                                                                bytes2human(SYS_MAX_SIZE)))
+                                                                bytes2human(2147483648)))
     resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=[],
                                   metavar='ACCELERATOR[,ACCELERATOR...]', type=parse_accelerator_list, action="extend",
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, []))
