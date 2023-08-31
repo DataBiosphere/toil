@@ -100,7 +100,7 @@ def delete_s3_bucket(
          that prints progress rather than logging.  Logging should be used for all other internal Toil usage.
     """
     logger.debug("Deleting bucket '%s'.", bucket_name)
-    printq(f'\n * Deleted s3 bucket successfully: {bucket_name}\n\n', quiet)
+    printq(f'\n * Deleting s3 bucket: {bucket_name}\n\n', quiet)
 
     s3_client = s3_resource.meta.client
 
