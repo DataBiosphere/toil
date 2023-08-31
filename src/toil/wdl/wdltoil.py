@@ -2333,14 +2333,10 @@ def main() -> None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree')
 
-    # Make sure we have an output directory and we don't need to ever worry
-    # about a None, and MyPy knows it.
+    # Make sure we have an output directory (or URL prefix) and we don't need
+    # to ever worry about a None, and MyPy knows it.
     # If we don't have a directory assigned, make one in the current directory.
     output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp(prefix='wdl-out-', dir=os.getcwd())
-    if not os.path.isdir(output_directory):
-        # Make sure it exists
-        os.mkdir(output_directory)
-
 
     with Toil(options) as toil:
         if options.restart:
