@@ -470,10 +470,10 @@ class Config:
 
         if self.stats:
             if self.clean != "never" and self.clean is not None:
-                logger.warning("Contradicting options passed: Clean flag is set to %s "
-                               "despite the stats flag requiring "
-                               "the jobStore to be intact at the end of the run. "
-                               "Setting clean to \'never\'." % self.clean)
+                raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
+                                   "despite the stats flag requiring "
+                                   "the jobStore to be intact at the end of the run. "
+                                   "Set clean to \'never\'." % self.clean)
             self.clean = "never"
 
     def __eq__(self, other: object) -> bool:
