@@ -108,7 +108,7 @@ print(heredoc('''
     # ipfs add -r .
     RUN echo "deb https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && curl https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
