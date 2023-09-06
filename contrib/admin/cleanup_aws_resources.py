@@ -45,7 +45,7 @@ def contains_uuid(string):
     Determines if a string contains a pattern like: '28064c76-a491-43e7-9b50-da424f920354',
     which toil uses in its test generated bucket names.
     """
-    return bool(re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}').findall(string))
+    return bool(re.compile('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{8,12}').findall(string))
 
 
 def contains_uuid_with_underscores(string):
@@ -61,7 +61,7 @@ def contains_num_only_uuid(string):
     Determines if a string contains a pattern like: '13614-31311-31347',
     which toil uses in its test generated sdb domain names.
     """
-    return bool(re.compile('[0-9]{5}-[0-9]{5}-[0-9]{5}').findall(string))
+    return bool(re.compile('[0-9]{4,5}-[0-9]{4,5}-[0-9]{4,5}').findall(string))
 
 
 def contains_toil_test_patterns(string):
