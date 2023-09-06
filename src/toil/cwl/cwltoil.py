@@ -104,6 +104,8 @@ from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
+from toil.cwl import check_cwltool_version
+check_cwltool_version()
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,

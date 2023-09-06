@@ -194,18 +194,21 @@ class NonCachingFileStore(AbstractFileStore):
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
 
+        # We are going to commit synchronously, so no need to clone a snapshot
+        # of the job description or mess with its version numbering.
+
         if not jobState:
             # All our operations that need committing are job state related
             return
 
         try:
-            # Indicate any files that should be deleted once the update of
-            # the job wrapper is completed.
+            # Indicate any files that should be seen as deleted once the
+            # update of the job description is visible.
+            if len(self.jobDesc.filesToDelete) > 0:
+                raise RuntimeError("Job is already in the process of being committed!")
             self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
             self.jobStore.update_job(self.jobDesc)
-            # Delete any remnant jobs
-            list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.delete_file, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
@@ -216,6 +219,7 @@ class NonCachingFileStore(AbstractFileStore):
         except:
             self._terminateEvent.set()
             raise
+
 
     def __del__(self) -> None:
         """
