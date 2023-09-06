@@ -69,7 +69,8 @@ def contains_toil_test_patterns(string):
 
 
 def matches(resource_name):
-    if resource_name.endswith('--files') or resource_name.endswith('--jobs') or resource_name.endswith('_toil'):
+    if (resource_name.endswith('--files') or resource_name.endswith('--jobs') or resource_name.endswith('_toil')
+            or resource_name.endswith('--internal') or resource_name.startswith('toil-s3test-')):
         if contains_toil_test_patterns(resource_name):
             return resource_name
 
