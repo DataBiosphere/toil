@@ -42,7 +42,6 @@ from typing import (IO,
                     ContextManager,
                     Dict,
                     List,
-                    MutableMapping,
                     Optional,
                     Set,
                     Tuple,
@@ -50,7 +49,7 @@ from typing import (IO,
                     TypeVar,
                     Union,
                     cast,
-                    overload, Sequence)
+                    overload)
 from urllib.parse import urlparse
 
 import requests
@@ -283,7 +282,7 @@ class Config:
             with open(DEFAULT_CONFIG_FILE, "r") as f:
                 yaml = YAML(typ="safe")
                 s = yaml.load(f)
-                logger.debug("Loaded default configuration: %s", json.dumps(s, indent=4))
+                logger.debug("Loaded default configuration: %s", json.dumps(s))
         except:
             # Something went wrong reading the default config, so dump its
             # contents to the log.
