@@ -489,7 +489,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         logger.debug('Devirtualized %s as openable file %s', filename, result)
         if not os.path.exists(result):
-            raise RuntimeError("Virtualized file {filename} looks like a local file but isn't!")
+            raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
         return result
 
     def _virtualize_filename(self, filename: str) -> str:

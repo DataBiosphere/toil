@@ -1316,7 +1316,7 @@ class ToilFsAccess(StdFsAccess):
             if not isinstance(here, str):
                 raise RuntimeError(f"Did not find a file at {path}")
             if not here.startswith("toilfile:"):
-                f"Did not find a filestore file at {path}"
+                raise RuntimeError(f"Did not find a filestore file at {path}")
 
             return self.size(here)
         else:
