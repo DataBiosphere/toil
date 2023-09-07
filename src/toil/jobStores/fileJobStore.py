@@ -252,18 +252,19 @@ class FileJobStore(AbstractJobStore):
 
         job.pre_update_hook()
 
+        dest_filename = self._get_job_file_name(job.jobStoreID)
+
         # The job is serialised to a file suffixed by ".new"
         # We insist on creating the file; an existing .new file indicates
         # multiple simultaneous attempts to update the job, which will lose
         # updates.
         # The file is then moved to its correct path.
-        # Atomicity guarantees use the fact the underlying file systems "move"
+        # Atomicity guarantees use the fact the underlying file system's "move"
         # function is atomic.
-        with open(self._get_job_file_name(job.jobStoreID) + ".new", 'xb') as f:
+        with open(dest_filename + ".new", 'xb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
-        os.rename(self._get_job_file_name(job.jobStoreID) + ".new", self._get_job_file_name(job.jobStoreID))
-
+        os.rename(dest_filename + ".new", dest_filename)
     def delete_job(self, job_id):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
@@ -341,6 +342,9 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._get_file_path_from_id(file_id)
             destPath = self._extract_path_from_url(uri)
+            # Make sure we don't need to worry about directories when exporting
+            # to local files, just like for cloud storage.
+            os.makedirs(os.path.dirname(destPath), exist_ok=True)
             executable = getattr(file_id, 'executable', False)
             if self.moveExports:
                 self._move_and_linkback(srcPath, destPath, executable=executable)

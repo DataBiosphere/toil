@@ -22,6 +22,7 @@ import os
 import pickle
 import sys
 import time
+import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -449,19 +450,15 @@ class Requirer:
 
     def __deepcopy__(self, memo: Any) -> "Requirer":
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
-        # See https://stackoverflow.com/a/40484215 for how to do an override
-        # that uses the base implementation
+        # We used to use <https://stackoverflow.com/a/40484215> and
+        # <https://stackoverflow.com/a/71125311> but that would result in
+        # copies sometimes resurrecting weirdly old job versions. So now we
+        # just actually implement __deepcopy__.
 
-        # Hide this override
-        implementation = self.__deepcopy__
-        self.__deepcopy__ = None  # type: ignore[assignment]
-
-        # Do the deepcopy which omits the config via __getstate__ override
-        clone = copy.deepcopy(self, memo)
-
-        # Put back the override on us and the copy
-        self.__deepcopy__ = implementation  # type: ignore[assignment]
-        clone.__deepcopy__ = implementation  # type: ignore[assignment]
+        clone = type(self).__new__(self.__class__)
+        state = self.__getstate__()
+        clone_state = copy.deepcopy(state, memo)
+        clone.__dict__.update(clone_state)
 
         if self._config is not None:
             # Share a config reference
@@ -795,15 +792,27 @@ class JobDescription(Requirer):
         # default value for this workflow execution.
         self._remainingTryCount = None
 
-        # Holds FileStore FileIDs of the files that this job has deleted. Used
-        # to journal deletions of files and recover from a worker crash between
-        # committing a JobDescription update and actually executing the
-        # requested deletions.
+        # Holds FileStore FileIDs of the files that should be seen as deleted,
+        # as part of a transaction with the writing of this version of the job
+        # to the job store. Used to journal deletions of files and recover from
+        # a worker crash between committing a JobDescription update (for
+        # example, severing the body of a completed job from the
+        # JobDescription) and actually executing the requested deletions (i.e.
+        # the deletions made by executing the body).
+        #
+        # Since the files being deleted might be required to execute the job
+        # body, we can't delete them first, but we also don't want to leave
+        # them behind if we die right after saving the JobDescription.
+        #
+        # This will be empty at all times except when a new version of a job is
+        # in the process of being committed. 
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this
-        # job, and which should be deleted when this job finally is deleted.
-        self.jobsToDelete = []
+        # job, and which should be deleted when this job finally is deleted
+        # (but not before). The successor relationships with them will have
+        # been cut, so we need to hold onto them somehow.
+        self.merged_jobs = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -849,6 +858,8 @@ class JobDescription(Requirer):
         # Every time we update a job description in place in the job store, we
         # increment this.
         self._job_version = 0
+        # And we log who made the version (by PID)
+        self._job_version_writer = 0
 
         # Human-readable names of jobs that were run as part of this job's
         # invocation, starting with this job
@@ -1027,17 +1038,25 @@ class JobDescription(Requirer):
         logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
         self.successor_phases = old_phases + self.successor_phases
 
-        # TODO: also be able to take on the successors of the other job, under
-        # ours on the stack, somehow.
-
+        # When deleting, we need to delete the files for our old ID, and also
+        # anything that needed to be deleted for the job we are replacing.
+        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
         self.jobStoreID = other.jobStoreID
 
-        # Save files and jobs to delete from the job we replaced, so we can
-        # roll up a whole chain of jobs and delete them when they're all done.
-        self.filesToDelete += other.filesToDelete
-        self.jobsToDelete += other.jobsToDelete
+        if len(other.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of a job that is in the process of being committed!")
+        if len(self.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
 
         self._job_version = other._job_version
+        self._job_version_writer = os.getpid()
+
+    def check_new_version(self, other: "JobDescription") -> None:
+        """
+        Make sure a prospective new version of the JobDescription is actually moving forward in time and not backward.
+        """
+        if other._job_version < self._job_version:
+            raise RuntimeError(f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}")
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1217,6 +1236,14 @@ class JobDescription(Requirer):
     def __repr__(self):
         return f'{self.__class__.__name__}( **{self.__dict__!r} )'
 
+    def reserve_versions(self, count: int) -> None:
+        """
+        Reserve a job version number for later, for journaling asynchronously.
+        """
+        self._job_version += count
+        self._job_version_writer = os.getpid()
+        logger.debug("Skip ahead to job version: %s", self)
+
     def pre_update_hook(self) -> None:
         """
         Run before pickling and saving a created or updated version of this job.
@@ -1224,6 +1251,7 @@ class JobDescription(Requirer):
         Called by the job store.
         """
         self._job_version += 1
+        self._job_version_writer = os.getpid()
         logger.debug("New job version: %s", self)
 
     def get_job_kind(self) -> str:

@@ -60,10 +60,10 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.cwlprov
 import cwltool.job
 import cwltool.load_tool
 import cwltool.main
-import cwltool.provenance
 import cwltool.resolver
 import schema_salad.ref_resolver
 from cwltool.loghandler import _logger as cwllogger
@@ -85,9 +85,9 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
-    DirectoryType,
     CWLObjectType,
     CWLOutputType,
+    DirectoryType,
     adjustDirObjs,
     aslist,
     downloadHttpFile,
@@ -104,12 +104,15 @@ from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
+from toil.cwl import check_cwltool_version
+check_cwltool_version()
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     visit_cwl_class_and_reduce,
 )
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
@@ -119,8 +122,6 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
-from toil.exceptions import FailedJobsException
-
 
 logger = logging.getLogger(__name__)
 
@@ -1867,6 +1868,7 @@ class CWLNamedJob(Job):
         memory: Union[int, str, None] = "1GiB",
         disk: Union[int, str, None] = "1MiB",
         accelerators: Optional[List[AcceleratorRequirement]] = None,
+        preemptible: Optional[bool] = None,
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
@@ -1911,6 +1913,7 @@ class CWLNamedJob(Job):
             memory=memory,
             disk=disk,
             accelerators=accelerators,
+            preemptible=preemptible,
             unitName=unit_name,
             displayName=display_name,
             local=local,
@@ -2015,7 +2018,8 @@ def toilStageFiles(
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.import_file(f.name, symlink=False).pack()
+                                "toilfile:"
+                                + toil.import_file(f.name, symlink=False).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -2182,7 +2186,7 @@ class CWLJob(CWLNamedJob):
 
         accelerators: Optional[List[AcceleratorRequirement]] = None
         if req.get("cudaDeviceCount", 0) > 0:
-            # There's a CUDARequirement
+            # There's a CUDARequirement, which cwltool processed for us
             # TODO: How is cwltool deciding what value to use between min and max?
             accelerators = [
                 {
@@ -2192,6 +2196,42 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
+        # of its resource logic so we have to do it manually.
+        #
+        # Note that according to
+        # https://github.com/arvados/arvados/blob/48a0d575e6de34bcda91c489e4aa98df291a8cca/sdk/cwl/arvados_cwl/arv-cwl-schema-v1.1.yml#L345
+        # this can only be a literal boolean! cwltool doesn't want to evaluate
+        # expressions in the value for us like it does for CUDARequirement
+        # which has a schema which allows for CWL expressions:
+        # https://github.com/common-workflow-language/cwltool/blob/1573509eea2faa3cd1dc959224e52ff1d796d3eb/cwltool/extensions.yml#L221
+        #
+        # By default we have default preemptibility.
+        preemptible: Optional[bool] = None
+        preemptible_req, _ = tool.get_requirement("http://arvados.org/cwl#UsePreemptible")
+        if preemptible_req:
+            if "usePreemptible" not in preemptible_req:
+                # If we have a requirement it has to have the value
+                raise ValidationException(
+                    f"Unacceptable syntax for http://arvados.org/cwl#UsePreemptible: "
+                    f"expected key usePreemptible but got: {preemptible_req}"
+                )
+            parsed_value = preemptible_req["usePreemptible"]
+            if isinstance(parsed_value, str) and ("$(" in parsed_value or "${" in parsed_value):
+                # Looks like they tried to use an expression
+                 raise ValidationException(
+                    f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
+                    f"expected true or false but got what appears to be an expression: {repr(parsed_value)}. "
+                    f"Note that expressions are not allowed here by Arvados's schema."
+                )
+            if not isinstance(parsed_value, bool):
+                # If we have a value it has to be a bool flag
+                raise ValidationException(
+                    f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
+                    f"expected true or false but got: {repr(parsed_value)}"
+                )
+            preemptible = parsed_value
+
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
@@ -2200,6 +2240,7 @@ class CWLJob(CWLNamedJob):
                 + (cast(int, req["outdirSize"]) * (2**20))
             ),
             accelerators=accelerators,
+            preemptible=preemptible,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
@@ -3625,7 +3666,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
     if options.provenance:
-        research_obj = cwltool.provenance.ResearchObject(
+        research_obj = cwltool.cwlprov.ro.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix,
             orcid=options.orcid,
             full_name=options.cwl_full_name,
@@ -3708,8 +3749,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             document_loader = loading_context.loader
 
             if options.provenance and runtime_context.research_obj:
-                runtime_context.research_obj.packed_workflow(
-                    cwltool.main.print_pack(loading_context, uri)
+                cwltool.cwlprov.writablebagfile.packed_workflow(
+                    runtime_context.research_obj,
+                    cwltool.main.print_pack(loading_context, uri),
                 )
 
             try:
@@ -3879,7 +3921,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
-            runtime_context.research_obj.create_job(outobj, True)
+            cwltool.cwlprov.writablebagfile.create_job(
+                runtime_context.research_obj, outobj, True
+            )
 
             def remove_at_id(doc: Any) -> None:
                 if isinstance(doc, MutableMapping):
@@ -3906,7 +3950,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 workflowobj, document_loader, uri
             )
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
-            runtime_context.research_obj.close(options.provenance)
+            cwltool.cwlprov.writablebagfile.close_ro(
+                runtime_context.research_obj, options.provenance
+            )
 
         if not options.destBucket and options.compute_checksum:
             visit_class(

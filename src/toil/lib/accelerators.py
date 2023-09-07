@@ -14,8 +14,9 @@
 
 """Accelerator (i.e. GPU) utilities for Toil"""
 
+import os
 import subprocess
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Union, cast
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -38,6 +39,37 @@ def have_working_nvidia_smi() -> bool:
     return True
 
 @memoize
+def get_host_accelerator_numbers() -> List[int]:
+    """
+    Work out what accelerator is what.
+
+    For each accelerator visible to us, returns the host-side (for example,
+    outside-of-Slurm-job) number for that accelerator. It is often the same as
+    the apparent number.
+
+    Can be used with Docker's --gpus='"device=#,#,#"' option to forward the
+    right GPUs as seen from a Docker daemon.
+    """
+
+    for number_list_var in ['SLURM_STEP_GPUS', 'SLURM_JOB_GPUS', 'CUDA_VISIBLE_DEVICES', 'NVIDIA_VISIBLE_DEVICES']:
+        # Any of these can have a list of GPU numbers, but the CUDA/NVIDIA ones
+        # also support a system of GPU GUIDs that we don't support.
+        # TODO: If Slurm confinement is set we ignore any attempt to further
+        # limit us with the app-level variables. Does that make sense? Writing
+        # code to translate through would be hard and probably not actually
+        # useful.
+        if number_list_var in os.environ:
+            device_string = os.environ[number_list_var]
+            # Parse all the numbers we have
+            device_numbers = [int(part) for part in device_string.split(',') if part.isnumeric()]
+            if len(device_numbers) > 0:
+                # We found some numbers, so use those
+                return device_numbers
+
+    # If we don't see a set of limits we understand, say we have all nvidia GPUs
+    return list(range(count_nvidia_gpus()))
+
+@memoize
 def have_working_nvidia_docker_runtime() -> bool:
     """
     Return True if Docker exists and can handle an "nvidia" runtime and the "--gpus" option.
@@ -45,7 +77,7 @@ def have_working_nvidia_docker_runtime() -> bool:
     try:
         # The runtime injects nvidia-smi; it doesn't seem to have to be in the image we use here
         subprocess.check_call(['docker', 'run', '--rm', '--runtime', 'nvidia', '--gpus', 'all', 'ubuntu:20.04', 'nvidia-smi'])
-    except subprocess.CalledProcessError:
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return False
     return True
 
@@ -60,10 +92,21 @@ def count_nvidia_gpus() -> int:
     # <https://github.com/common-workflow-language/cwltool/blob/6f29c59fb1b5426ef6f2891605e8fa2d08f1a8da/cwltool/cuda.py>
     # Some example output is here: <https://gist.github.com/loretoparisi/2620b777562c2dfd50d6b618b5f20867>
     try:
-        return int(minidom.parseString(
-            subprocess.check_output(["nvidia-smi", "-q", "-x"])
-        ).getElementsByTagName("attached_gpus")[0].firstChild.data)
-    except (FileNotFoundError, subprocess.CalledProcessError, IndexError, ValueError, PermissionError):
+        return int(
+            cast(
+                minidom.Text,
+                minidom.parseString(subprocess.check_output(["nvidia-smi", "-q", "-x"]))
+                .getElementsByTagName("attached_gpus")[0]
+                .firstChild,
+            ).data
+        )
+    except (
+        FileNotFoundError,
+        subprocess.CalledProcessError,
+        IndexError,
+        ValueError,
+        PermissionError,
+    ):
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some
@@ -83,7 +126,7 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     # For now we only know abput nvidia GPUs
     return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
 
-def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Set[int]) -> Dict[str, str]:
+def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Union[Set[int], List[int]]) -> Dict[str, str]:
     """
     Get environment variables which can be applied to a process to restrict it
     to using only the given accelerator numbers.

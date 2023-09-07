@@ -120,10 +120,6 @@ class AbstractFileStore(ABC):
         # job is re-run it will need to be able to re-delete these files.
         # This is a set of str objects, not FileIDs.
         self.filesToDelete: Set[str] = set()
-        # Records IDs of jobs that need to be deleted when the currently
-        # running job is cleaned up.
-        # May be modified by the worker to actually delete jobs!
-        self.jobsToDelete: Set[str] = set()
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
         self._accessLog: List[Tuple[str, ...]] = []
@@ -346,7 +342,14 @@ class AbstractFileStore(ABC):
                 # For each access record
                 if len(item) == 2:
                     # If it has a name, dump wit the name
-                    logger.warning('Downloaded file \'%s\' to path \'%s\'', *item)
+                    file_id, dest_path = item
+                    if os.path.exists(dest_path):
+                        if os.path.islink(dest_path):
+                            logger.warning('Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
+                        else:
+                            logger.warning('Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
+                    else:
+                        logger.warning('Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
                 else:
                     # Otherwise dump without the name
                     logger.warning('Streamed file \'%s\'', *item)
@@ -599,7 +602,13 @@ class AbstractFileStore(ABC):
         """
         Update the status of the job on the disk.
 
-        May start an asynchronous process. Call waitForCommit() to wait on that process.
+        May bump the version number of the job.
+
+        May start an asynchronous process. Call waitForCommit() to wait on that
+        process. You must waitForCommit() before committing any further updates
+        to the job. During the asynchronous process, it is safe to modify the
+        job; modifications after this call will not be committed until the next
+        call.
 
         :param jobState: If True, commit the state of the FileStore's job,
                     and file deletes. Otherwise, commit only file creates/updates.

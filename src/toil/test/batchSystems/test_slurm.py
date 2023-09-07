@@ -8,8 +8,10 @@ from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.test import ToilTest
 
+# TODO: Come up with a better way to mock the commands then monkey-patching the
+# command-calling functions.
 
-def call_sacct(args) -> str:
+def call_sacct(args, **_) -> str:
     """
     The arguments passed to `call_command` when executing `sacct` are:
     ['sacct', '-n', '-j', '<comma-separated list of job-ids>', '--format',
@@ -41,7 +43,7 @@ def call_sacct(args) -> str:
     return stdout
 
 
-def call_scontrol(args) -> str:
+def call_scontrol(args, **_) -> str:
     """
     The arguments passed to `call_command` when executing `scontrol` are:
     ['scontrol', 'show', 'job'] or ['scontrol', 'show', 'job', '<job-id>']

@@ -48,18 +48,17 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_aws_s3,
                        needs_encryption,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_storage,
                        slow)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 
-# Need google_retry decorator even if google is not available, so make one up.
-# Unconventional use of decorator to determine if google is enabled by seeing if
-# it returns the parameter passed in.
-if needs_google(needs_google) is needs_google:
+try:
     from toil.jobStores.googleJobStore import google_retry
-else:
+except ImportError:
+    # Need google_retry decorator even if google is not available, so make one up.
     def google_retry(x):
         return x
 
@@ -225,11 +224,14 @@ class AbstractJobStoreTest:
 
         def testPersistantFilesToDelete(self):
             """
-            Make sure that updating a job carries over filesToDelete.
+            Make sure that updating a job persists filesToDelete.
 
-            The following demonstrates the job update pattern, where files to be deleted are referenced in
-            "filesToDelete" array, which is persisted to disk first. If things go wrong during the update, this list of
-            files to delete is used to remove the unneeded files.
+            The following demonstrates the job update pattern, where files to
+            be deleted atomically with a job update are referenced in
+            "filesToDelete" array, which is persisted to disk first. If things
+            go wrong during the update, this list of files to delete is used to
+            ensure that the updated job and the files are never both visible at
+            the same time.
             """
 
             # Create a job.
@@ -1239,7 +1241,8 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         os.remove(srcUrl[7:])
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 @pytest.mark.xfail
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
