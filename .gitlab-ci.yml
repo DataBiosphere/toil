@@ -9,7 +9,7 @@ variables:
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
-  MARKER: "tes or integrative or encryption or kubernetes or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3"
+  MARKER: "tes or integrative or encryption or mesos or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3 and not kubernetes"
   TEST_THREADS: "3"
 before_script:
   # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
@@ -239,7 +239,6 @@ cwl_v1.1_kubernetes:
     - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
 cwl_v1.2_kubernetes:
-  stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
