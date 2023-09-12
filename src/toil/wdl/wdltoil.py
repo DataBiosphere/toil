@@ -2339,9 +2339,9 @@ def main() -> None:
                               "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory in which to save output files. By default a new directory is created in the current directory."))
-    parser.add_argument("--outputFile", "-m", dest="output_file", type=argparse.FileType('w'), default=sys.stdout,
-                        help="File to save output JSON to.")
+                        help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
+    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
+                        help="File or URI to save output JSON to.")
 
     options = parser.parse_args(sys.argv[1:])
 
@@ -2350,14 +2350,10 @@ def main() -> None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree')
 
-    # Make sure we have an output directory and we don't need to ever worry
-    # about a None, and MyPy knows it.
+    # Make sure we have an output directory (or URL prefix) and we don't need
+    # to ever worry about a None, and MyPy knows it.
     # If we don't have a directory assigned, make one in the current directory.
     output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp(prefix='wdl-out-', dir=os.getcwd())
-    if not os.path.isdir(output_directory):
-        # Make sure it exists
-        os.mkdir(output_directory)
-
 
     with Toil(options) as toil:
         if options.restart:
@@ -2432,7 +2428,7 @@ def main() -> None:
                 # TODO: Deal with name collisions
                 dest_name = os.path.join(output_directory, file_basename)
                 # Export the file
-                toil.exportFile(file_id, dest_name)
+                toil.export_file(file_id, dest_name)
                 # And return where we put it
                 return dest_name
             elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
@@ -2445,7 +2441,7 @@ def main() -> None:
                 file_basename = os.path.basename(urlsplit(filename).path)
                 # Do the same as we do for files we actually made.
                 dest_name = os.path.join(output_directory, file_basename)
-                toil.exportFile(imported, dest_name)
+                toil.export_file(imported, dest_name)
                 return dest_name
             else:
                 # Not a fancy file
@@ -2458,8 +2454,24 @@ def main() -> None:
         outputs = WDL.values_to_json(output_bindings)
         if options.output_dialect == 'miniwdl':
             outputs = {'dir': output_directory, 'outputs': outputs}
-        options.output_file.write(json.dumps(outputs))
-        options.output_file.write('\n')
+        if options.output_file is None:
+            # Send outputs to standard out
+            print(json.dumps(outputs))
+        else:
+            # Export output to path or URL.
+            # So we need to import and then export.
+            fd, filename = tempfile.mkstemp()
+            with open(fd, 'w') as handle:
+                # Populate the file
+                handle.write(json.dumps(outputs))
+                handle.write('\n')
+            # Import it. Don't link because the temp file will go away.
+            file_id = toil.import_file(filename, symlink=False)
+            # Delete the temp file
+            os.remove(filename)
+            # Export it into place
+            toil.export_file(file_id, options.output_file)
+
 
 
 if __name__ == "__main__":
