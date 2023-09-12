@@ -342,6 +342,9 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._get_file_path_from_id(file_id)
             destPath = self._extract_path_from_url(uri)
+            # Make sure we don't need to worry about directories when exporting
+            # to local files, just like for cloud storage.
+            os.makedirs(os.path.dirname(destPath), exist_ok=True)
             executable = getattr(file_id, 'executable', False)
             if self.moveExports:
                 self._move_and_linkback(srcPath, destPath, executable=executable)
