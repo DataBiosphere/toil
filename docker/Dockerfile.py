@@ -102,16 +102,13 @@ print(heredoc('''
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
     # Find a repo with a Mesos build.
-    # See https://rpm.aventer.biz/README.txt
-    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/ for https://rpm.aventer.biz/Ubuntu
-    # And one that works with https://rpm.aventer.biz/Ubuntu/focal (the new URL) is at https://ipfs.io/ipfs/Qmcrmx7T1YkEnyexMXdd7QjoBZxf7DMDrQ5ErUKi9mDRw6/
-    # As archived with:
+    # This one was archived like:
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://rpm.aventer.biz/Ubuntu/focal focal main" \
+    RUN echo "deb https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && curl https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
