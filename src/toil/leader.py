@@ -539,13 +539,13 @@ class Leader:
             # the job has services to run, which have not been started, start them
             # Build a map from the service jobs to the job and a map
             # of the services created for the job
-            if readyJob.jobStoreID not in self.toilState.servicesIssued:
-                raise RuntimeError("The job was already issued.")
+            if readyJob.jobStoreID in self.toilState.servicesIssued:
+                raise RuntimeError(f"The ready job: {readyJob.jobStoreID} was already issued.")
             self.toilState.servicesIssued[readyJob.jobStoreID] = set()
             for serviceJobList in readyJob.serviceHostIDsInBatches():
                 for serviceID in serviceJobList:
                     if serviceID in self.toilState.service_to_client:
-                        raise RuntimeError(f"The service ID {serviceID} was already added.")
+                        raise RuntimeError(f"The ready service ID: {serviceID} was already added.")
                     self.toilState.reset_job(serviceID)
                     serviceHost = self.toilState.get_job(serviceID)
                     self.toilState.service_to_client[serviceID] = readyJob.jobStoreID
