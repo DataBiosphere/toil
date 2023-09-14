@@ -279,7 +279,7 @@ class ClusterScalerTest(ToilTest):
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
 
     def testRounding(self):
         """
@@ -367,7 +367,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
 
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -404,7 +404,7 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.node_types])
+        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptible: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -581,7 +581,7 @@ class ScalerThreadTest(ToilTest):
         # number of worker nodes used.
 
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([({t}, None) for t in config.node_types])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         mock.start()
         clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
@@ -695,7 +695,7 @@ class ScalerThreadTest(ToilTest):
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config=config, secondsPerJob=2.0)
-        mock.setAutoscaledNodeTypes([({t}, None) for t in config.node_types])
+        mock.setAutoscaledNodeTypes([({t}, None) for t in config.nodeTypes])
         clusterScaler = ScalerThread(mock, mock, config, stop_on_exception=True)
         clusterScaler.start()
         mock.start()
