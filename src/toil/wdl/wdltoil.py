@@ -33,10 +33,12 @@ import uuid
 
 from contextlib import ExitStack
 from graphlib import TopologicalSorter
-from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
+from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator, \
+    Iterable
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
+from WDL import Error
 from WDL._util import byte_size_units
 from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.backend.singularity import SingularityContainer
@@ -48,6 +50,7 @@ from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promis
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
+from toil.lib.memoize import memoize
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
@@ -302,7 +305,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
 TOIL_URI_SCHEME = 'toilfile:'
 
-def pack_toil_uri(file_id: FileID, file_basename: str) -> str:
+def pack_toil_uri(file_id: FileID, file_dir: str, file_basename: str) -> str:
     """
     Encode a Toil file ID and its source path in a URI that starts with the scheme in TOIL_URI_SCHEME.
     """
@@ -310,9 +313,9 @@ def pack_toil_uri(file_id: FileID, file_basename: str) -> str:
     # We urlencode everything, including any slashes. We need to use a slash to
     # set off the actual filename, so the WDL standard library basename
     # function works correctly.
-    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(file_basename, safe='')}"
+    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(file_dir)}/{quote(file_basename, safe='')}"
 
-def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
+def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str]:
     """
     Unpack a URI made by make_toil_uri to retrieve the FileID and the basename
     (no path prefix) that the file is supposed to have.
@@ -326,12 +329,13 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
         raise ValueError(f"URI doesn't start with {TOIL_URI_SCHEME} and should: {toil_uri}")
     # Split encoded file ID from filename
     parts = parts[1].split('/')
-    if len(parts) != 2:
+    if len(parts) != 3:
         raise ValueError(f"Wrong number of path segments in URI: {toil_uri}")
     file_id = FileID.unpack(unquote(parts[0]))
-    file_basename = unquote(parts[1])
+    parent_id = unquote(parts[1])
+    file_basename = unquote(parts[2])
 
-    return file_id, file_basename
+    return file_id, parent_id, file_basename
 
 class NonDownloadingSize(WDL.StdLib._Size):
     """
@@ -358,7 +362,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
             if uri.startswith(TOIL_URI_SCHEME):
                 # This is a Toil File ID we encoded; we have the size
                 # available.
-                file_id, _ = unpack_toil_uri(uri)
+                file_id, _, _ = unpack_toil_uri(uri)
                 # Use the encoded size
                 total_size += file_id.size
             else:
@@ -408,7 +412,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     Standard library implementation for WDL as run on Toil.
     """
 
-    def __init__(self, file_store: AbstractFileStore):
+    def __init__(self, file_store: AbstractFileStore, stdlib_id: Optional[Any] = None):
         """
         Set up the standard library.
         """
@@ -426,6 +430,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Keep the file store around so we can access files.
         self._file_store = file_store
 
+        # UUID to differentiate which node files are virtualized from
+        self.stdlib_id = stdlib_id or uuid.uuid4()
+
     def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
@@ -435,6 +442,17 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 return True
         return False
 
+    def _is_uuid(self, id: str) -> bool:
+        """
+        Test if a string is a valid UUID
+        """
+        try:
+            uuid.UUID(id)
+            return True
+        except ValueError:
+            return False
+
+    @memoize
     def _devirtualize_filename(self, filename: str) -> str:
         """
         'devirtualize' filename passed to a read_* function: return a filename that can be open()ed
@@ -446,11 +464,21 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         if filename.startswith(TOIL_URI_SCHEME):
             # This is a reference to the Toil filestore.
             # Deserialize the FileID
-            file_id, file_basename = unpack_toil_uri(filename)
+            file_id, parent_id, file_basename = unpack_toil_uri(filename)
 
             # Decide where it should be put
-            file_dir = self._file_store.getLocalTempDir()
-            dest_path = os.path.join(file_dir, file_basename)
+            if self._is_uuid(parent_id):
+                # This is a URI with the "parent" UUID attached to the filename
+                # Use UUID as folder name rather than a new temp folder to reduce internal clutter
+                if not os.path.exists(parent_id):
+                    os.mkdir(parent_id)
+                # Put the UUID in the destination path in order for tasks to see where to put files depending on their parents
+                dest_path = os.path.join(parent_id, file_basename)
+            else:
+                # In case a file was not virtualized with a UUID
+                # But this shouldn't happen
+                file_tmp_dir = self._file_store.getLocalTempDir()
+                dest_path = os.path.join(file_tmp_dir, file_basename)
 
             # And get a local path to the file
             result = self._file_store.readGlobalFile(file_id, dest_path)
@@ -485,7 +513,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
-        result = pack_toil_uri(file_id, os.path.basename(filename))
+        result = pack_toil_uri(file_id, str(self.stdlib_id), os.path.basename(filename))
         logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
@@ -498,15 +526,16 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     are host-side paths.
     """
 
-    def __init__(self, file_store: AbstractFileStore, container: TaskContainer):
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer, stdlib_id: Optional[Any] = None):
         """
         Set up the standard library for the task command section.
         """
 
         # TODO: Don't we want to make sure we don't actually use the file store?
-        super().__init__(file_store)
+        super().__init__(file_store, stdlib_id)
         self.container = container
 
+    @memoize
     def _devirtualize_filename(self, filename: str) -> str:
         """
         Go from a virtualized WDL-side filename to a local disk filename.
@@ -552,7 +581,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     functions only allowed in task output sections.
     """
 
-    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None):
+    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None, stdlib_id: Optional[Any] = None):
         """
         Set up the standard library for a task output section. Needs to know
         where standard output and error from the task have been stored.
@@ -563,7 +592,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Just set up as ToilWDLStdLibBase, but it will call into
         # WDL.StdLib.TaskOutputs next.
-        super().__init__(file_store)
+        super().__init__(file_store, stdlib_id)
 
         # Remember task putput files
         self._stdout_path = stdout_path
@@ -645,6 +674,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # Just turn them all into WDL File objects with local disk out-of-container names.
         return WDL.Value.Array(WDL.Type.File(), [WDL.Value.File(x) for x in results])
 
+    @memoize
     def _devirtualize_filename(self, filename: str) -> str:
         """
         Go from a virtualized WDL-side filename to a local disk filename.
@@ -753,8 +783,8 @@ def devirtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL
     """
     Make sure all the File values embedded in the given bindings point to files
     that are actually available to command line commands.
+    The same virtual file always maps to the same devirtualized filename even with duplicates
     """
-
     return map_over_files_in_bindings(environment, stdlib._devirtualize_filename)
 
 def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
@@ -765,6 +795,39 @@ def virtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBi
 
     return map_over_files_in_bindings(environment, stdlib._virtualize_filename)
 
+def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
+    """
+    Based off of WDL.runtime.task_container.add_paths from miniwdl
+    Maps the host path to the container paths
+    """
+    # partition the files by host directory
+    host_paths_by_dir: Dict[str, Set[str]] = {}
+    for host_path in host_paths:
+        host_path_strip = host_path.rstrip("/")
+        if host_path not in task_container.input_path_map and host_path_strip not in task_container.input_path_map:
+            if not os.path.exists(host_path_strip):
+                raise Error.InputError("input path not found: " + host_path)
+            host_paths_by_dir.setdefault(os.path.dirname(host_path_strip), set()).add(host_path)
+    # for each such partition of files
+    # - if there are no basename collisions under input subdirectory 0, then mount them there.
+    # - otherwise, mount them in a fresh subdirectory
+    subd = 0
+    id_to_subd: Dict[str, str] = {}
+    for paths in host_paths_by_dir.values():
+        based = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
+        for host_path in paths:
+            parent_id = os.path.basename(os.path.dirname(host_path))
+            if id_to_subd.get(parent_id, None) is None:
+                id_to_subd[parent_id] = str(subd)
+                subd += 1
+            host_path_subd = id_to_subd[parent_id]
+            container_path = os.path.join(based, host_path_subd, os.path.basename(host_path.rstrip("/")))
+            if host_path.endswith("/"):
+                container_path += "/"
+            assert container_path not in task_container.input_path_map_rev, f"{container_path}, {task_container.input_path_map_rev}"
+            task_container.input_path_map[host_path] = container_path
+            task_container.input_path_map_rev[container_path] = host_path
+
 def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]] = None) -> WDLBindings:
     """
     Make sure all File values embedded in the given bindings are imported,
@@ -773,7 +836,8 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
     :param path: If set, try resolving input location relative to the URLs or
                  directories in this list.
     """
-
+    path_to_id: Dict[str, uuid.UUID] = {}
+    @memoize
     def import_file_from_uri(uri: str) -> str:
         """
         Import a file from a URI and return a virtualized filename for it.
@@ -811,7 +875,10 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
 
             # Was actually found
-            return pack_toil_uri(imported, file_basename)
+            # Pack a UUID of the parent directory
+            dir_id = path_to_id.setdefault(os.path.dirname(candidate_uri), uuid.uuid4())
+
+            return pack_toil_uri(imported, str(dir_id), file_basename)
 
         # If we get here we tried all the candidates
         raise RuntimeError(f"Could not find {uri} at any of: {tried}")
@@ -1124,7 +1191,9 @@ class WDLTaskJob(WDLBaseJob):
         # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store)
+        # UUID to use for virtualizing files
+        stdlib_id = uuid.uuid4()
+        standard_library = ToilWDLStdLibBase(file_store, stdlib_id)
 
         if self._task.inputs:
             logger.debug("Evaluating task inputs")
@@ -1381,7 +1450,7 @@ class WDLTaskJob(WDLBaseJob):
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
-            task_container.add_paths(get_file_paths_in_bindings(bindings))
+            add_paths(task_container, get_file_paths_in_bindings(bindings))
             logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
@@ -1389,7 +1458,7 @@ class WDLTaskJob(WDLBaseJob):
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
-            command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+            command_library = ToilWDLStdLibTaskCommand(file_store, task_container, stdlib_id)
 
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
@@ -1436,7 +1505,7 @@ class WDLTaskJob(WDLBaseJob):
         # container-determined strings that are absolute paths to WDL File
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container, stdlib_id=stdlib_id)
         output_bindings: WDLBindings = WDL.Env.Bindings()
         for output_decl in self._task.outputs:
             output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
@@ -2406,10 +2475,11 @@ def main() -> None:
             if filename.startswith(TOIL_URI_SCHEME):
                 # This is a reference to the Toil filestore.
                 # Deserialize the FileID and required basename
-                file_id, file_basename = unpack_toil_uri(filename)
+                file_id, parent_id, file_basename = unpack_toil_uri(filename)
                 # Figure out where it should go.
-                # TODO: Deal with name collisions
+                # If a UUID is included, it will be omitted
                 dest_name = os.path.join(output_directory, file_basename)
+                # TODO: Deal with name collisions
                 # Export the file
                 toil.export_file(file_id, dest_name)
                 # And return where we put it
