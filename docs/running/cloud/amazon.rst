@@ -88,18 +88,17 @@ during the computation of a workflow, first set up and configure an account with
 
    This will create the files `~/.aws/config` and `~/.aws/credentials`.
 
-#. If not done already, install toil (example uses version 5.3.0, but we recommend the latest release): ::
+#. If not done already, install toil (example uses version 5.12.0, but we recommend the latest release): ::
 
     $ virtualenv venv
     $ source venv/bin/activate
-    $ pip install toil[all]==5.3.0
+    $ pip install toil[all]==5.12.0
 
 #. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be the following
    (again, note that we set TOIL_APPLIANCE_SELF to toil version 5.3.0 in this example, but please set the version to
    the installed version that you are using if you're using a different version): ::
 
-    $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:5.3.0 \
-          toil launch-cluster <cluster-name> \
+    $ toil launch-cluster <cluster-name> \
           --clusterType kubernetes \
           --leaderNodeType t2.medium \
           --nodeTypes t2.medium -w 1 \
@@ -107,8 +106,6 @@ during the computation of a workflow, first set up and configure an account with
           --keyPairName id_rsa
 
 To further break down each of these commands:
-
-    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** --- This is optional.  It specifies a ubuntu-based docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags.
 
     **toil launch-cluster** --- Base command in toil to launch a cluster.
 
@@ -118,7 +115,7 @@ To further break down each of these commands:
 
     **--leaderNodeType t2.medium** --- Specify the leader node type.  Make a t2.medium (2CPU; 4Gb RAM; $0.0464/Hour).  List of available AWS instances: https://aws.amazon.com/ec2/pricing/on-demand/
 
-    **--nodeTypes t2.medium -w 1** --- Specify the worker node type and the number of worker nodes to launch. The kubernetes cluster requires at least 1 worker node.
+    **--nodeTypes t2.medium -w 1** --- Specify the worker node type and the number of worker nodes to launch. The Kubernetes cluster requires at least 1 worker node.
 
     **--zone us-west-1a** --- Specify the AWS zone you want to launch the instance in.  Must have the same prefix as the zone in your awscli credentials (which, in the example of this tutorial is: "us-west-1").
 
@@ -130,12 +127,15 @@ To further break down each of these commands:
    For example, if you ``export TOIL_AWS_TAGS='{"project-name": "variant-calling"}'`` in your shell before using Toil,
    AWS resources created by Toil will be tagged with a ``project-name`` tag with the value ``variant-calling``.
 
+   You can also set the ``TOIL_APPLIANCE_SELF`` environment variable to one of the `Toil project's Docker images`_, if you would like to launch a cluster using a different version of Toil than the one you have installed.
+
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
 .. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
 .. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
 .. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
 .. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
+.. _Toil project's Docker images: https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags
 
 .. _awsJobStore:
 
@@ -189,7 +189,7 @@ Details about Launching a Cluster in AWS
 ----------------------------------------
 
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
-to launch a kubernetes cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
+to launch a Kubernetes cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
     (venv) $ toil launch-cluster my-cluster \
                  --clusterType kubernetes \

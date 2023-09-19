@@ -107,7 +107,7 @@ Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
 workers, alongside the user script. Note that sibling modules will be
 auto-deployed regardless of whether they are actually imported by the user
-script-all .py files residing in the same directory as the user script will
+script: all .py files residing in the same directory as the user script will
 automatically be auto-deployed.
 
 Sibling modules are a suitable method of organizing the source code of
@@ -193,7 +193,8 @@ replicates ``PYTHONPATH`` from the leader to every worker.
 Toil Appliance
 --------------
 
-The term Toil Appliance refers to the ubuntu-based Docker image that Toil uses to simulate the machines in the virtual
-cluster.  It's easily deployed, only needs Docker, and allows for workflows to be run in single-machine mode and for
-clusters of VMs to be provisioned.  To specify a different image, see the Toil :ref:`envars` section.  For more
-information on the Toil Appliance, see the :ref:`runningAWS` section.
+The term Toil Appliance refers to the Ubuntu-based Docker image that Toil uses
+for the machines in the cluster. It's easily deployed, only needs Docker, and
+allows a consistent environment on all Toil clusters. To specify a different
+image, see the Toil :ref:`envars` section.  For more information on the Toil
+Appliance, see the :ref:`runningAWS` section.

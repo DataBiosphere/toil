@@ -479,7 +479,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
     virtualenv --system-site-packages venv
     source venv/bin/activate
 
-#. Now run the CWL workflow with the kubernetes batch system::
+#. Now run the CWL workflow with the Kubernetes batch system::
 
       (venv) $ toil-cwl-runner \
                    --provisioner aws \
@@ -502,8 +502,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 Running a Workflow with Autoscaling - Cactus
 ---------------------------------------------------
-
-.. TODO: change to use a kubernetes cluster.
 
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free, whole-genome multiple alignment
 program that can be run on any of the cloud platforms Toil supports.
@@ -535,12 +533,14 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`
 
-#. Launch a leader node using the :ref:`launchCluster` command::
+#. Launch a cluster using the :ref:`launchCluster` command::
 
         (venv) $ toil launch-cluster <cluster-name> \
                      --provisioner <aws, gce> \
                      --keyPairName <key-pair-name> \
                      --leaderNodeType <type> \
+                     --nodeType <type> \
+                     -w 1-2 \
                      --zone <zone>
 
 
@@ -586,13 +586,9 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus \
-                         --provisioner <aws, gce> \
-                         --nodeType <type> \
-                         --maxNodes 2 \
-                         --minNodes 0 \
+       (cact_venv) $ cactus \
                          --retry 10 \
-                         --batchSystem mesos \
+                         --batchSystem kubernetes \
                          --logDebug \
                          --logFile /logFile_pestis3 \
                          --configFile \
@@ -603,15 +599,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
    .. note::
 
       **Pieces of the Puzzle**:
-
-      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0`` --- specifies the version of Toil being used, 3.14.0;
-      if the latest one is desired, please eliminate.
-
-      ``--nodeType`` --- determines the instance type used for worker nodes. The instance type specified here must be on
-      the same cloud provider as the one specified with ``--leaderNodeType``
-
-      ``--maxNodes 2`` --- creates up to two instances of the type specified with ``--nodeType`` and
-      launches Mesos worker containers inside them.
 
       ``--logDebug`` --- equivalent to ``--logLevel DEBUG``.
 
