@@ -109,15 +109,28 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
 
 
 def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
-                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None) -> Union[str, bytes]:
-    """Simplified calling of external commands.  This always returns
-    stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
-    is raised.  The captured stderr is always printed, regardless of
-    if an expect occurs, so it can be logged.  At the debug log level, the
-    command and captured out are always used.  With useCLocale, C locale
-    is force to prevent failures that occurred in some batch systems
-    with UTF-8 locale.
+                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None, quiet: Optional[bool] = False) -> str:
     """
+    Simplified calling of external commands.
+
+    If the process fails, CalledProcessErrorStderr is raised.
+
+    The captured stderr is always printed, regardless of
+    if an exception occurs, so it can be logged.
+
+    Always logs the command at debug log level.
+
+    :param quiet: If True, do not log the command output. If False (the
+           default), do log the command output at debug log level.
+
+    :param useCLocale: If True, C locale is forced, to prevent failures that
+           can occur in some batch systems when using UTF-8 locale.
+
+    :returns: Command standard output, decoded as utf-8.
+    """
+
+    # NOTE: Interface MUST be kept in sync with call_sacct and call_scontrol in
+    # test_slurm.py, which monkey-patch this!
 
     # using non-C locales can cause GridEngine commands, maybe other to
     # generate errors
@@ -126,12 +139,15 @@ def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeou
         env["LANGUAGE"] = env["LC_ALL"] = "C"
 
     logger.debug("run command: {}".format(" ".join(cmd)))
+    start_time = datetime.datetime.now()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             encoding='utf-8', errors="replace", env=env)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    end_time = datetime.datetime.now()
+    runtime = (end_time - start_time).total_seconds()
     sys.stderr.write(stderr)
     if proc.returncode != 0:
-        logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
+        logger.debug("command failed in {}s: {}: {}".format(runtime, " ".join(cmd), stderr.rstrip()))
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
+    logger.debug("command succeeded in {}s: {}{}".format(runtime, " ".join(cmd), (': ' + stdout.rstrip()) if not quiet else ''))
     return stdout

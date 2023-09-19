@@ -349,8 +349,12 @@ A node type can be specified as preemptible by adding a `spot bid`_ to its entry
 the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptible node whill be shut down.
 
 Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
-resource requirement, if this is not specified, the job will not run on preemptible nodes even if preemptible nodes
-are available unless specified with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
+resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`__ ``UsePreemptible`` in the
+``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`___
+``preemptible`` as recognized by Cromwell.
+
+If a job is not specified to be preemptible, the job will not run on preemptible nodes even if preemptible nodes
+are available, unless the workflow is run with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
 jobs without a ``preemptible`` requirement to run on preemptible machines. For example::
 
     $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
@@ -374,6 +378,10 @@ for a shortage of preemptible nodes of a certain type by creating non-preemptibl
 non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
+
+.. __exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
+
+.. ___exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
 
 
 .. _ProvisioningWithKubernetes:

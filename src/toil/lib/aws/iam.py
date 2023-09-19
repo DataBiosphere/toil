@@ -3,11 +3,11 @@ import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, cast
+from typing import Any, Dict, List, Optional, Set, cast, Union, Sequence
 
 import boto3
 from mypy_boto3_iam import IAMClient
-from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef
+from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef, PolicyDocumentDictTypeDef
 from mypy_boto3_sts import STSClient
 
 from toil.lib.aws import zone_to_region
@@ -80,8 +80,6 @@ def add_to_action_collection(a: AllowedActionCollection, b: AllowedActionCollect
     return to_return
 
 
-
-
 def policy_permissions_allow(given_permissions: AllowedActionCollection, required_permissions: List[str] = []) -> bool:
     """
     Check whether given set of actions are a subset of another given set of actions, returns true if they are
@@ -123,7 +121,7 @@ def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
             return True
     return False
 
-def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActionCollection:
+def get_actions_from_policy_document(policy_doc: PolicyDocumentDictTypeDef) -> AllowedActionCollection:
     '''
     Given a policy document, go through each statement and create an AllowedActionCollection representing the
     permissions granted in the policy document.
@@ -140,11 +138,16 @@ def get_actions_from_policy_document(policy_doc: Dict[str, Any]) -> AllowedActio
             for resource in statement["Resource"]:
                 for key in ["Action", "NotAction"]:
                     if key in statement.keys():
-                        if isinstance(statement[key], list):
-                            allowed_actions[resource][key] += statement[key]
+                        # mypy_boto3_iam declares policy document as a TypedDict
+                        # This type expects 4 string keys, of which NotAction is not an option
+                        # Thus mypy complains. NotAction seems to be valid according to Amazon:
+                        # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_notaction.html
+                        # so type: ignore for now
+                        if isinstance(statement[key], list):  # type: ignore[literal-required]
+                            allowed_actions[resource][key] += statement[key]  # type: ignore[literal-required]
                         else:
                             #Assumes that if it isn't a list it's probably a string
-                            allowed_actions[resource][key].append(statement[key])
+                            allowed_actions[resource][key].append(statement[key])  # type: ignore[literal-required]
 
     return allowed_actions
 def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
@@ -183,13 +186,33 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
             PolicyName=policy_name
         )
         logger.debug("Checking role policy")
-        policy_document = json.loads(role_policy["PolicyDocument"])
+        # PolicyDocument is now a TypedDict, but an instance of TypedDict is not an instance of dict?
+        if isinstance(role_policy["PolicyDocument"], str):
+            policy_document = json.loads(role_policy["PolicyDocument"])
+        else:
+            policy_document = role_policy["PolicyDocument"]
 
         allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
 
     return allowed_actions
 
-def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: str) -> AllowedActionCollection:
+
+def collect_policy_actions(policy_documents: List[Union[str, PolicyDocumentDictTypeDef]]) -> AllowedActionCollection:
+    """
+    Collect all of the actions allowed by the given policy documents into one AllowedActionCollection.
+    """
+    allowed_actions: AllowedActionCollection = init_action_collection()
+    for policy_str in policy_documents:
+        # sometimes a string is returned from the api, so convert to a dictionary
+        if isinstance(policy_str, str):
+            policy_dict = json.loads(policy_str)
+        else:
+            policy_dict = policy_str
+        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_dict))
+    return allowed_actions
+
+
+def allowed_actions_user(iam: IAMClient, policy_names: List[str], user_name: str) -> AllowedActionCollection:
     """
     Gets all allowed actions for a user given by user_name, returns a dictionary, keyed by resource,
     with a list of permissions allowed for each given resource.
@@ -198,17 +221,34 @@ def allowed_actions_users(iam: IAMClient, policy_names: List[str], user_name: st
     :param policy_names: Name of policy document associated with a user
     :param user_name: Name of user to get associated policies
     """
-    allowed_actions: AllowedActionCollection = init_action_collection()
-
-    for policy_name in policy_names:
-        user_policy = iam.get_user_policy(
+    user_policies = [
+        iam.get_user_policy(
             UserName=user_name,
             PolicyName=policy_name
-        )
-        policy_document = json.loads(user_policy["PolicyDocument"])
-        allowed_actions = add_to_action_collection(allowed_actions, get_actions_from_policy_document(policy_document))
+        )["PolicyDocument"]
+        for policy_name in policy_names
+    ]
+    return collect_policy_actions(user_policies)
 
-    return allowed_actions
+
+def allowed_actions_group(iam: IAMClient, policy_names: List[str], group_name: str) -> AllowedActionCollection:
+    """
+    Gets all allowed actions for a group given by group_name, returns a dictionary, keyed by resource,
+    with a list of permissions allowed for each given resource.
+
+    :param iam: IAM client to use
+    :param policy_names: Name of policy document associated with a user
+    :param group_name: Name of group to get associated policies
+    """
+    group_policies = [
+        iam.get_group_policy(
+            GroupName=group_name,
+            PolicyName=policy_name
+        )["PolicyDocument"]
+        for policy_name in policy_names
+    ]
+    return collect_policy_actions(group_policies)
+
 
 def get_policy_permissions(region: str) -> AllowedActionCollection:
     """
@@ -229,8 +269,18 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
         attached_policies = iam.list_attached_user_policies(UserName=user['User']['UserName'])
         user_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
         allowed_actions = add_to_action_collection(allowed_actions, user_attached_policies)
-        user_inline_policies = allowed_actions_users(iam, list_policies['PolicyNames'], user['User']['UserName'])
+        user_inline_policies = allowed_actions_user(iam, list_policies['PolicyNames'], user['User']['UserName'])
         allowed_actions = add_to_action_collection(allowed_actions, user_inline_policies)
+
+        # grab group policies associated with the user
+        groups = iam.list_groups_for_user(UserName=user['User']['UserName'])
+        for group in groups["Groups"]:
+            list_policies = iam.list_group_policies(GroupName=group['GroupName'])
+            attached_policies = iam.list_attached_group_policies(GroupName=group['GroupName'])
+            group_attached_policies = allowed_actions_attached(iam, attached_policies['AttachedPolicies'])
+            allowed_actions = add_to_action_collection(allowed_actions, group_attached_policies)
+            group_inline_policies = allowed_actions_group(iam, list_policies['PolicyNames'], group['GroupName'])
+            allowed_actions = add_to_action_collection(allowed_actions, group_inline_policies)
 
     except:
         # If not successful, we check the role associated with an instance profile

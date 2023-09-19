@@ -300,6 +300,10 @@ class DeferredFunctionManager:
                     # So skip it.
                     continue
 
+                # We need to make sure that we don't hold two
+                # DeferredFunctionManagers at once! So make sure to del yours
+                # when you are done with it. TODO: Make it a singleton!
+
                 fd = None
 
                 try:

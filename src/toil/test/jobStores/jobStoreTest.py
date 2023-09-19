@@ -48,18 +48,17 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_aws_s3,
                        needs_encryption,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_storage,
                        slow)
 
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 
-# Need google_retry decorator even if google is not available, so make one up.
-# Unconventional use of decorator to determine if google is enabled by seeing if
-# it returns the parameter passed in.
-if needs_google(needs_google) is needs_google:
+try:
     from toil.jobStores.googleJobStore import google_retry
-else:
+except ImportError:
+    # Need google_retry decorator even if google is not available, so make one up.
     def google_retry(x):
         return x
 
@@ -225,11 +224,14 @@ class AbstractJobStoreTest:
 
         def testPersistantFilesToDelete(self):
             """
-            Make sure that updating a job carries over filesToDelete.
+            Make sure that updating a job persists filesToDelete.
 
-            The following demonstrates the job update pattern, where files to be deleted are referenced in
-            "filesToDelete" array, which is persisted to disk first. If things go wrong during the update, this list of
-            files to delete is used to remove the unneeded files.
+            The following demonstrates the job update pattern, where files to
+            be deleted atomically with a job update are referenced in
+            "filesToDelete" array, which is persisted to disk first. If things
+            go wrong during the update, this list of files to delete is used to
+            ensure that the updated job and the files are never both visible at
+            the same time.
             """
 
             # Create a job.
@@ -277,11 +279,11 @@ class AbstractJobStoreTest:
 
             # Check equivalence between jobstore1 and jobstore2.
             # While job1 and job2 share a jobStoreID, job1 has not been "refreshed" to show the newly added child jobs.
-            self.assertNotEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertNotEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load_job(job1.jobStoreID)
-            self.assertEqual([sorted(x) for x in job2.stack], [sorted(x) for x in job1.stack])
+            self.assertEqual(sorted(job2.allSuccessors()), sorted(job1.allSuccessors()))
 
             # Jobs still shouldn't *actually* be equal, even if their contents are the same.
             self.assertNotEqual(job2, job1)
@@ -1211,9 +1213,36 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 # Clean up download directory
                 shutil.rmtree(download_dir)
 
+    def test_file_link_imports(self):
+        """
+        Test that imported files are symlinked when when expected
+        """
+        store = self._externalStore()
+        size = 1
+        srcUrl, srcMd5 = self._prepareTestFile(store, size)
+        for symlink in [True, False]:
+            for link_imports in [True, False]:
+                self.jobstore_initialized.linkImports = link_imports
+                # Import into job store under test
+                jobStoreFileID = self.jobstore_initialized.import_file(srcUrl, symlink=symlink)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
+                with self.jobstore_initialized.read_file_stream(jobStoreFileID) as f:
+                    # gets abs path
+                    filename = f.name
+                    fileMD5 = hashlib.md5(f.read()).hexdigest()
+                self.assertEqual(fileMD5, srcMd5)
+                if link_imports and symlink:
+                    self.assertTrue(os.path.islink(filename))
+                else:
+                    self.assertFalse(os.path.islink(filename))
+
+                # Remove local Files
+                os.remove(filename)
+        os.remove(srcUrl[7:])
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 @pytest.mark.xfail
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')

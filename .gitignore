@@ -22,3 +22,4 @@ tmp/
 .coverage*
 .mypy_cache
 /contrib/admin/.issue_cache/
+.docker_cache/

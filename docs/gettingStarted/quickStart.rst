@@ -137,9 +137,9 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
         (venv) $ cat wdl-helloworld-output.txt
         Hello world!
 
-To learn more about WDL, see the main `WDL website`_ .
+To learn more about WDL in general, see the `Terra WDL documentation`_ . For more on using WDL in Toil, see :ref:`wdl`.
 
-.. _WDL website: https://software.broadinstitute.org/wdl/
+.. _Terra WDL documentation: https://support.terra.bio/hc/en-us/sections/360007274612-WDL-Documentation
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _runningDetail:

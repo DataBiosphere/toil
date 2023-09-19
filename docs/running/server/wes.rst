@@ -62,17 +62,17 @@ Below is a detailed summary of all server-specific options:
             The port that the Toil server listens on. (default: 8080).
 --swagger_ui
             If True, the swagger UI will be enabled and hosted on the
-            `{api_base_path}/ui` endpoint. (default: False)
+            ``{api_base_path}/ui`` endpoint. (default: False)
 --cors
             Enable Cross Origin Resource Sharing (CORS). This should only be
             turned on if the server is intended to be used by a website or
             domain. (default: False).
 --cors_origins CORS_ORIGIN
-            Ignored if -//-cors is False. This sets the allowed origins for
+            Ignored if ``--cors`` is False. This sets the allowed origins for
             CORS. For details about CORS and its security risks, see the
             `GA4GH docs on CORS`_. (default: "*").
 --workers WORKERS, -w WORKERS
-            Ignored if -\\-debug is True. The number of worker processes
+            Ignored if ``--debug`` is True. The number of worker processes
             launched by the WSGI server. (default: 2).
 --work_dir WORK_DIR
             The directory where workflows should be stored. This directory
@@ -80,11 +80,11 @@ Below is a detailed summary of all server-specific options:
             './workflows').
 --state_store STATE_STORE
             The local path or S3 URL where workflow state metadata should be
-            stored. (default: in -\\-work_dir)
+            stored. (default: in ``--work_dir``)
 --opt OPT, -o OPT
             Specify the default parameters to be sent to the workflow engine for
             each run.  Options taking arguments must use = syntax. Accepts
-            multiple values. Example: -\\-opt=-\\-logLevel=CRITICAL -\\-opt=-\\-workDir=/tmp.
+            multiple values. Example: ``--opt=--logLevel=CRITICAL`` ``--opt=--workDir=/tmp``.
 --dest_bucket_base DEST_BUCKET_BASE
             Direct CWL workflows to save output files to dynamically generated
             unique paths under the given URL. Supports AWS S3.
@@ -363,7 +363,7 @@ To get the detailed information about a workflow run, use the ``GET /runs/{run_i
     $ curl --user test:test http://localhost:8080/ga4gh/wes/v1/runs/4deb8beb24894e9eb7c74b0f010305d1
     {
       "run_id": "4deb8beb24894e9eb7c74b0f010305d1",
-      "request": {
+      "request": {
         "workflow_attachment": [
           "example.cwl"
         ],

@@ -60,7 +60,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 self.waitingJobs.append(newJob)
 
             # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.max_jobs):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command, environment, accelerators = self.waitingJobs.pop(0)
 
@@ -391,7 +391,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(jobNode)
-        if localID:
+        if localID is not None:
             return localID
         else:
             self.check_resource_request(jobNode)

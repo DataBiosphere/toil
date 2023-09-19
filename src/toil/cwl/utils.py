@@ -37,16 +37,6 @@ logger = logging.getLogger(__name__)
 
 # Customized CWL utilities
 
-# Define internal jobs we should avoid submitting to batch systems and logging
-CWL_INTERNAL_JOBS: Tuple[str, ...] = (
-    "CWLJobWrapper",
-    "CWLWorkflow",
-    "CWLScatter",
-    "CWLGather",
-    "ResolveIndirect",
-)
-
-
 # What exit code do we need to bail with if we or any of the local jobs that
 # parse workflow files see an unsupported feature?
 CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE = 33

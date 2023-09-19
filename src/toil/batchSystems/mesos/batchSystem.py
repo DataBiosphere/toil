@@ -94,6 +94,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.mesos_endpoint = config.mesos_endpoint
+        if config.mesos_role is not None:
+            self.mesos_role = config.mesos_role
+        self.mesos_name = config.mesos_name
+        if config.mesos_framework_id is not None:
+            self.mesos_framework_id = config.mesos_framework_id
 
         # Written to when Mesos kills tasks, as directed by Toil.
         # Jobs must not enter this set until they are removed from runningJobMap.
@@ -160,7 +165,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         self.ignoredNodes = set()
 
-        self._startDriver()
+        self._startDriver(config)
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -178,7 +183,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
         localID = self.handleLocalJob(jobNode)
-        if localID:
+        if localID is not None:
             return localID
 
         self.check_resource_request(jobNode)
@@ -310,14 +315,18 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         info.source = pwd.getpwuid(os.getuid()).pw_name
         return info
 
-    def _startDriver(self):
+    def _startDriver(self, config):
         """
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
         framework = addict.Dict()
         framework.user = get_user_name()  # We must determine the user name ourselves with pymesos
-        framework.name = "toil"
+        framework.name = config.mesos_name
         framework.principal = framework.name
+        if config.mesos_role is not None:
+            framework.roles = config.mesos_role
+            framework.capabilities = [dict(type='MULTI_ROLE')]
+
         # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
         # Make sure it will call us with nice namespace-y addicts
         self.driver = MesosSchedulerDriver(self, framework,
@@ -839,8 +848,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         parser.add_argument("--mesosEndpoint", "--mesosMaster", dest="mesos_endpoint", default=cls.get_default_mesos_endpoint(),
                             help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
+        parser.add_argument("--mesosFrameworkId", dest="mesos_framework_id",
+                            help="Use a specific Mesos framework ID.")
+        parser.add_argument("--mesosRole", dest="mesos_role",
+                            help="Use a Mesos role.")
+        parser.add_argument("--mesosName", dest="mesos_name", default="toil",
+                            help="The Mesos name to use. (default: %(default)s)")
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
         setOption("mesos_endpoint", None, None, cls.get_default_mesos_endpoint(), old_names=["mesosMasterAddress"])
+        setOption("mesos_name", None, None, "toil")
+        setOption("mesos_role")
+        setOption("mesos_framework_id")
 

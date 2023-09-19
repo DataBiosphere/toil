@@ -22,6 +22,7 @@ import os
 import pickle
 import sys
 import time
+import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -323,7 +324,7 @@ def accelerators_fully_satisfy(candidates: Optional[List[AcceleratorRequirement]
     Determine if a set of accelerators satisfy a requirement.
 
     Ignores fields specified in ignore.
-    
+
     :returns:  True if the requirement AcceleratorRequirement is
                fully satisfied by the ones in the list, taken
                together (i.e. check all fields including count).
@@ -449,19 +450,15 @@ class Requirer:
 
     def __deepcopy__(self, memo: Any) -> "Requirer":
         """Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`."""
-        # See https://stackoverflow.com/a/40484215 for how to do an override
-        # that uses the base implementation
+        # We used to use <https://stackoverflow.com/a/40484215> and
+        # <https://stackoverflow.com/a/71125311> but that would result in
+        # copies sometimes resurrecting weirdly old job versions. So now we
+        # just actually implement __deepcopy__.
 
-        # Hide this override
-        implementation = self.__deepcopy__
-        self.__deepcopy__ = None  # type: ignore[assignment]
-
-        # Do the deepcopy which omits the config via __getstate__ override
-        clone = copy.deepcopy(self, memo)
-
-        # Put back the override on us and the copy
-        self.__deepcopy__ = implementation  # type: ignore[assignment]
-        clone.__deepcopy__ = implementation  # type: ignore[assignment]
+        clone = type(self).__new__(self.__class__)
+        state = self.__getstate__()
+        clone_state = copy.deepcopy(state, memo)
+        clone.__dict__.update(clone_state)
 
         if self._config is not None:
             # Share a config reference
@@ -728,9 +725,10 @@ class JobDescription(Requirer):
         self,
         requirements: Mapping[str, Union[int, str, bool]],
         jobName: str,
-        unitName: str = "",
-        displayName: str = "",
+        unitName: Optional[str] = "",
+        displayName: Optional[str] = "",
         command: Optional[str] = None,
+        local: Optional[bool] = None
     ) -> None:
         """
         Create a new JobDescription.
@@ -750,13 +748,23 @@ class JobDescription(Requirer):
         :param displayName: A human-readable name to identify this
             particular job instance. Ought to be the job class's name
             if no real user-defined name is available.
+        :param local: If True, the job is meant to use minimal resources but is
+            sensitive to execution latency, and so should be executed by the
+            leader.
         """
         # Set requirements
         super().__init__(requirements)
 
-        # Save names, making sure they are strings and not e.g. bytes.
-        def makeString(x: Union[str, bytes]) -> str:
-            return x if not isinstance(x, bytes) else x.decode('utf-8', errors='replace')
+        # Set local-ness flag, which is not (yet?) a requirement
+        self.local: bool = local or False
+
+        # Save names, making sure they are strings and not e.g. bytes or None.
+        def makeString(x: Union[str, bytes, None]) -> str:
+            if isinstance(x, bytes):
+                return x.decode('utf-8', errors='replace')
+            if x is None:
+                return ""
+            return x
         self.jobName = makeString(jobName)
         self.unitName = makeString(unitName)
         self.displayName = makeString(displayName)
@@ -784,15 +792,27 @@ class JobDescription(Requirer):
         # default value for this workflow execution.
         self._remainingTryCount = None
 
-        # Holds FileStore FileIDs of the files that this job has deleted. Used
-        # to journal deletions of files and recover from a worker crash between
-        # committing a JobDescription update and actually executing the
-        # requested deletions.
+        # Holds FileStore FileIDs of the files that should be seen as deleted,
+        # as part of a transaction with the writing of this version of the job
+        # to the job store. Used to journal deletions of files and recover from
+        # a worker crash between committing a JobDescription update (for
+        # example, severing the body of a completed job from the
+        # JobDescription) and actually executing the requested deletions (i.e.
+        # the deletions made by executing the body).
+        #
+        # Since the files being deleted might be required to execute the job
+        # body, we can't delete them first, but we also don't want to leave
+        # them behind if we die right after saving the JobDescription.
+        #
+        # This will be empty at all times except when a new version of a job is
+        # in the process of being committed. 
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this
-        # job, and which should be deleted when this job finally is deleted.
-        self.jobsToDelete = []
+        # job, and which should be deleted when this job finally is deleted
+        # (but not before). The successor relationships with them will have
+        # been cut, so we need to hold onto them somehow.
+        self.merged_jobs = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -819,7 +839,13 @@ class JobDescription(Requirer):
 
         # The IDs of all follow-on jobs of the described job.
         # Follow-ons which are done must be removed with filterSuccessors.
-        self.followOnIDs = set()
+        self.followOnIDs: Set[str] = set()
+
+        # We keep our own children and follow-ons in a list of successor
+        # phases, along with any successors adopted from jobs we have chained
+        # from. When we finish our own children and follow-ons, we may have to
+        # go back and finish successors for those jobs.
+        self.successor_phases: List[Set[str]] = [self.followOnIDs, self.childIDs]
 
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
         # All services must have an entry, if only to an empty list.
@@ -832,6 +858,8 @@ class JobDescription(Requirer):
         # Every time we update a job description in place in the job store, we
         # increment this.
         self._job_version = 0
+        # And we log who made the version (by PID)
+        self._job_version_writer = 0
 
         # Human-readable names of jobs that were run as part of this job's
         # invocation, starting with this job
@@ -867,11 +895,30 @@ class JobDescription(Requirer):
 
     def successorsAndServiceHosts(self) -> Iterator[str]:
         """Get an iterator over all child, follow-on, and service job IDs."""
-        return itertools.chain(self.childIDs, self.followOnIDs, self.serviceTree.keys())
 
-    def allSuccessors(self):
-        """Get an iterator over all child and follow-on job IDs."""
-        return itertools.chain(self.childIDs, self.followOnIDs)
+        return itertools.chain(self.allSuccessors(), self.serviceTree.keys())
+
+    def allSuccessors(self) -> Iterator[str]:
+        """
+        Get an iterator over all child, follow-on, and chained, inherited successor job IDs.
+
+        Follow-ons will come before children.
+        """
+
+        for phase in self.successor_phases:
+            for successor in phase:
+                yield successor
+
+    def successors_by_phase(self) -> Iterator[Tuple[int, str]]:
+        """
+        Get an iterator over all child/follow-on/chained inherited successor job IDs, along with their phase numbere on the stack.
+
+        Phases ececute higher numbers to lower numbers.
+        """
+
+        for i, phase in enumerate(self.successor_phases):
+            for successor in phase:
+                yield i, successor
 
     @property
     def services(self):
@@ -882,7 +929,7 @@ class JobDescription(Requirer):
         """
         return list(self.serviceTree.keys())
 
-    def nextSuccessors(self) -> List[str]:
+    def nextSuccessors(self) -> Set[str]:
         """
         Return the collection of job IDs for the successors of this job that are ready to run.
 
@@ -896,44 +943,14 @@ class JobDescription(Requirer):
         if self.command is not None:
             # We ourselves need to run. So there's not nothing to do
             # but no successors are ready.
-            return []
-        elif len(self.childIDs) != 0:
-            # Our children need to run
-            return self.childIDs
-        elif len(self.followOnIDs) != 0:
-            # Our follow-ons need to run
-            return self.followOnIDs
+            return set()
         else:
-            # Everything is done.
-            return None
-
-    @property
-    def stack(self) -> Tuple[Tuple[str, ...], ...]:
-        """
-        Get IDs of successors that need to run still.
-
-        Batches of successors are in reverse order of the order they need to run in.
-
-        Some successors in each batch may have already been finished. Batches may be empty.
-
-        Exists so that code that used the old stack list immutably can work
-        still. New development should use nextSuccessors(), and all mutations
-        should use filterSuccessors() (which automatically removes completed
-        phases).
-
-        :return: Batches of successors that still need to run, in reverse
-                 order. An empty batch may exist under a non-empty batch, or at the top
-                 when the job itself is not done.
-        :rtype: tuple(tuple(str))
-        """
-        result = []
-        if self.command is not None or len(self.childIDs) != 0 or len(self.followOnIDs) != 0:
-            # Follow-ons haven't all finished yet
-            result.append(tuple(self.followOnIDs))
-        if self.command is not None or len(self.childIDs) != 0:
-            # Children haven't all finished yet
-            result.append(tuple(self.childIDs))
-        return tuple(result)
+            for phase in reversed(self.successor_phases):
+                if len(phase) > 0:
+                    # Rightmost phase that isn't empty
+                    return phase
+        # If no phase isn't empty, we're done.
+        return None
 
     def filterSuccessors(self, predicate: Callable[[str], bool]) -> None:
         """
@@ -943,8 +960,12 @@ class JobDescription(Requirer):
 
         Treats all other successors as complete and forgets them.
         """
-        self.childIDs = {x for x in self.childIDs if predicate(x)}
-        self.followOnIDs = {x for x in self.followOnIDs if predicate(x)}
+
+        for phase in self.successor_phases:
+            for successor_id in list(phase):
+                if not predicate(successor_id):
+                    phase.remove(successor_id)
+        self.successor_phases = [p for p in self.successor_phases if len(p) > 0]
 
     def filterServiceHosts(self, predicate: Callable[[str], bool]) -> None:
         """
@@ -978,9 +999,10 @@ class JobDescription(Requirer):
         self.filterServiceHosts(predicate)
 
     def clear_dependents(self) -> None:
-        """Remove all references to child, follow-on, and associated service jobs."""
+        """Remove all references to successor and service jobs."""
         self.childIDs = set()
         self.followOnIDs = set()
+        self.successor_phases = [self.followOnIDs, self.childIDs]
         self.serviceTree = {}
 
     def is_subtree_done(self) -> bool:
@@ -1000,21 +1022,41 @@ class JobDescription(Requirer):
 
         Useful for chaining jobs: the chained-to job can replace the parent job.
 
-        Merges cleanup state from the job being replaced into this one.
+        Merges cleanup state and successors other than this job from the job
+        being replaced into this one.
 
         :param other: Job description to replace.
         """
-        # TODO: also be able to take on the successors of the other job, under
-        # ours on the stack, somehow.
 
+        # TODO: We can't join the job graphs with Job._jobGraphsJoined, is that a problem?
+
+        # Take all the successors other than this one
+        old_phases = [{i for i in p if i != self.jobStoreID} for p in other.successor_phases]
+        # And drop empty phases
+        old_phases = [p for p in old_phases if len(p) > 0]
+        # And put in front of our existing phases
+        logger.debug('%s is adopting successor phases from %s of: %s', self, other, old_phases)
+        self.successor_phases = old_phases + self.successor_phases
+
+        # When deleting, we need to delete the files for our old ID, and also
+        # anything that needed to be deleted for the job we are replacing.
+        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
         self.jobStoreID = other.jobStoreID
 
-        # Save files and jobs to delete from the job we replaced, so we can
-        # roll up a whole chain of jobs and delete them when they're all done.
-        self.filesToDelete += other.filesToDelete
-        self.jobsToDelete += other.jobsToDelete
+        if len(other.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of a job that is in the process of being committed!")
+        if len(self.filesToDelete) > 0:
+            raise RuntimeError("Trying to take on the ID of anothe job while in the process of being committed!")
 
         self._job_version = other._job_version
+        self._job_version_writer = os.getpid()
+
+    def check_new_version(self, other: "JobDescription") -> None:
+        """
+        Make sure a prospective new version of the JobDescription is actually moving forward in time and not backward.
+        """
+        if other._job_version < self._job_version:
+            raise RuntimeError(f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}")
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1058,8 +1100,13 @@ class JobDescription(Requirer):
 
         :param renames: Rename operations to apply.
         """
-        self.childIDs = {renames.get(old, old) for old in self.childIDs}
-        self.followOnIDs = {renames.get(old, old) for old in self.followOnIDs}
+        for phase in self.successor_phases:
+            items = list(phase)
+            for item in items:
+                if isinstance(item, TemporaryID) and item in renames:
+                    # Replace each renamed item one at a time to preserve set identity
+                    phase.remove(item)
+                    phase.add(renames[item])
         self.serviceTree = {renames.get(parent, parent): [renames.get(child, child) for child in children]
                             for parent, children in self.serviceTree.items()}
 
@@ -1189,6 +1236,14 @@ class JobDescription(Requirer):
     def __repr__(self):
         return f'{self.__class__.__name__}( **{self.__dict__!r} )'
 
+    def reserve_versions(self, count: int) -> None:
+        """
+        Reserve a job version number for later, for journaling asynchronously.
+        """
+        self._job_version += count
+        self._job_version_writer = os.getpid()
+        logger.debug("Skip ahead to job version: %s", self)
+
     def pre_update_hook(self) -> None:
         """
         Run before pickling and saving a created or updated version of this job.
@@ -1196,11 +1251,14 @@ class JobDescription(Requirer):
         Called by the job store.
         """
         self._job_version += 1
+        self._job_version_writer = os.getpid()
         logger.debug("New job version: %s", self)
 
     def get_job_kind(self) -> str:
         """
-        Return an identifier of the job for use with the message bus.
+        Return an identifying string for the job.
+
+        The result may contain spaces.
 
         Returns: Either the unit name, job name, or display name, which identifies
                  the kind of job it is to toil.
@@ -1281,7 +1339,8 @@ class CheckpointJobDescription(JobDescription):
         """
         assert self.checkpoint is not None
         successorsDeleted = []
-        if self.childIDs or self.followOnIDs or self.serviceTree or self.command is not None:
+        all_successors = list(self.allSuccessors())
+        if len(all_successors) > 0 or self.serviceTree or self.command is not None:
             if self.command is not None:
                 assert self.command == self.checkpoint
                 logger.debug("Checkpoint job already has command set to run")
@@ -1291,10 +1350,10 @@ class CheckpointJobDescription(JobDescription):
             jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
-            if self.childIDs or self.followOnIDs or self.serviceTree:
+            if len(all_successors) > 0 or self.serviceTree:
                 # If the subtree of successors is not complete restart everything
-                logger.debug("Checkpoint job has unfinished successor jobs, deleting children: %s, followOns: %s, services: %s " %
-                             (self.childIDs, self.followOnIDs, self.serviceTree.keys()))
+                logger.debug("Checkpoint job has unfinished successor jobs, deleting successors: %s, services: %s " %
+                             (all_successors, self.serviceTree.keys()))
 
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue
@@ -1337,6 +1396,7 @@ class Job:
         checkpoint: Optional[bool] = False,
         displayName: Optional[str] = "",
         descriptionClass: Optional[type] = None,
+        local: Optional[bool] = None,
     ) -> None:
         """
         Job initializer.
@@ -1356,6 +1416,7 @@ class Job:
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
         :param displayName: Human-readable job type display name.
         :param descriptionClass: Override for the JobDescription class used to describe the job.
+        :param local: if the job can be run on the leader.
 
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
@@ -1389,7 +1450,13 @@ class Job:
         # Create the JobDescription that owns all the scheduling information.
         # Make it with a temporary ID until we can be assigned a real one by
         # the JobStore.
-        self._description = descriptionClass(requirements, jobName, unitName=unitName, displayName=displayName)
+        self._description = descriptionClass(
+            requirements,
+            jobName,
+            unitName=unitName,
+            displayName=displayName,
+            local=local
+        )
 
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.
@@ -1398,6 +1465,7 @@ class Job:
         # Will be shared among all jobs in a disconnected piece of the job
         # graph that hasn't been registered with a JobStore yet.
         # Make sure to initially register ourselves.
+        # After real IDs are assigned, this maps from real ID to the job objects.
         self._registry = {self._description.jobStoreID: self}
 
         # Job relationships are all stored exactly once in the JobDescription.
@@ -1977,12 +2045,14 @@ class Job:
         #connected by an implied edge
         extraEdges = {n: [] for n in nodes}
         for job in nodes:
-            for depth in range(1, len(job.description.stack)):
+             # Get all the nonempty successor phases
+            phases = [p for p in job.description.successor_phases if len(p) > 0]
+            for depth in range(1, len(phases)):
                 # Add edges from all jobs in the earlier/upper subtrees to all
                 # the roots of the later/lower subtrees
 
-                upper = job.description.stack[depth]
-                lower = job.description.stack[depth - 1]
+                upper = phases[depth]
+                lower = phases[depth - 1]
 
                 # Find everything in the upper subtree
                 reacheable = set()
@@ -2339,7 +2409,7 @@ class Job:
                 visited.add(job.jobStoreID)
                 ordering.append(job)
 
-                for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
+                for otherID in job.description.allSuccessors():
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
@@ -2511,12 +2581,19 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
 
-        logger.info("Saving graph of %d jobs, %d new", len(allJobs), len(fakeToReal))
+        logger.info("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
 
         # Make sure we're the root
         assert ordering[-1] == self
 
         # Don't verify the ordering length: it excludes service host jobs.
+        ordered_ids = {o.jobStoreID for o in ordering}
+        for j in allJobs:
+            # But do ensure all non-service-host jobs are in it.
+            if not isinstance(j, ServiceHostJob) and j.jobStoreID not in ordered_ids:
+                raise RuntimeError(f"{j} not found in ordering {ordering}")
+
+
 
         if not saveSelf:
             # Fulfil promises for return values (even if value is None)

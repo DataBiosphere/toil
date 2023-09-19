@@ -32,20 +32,22 @@ import tempfile
 import uuid
 
 from contextlib import ExitStack
+from graphlib import TopologicalSorter
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
+from WDL._util import byte_size_units
 from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
-from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
+from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
@@ -61,6 +63,10 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     the given paths or URIs, the current directory, and the given importing WDL
     document if any.
     """
+
+    if uri == "":
+        # Empty URIs can't come from anywhere.
+        return
 
     # We need to brute-force find this URI relative to:
     #
@@ -170,22 +176,56 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     the current task.
     """
 
-    # Sort, largest last
-    all_bindings = sorted(all_bindings, key=lambda x: len(x))
+    # We can't just use WDL.Env.merge, because if a value is shadowed in a
+    # binding, WDL.Env.merge can resurrect it to haunt us and become the
+    # winning value in the merge result. See
+    # <https://github.com/chanzuckerberg/miniwdl/issues/637>
+    #
+    # It also just strings the resolution chains of all the bindings together,
+    # which is a bad plan if we aren't careful to avoid shadowing most of the
+    # time. Whereas we actually routinely merge bindings of the whole current
+    # environment together to propagate one or zero new values.
+    #
+    # So we do the merge manually.
 
-    # Merge them up
-    return WDL.Env.merge(*all_bindings)
+    if len(all_bindings) == 0:
+        # Combine nothing
+        return WDL.Env.Bindings()
+    else:
+        # Sort, largest first
+        all_bindings = sorted(all_bindings, key=lambda x: -len(x))
 
-def log_bindings(all_bindings: Sequence[Promised[WDLBindings]]) -> None:
+        merged = all_bindings[0]
+        for bindings in all_bindings[1:]:
+            for binding in bindings:
+                if binding.name in merged:
+                    # This is a duplicate
+                    existing_value = merged[binding.name]
+                    if existing_value != binding.value:
+                        raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
+                    else:
+                        logger.debug('Drop duplicate binding for %s', binding.name)
+                else:
+                    merged = merged.bind(binding.name, binding.value, binding.info)
+
+    return merged
+
+# TODO: Develop a Protocol that can match the logging function type more closely
+def log_bindings(log_function: Callable[..., None], message: str, all_bindings: Sequence[Promised[WDLBindings]]) -> None:
     """
     Log bindings to the console, even if some are still promises.
+
+    :param log_function: Function (like logger.info) to call to log data
+    :param message: Message to log before the bindings
+    :param all_bindings: A list of bindings or promises for bindings, to log
     """
+    log_function(message)
     for bindings in all_bindings:
         if isinstance(bindings, WDL.Env.Bindings):
             for binding in bindings:
-                logger.info("%s = %s", binding.name, binding.value)
+                log_function("%s = %s", binding.name, binding.value)
         elif isinstance(bindings, Promise):
-            logger.info("<Unfulfilled promise for bindings>")
+            log_function("<Unfulfilled promise for bindings>")
 
 def get_supertype(types: Sequence[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
     """
@@ -224,7 +264,6 @@ def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode
     internal nodes of conditionals and scatters, and gather nodes.
     """
 
-    logger.debug('WorkflowNode: %s: %s %s', type(root), root, root.workflow_node_id)
     yield root
     for child_node in root.children:
         if isinstance(child_node, WDL.Tree.WorkflowNode):
@@ -294,6 +333,94 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str]:
 
     return file_id, file_basename
 
+def evaluate_output_decls(output_decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: WDL.StdLib.Base) -> WDL.Env.Bindings[WDL.Value.Base]:
+    """
+    Evaluate output decls with a given bindings environment and standard library.
+    Creates a new bindings object that only contains the bindings from the given decls.
+    Guarantees that each decl in `output_decls` can access the variables defined by the previous ones.
+    :param all_bindings: Environment to use when evaluating decls
+    :param output_decls: Decls to evaluate
+    :param standard_library: Standard library
+    :return: New bindings object with only the output_decls
+    """
+    # all_bindings contains output + previous bindings so that the output can reference its own declarations
+    # output_bindings only contains the output bindings themselves so that bindings from sections such as the input aren't included
+    output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+    for output_decl in output_decls:
+        output_value = evaluate_decl(output_decl, all_bindings, standard_library)
+        all_bindings = all_bindings.bind(output_decl.name, output_value)
+        output_bindings = output_bindings.bind(output_decl.name, output_value)
+    return output_bindings
+
+class NonDownloadingSize(WDL.StdLib._Size):
+    """
+    WDL size() implementation that avoids downloading files.
+
+    MiniWDL's default size() implementation downloads the whole file to get its
+    size. We want to be able to get file sizes from code running on the leader,
+    where there may not be space to download the whole file. So we override the
+    fancy class that implements it so that we can handle sizes for FileIDs
+    using the FileID's stored size info.
+    """
+
+    def _call_eager(self, expr: "WDL.Expr.Apply", arguments: List[WDL.Value.Base]) -> WDL.Value.Base:
+        """
+        Replacement evaluation implementation that avoids downloads.
+        """
+
+        # Get all the URIs of files that actually are set.
+        file_uris: List[str] = [f.value for f in arguments[0].coerce(WDL.Type.Array(WDL.Type.File(optional=True))).value if not isinstance(f, WDL.Value.Null)]
+
+        total_size = 0.0
+        for uri in file_uris:
+            # Sum up the sizes of all the files, if any.
+            if uri.startswith(TOIL_URI_SCHEME):
+                # This is a Toil File ID we encoded; we have the size
+                # available.
+                file_id, _ = unpack_toil_uri(uri)
+                # Use the encoded size
+                total_size += file_id.size
+            else:
+                # We need to fetch it and get its size.
+                total_size += os.path.getsize(self.stdlib._devirtualize_filename(uri))
+
+        if len(arguments) > 1:
+            # Need to convert units. See
+            # <https://github.com/chanzuckerberg/miniwdl/blob/498dc98d08e3ea3055b34b5bec408ae51dae0f0f/WDL/StdLib.py#L735-L740>
+            unit_name: str = arguments[1].coerce(WDL.Type.String()).value
+            if unit_name not in byte_size_units:
+                raise WDL.Error.EvalError(expr, "size(): invalid unit " + unit_name)
+            # Divide down to the right unit
+            total_size /= float(byte_size_units[unit_name])
+
+        # Return the result as a WDL float value
+        return WDL.Value.Float(total_size)
+
+
+# Both the WDL code itself **and** the commands that it runs will deal in
+# "virtualized" filenames.
+
+# We have to guarantee that "When a WDL author uses a File input in their
+# Command Section, the fully qualified, localized path to the file is
+# substituted when that declaration is referenced in the command template."
+
+# This has to be true even if the File is the result of a WDL function that is
+# run *during* the evaluation of the command string, via a placeholder
+# expression evaluation.
+
+# Really there are 3 filename spaces in play: Toil filestore URLs,
+# outside-the-container host filenames, and inside-the-container filenames. But
+# the MiniWDL machinery only gives us 2 levels to work with: "virtualized"
+# (visible to the workflow) and "devirtualized" (openable by this process).
+
+# So we sneakily swap out what "virtualized" means. Usually (as provided by
+# ToilWDLStdLibBase) a "virtualized" filename is the Toil filestore URL space.
+# But when evaluating a task command, we switch things so that the
+# "virtualized" space is the inside-the-container filename space (by
+# devirtualizing and then host-to-container-mapping all the visible files, and
+# then using ToilWDLStdLibTaskCommand for evaluating expressions, and then
+# going back from container to host space after the command). At all times the
+# "devirtualized" space is outside-the-container host filenames.
 
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
@@ -311,15 +438,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Set up miniwdl's implementation (which may be WDL.StdLib.TaskOutputs)
         super().__init__(wdl_version, write_dir)
 
+        # Replace the MiniWDL size() implementation with one that doesn't need
+        # to always download the file.
+        self.size = NonDownloadingSize(self)
+
         # Keep the file store around so we can access files.
         self._file_store = file_store
-
-    # Both the WDL code itself **and** the commands that it runs will deal in
-    # "virtualized" filenames by default, so when making commands we need to
-    # make sure to devirtualize filenames.
-    # We have to guarantee that "When a WDL author uses a File input in their
-    # Command Section, the fully qualified, localized path to the file is
-    # substituted when that declaration is referenced in the command template."
 
     def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
@@ -338,7 +462,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
-
         if filename.startswith(TOIL_URI_SCHEME):
             # This is a reference to the Toil filestore.
             # Deserialize the FileID
@@ -363,7 +486,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # This is a local file
             result = filename
 
-        logger.info('Devirtualized %s as openable file %s', filename, result)
+        logger.debug('Devirtualized %s as openable file %s', filename, result)
         assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!"
         return result
 
@@ -376,13 +499,70 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if self._is_url(filename):
             # Already virtual
-            logger.info('Virtualized %s as WDL file %s', filename, filename)
+            logger.debug('Virtualized %s as WDL file %s', filename, filename)
             return filename
 
         # Otherwise this is a local file and we want to fake it as a Toil file store file
         file_id = self._file_store.writeGlobalFile(filename)
         result = pack_toil_uri(file_id, os.path.basename(filename))
-        logger.info('Virtualized %s as WDL file %s', filename, result)
+        logger.debug('Virtualized %s as WDL file %s', filename, result)
+        return result
+
+class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
+    """
+    Standard library implementation to use inside a WDL task command evaluation.
+
+    Expects all the filenames in variable bindings to be container-side paths;
+    these are the "virtualized" filenames, while the "devirtualized" filenames
+    are host-side paths.
+    """
+
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer):
+        """
+        Set up the standard library for the task command section.
+        """
+
+        # TODO: Don't we want to make sure we don't actually use the file store?
+        super().__init__(file_store)
+        self.container = container
+
+    def _devirtualize_filename(self, filename: str) -> str:
+        """
+        Go from a virtualized WDL-side filename to a local disk filename.
+
+        Any WDL-side filenames which are paths will be paths in the container.
+        """
+        if self._is_url(filename):
+            # We shouldn't have to deal with URLs here; we want to have exactly
+            # two nicely stacked/back-to-back layers of virtualization, joined
+            # on the out-of-container paths.
+            raise RuntimeError(f"File {filename} is a URL but should already be an in-container-virtualized filename")
+
+        # If this is a local path it will be in the container. Make sure we
+        # use the out-of-container equivalent.
+        result = self.container.host_path(filename)
+
+        if result is None:
+            # We really shouldn't have files in here that we didn't virtualize.
+            raise RuntimeError(f"File {filename} in container is not mounted from the host and can't be opened from the host")
+
+        logger.debug('Devirtualized %s as out-of-container file %s', filename, result)
+        return result
+
+
+    def _virtualize_filename(self, filename: str) -> str:
+        """
+        From a local path in write_dir, 'virtualize' into the filename as it should present in a
+        File value, when substituted into a command in the container.
+        """
+
+        if filename not in self.container.input_path_map:
+            # Mount the file.
+            self.container.add_paths([filename])
+
+        result = self.container.input_path_map[filename]
+
+        logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
 class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
@@ -539,8 +719,7 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
         except Exception:
             # If something goes wrong, dump.
             logger.exception("Expression evaluation failed for %s: %s", name, expression)
-            logger.info("Expression was evaluated in environment:")
-            log_bindings([environment])
+            log_bindings(logger.error, "Expression was evaluated in:", [environment])
             raise
 
     if expected_type:
@@ -572,12 +751,21 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
     """
 
-    if node.name in environment:
-        logger.debug('Name %s is already defined, not using default', node.name)
-        return environment[node.name]
-    else:
-        logger.info('Defaulting %s to %s', node.name, node.expr)
-        return evaluate_decl(node, environment, stdlib)
+    try:
+        if node.name in environment and not isinstance(environment[node.name], WDL.Value.Null):
+            logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
+            return environment[node.name]
+        else:
+            if node.type is not None and not node.type.optional and node.expr is None:
+                # We need a value for this but there isn't one.
+                raise WDL.Error.EvalError(node, f"Value for {node.name} was not provided and no default value is available")
+            logger.info('Defaulting %s to %s', node.name, node.expr)
+            return evaluate_decl(node, environment, stdlib)
+    except Exception:
+        # If something goes wrong, dump.
+        logger.exception("Evaluation failed for %s", node)
+        log_bindings(logger.error, "Statement was evaluated in:", [environment])
+        raise
 
 # TODO: make these stdlib methods???
 def devirtualize_files(environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDLBindings:
@@ -615,10 +803,19 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Try each place it could be according to WDL finding logic.
             tried.append(candidate_uri)
             try:
-                imported = toil.import_file(candidate_uri)
+                # Try to import the file. Don't raise if we can't find it, just
+                # return None!
+                imported = toil.import_file(candidate_uri, check_existence=False)
+            except UnimplementedURLException as e:
+                # We can't find anything that can even support this URL scheme.
+                # Report to the user, they are probably missing an extra.
+                logger.critical('Error: ' + str(e))
+                sys.exit(1)
             except Exception:
-                # We couldn't try the import. Try the next URL
-                continue
+                # Something went wrong besides the file not being found. Maybe
+                # we have no auth.
+                logger.error("Something went wrong importing %s", candidate_uri)
+                raise
             if imported is None:
                 # Wasn't found there
                 continue
@@ -627,13 +824,16 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Work out what the basename for the file was
             file_basename = os.path.basename(urlsplit(candidate_uri).path)
 
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later.
+                raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
             # Was actually found
             return pack_toil_uri(imported, file_basename)
 
         # If we get here we tried all the candidates
-        # TODO: Make a more informative message?
-        logger.error('Could not find %s at any of: %s', uri, tried)
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
+        raise RuntimeError(f"Could not find {uri} at any of: {tried}")
 
     return map_over_files_in_bindings(environment, import_file_from_uri)
 
@@ -756,6 +956,11 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
 class WDLBaseJob(Job):
     """
     Base job class for all WDL-related jobs.
+
+    Responsible for post-processing returned bindings, to do things like add in
+    null values for things not defined in a section. Post-processing operations
+    can be added onto any job before it is saved, and will be applied as long
+    as the job's run method calls postprocess().
     """
 
     def __init__(self, **kwargs: Any) -> None:
@@ -767,6 +972,11 @@ class WDLBaseJob(Job):
         in the constructor because it needs to happen in the leader and the
         worker before a job body containing MiniWDL structures can be saved.
         """
+
+        # Default everything to being a local job
+        if 'local' not in kwargs:
+            kwargs['local'] = True
+
         super().__init__(**kwargs)
 
         # The jobs can't pickle under the default Python recursion limit of
@@ -774,6 +984,11 @@ class WDLBaseJob(Job):
         # TODO: Dynamically determine how high this needs to be to serialize the structures we actually have.
         # TODO: Make sure C-level stack size is also big enough for this.
         sys.setrecursionlimit(10000)
+
+        # We need an ordered list of postprocessing steps to apply, because we
+        # may have coalesced postprocessing steps deferred by several levels of
+        # jobs returning other jobs' promised RVs.
+        self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
 
     # TODO: We're not allowed by MyPy to override a method and widen the return
     # type, so this has to be Any.
@@ -786,33 +1001,85 @@ class WDLBaseJob(Job):
         # bindings are actually linked lists or something?
         sys.setrecursionlimit(10000)
 
-class WDLInputJob(WDLBaseJob):
-    """
-    Job that evaluates a WDL input, or sources it from the workflow inputs.
-    """
-    def __init__(self, node: WDL.Tree.Decl, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def then_underlay(self, underlay: Promised[WDLBindings]) -> None:
         """
-        Make a new job to evaluate a WDL input.
+        Apply an underlay of backup bindings to the result.
         """
-        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, **kwargs)
+        logger.debug("Underlay %s after %s", underlay, self)
+        self._postprocessing_steps.append(("underlay", underlay))
 
-        self._node = node
-        self._prev_node_results = prev_node_results
-
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+    def then_remove(self, remove: Promised[WDLBindings]) -> None:
         """
-        Evaluate the input.
+        Remove the given bindings from the result.
         """
-        super().run(file_store)
+        logger.debug("Remove %s after %s", remove, self)
+        self._postprocessing_steps.append(("remove", remove))
 
-        logger.info("Running node %s", self._node.workflow_node_id)
+    def then_namespace(self, namespace: str) -> None:
+        """
+        Put the result bindings into a namespace.
+        """
+        logger.debug("Namespace %s after %s", namespace, self)
+        self._postprocessing_steps.append(("namespace", namespace))
 
-        # Combine the bindings we get from previous jobs
-        incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
-        # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store)
+    def then_overlay(self, overlay: Promised[WDLBindings]) -> None:
+        """
+        Overlay the given bindings on top of the (possibly namespaced) result.
+        """
+        logger.debug("Overlay %s after %s", overlay, self)
+        self._postprocessing_steps.append(("overlay", overlay))
 
-        return incoming_bindings.bind(self._node.name, evaluate_defaultable_decl(self._node, incoming_bindings, standard_library))
+    def postprocess(self, bindings: WDLBindings) -> WDLBindings:
+        """
+        Apply queued changes to bindings.
+
+        Should be applied by subclasses' run() implementations to their return
+        values.
+        """
+
+        for action, argument in self._postprocessing_steps:
+
+            logger.debug("Apply postprocessing setp: (%s, %s)", action, argument)
+
+            # Interpret the mini language of postprocessing steps.
+            # These are too small to justify being their own separate jobs.
+            if action == "underlay":
+                if not isinstance(argument, WDL.Env.Bindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We want to apply values from the underlay if not set in the bindings
+                bindings = combine_bindings([bindings, argument.subtract(bindings)])
+            elif action == "remove":
+                if not isinstance(argument, WDL.Env.Bindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We need to take stuff out of scope
+                bindings = bindings.subtract(argument)
+            elif action == "namespace":
+                if not isinstance(argument, str):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We are supposed to put all our results in a namespace
+                bindings = bindings.wrap_namespace(argument)
+            elif action == "overlay":
+                if not isinstance(argument, WDL.Env.Bindings):
+                    raise RuntimeError("Wrong postprocessing argument type")
+                # We want to apply values from the overlay over the bindings
+                bindings = combine_bindings([bindings.subtract(argument), argument])
+            else:
+                raise RuntimeError(f"Unknown postprocessing action {action}")
+
+        return bindings
+
+    def defer_postprocessing(self, other: "WDLBaseJob") -> None:
+        """
+        Give our postprocessing steps to a different job.
+
+        Use this when you are returning a promise for bindings, on the job that issues the promise.
+        """
+
+        other._postprocessing_steps += self._postprocessing_steps
+        self._postprocessing_steps = []
+
+        logger.debug("Assigned postprocessing steps from %s to %s", self, other)
+
 
 class WDLTaskJob(WDLBaseJob):
     """
@@ -825,15 +1092,25 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], namespace: str, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
+
+        :param namespace: The namespace that the task's *contents* exist in.
+               The caller has alredy added the task's own name.
         """
 
-        super().__init__(unitName=task.name, displayName=task.name, **kwargs)
+        # This job should not be local because it represents a real workflow task.
+        # TODO: Instead of re-scheduling with more resources, add a local
+        # "wrapper" job like CWL uses to determine the actual requirements.
+        super().__init__(unitName=namespace, displayName=namespace, local=False, **kwargs)
+
+        logger.info("Preparing to run task %s as %s", task.name, namespace)
 
         self._task = task
         self._prev_node_results = prev_node_results
+        self._task_id = task_id
+        self._namespace = namespace
 
     def can_fake_root(self) -> bool:
         """
@@ -860,7 +1137,7 @@ class WDLTaskJob(WDLBaseJob):
         Actually run the task.
         """
         super().run(file_store)
-        logger.info("Running task %s", self._task.name)
+        logger.info("Running task %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
 
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
@@ -869,6 +1146,7 @@ class WDLTaskJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
+            logger.debug("Evaluating task inputs")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
@@ -982,9 +1260,13 @@ class WDLTaskJob(WDLBaseJob):
             # resources.
             # TODO: What if the runtime section says we need a lot of disk to
             # hold the large files that the inputs section is going to write???
-            rescheduled = WDLTaskJob(self._task, self._prev_node_results, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
+            rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._namespace, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
             # Run that as a child
             self.addChild(rescheduled)
+
+            # Give it our postprocessing steps
+            self.defer_postprocessing(rescheduled)
+
             # And return its result.
             return rescheduled.rv()
 
@@ -992,17 +1274,21 @@ class WDLTaskJob(WDLBaseJob):
 
         if shutil.which('singularity'):
 
-            # Prepare to use Singularity. Make sure that we have plenty of space to
+            # Prepare to use Singularity. We will need plenty of space to
             # download images.
             if 'SINGULARITY_CACHEDIR' not in os.environ:
                 # Cache Singularity's layers somehwere known to have space, not in home
                 os.environ['SINGULARITY_CACHEDIR'] = os.path.join(file_store.workflow_dir, 'singularity_cache')
+            # Make sure it exists.
+            os.makedirs(os.environ['SINGULARITY_CACHEDIR'], exist_ok=True)
 
             if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
                 # Cache Singularity images for the workflow on this machine.
                 # Since MiniWDL does only within-process synchronization for pulls,
                 # we also will need to pre-pull one image into here at a time.
                 os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.path.join(file_store.workflow_dir, 'miniwdl_sif_cache')
+            # Make sure it exists.
+            os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
 
             # Run containers with Singularity
             TaskContainerImplementation: Type[TaskContainer]  = SingularityContainer
@@ -1115,14 +1401,17 @@ class WDLTaskJob(WDLBaseJob):
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             task_container.add_paths(get_file_paths_in_bindings(bindings))
-            logger.info("Using container path map: %s", task_container.input_path_map)
+            logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
+            # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
+            command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+
             # Work out the command string, and unwrap it
-            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, standard_library).coerce(WDL.Type.String()).value
+            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
@@ -1130,16 +1419,18 @@ class WDLTaskJob(WDLBaseJob):
             # become typed.
             host_stdout_txt: str = task_container.host_stdout_txt() #  type: ignore
             host_stderr_txt: str = task_container.host_stderr_txt() #  type: ignore
-            
+
             if isinstance(task_container, SingularityContainer):
                 # Before running the command, we need to make sure the container's
                 # image is already pulled, so MiniWDL doesn't try and pull it.
                 # MiniWDL only locks its cache directory within a process, and we
                 # need to coordinate with other processes sharing the cache.
-                # TODO: We assume that if we share the cache, we share the coordination directory!
-                with global_mutex(file_store.coordination_dir, 'miniwdl_sif_cache_mutex'):
-                    with ExitStack() as cleanup:
-                        task_container._pull(miniwdl_logger, cleanup)
+                with global_mutex(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], 'toil_miniwdl_sif_cache_mutex'):
+                    # Also lock the Singularity layer cache in case it is shared with a different set of hosts
+                    # TODO: Will these locks work well across machines???
+                    with global_mutex(os.environ['SINGULARITY_CACHEDIR'], 'toil_singularity_cache_mutex'):
+                        with ExitStack() as cleanup:
+                            task_container._pull(miniwdl_logger, cleanup)
 
             # Run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
@@ -1165,9 +1456,7 @@ class WDLTaskJob(WDLBaseJob):
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
-        output_bindings: WDLBindings = WDL.Env.Bindings()
-        for output_decl in self._task.outputs:
-            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, bindings, outputs_library))
+        output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
         # Drop any files from the output which don't actually exist
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
@@ -1180,6 +1469,9 @@ class WDLTaskJob(WDLBaseJob):
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
 
+        # Do postprocessing steps to e.g. apply namespaces.
+        output_bindings = self.postprocess(output_bindings)
+
         return output_bindings
 
 class WDLWorkflowNodeJob(WDLBaseJob):
@@ -1187,7 +1479,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
     Job that evaluates a WDL workflow node.
     """
 
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, **kwargs: Any) -> None:
         """
         Make a new job to run a workflow node to completion.
         """
@@ -1195,6 +1487,10 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
         self._node = node
         self._prev_node_results = prev_node_results
+        self._namespace = namespace
+
+        if isinstance(self._node, WDL.Tree.Call):
+            logger.debug("Preparing job for call node %s", self._node.workflow_node_id)
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1212,13 +1508,13 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             # This is a variable assignment
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
-            return incoming_bindings.bind(self._node.name, value)
+            return self.postprocess(incoming_bindings.bind(self._node.name, value))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
             # Fetch all the inputs we are passing and bind them.
             # The call is only allowed to use these.
-            logger.info("Evaluate step inputs")
+            logger.debug("Evaluating step inputs")
             input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library)
 
             # Bindings may also be added in from the enclosing workflow inputs
@@ -1229,39 +1525,80 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
-                subjob: Job = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings])
+                subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
                 self.addChild(subjob)
             elif isinstance(self._node.callee, WDL.Tree.Task):
                 # This is a call of a task
-                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings])
+                subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}')
                 self.addChild(subjob)
             else:
                 raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
 
             # We need to agregate outputs namespaced with our node name, and existing bindings
-            namespace_job = WDLNamespaceBindingsJob(self._node.name, [subjob.rv()])
-            subjob.addFollowOn(namespace_job)
-            self.addChild(namespace_job)
-
-            combine_job = WDLCombineBindingsJob([namespace_job.rv(), incoming_bindings])
-            namespace_job.addFollowOn(combine_job)
-            self.addChild(combine_job)
-
-            return combine_job.rv()
+            subjob.then_namespace(self._node.name)
+            subjob.then_overlay(incoming_bindings)
+            self.defer_postprocessing(subjob)
+            return subjob.rv()
         elif isinstance(self._node, WDL.Tree.Scatter):
-            subjob = WDLScatterJob(self._node, [incoming_bindings])
+            subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace)
             self.addChild(subjob)
             # Scatters don't really make a namespace, just kind of a scope?
             # TODO: Let stuff leave scope!
+            self.defer_postprocessing(subjob)
             return subjob.rv()
         elif isinstance(self._node, WDL.Tree.Conditional):
-            subjob = WDLConditionalJob(self._node, [incoming_bindings])
+            subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace)
             self.addChild(subjob)
             # Conditionals don't really make a namespace, just kind of a scope?
             # TODO: Let stuff leave scope!
+            self.defer_postprocessing(subjob)
             return subjob.rv()
         else:
             raise WDL.Error.InvalidType(self._node, "Unimplemented WorkflowNode: " + str(type(self._node)))
+
+class WDLWorkflowNodeListJob(WDLBaseJob):
+    """
+    Job that evaluates a list of WDL workflow nodes, which are in the same
+    scope and in a topological dependency order, and which do not call out to any other
+    workflows or tasks or sections.
+    """
+
+    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, **kwargs: Any) -> None:
+        """
+        Make a new job to run a list of workflow nodes to completion.
+        """
+        super().__init__(unitName=nodes[0].workflow_node_id + '+', displayName=nodes[0].workflow_node_id + '+', **kwargs)
+
+        self._nodes = nodes
+        self._prev_node_results = prev_node_results
+        self._namespace = namespace
+
+        for n in self._nodes:
+            if isinstance(n, (WDL.Tree.Call, WDL.Tree.Scatter, WDL.Tree.Conditional)):
+                raise RuntimeError("Node cannot be evaluated with other nodes: " + str(n))
+
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Actually execute the workflow nodes.
+        """
+        super().run(file_store)
+
+        # Combine the bindings we get from previous jobs
+        current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store)
+
+        for node in self._nodes:
+            if isinstance(node, WDL.Tree.Decl):
+                # This is a variable assignment
+                logger.info('Setting %s to %s', node.name, node.expr)
+                value = evaluate_decl(node, current_bindings, standard_library)
+                current_bindings = current_bindings.bind(node.name, value)
+            else:
+                raise WDL.Error.InvalidType(node, "Unimplemented WorkflowNode: " + str(type(node)))
+
+        return self.postprocess(current_bindings)
+
 
 class WDLCombineBindingsJob(WDLBaseJob):
     """
@@ -1269,7 +1606,7 @@ class WDLCombineBindingsJob(WDLBaseJob):
     environment changes.
     """
 
-    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], underlay: Optional[Promised[WDLBindings]] = None, remove: Optional[Promised[WDLBindings]] = None, **kwargs: Any) -> None:
+    def __init__(self, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
         """
         Make a new job to combine the results of previous jobs.
 
@@ -1280,8 +1617,6 @@ class WDLCombineBindingsJob(WDLBaseJob):
         super().__init__(**kwargs)
 
         self._prev_node_results = prev_node_results
-        self._underlay = underlay
-        self._remove = remove
 
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
@@ -1289,41 +1624,221 @@ class WDLCombineBindingsJob(WDLBaseJob):
         """
         super().run(file_store)
         combined = combine_bindings(unwrap_all(self._prev_node_results))
-        if self._underlay is not None:
-            # Fill in from the underlay anything not defined in anything else.
-            combined = combine_bindings([combined, unwrap(self._underlay).subtract(combined)])
-        if self._remove is not None:
-            # We need to take stuff out of scope
-            combined = combined.subtract(unwrap(self._remove))
-        return combined
+        # Make sure to run the universal postprocessing steps
+        return self.postprocess(combined)
 
-class WDLNamespaceBindingsJob(WDLBaseJob):
+class WDLWorkflowGraph:
     """
-    Job that puts a set of bindings into a namespace.
+    Represents a graph of WDL WorkflowNodes.
+
+    Operates at a certain level of instantiation (i.e. sub-sections are
+    represented by single nodes).
+
+    Assumes all relevant nodes are provided; dependencies outside the provided
+    nodes are assumed to be satisfied already.
     """
 
-    def __init__(self, namespace: str, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, nodes: Sequence[WDL.Tree.WorkflowNode]) -> None:
         """
-        Make a new job to namespace results.
+        Make a graph for analyzing a set of workflow nodes.
         """
-        super().__init__(**kwargs)
 
-        self._namespace = namespace
-        self._prev_node_results = prev_node_results
+        # For Gather nodes, the Toil interpreter handles them as part of their
+        # associated section. So make a map from gather ID to the section node
+        # ID.
+        self._gather_to_section: Dict[str, str] = {}
+        for node in nodes:
+            if isinstance(node, WDL.Tree.WorkflowSection):
+                for gather_node in node.gathers.values():
+                    self._gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
 
-    def run(self, file_store: AbstractFileStore) -> WDLBindings:
+        # Store all the nodes by ID, except the gathers which we elide.
+        self._nodes: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if not isinstance(node, WDL.Tree.Gather)}
+
+    def real_id(self, node_id: str) -> str:
         """
-        Apply the namespace
+        Map multiple IDs for what we consider the same node to one ID.
+
+        This elides/resolves gathers.
         """
-        super().run(file_store)
-        return combine_bindings(unwrap_all(self._prev_node_results)).wrap_namespace(self._namespace)
+        return self._gather_to_section.get(node_id, node_id)
+
+    def is_decl(self, node_id: str) -> bool:
+        """
+        Return True if a node represents a WDL declaration, and false
+        otherwise.
+        """
+        return isinstance(self.get(node_id), WDL.Tree.Decl)
+
+    def get(self, node_id: str) -> WDL.Tree.WorkflowNode:
+        """
+        Get a node by ID.
+        """
+        return self._nodes[self.real_id(node_id)]
+
+    def get_dependencies(self, node_id: str) -> Set[str]:
+        """
+        Get all the nodes that a node depends on, recursively (into the node if
+        it has a body) but not transitively.
+
+        Produces dependencies after resolving gathers and internal-to-section
+        dependencies, on nodes that are also in this graph.
+        """
+
+        # We need to make sure to bubble up dependencies from inside sections.
+        # A conditional might only appear to depend on the variables in the
+        # conditional expression, but its body can depend on other stuff, and
+        # we need to make sure that that stuff has finished and updated the
+        # environment before the conditional body runs. TODO: This is because
+        # Toil can't go and get and add successors to the relevant jobs later,
+        # while MiniWDL's engine apparently can. This ends up reducing
+        # parallelism more than would strictly be necessary; nothing in the
+        # conditional can start until the dependencies of everything in the
+        # conditional are ready.
+
+        dependencies = set()
+
+        node = self.get(node_id)
+        for dependency in recursive_dependencies(node):
+            real_dependency = self.real_id(dependency)
+            if real_dependency in self._nodes:
+                dependencies.add(real_dependency)
+
+        return dependencies
+
+    def get_transitive_dependencies(self, node_id: str) -> Set[str]:
+        """
+        Get all the nodes that a node depends on, transitively.
+        """
+
+        dependencies: Set[str] = set()
+        visited: Set[str] = set()
+        queue = [node_id]
+
+        while len(queue) > 0:
+            # Grab the enxt thing off the queue
+            here = queue[-1]
+            queue.pop()
+            if here in visited:
+                # Skip if we got it already
+                continue
+            # Mark it got
+            visited.add(here)
+            # Get all its dependencies
+            here_deps = self.get_dependencies(here)
+            dependencies |= here_deps
+            for dep in here_deps:
+                if dep not in visited:
+                    # And queue all the ones we haven't visited.
+                    queue.append(dep)
+
+        return dependencies
+
+    def topological_order(self) -> List[str]:
+        """
+        Get a topological order of the nodes, based on their dependencies.
+        """
+
+        sorter : TopologicalSorter[str] = TopologicalSorter()
+        for node_id in self._nodes.keys():
+            # Add all the edges
+            sorter.add(node_id, *self.get_dependencies(node_id))
+        return list(sorter.static_order())
+
+    def leaves(self) -> List[str]:
+        """
+        Get all the workflow node IDs that have no dependents in the graph.
+        """
+
+        leaves = set(self._nodes.keys())
+        for node_id in self._nodes.keys():
+            for dependency in self.get_dependencies(node_id):
+                if dependency in leaves:
+                    # Mark everything depended on as not a leaf
+                    leaves.remove(dependency)
+        return list(leaves)
+
 
 class WDLSectionJob(WDLBaseJob):
     """
     Job that can create more graph for a section of the wrokflow.
     """
 
-    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> Job:
+    def __init__(self, namespace: str, **kwargs: Any) -> None:
+        """
+        Make a WDLSectionJob where the interior runs in the given namespace,
+        starting with the root workflow.
+        """
+        super().__init__(**kwargs)
+        self._namespace = namespace
+
+    @staticmethod
+    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
+        """
+        Given a topological order of WDL workflow node IDs, produce a list of
+        lists of IDs, still in topological order, where each list of IDs can be
+        run under a single Toil job.
+        """
+
+        # All the buckets of merged nodes
+        to_return: List[List[str]] = []
+        # The nodes we are currently merging, in topological order
+        current_bucket: List[str] = []
+        # All the non-decl transitive dependencies of nodes in the bucket
+        current_bucket_dependencies: Set[str] = set()
+
+        for next_id in order:
+            # Consider adding each node to the bucket
+            # Get all the dependencies on things that aren't decls.
+            next_dependencies = {dep for dep in section_graph.get_transitive_dependencies(next_id) if not section_graph.is_decl(dep)}
+            if len(current_bucket) == 0:
+                # This is the first thing for the bucket
+                current_bucket.append(next_id)
+                current_bucket_dependencies |= next_dependencies
+            else:
+                # Get a node already in the bucket
+                current_id = current_bucket[0]
+
+                if not section_graph.is_decl(current_id) or not section_graph.is_decl(next_id):
+                    # We can only combine decls with decls, so we can't go in
+                    # the bucket.
+
+                    # Finish the bucket.
+                    to_return.append(current_bucket)
+                    # Start a new one with this next node
+                    current_bucket = [next_id]
+                    current_bucket_dependencies = next_dependencies
+                else:
+                    # We have a decl in the bucket and a decl we could maybe
+                    # add. We know they are part of the same section, so we
+                    # aren't jumping in and out of conditionals or scatters.
+
+                    # We are going in a topological order, so we know the
+                    # bucket can't depend on the new node.
+
+                    if next_dependencies == current_bucket_dependencies:
+                        # We can add this node without adding more dependencies on non-decls on either side.
+                        # Nothing in the bucket can be in the dependency set because the bucket is only decls.
+                        # Put it in
+                        current_bucket.append(next_id)
+                        # TODO: With this condition, this is redundant.
+                        current_bucket_dependencies |= next_dependencies
+                    else:
+                        # Finish the bucket.
+                        to_return.append(current_bucket)
+                        # Start a new one with this next node
+                        current_bucket = [next_id]
+                        current_bucket_dependencies = next_dependencies
+
+        if len(current_bucket) > 0:
+            # Now finish the last bucket
+            to_return.append(current_bucket)
+
+        return to_return
+
+
+
+    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None) -> WDLBaseJob:
         """
         Make a Toil job to evaluate a subgraph inside a workflow or workflow
         section.
@@ -1341,95 +1856,69 @@ class WDLSectionJob(WDLBaseJob):
                at the end of the section.
         """
 
-        # We need to track the dependency universe; some of our child nodes may
-        # depend on nodes that are e.g. inputs to the workflow that encloses
-        # the section that encloses this section, and we need to just assume
-        # those are already available, even though we don't have access to the
-        # complete list. So we make a set of everything we actually do need to
-        # care about resolving, instead.
-        dependabes: Set[str] = set()
-
         if local_environment is not None:
             # Bring local environment into scope
             environment = combine_bindings([environment, local_environment])
 
-        # What nodes exist, under their IDs?
-        wdl_id_to_wdl_node: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if isinstance(node, WDL.Tree.WorkflowNode)}
-        dependabes |= set(wdl_id_to_wdl_node.keys())
-
-        # That doesn't include gather nodes, which in the Toil interpreter we
-        # handle as part of their enclosing section, without individual Toil
-        # jobs for each. So make a map from gather ID to the section node ID.
-        gather_to_section: Dict[str, str] = {}
-        for node in nodes:
-            if isinstance(node, WDL.Tree.WorkflowSection):
-                for gather_node in node.gathers.values():
-                    gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
-        dependabes |= set(gather_to_section.keys())
+        # Make a graph of all the nodes at this level
+        section_graph = WDLWorkflowGraph(nodes)
 
         # To make Toil jobs, we need all the jobs they depend on made so we can
         # call .rv(). So we need to solve the workflow DAG ourselves to set it up
         # properly.
 
-        # We also need to make sure to bubble up dependencies from inside
-        # sections. A conditional might only appear to depend on the variables
-        # in the conditional expression, but its body can depend on other
-        # stuff, and we need to make sure that that stuff has finished and
-        # updated the environment before the conditional body runs. TODO: This
-        # is because Toil can't go and get and add successors to the relevant
-        # jobs later, while MiniWDL's engine apparently can. This ends up
-        # reducing parallelism more than would strictly be necessary; nothing
-        # in the conditional can start until the dependencies of everything in
-        # the conditional are ready.
+        # When a WDL node depends on another, we need to be able to find the Toil job we need an rv from.
+        wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
+        # We need the set of Toil jobs not depended on so we can wire them up to the sink.
+        # This maps from Toil job store ID to job.
+        toil_leaves: Dict[Union[str, TemporaryID], WDLBaseJob] = {}
 
-        # What are the dependencies of all the body nodes on other body nodes?
-        # Nodes can depend on other nodes actually in the tree, or on gathers
-        # that belong to other nodes, but we rewrite the gather dependencies
-        # through to the enclosing section node. Skip any dependencies on
-        # anything not provided by another body node (such as on an input, or
-        # something outside of the current section). TODO: This will need to
-        # change if we let parallelism transcend sections.
-        wdl_id_to_dependency_ids = {node_id: list({gather_to_section[dep] if dep in gather_to_section else dep for dep in recursive_dependencies(node) if dep in dependabes}) for node_id, node in wdl_id_to_wdl_node.items()}
+        def get_job_set_any(wdl_ids: Set[str]) -> List[WDLBaseJob]:
+            """
+            Get the distinct Toil jobs executing any of the given WDL nodes.
+            """
+            job_ids = set()
+            jobs = []
+            for job in (wdl_id_to_toil_job[wdl_id] for wdl_id in wdl_ids):
+                # For each job that is registered under any of these WDL IDs
+                if job.jobStoreID not in job_ids:
+                    # If we haven't taken it already, take it
+                    job_ids.add(job.jobStoreID)
+                    jobs.append(job)
+            return jobs
 
-        # Which of those are outstanding?
-        wdl_id_to_outstanding_dependency_ids = copy.deepcopy(wdl_id_to_dependency_ids)
+        creation_order = section_graph.topological_order()
+        logger.debug('Creation order: %s', creation_order)
 
-        # What nodes depend on each node?
-        wdl_id_to_dependent_ids: Dict[str, Set[str]] = collections.defaultdict(set)
-        for node_id, dependencies in wdl_id_to_dependency_ids.items():
-            for dependency_id in dependencies:
-                # Invert the dependency edges
-                wdl_id_to_dependent_ids[dependency_id].add(node_id)
+        # Now we want to organize the linear list of nodes into collections of nodes that can be in the same Toil job.
+        creation_jobs = self.coalesce_nodes(creation_order, section_graph)
+        logger.debug('Creation jobs: %s', creation_jobs)
 
-        # This will hold all the Toil jobs by WDL node ID
-        wdl_id_to_toil_job: Dict[str, Job] = {}
-
-        # And collect IDs of jobs with no successors to add a final sink job
-        leaf_ids: Set[str] = set()
-
-        # What nodes are ready?
-        ready_node_ids = {node_id for node_id, dependencies in wdl_id_to_outstanding_dependency_ids.items() if len(dependencies) == 0}
-
-        while len(wdl_id_to_outstanding_dependency_ids) > 0:
-            logger.debug('Ready nodes: %s', ready_node_ids)
-            logger.debug('Waiting nodes: %s', wdl_id_to_outstanding_dependency_ids)
-
-            # Find a node that we can do now
-            node_id = next(iter(ready_node_ids))
-
-            # Say we are doing it
-            ready_node_ids.remove(node_id)
-            del wdl_id_to_outstanding_dependency_ids[node_id]
-            logger.debug('Make Toil job for %s', node_id)
-
+        for node_ids in creation_jobs:
+            logger.debug('Make Toil job for %s', node_ids)
             # Collect the return values from previous jobs. Some nodes may have been inputs, without jobs.
-            prev_jobs = [wdl_id_to_toil_job[prev_node_id] for prev_node_id in wdl_id_to_dependency_ids[node_id] if prev_node_id in wdl_id_to_toil_job]
+            # Don't inlude stuff in the current batch.
+            prev_node_ids = {prev_node_id for node_id in node_ids for prev_node_id in section_graph.get_dependencies(node_id) if prev_node_id not in node_ids}
+
+
+            # Get the Toil jobs we depend on
+            prev_jobs = get_job_set_any(prev_node_ids)
+            for prev_job in prev_jobs:
+                if prev_job.jobStoreID in toil_leaves:
+                    # Mark them all as depended on
+                    del toil_leaves[prev_job.jobStoreID]
+
+            # Get their return values to feed into the new job
             rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
 
-            # Use them to make a new job
-            job = WDLWorkflowNodeJob(wdl_id_to_wdl_node[node_id], rvs)
+            if len(node_ids) == 1:
+                # Make a one-node job
+                job: WDLBaseJob = WDLWorkflowNodeJob(section_graph.get(node_ids[0]), rvs, self._namespace)
+            else:
+                # Make a multi-node job
+                job = WDLWorkflowNodeListJob([section_graph.get(node_id) for node_id in node_ids], rvs, self._namespace)
             for prev_job in prev_jobs:
                 # Connect up the happens-after relationships to make sure the
                 # return values are available.
@@ -1441,38 +1930,38 @@ class WDLSectionJob(WDLBaseJob):
                 # Nothing came before this job, so connect it to the workflow.
                 self.addChild(job)
 
-            # Save the job
-            wdl_id_to_toil_job[node_id] = job
+            for node_id in node_ids:
+                # Save the job for everything it executes
+                wdl_id_to_toil_job[node_id] = job
 
-            if len(wdl_id_to_dependent_ids[node_id]) == 0:
-                # Nothing comes after this job, so connect it to sink
-                leaf_ids.add(node_id)
-            else:
-                for dependent_id in wdl_id_to_dependent_ids[node_id]:
-                    # For each job that waits on this job
-                    wdl_id_to_outstanding_dependency_ids[dependent_id].remove(node_id)
-                    logger.debug('Dependent %s no longer needs to wait on %s', dependent_id, node_id)
-                    if len(wdl_id_to_outstanding_dependency_ids[dependent_id]) == 0:
-                        # We were the last thing blocking them.
-                        ready_node_ids.add(dependent_id)
-                        logger.debug('Dependent %s is now ready', dependent_id)
+            # It isn't depended on yet
+            toil_leaves[job.jobStoreID] = job
 
-        # Make the sink job
-        leaf_rvs: List[Union[WDLBindings, Promise]] = [wdl_id_to_toil_job[node_id].rv() for node_id in leaf_ids]
-        # Make sure to also send the section-level bindings
-        leaf_rvs.append(environment)
-        # And to fill in bindings from code not executed in this instantiation
-        # with Null, and filter out stuff that should leave scope.
-        sink = WDLCombineBindingsJob(
-            leaf_rvs,
-            underlay=self.make_gather_bindings(gather_nodes, WDL.Value.Null()),
-            remove=local_environment
-        )
-        # It runs inside us
-        self.addChild(sink)
-        for node_id in leaf_ids:
-            # And after all the leaf jobs.
-            wdl_id_to_toil_job[node_id].addFollowOn(sink)
+        if len(toil_leaves) == 1:
+            # There's one final node so we can just tack postprocessing onto that.
+            sink: WDLBaseJob = next(iter(toil_leaves.values()))
+        else:
+            # We need to bring together with a new sink
+            # Make the sink job to collect all their results.
+            leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in toil_leaves.values()]
+            # Make sure to also send the section-level bindings
+            leaf_rvs.append(environment)
+            # And to fill in bindings from code not executed in this instantiation
+            # with Null, and filter out stuff that should leave scope.
+            sink = WDLCombineBindingsJob(leaf_rvs)
+            # It runs inside us
+            self.addChild(sink)
+            for leaf_job in toil_leaves.values():
+                # And after all the leaf jobs.
+                leaf_job.addFollowOn(sink)
+
+        logger.debug("Sink job is: %s", sink)
+
+
+        # Apply the final postprocessing for leaving the section.
+        sink.then_underlay(self.make_gather_bindings(gather_nodes, WDL.Value.Null()))
+        if local_environment is not None:
+            sink.then_remove(local_environment)
 
         return sink
 
@@ -1526,11 +2015,11 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, **kwargs: Any) -> None:
         """
-        Create a subtree that will run a WDL scatter.
+        Create a subtree that will run a WDL scatter. The scatter itself and the contents live in the given namespace.
         """
-        super().__init__(**kwargs, unitName=scatter.workflow_node_id, displayName=scatter.workflow_node_id)
+        super().__init__(namespace, **kwargs, unitName=scatter.workflow_node_id, displayName=scatter.workflow_node_id)
 
         # Because we need to return the return value of the workflow, we need
         # to return a Toil promise for the last/sink job in the workflow's
@@ -1597,6 +2086,7 @@ class WDLScatterJob(WDLSectionJob):
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
+        self.defer_postprocessing(gather_job)
         return gather_job.rv()
 
 class WDLArrayBindingsJob(WDLBaseJob):
@@ -1654,17 +2144,17 @@ class WDLArrayBindingsJob(WDLBaseJob):
             result = result.bind(name, WDL.Value.Array(supertype, [env.resolve(name) if env.has_binding(name) else WDL.Value.Null() for env in new_bindings]))
 
         # Base bindings are already included so return the result
-        return result
+        return self.postprocess(result)
 
 class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, **kwargs: Any) -> None:
         """
-        Create a subtree that will run a WDL conditional.
+        Create a subtree that will run a WDL conditional. The conditional itself and its contents live in the given namespace.
         """
-        super().__init__(**kwargs, unitName=conditional.workflow_node_id, displayName=conditional.workflow_node_id)
+        super().__init__(namespace, **kwargs, unitName=conditional.workflow_node_id, displayName=conditional.workflow_node_id)
 
         # Once again we need to ship the whole body template to be instantiated
         # into Toil jobs only if it will actually run.
@@ -1696,25 +2186,29 @@ class WDLConditionalJob(WDLSectionJob):
             logger.info('Condition is true')
             # Run the body and return its effects
             body_job = self.create_subgraph(self._conditional.body, list(self._conditional.gathers.values()), bindings)
+            self.defer_postprocessing(body_job)
             return body_job.rv()
         else:
             logger.info('Condition is false')
             # Return the input bindings and null bindings for all our gathers.
             # Should not collide at all.
             gather_bindings = self.make_gather_bindings(list(self._conditional.gathers.values()), WDL.Value.Null())
-            return combine_bindings([bindings, gather_bindings])
+            return self.postprocess(combine_bindings([bindings, gather_bindings]))
 
 class WDLWorkflowJob(WDLSectionJob):
     """
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], namespace: str, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
+
+        :param namespace: the namespace that the workflow's *contents* will be
+               in. Caller has already added the workflow's own name.
         """
-        super().__init__(**kwargs)
+        super().__init__(namespace, **kwargs)
 
         # Because we need to return the return value of the workflow, we need
         # to return a Toil promise for the last/sink job in the workflow's
@@ -1723,11 +2217,13 @@ class WDLWorkflowJob(WDLSectionJob):
         # at deserialization. So we need to do the actual building-out of the
         # workflow in run().
 
-        logger.info("Preparing to run workflow %s with inputs:", workflow.name)
-        log_bindings(prev_node_results)
+        logger.debug("Preparing to run workflow %s", workflow.name)
+
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
+        self._workflow_id = workflow_id
+        self._namespace = namespace
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1735,7 +2231,7 @@ class WDLWorkflowJob(WDLSectionJob):
         """
         super().run(file_store)
 
-        logger.info("Running workflow %s", self._workflow.name)
+        logger.info("Running workflow %s (%s) called as %s", self._workflow.name, self._workflow_id, self._namespace)
 
         # Combine the bindings we get from previous jobs.
         # For a task we only see the insode-the-task namespace.
@@ -1755,11 +2251,12 @@ class WDLWorkflowJob(WDLSectionJob):
             # Add evaluating the outputs after the sink
             outputs_job = WDLOutputsJob(self._workflow.outputs, sink.rv())
             sink.addFollowOn(outputs_job)
-            # Caller takes care of namespacing the result
+            # Caller is responsible for making sure namespaces are applied
+            self.defer_postprocessing(outputs_job)
             return outputs_job.rv()
         else:
             # No outputs from this workflow.
-            return WDL.Env.Bindings()
+            return self.postprocess(WDL.Env.Bindings())
 
 class WDLOutputsJob(WDLBaseJob):
     """
@@ -1783,13 +2280,13 @@ class WDLOutputsJob(WDLBaseJob):
         """
         super().run(file_store)
 
-        # Evaluate all the outputs in the noirmal, non-task-outputs library context
+        # Evaluate all the outputs in the normal, non-task-outputs library context
         standard_library = ToilWDLStdLibBase(file_store)
-        output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
-        for output_decl in self._outputs:
-            output_bindings = output_bindings.bind(output_decl.name, evaluate_decl(output_decl, unwrap(self._bindings), standard_library))
+        # Combine the bindings from the previous job
 
-        return output_bindings
+        output_bindings = evaluate_output_decls(self._outputs, unwrap(self._bindings), standard_library)
+
+        return self.postprocess(output_bindings)
 
 class WDLRootJob(WDLSectionJob):
     """
@@ -1802,7 +2299,9 @@ class WDLRootJob(WDLSectionJob):
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
-        super().__init__(**kwargs)
+
+        # The root workflow names the root namespace
+        super().__init__(workflow.name, **kwargs)
 
         self._workflow = workflow
         self._inputs = inputs
@@ -1815,14 +2314,11 @@ class WDLRootJob(WDLSectionJob):
 
         # Run the workflow. We rely in this to handle entering the input
         # namespace if needed, or handling free-floating inputs.
-        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs])
+        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._namespace)
+        workflow_job.then_namespace(self._namespace)
         self.addChild(workflow_job)
-
-        # And namespace its outputs
-        namespace_job = WDLNamespaceBindingsJob(self._workflow.name, [workflow_job.rv()])
-        workflow_job.addFollowOn(namespace_job)
-
-        return namespace_job.rv()
+        self.defer_postprocessing(workflow_job)
+        return workflow_job.rv()
 
 def main() -> None:
     """
@@ -1843,9 +2339,9 @@ def main() -> None:
                               "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
     parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory in which to save output files. By default a new directory is created in the current directory."))
-    parser.add_argument("--outputFile", "-m", dest="output_file", type=argparse.FileType('w'), default=sys.stdout,
-                        help="File to save output JSON to.")
+                        help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
+    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
+                        help="File or URI to save output JSON to.")
 
     options = parser.parse_args(sys.argv[1:])
 
@@ -1854,14 +2350,10 @@ def main() -> None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree')
 
-    # Make sure we have an output directory and we don't need to ever worry
-    # about a None, and MyPy knows it.
+    # Make sure we have an output directory (or URL prefix) and we don't need
+    # to ever worry about a None, and MyPy knows it.
     # If we don't have a directory assigned, make one in the current directory.
     output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp(prefix='wdl-out-', dir=os.getcwd())
-    if not os.path.isdir(output_directory):
-        # Make sure it exists
-        os.mkdir(output_directory)
-
 
     with Toil(options) as toil:
         if options.restart:
@@ -1936,7 +2428,7 @@ def main() -> None:
                 # TODO: Deal with name collisions
                 dest_name = os.path.join(output_directory, file_basename)
                 # Export the file
-                toil.exportFile(file_id, dest_name)
+                toil.export_file(file_id, dest_name)
                 # And return where we put it
                 return dest_name
             elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
@@ -1949,7 +2441,7 @@ def main() -> None:
                 file_basename = os.path.basename(urlsplit(filename).path)
                 # Do the same as we do for files we actually made.
                 dest_name = os.path.join(output_directory, file_basename)
-                toil.exportFile(imported, dest_name)
+                toil.export_file(imported, dest_name)
                 return dest_name
             else:
                 # Not a fancy file
@@ -1962,8 +2454,24 @@ def main() -> None:
         outputs = WDL.values_to_json(output_bindings)
         if options.output_dialect == 'miniwdl':
             outputs = {'dir': output_directory, 'outputs': outputs}
-        options.output_file.write(json.dumps(outputs))
-        options.output_file.write('\n')
+        if options.output_file is None:
+            # Send outputs to standard out
+            print(json.dumps(outputs))
+        else:
+            # Export output to path or URL.
+            # So we need to import and then export.
+            fd, filename = tempfile.mkstemp()
+            with open(fd, 'w') as handle:
+                # Populate the file
+                handle.write(json.dumps(outputs))
+                handle.write('\n')
+            # Import it. Don't link because the temp file will go away.
+            file_id = toil.import_file(filename, symlink=False)
+            # Delete the temp file
+            os.remove(filename)
+            # Export it into place
+            toil.export_file(file_id, options.output_file)
+
 
 
 if __name__ == "__main__":

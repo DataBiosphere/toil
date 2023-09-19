@@ -37,6 +37,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import (download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.aws import zone_to_region
@@ -61,13 +62,14 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.exceptions import FailedJobsException
 from toil.test.provisioners.aws.awsProvisionerTest import \
     AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
+from schema_salad.exceptions import ValidationException
+
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 3600
+CONFORMANCE_TEST_TIMEOUT = 5000
 
 
 def run_conformance_tests(
@@ -149,6 +151,10 @@ def run_conformance_tests(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
 
+        if batchSystem is None or batchSystem == "single_machine":
+            # Make sure we can run on small machines
+            args_passed_directly_to_runner.append("--scale=0.1")
+
         job_store_override = None
 
         if batchSystem == "kubernetes":
@@ -159,7 +165,8 @@ def run_conformance_tests(
         else:
             # Run tests in parallel on the local machine. Don't run too many
             # tests at once; we want at least a couple cores for each.
-            parallel_tests = max(int(cpu_count() / 2), 1)
+            # But we need to have at least a few going in parallel or we risk hitting our timeout.
+            parallel_tests = max(int(cpu_count() / 2), 4)
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
@@ -518,6 +525,53 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+    def test_preemptible(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is supported.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible.cwl"
+        jobfile = "src/toil/test/cwl/empty.json"
+        out_name = "output"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        cwltoil.main(args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        with open(out[out_name]["location"][len("file://") :]) as f:
+            self.assertEqual(f.read().strip(), "hello")
+
+    def test_preemptible_expression(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is validated.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible_expression.cwl"
+        jobfile = "src/toil/test/cwl/preemptible_expression.json"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        try:
+            cwltoil.main(args, stdout=st)
+            raise RuntimeError("Did not raise correct exception")
+        except ValidationException as e:
+            # Make sure we chastise the user appropriately.
+            assert "expressions are not allowed" in str(e)
+        
 
     @staticmethod
     def _expected_seqtk_output(outDir):
@@ -1120,6 +1174,52 @@ def test_filename_conflict_resolution(tmp_path: Path):
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
+
+@needs_cwl
+@needs_docker
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_detection(tmp_path: Path):
+    """
+    Make sure we don't just stage files over each other when using a container.
+    """
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_detection.cwl"
+    )
+    cmd = [toil] + options + [cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"File staging conflict" in stderr
+    assert p.returncode != 0
+
+@needs_cwl
+@needs_docker
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_detection_at_root(tmp_path: Path):
+    """
+    Make sure we don't just stage files over each other.
+
+    Specifically, when using a container and the files are at the root of the work dir.
+    """
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "test_filename_conflict_detection_at_root.cwl"
+    )
+    cmd = [toil] + options + [cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"File staging conflict" in stderr
+    assert p.returncode != 0
 
 
 @needs_cwl
