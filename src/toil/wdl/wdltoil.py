@@ -33,7 +33,8 @@ import uuid
 
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
-from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator
+from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator, \
+    Generator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
 import WDL
@@ -748,18 +749,18 @@ def evaluate_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.Std
 
     return evaluate_named_expression(node, node.name, node.type, node.expr, environment, stdlib)
 
-def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], expressions: Dict[str, WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base, inputs_list: Optional[List[WDL.Tree.Decl]] = None) -> WDLBindings:
+def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], expressions: Dict[str, WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base, inputs_dict: Optional[Dict[str, WDL.Type.Base]] = None) -> WDLBindings:
     """
-    Evaluate a bunch of expressions with names, and make them into a fresh set of bindings.
+    Evaluate a bunch of expressions with names, and make them into a fresh set of bindings. `inputs_dict` is a mapping of
+    variable names to their expected type for the input decls in a task.
     """
-
     new_bindings: WDLBindings = WDL.Env.Bindings()
-    inputs_dict = {e.name: e.type for e in inputs_list or []}
     for k, v in expressions.items():
         # Add each binding in turn
         # If the expected type is optional, then don't type check the lhs and rhs as miniwdl will return a StaticTypeMismatch error, so pass in None
         expected_type = None
         if not v.type.optional:
+            # This is done to enable passing in a string into a task input of file type
             expected_type = inputs_dict.get(k, None)
         new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
     return new_bindings
@@ -1540,10 +1541,10 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 logger.debug("Evaluating step inputs")
                 if self._node.callee is None:
                     # This should never be None, but mypy gets unhappy and this is better than an assert
-                    input_decls = None
+                    inputs_mapping = None
                 else:
-                    input_decls = self._node.callee.inputs
-                input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library, input_decls)
+                    inputs_mapping = {e.name: e.type for e in self._node.callee.inputs or []}
+                input_bindings = evaluate_call_inputs(self._node, self._node.inputs, incoming_bindings, standard_library, inputs_mapping)
 
                 # Bindings may also be added in from the enclosing workflow inputs
                 # TODO: this is letting us also inject them from the workflow body.
@@ -2353,21 +2354,23 @@ class WDLRootJob(WDLSectionJob):
         self.defer_postprocessing(workflow_job)
         return workflow_job.rv()
 
-# Monkey patch miniwdl's WDL.Value.Base.coerce() function
-# miniwdl recognizes when a string needs to be converted into a file
-# However miniwdl's string to file conversions is to just store the filepath
-# Toil needs to virtualize the file into the jobstore
-# So monkey patch coerce to always virtualize whenever a file is expected
-#   _virtualize_filename should detect if the value is already a file and return immediately if so
-# Sometimes string coerce is called instead, so monkeypatch string coerce
 @contextmanager
-def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Any:
+def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, None, None]:
+    """
+    Monkeypatch miniwdl's WDL.Value.Base.coerce() function. Calls _virtualize_filename from a given standard library object
+    :param standard_library: a standard library object
+    :return
+    """
+    # We're doing this because while miniwdl recognizes when a string needs to be converted into a file, it's method of
+    # conversion is to just store the local filepath. Toil needs to virtualize the file into the jobstore so until
+    # there is an internal entrypoint, monkeypatch it.
     def base_coerce(self: WDL.Value.Base, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
         if isinstance(desired_type, WDL.Type.File):
             self.value = standard_library._virtualize_filename(self.value)
             return self
         return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
     def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
+        # Sometimes string coerce is called instead, so monkeypatch this one as well
         if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
             return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
         return old_str_coerce(self, desired_type)
