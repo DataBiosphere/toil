@@ -515,7 +515,7 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
 .. note::
 
     In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
-    slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
+    agent containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
     Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job
     results. The Toil autoscaler can also provision multiple different node types, which is useful for workflows
     that have jobs with varying resource requirements. For example, one could execute the script with
