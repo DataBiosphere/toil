@@ -30,7 +30,7 @@ before_script:
     fi
   # Restart or start the Docker daemon
   - stopdocker || true
-  - sudo rm -f /var/run/docker.sock 
+  - sudo rm -f /var/run/docker.sock
   - startdocker || true
   - docker info
   - cat /etc/hosts
