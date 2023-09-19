@@ -802,10 +802,6 @@ class Leader:
             raise RuntimeError(f"Services pending for their clients at shutdown: {self.toilState.service_to_client}")
         if self.toilState.servicesIssued != {}:
             raise RuntimeError(f"Services running at shutdown: {self.toilState.servicesIssued}")
-        # if not self.toilState.jobsToBeScheduledWithMultiplePredecessors: # These are not properly emptied yet
-        #   raise RuntimeError
-        # if self.toilState.hasFailedSuccessors != set(): # These are not properly emptied yet
-        #   raise RuntimeError
 
     def checkForDeadlocks(self):
         """Check if the system is deadlocked running service jobs."""

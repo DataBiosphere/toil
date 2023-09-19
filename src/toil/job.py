@@ -2314,7 +2314,7 @@ class Job:
 
         runnable = unpickler.load()
         if requireInstanceOf is not None and not isinstance(runnable, requireInstanceOf):
-                raise RuntimeError(f"Did not find a {requireInstanceOf} when expected")
+            raise RuntimeError(f"Did not find a {requireInstanceOf} when expected")
 
         return runnable
 
