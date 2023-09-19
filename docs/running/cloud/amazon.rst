@@ -154,8 +154,9 @@ To run the sort example :ref:`sort example <sortExample>` with the AWS job store
 Toil Provisioner
 ----------------
 
-The Toil provisioner is included in Toil alongside the ``[aws]`` extra and
-allows us to spin up a cluster.
+The Toil provisioner is the component responsible for creating resources in
+Amazon's cloud. It is included in Toil alongside the ``[aws]`` extra and allows
+us to spin up a cluster.
 
 Getting started with the provisioner is simple:
 
@@ -167,7 +168,7 @@ Getting started with the provisioner is simple:
    setting up your AWS credentials follow instructions
    `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-config-files>`__.
 
-The Toil provisioner is built around the Toil Appliance, a Docker image that bundles
+The Toil provisioner makes heavy use of the Toil Appliance, a Docker image that bundles
 Toil and all its requirements (e.g. Kubernetes). This makes deployment simple across
 platforms, and you can even simulate a cluster locally (see :ref:`appliance_dev` for details).
 
@@ -271,132 +272,24 @@ look like ::
     section for a detailed explanation on how to include them.
 
 .. _Autoscaling:
+.. _ProvisioningWithKubernetes:
 
 Running a Workflow with Autoscaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. TODO: change to use kubernetes. But the kubernetes batch system doesn't support autoscaling?
-
-Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.
-Autoscaling leverages Mesos containers to provide an execution environment for these workflows.
+Toil can create an autoscaling Kubernetes cluster for you using the AWS
+provisioner. Autoscaling is a feature of running Toil in a cloud whereby
+additional cloud instances are launched as needed to run the workflow.
 
 .. note::
 
    Make sure you've done the AWS setup in :ref:`prepareAWS`.
 
-#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`
-
-#. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
-
-    (venv) $ toil launch-cluster <cluster-name> \
-                 --clusterType mesos \
-                 --keyPairName <AWS-key-pair-name> \
-                 --leaderNodeType t2.medium \
-                 --zone us-west-2a
-
-#. Copy the ``sort.py`` script up to the leader node: ::
-
-    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
-
-#. Login to the leader node: ::
-
-    (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
-
-#. Run the script as an autoscaling workflow: ::
-
-    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
-          --provisioner aws \
-          --nodeTypes c3.large \
-          --maxNodes 2 \
-          --batchSystem mesos
-
-.. note::
-
-    In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
-    slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
-    Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job
-    results. The Toil autoscaler can also provision multiple different node types, which is useful for workflows
-    that have jobs with varying resource requirements. For example, one could execute the script with
-    ``--nodeTypes c3.large,r3.xlarge --maxNodes 5,1``, which would allow the provisioner to create up to five
-    c3.large nodes and one r3.xlarge node for memory-intensive jobs. In this situation, the autoscaler would avoid
-    creating the more expensive r3.xlarge node until needed, running most jobs on the c3.large nodes.
-
-#. View the generated file to sort::
-
-    $ head fileToSort.txt
-
-#. View the sorted file::
-
-    $ head sortedFile.txt
-
-For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run ::
-
-    $ python my-toil-script.py --help
-
-.. important::
-
-    Some important caveats about starting a toil run through an ssh session are
-    explained in the :ref:`sshCluster` section.
-
-Preemptibility
-^^^^^^^^^^^^^^
-
-Toil can run on a heterogeneous cluster of both preemptible and non-preemptible nodes. Being a preemptible node simply
-means that the node may be shut down at any time, while jobs are running. These jobs can then be restarted later
-somewhere else.
-
-A node type can be specified as preemptible by adding a `spot bid`_ to its entry in the list of node types provided with
-the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptible node whill be shut down.
-
-Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
-resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`__ ``UsePreemptible`` in the
-``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`___
-``preemptible`` as recognized by Cromwell.
-
-If a job is not specified to be preemptible, the job will not run on preemptible nodes even if preemptible nodes
-are available, unless the workflow is run with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
-jobs without a ``preemptible`` requirement to run on preemptible machines. For example::
-
-    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
-          --provisioner aws \
-          --nodeTypes c3.4xlarge:2.00 \
-          --maxNodes 2 \
-          --batchSystem mesos \
-          --defaultPreemptible
-
-.. admonition:: Specify Preemptibility Carefully
-
-    Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
-    sense for your workflow and won't cause it to hang. You should make sure the
-    provisioner is able to create nodes large enough to run the largest job
-    in the workflow, and that non-preemptible node types are allowed if there are
-    non-preemptible jobs in the workflow.
-
-Finally, the ``--preemptibleCompensation`` flag can be used to handle cases where preemptible nodes may not be
-available but are required for your workflow. With this flag enabled, the autoscaler will attempt to compensate
-for a shortage of preemptible nodes of a certain type by creating non-preemptible nodes of that type, if
-non-preemptible nodes of that type were specified in ``--nodeTypes``.
-
-.. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
-
-.. __exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
-
-.. ___exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
-
-
-.. _ProvisioningWithKubernetes:
-
-Provisioning with a Kubernetes cluster
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-If you don't have an existing Kubernetes cluster but still want to use
-Kubernetes to orchestrate jobs, Toil can create a Kubernetes cluster for you
-using the AWS provisioner.
-
-By default, the ``toil launch-cluster`` command uses a Mesos cluster as the
-jobs scheduler. Toil can also create a Kubernetes cluster to schedule Toil
-jobs. To set up a Kubernetes cluster, simply add the ``--clusterType=kubernetes``
-command line option to ``toil launch-cluster``.
+To set up a Kubernetes cluster, simply use the ``--clusterType=kubernetes``
+command line option to ``toil launch-cluster``. To make it autoscale, specify a
+range of possible node counts for a node type (such as ``-w 1-4``). The cluster
+will automatically add and remove nodes, within that range, depending on how
+many seem to be needed to run the jobs submitted to the cluster.
 
 For example, to launch a Toil cluster with a Kubernetes scheduler, run: ::
 
@@ -411,7 +304,7 @@ For example, to launch a Toil cluster with a Kubernetes scheduler, run: ::
             --nodeStorage 20 \
             --logDebug
 
-Behind the scenes, Toil installs kubeadm and configures kubelet on the Toil
+Behind the scenes, Toil installs kubeadm and configures the kubelet on the Toil
 leader and all worker nodes. This Toil cluster can then schedule jobs using
 Kubernetes.
 
@@ -419,9 +312,7 @@ Kubernetes.
     You should set at least one worker node, otherwise Kubernetes would not be
     able to schedule any jobs. It is also normal for this step to take a while.
 
-
-Below is a tutorial on how to launch a Toil job on this newly created cluster.
-As a demostration, we will use :download:`sort.py <../../../src/toil/test/sort/sort.py>`
+As a demonstration, we will use :download:`sort.py <../../../src/toil/test/sort/sort.py>`
 again, but run it on a Toil cluster with Kubernetes. First, download this file
 and put it to the current working directory.
 
@@ -435,6 +326,11 @@ Remember to replace ``<cluster-name>`` with your actual cluster name, and feel
 free to use your own cluster configuration and/or workflow files. For more
 information on this step, see the corresponding section of the
 :ref:`StaticProvisioning` tutorial.
+
+.. important::
+
+    Some important caveats about starting a toil run through an ssh session are
+    explained in the :ref:`sshCluster` section.
 
 Now that we are inside the cluster, a Kubernetes environment should already be
 configured and running. To verify this, simply run: ::
@@ -465,7 +361,6 @@ are good to start running workflows. ::
 Now we can run the workflow: ::
 
     $ python sort.py \
-            --provisioner aws
             --batchSystem kubernetes \
             aws:<region>:<job-store-name>
 
@@ -501,6 +396,57 @@ If everything is successful, you should be able to see an output file from the s
 
 You can now run your own workflows!
 
+Preemptibility
+^^^^^^^^^^^^^^
+
+Toil can run on a heterogeneous cluster of both preemptible and non-preemptible nodes. Being a preemptible node simply
+means that the node may be shut down at any time, while jobs are running. These jobs can then be restarted later
+somewhere else.
+
+A node type can be specified as preemptible by adding a `spot bid`_ in dollars, after a colon, to its entry in the list of node types provided with
+the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptible nodes will be shut down.
+
+For example, this cluster will have both preemptible and non-preemptible nodes: ::
+
+    (venv) $ toil launch-cluster <cluster-name> \
+            --provisioner=aws \
+            --clusterType kubernetes \
+            --zone us-west-2a \
+            --keyPairName <AWS-key-pair-name> \
+            --leaderNodeType t2.medium \
+            --leaderStorage 50 \
+            --nodeTypes t2.medium -w 1-4 \
+            --nodeTypes t2.large:0.20 -w 1-4 \
+            --nodeStorage 20 \
+            --logDebug
+
+Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
+resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`__ ``UsePreemptible`` in the
+``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`___
+``preemptible`` as recognized by Cromwell. Toil's Kubernetes batch system will prefer to schedule preemptible jobs
+on preemptible nodes.
+
+If a job is not specified to be preemptible, the job will not run on preemptible nodes even if preemptible nodes
+are available, unless the workflow is run with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
+jobs without an explicit ``preemptible`` requirement to run on preemptible machines. For example::
+
+    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+          --batchSystem kubernetes \
+          --defaultPreemptible
+
+.. admonition:: Specify Preemptibility Carefully
+
+    Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
+    sense for your workflow and won't cause it to hang. You should make sure the
+    provisioner is able to create nodes large enough to run the largest job
+    in the workflow, and that non-preemptible node types are allowed if there are
+    non-preemptible jobs in the workflow.
+
+.. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
+
+.. __exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
+
+.. ___exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
 
 Using MinIO and S3-Compatible object stores
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -522,6 +468,68 @@ Examples::
 
 .. _S3-compatible object store: https://en.wikipedia.org/wiki/Amazon_S3#S3_API_and_competing_services
 .. _MinIO: https://min.io/
+
+In-Workflow Autoscaling with Mesos
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Instead of the normal Kubernetes-based autoscaling, you can also use Toil's old
+Mesos-based autoscaling method, where the scaling logic runs inside the Toil
+workflow. With this approach, a Toil cluster can only run one workflow at a
+time. This method also does not work on the ARM architecture.
+
+In this mode, the ``--preemptibleCompensation`` flag can be used to handle cases where preemptible nodes may not be
+available but are required for your workflow. With this flag enabled, the autoscaler will attempt to compensate
+for a shortage of preemptible nodes of a certain type by creating non-preemptible nodes of that type, if
+non-preemptible nodes of that type were specified in ``--nodeTypes``.
+
+.. note::
+
+   This approach is deprecated, because the Mesos project is no longer publishing up-to-date builds.
+
+#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`
+
+#. Launch a Mesos leader node in AWS using the :ref:`launchCluster` command, without using any ranges of node counts: ::
+
+    (venv) $ toil launch-cluster <cluster-name> \
+                 --clusterType mesos \
+                 --keyPairName <AWS-key-pair-name> \
+                 --leaderNodeType t2.medium \
+                 --zone us-west-2a
+
+#. Copy the ``sort.py`` script up to the leader node: ::
+
+    (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
+
+#. Login to the leader node: ::
+
+    (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
+
+#. Run the script as an autoscaling workflow, specifying a provisioner and node types and counts as workflow arguments: ::
+
+    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+          --provisioner aws \
+          --nodeTypes c3.large \
+          --maxNodes 2 \
+          --batchSystem mesos
+
+.. note::
+
+    In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
+    slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
+    Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job
+    results. The Toil autoscaler can also provision multiple different node types, which is useful for workflows
+    that have jobs with varying resource requirements. For example, one could execute the script with
+    ``--nodeTypes c3.large,r3.xlarge --maxNodes 5,1``, which would allow the provisioner to create up to five
+    c3.large nodes and one r3.xlarge node for memory-intensive jobs. In this situation, the autoscaler would avoid
+    creating the more expensive r3.xlarge node until needed, running most jobs on the c3.large nodes.
+
+#. View the generated file to sort::
+
+    $ head fileToSort.txt
+
+#. View the sorted file::
+
+    $ head sortedFile.txt
 
 Dashboard
 ---------
