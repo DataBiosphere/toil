@@ -53,7 +53,8 @@ def encrypt(message: bytes, keyPath: str) -> bytes:
     # of a collision is astronomically low. (This approach is
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
-    assert len(nonce) == SecretBox.NONCE_SIZE
+    if len(nonce) != SecretBox.NONCE_SIZE:
+        raise RuntimeError("Generated nonce is the wrong size.")
     return bytes(sb.encrypt(message, nonce))
 
 

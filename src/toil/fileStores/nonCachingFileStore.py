@@ -303,6 +303,10 @@ class NonCachingFileStore(AbstractFileStore):
                     # This is a FileNotFoundError.
                     # job finished & deleted its jobState file since the jobState files were discovered
                     continue
+                elif e.errno == 5:
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # on network file system sometimes)
+                    continue
                 else:
                     raise
 

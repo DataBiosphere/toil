@@ -396,8 +396,8 @@ class MessageBus:
             given topic.
             """
             # There should always be a "message"
-            assert len(message_data) == 1
-            assert 'message' in message_data
+            if len(message_data) != 1 or 'message' not in message_data:
+                raise RuntimeError("Cannot log the bus message. The message is either empty/malformed or there are too many messages provided.")
             message = message_data['message']
             topic = topic_object.getName()
             stream.write(topic.encode('utf-8'))
@@ -572,7 +572,8 @@ class MessageInbox(MessageBusClient):
                 handled = False
                 try:
                     # Emit the message
-                    assert isinstance(message, message_type), f"Unacceptable message type {type(message)} in list for type {message_type}"
+                    if not isinstance(message, message_type):
+                        raise RuntimeError(f"Unacceptable message type {type(message)} in list for type {message_type}")
                     yield message
                     # If we get here it was handled without error.
                     handled = True
