@@ -1083,9 +1083,8 @@ def decode_directory(
     None), and the deduplication key string that uniquely identifies the
     directory.
     """
-    assert dir_path.startswith(
-        "toildir:"
-    ), f"Cannot decode non-directory path: {dir_path}"
+    if not dir_path.startswith("toildir:"):
+        raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
 
     # We will decode the directory and then look inside it
 
@@ -1307,17 +1306,18 @@ class ToilFsAccess(StdFsAccess):
             here, subpath, cache_key = decode_directory(path)
 
             # We can't get the size of just a directory.
-            assert subpath is not None, f"Attempted to check size of directory {path}"
+            if subpath is None:
+                raise RuntimeError(f"Attempted to check size of directory {path}")
 
             for part in subpath.split("/"):
                 # Follow the path inside the directory contents.
                 here = cast(DirectoryContents, here[part])
 
             # We ought to end up with a toilfile: URI.
-            assert isinstance(here, str), f"Did not find a file at {path}"
-            assert here.startswith(
-                "toilfile:"
-            ), f"Did not find a filestore file at {path}"
+            if not isinstance(here, str):
+                raise RuntimeError(f"Did not find a file at {path}")
+            if not here.startswith("toilfile:"):
+                raise RuntimeError(f"Did not find a filestore file at {path}")
 
             return self.size(here)
         else:
@@ -3743,7 +3743,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
                 loading_context, workflowobj, uri
             )
-            assert loading_context.loader
+            if not loading_context.loader:
+                raise RuntimeError("cwltool loader is not set.")
             processobj, metadata = loading_context.loader.resolve_ref(uri)
             processobj = cast(Union[CommentedMap, CommentedSeq], processobj)
 
@@ -3946,7 +3947,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 ("File",),
                 functools.partial(add_sizes, runtime_context.make_fs_access("")),
             )
-            assert document_loader
+            if not document_loader:
+                raise RuntimeError("cwltool loader is not set.")
             prov_dependencies = cwltool.main.prov_deps(
                 workflowobj, document_loader, uri
             )

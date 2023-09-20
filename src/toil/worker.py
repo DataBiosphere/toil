@@ -224,7 +224,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #Setup the temporary directories.
     ##########################################
     # Dir to put all this worker's temp files in.
-    assert config.workflowID is not None
+    if config.workflowID is None:
+        raise RuntimeError("The worker workflow ID was never set.")
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
     toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir, config.coordination_dir)
@@ -347,7 +348,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             if next(jobDesc.successorsAndServiceHosts(), None) is not None:
                 logger.debug("Checkpoint has failed; restoring")
                 # Reduce the try count
-                assert jobDesc.remainingTryCount >= 0
+                if jobDesc.remainingTryCount < 0:
+                    raise RuntimeError("The try count of the job cannot be negative.")
                 jobDesc.remainingTryCount = max(0, jobDesc.remainingTryCount - 1)
                 jobDesc.restartCheckpoint(jobStore)
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
@@ -373,7 +375,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             logger.info("Working on job %s", jobDesc)
 
             if jobDesc.command is not None:
-                assert jobDesc.command.startswith("_toil ")
+                if not jobDesc.command.startswith("_toil "):
+                    raise RuntimeError("Job command must start with '_toil' before being converted to an executable command.")
                 logger.debug("Got a command to run: %s" % jobDesc.command)
                 # Load the job. It will use the same JobDescription we have been using.
                 job = Job.loadJob(jobStore, jobDesc)
@@ -446,8 +449,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             ##########################################
 
             # Make sure nothing has gone wrong and we can really chain
-            assert jobDesc.memory >= successor.memory
-            assert jobDesc.cores >= successor.cores
+            if jobDesc.memory < successor.memory:
+                raise RuntimeError("Cannot chain jobs. A job's memory cannot be less than it's successor.")
+            if jobDesc.cores < successor.cores:
+                raise RuntimeError("Cannot chain jobs. A job's cores cannot be less than it's successor.")
 
             # Save the successor's original ID, so we can clean it (and its
             # body) up after we finish executing it.

@@ -225,8 +225,8 @@ def apiDockerCall(job,
     working_dir = os.path.abspath(working_dir)
 
     # Ensure the user has passed a valid value for deferParam
-    assert deferParam in (None, FORGO, STOP, RM), \
-        'Please provide a valid value for deferParam.'
+    if deferParam not in (None, FORGO, STOP, RM):
+        raise RuntimeError('Please provide a valid value for deferParam.')
 
     client = docker.from_env(version='auto', timeout=timeout)
 

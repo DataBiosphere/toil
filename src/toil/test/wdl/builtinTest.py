@@ -238,7 +238,7 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         self.assertEqual([], transpose([]))
         self.assertEqual([], transpose([[]]))  # same as Cromwell
         self.assertEqual([[0]], transpose([[0]]))
-        self.assertRaises(AssertionError, transpose, [[0, 1, 2], [3, 4, 5, 6]])
+        self.assertRaises(RuntimeError, transpose, [[0, 1, 2], [3, 4, 5, 6]])
 
     def testFn_Length(self):
         """Test the WDL 'length()' built-in."""
