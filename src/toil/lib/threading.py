@@ -533,7 +533,12 @@ class LastProcessStandingArena:
                 # There is someone claiming to be here. Are they alive?
                 full_path = os.path.join(self.lockfileDir, item)
 
-                fd = os.open(full_path, os.O_RDONLY)
+                try:
+                    fd = os.open(full_path, os.O_RDONLY)
+                except OSError as e:
+                    # suddenly file doesnt exist on network file system?
+                    continue
+
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
                 except OSError as e:
