@@ -759,7 +759,7 @@ def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePo
         # Add each binding in turn
         # If the expected type is optional, then don't type check the lhs and rhs as miniwdl will return a StaticTypeMismatch error, so pass in None
         expected_type = None
-        if not v.type.optional:
+        if not v.type.optional and inputs_dict is not None:
             # This is done to enable passing in a string into a task input of file type
             expected_type = inputs_dict.get(k, None)
         new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
@@ -2357,7 +2357,8 @@ class WDLRootJob(WDLSectionJob):
 @contextmanager
 def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, None, None]:
     """
-    Monkeypatch miniwdl's WDL.Value.Base.coerce() function. Calls _virtualize_filename from a given standard library object
+    Monkeypatch miniwdl's WDL.Value.Base.coerce() function to virtualize files when they are represented as Strings.
+    Calls _virtualize_filename from a given standard library object.
     :param standard_library: a standard library object
     :return
     """
