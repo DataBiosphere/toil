@@ -379,7 +379,7 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultCores FLOAT  The default number of CPU cores to dedicate a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Fractions of a
@@ -390,7 +390,7 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultAccelerators ACCELERATOR
                         The default amount of accelerators to request for a
                         job. Only applicable to jobs that do not specify an
