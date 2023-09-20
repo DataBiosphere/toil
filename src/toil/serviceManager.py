@@ -122,7 +122,8 @@ class ServiceManager:
         try:
             client_id = self.__clients_out.get(timeout=maxWait)
             self.__waiting_clients.remove(client_id)
-            assert self.__service_manager_jobs >= 0
+            if self.__service_manager_jobs < 0:
+                raise RuntimeError("The number of jobs scheduled by the service manager cannot be negative.")
             self.__service_manager_jobs -= 1
             return client_id
         except Empty:
@@ -139,7 +140,8 @@ class ServiceManager:
         try:
             client_id = self.__failed_clients_out.get(timeout=maxWait)
             self.__waiting_clients.remove(client_id)
-            assert self.__service_manager_jobs >= 0
+            if self.__service_manager_jobs < 0:
+                raise RuntimeError("The number of jobs scheduled by the service manager cannot be negative.")
             self.__service_manager_jobs -= 1
             return client_id
         except Empty:
@@ -154,7 +156,8 @@ class ServiceManager:
         """
         try:
             service_id = self.__services_out.get(timeout=maxWait)
-            assert self.__service_manager_jobs >= 0
+            if self.__service_manager_jobs < 0:
+                raise RuntimeError("The number of jobs scheduled by the service manager cannot be negative.")
             self.__service_manager_jobs -= 1
             return service_id
         except Empty:
@@ -304,7 +307,8 @@ class ServiceManager:
                         starting_services.remove(service_id)
                         client_id = service_to_client[service_id]
                         remaining_services_by_client[client_id] -= 1
-                        assert remaining_services_by_client[client_id] >= 0
+                        if remaining_services_by_client[client_id] < 0:
+                            raise RuntimeError("The number of remaining services cannot be negative.")
                         del service_to_client[service_id]
                         if not self.__job_store.file_exists(service_job_desc.errorJobStoreID):
                             logger.error(
@@ -356,12 +360,10 @@ class ServiceManager:
                     service_job_desc,
                     service_job_desc.startJobStoreID,
                 )
-                assert self.__job_store.file_exists(
-                    service_job_desc.startJobStoreID
-                ), f"Service manager attempted to start service {service_job_desc} that has already started"
-                assert self.__toil_state.job_exists(
-                    str(service_job_desc.jobStoreID)
-                ), f"Service manager attempted to start service {service_job_desc} that is not in the job store"
+                if not self.__job_store.file_exists(service_job_desc.startJobStoreID):
+                    raise RuntimeError(f"Service manager attempted to start service {service_job_desc} that has already started")
+                if not self.__toil_state.job_exists(str(service_job_desc.jobStoreID)):
+                    raise RuntimeError(f"Service manager attempted to start service {service_job_desc} that is not in the job store")
                 # At this point the terminateJobStoreID and errorJobStoreID
                 # could have been deleted, since the service can be killed at
                 # any time! So we can't assert their presence here.

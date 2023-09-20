@@ -406,7 +406,8 @@ def generate_stdout_file(output, tempDir, fileStore, stderr=False):
     with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
         stream.write(output)
 
-    assert file_id is not None
+    if file_id is None:
+        raise RuntimeError("No file ID written. Importing to fileStore likely failed.")
     return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
@@ -508,7 +509,8 @@ def size(f: Optional[Union[str, WDLFile, List[Union[str, WDLFile]]]] = None,
     elif isinstance(f, list):
         f = [WDLFile(file_path=sf) if isinstance(sf, str) else sf for sf in f]
 
-    assert isinstance(f, (WDLFile, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
+    if not isinstance(f, (WDLFile, list)):
+        raise RuntimeError(f'size() excepts a "File" or "File?" argument!  Not: {type(f)}')
 
     # validate the input. fileStore is only required if the input is not processed.
     f = process_infile(f, fileStore)
@@ -753,7 +755,8 @@ def write_lines(in_lines: List[str],
 
     WDL syntax: File write_lines(Array[String])
     """
-    assert isinstance(in_lines, list), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
+    if not isinstance(in_lines, list):
+        raise RuntimeError(f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}')
 
     path = _get_temp_file_path('write_lines', temp_dir)
 
@@ -777,7 +780,8 @@ def write_tsv(in_tsv: List[List[str]],
 
     WDL syntax: File write_tsv(Array[Array[String]])
     """
-    assert isinstance(in_tsv, list), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
+    if not isinstance(in_tsv, list):
+        raise RuntimeError(f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}')
 
     path = _get_temp_file_path('write_tsv', temp_dir)
 
@@ -825,7 +829,8 @@ def write_map(in_map: Dict[str, str],
 
     WDL syntax: File write_map(Map[String, String])
     """
-    assert isinstance(in_map, dict), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
+    if not isinstance(in_map, dict):
+        raise RuntimeError(f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}')
 
     path = _get_temp_file_path('write_map', temp_dir)
 
@@ -859,12 +864,15 @@ def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
 
     WDL syntax: Array[Array[X]] transpose(Array[Array[X]])
     """
-    assert isinstance(in_array, list), f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+    if not isinstance(in_array, list):
+        raise RuntimeError(f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}')
 
     for arr in in_array:
-        assert isinstance(arr, list), f'transpose() requires all collections to be a list!  Not: {type(arr)}'
+        if not isinstance(arr, list):
+            raise RuntimeError(f'transpose() requires all collections to be a list!  Not: {type(arr)}')
         # zip() can handle this but Cromwell can not.
-        assert len(arr) == len(in_array[0]), 'transpose() requires all collections have the same size!'
+        if len(arr) != len(in_array[0]):
+            raise RuntimeError('transpose() requires all collections have the same size!')
 
     return [list(i) for i in zip(*in_array)]
 
@@ -986,12 +994,14 @@ def flatten(in_array: List[list]) -> list:
 
     WDL syntax: Array[X] flatten(Array[Array[X]])
     """
-    assert isinstance(in_array, list), f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+    if not isinstance(in_array, list):
+        raise RuntimeError(f'flatten() requires "{in_array}" to be a list!  Not: {type(in_array)}')
 
     arr = []
 
     for element in in_array:
-        assert isinstance(element, list), f'flatten() requires all collections to be a list!  Not: {type(element)}'
+        if not isinstance(element, list):
+            raise RuntimeError(f'flatten() requires all collections to be a list!  Not: {type(element)}')
         arr.extend(element)
 
     return arr

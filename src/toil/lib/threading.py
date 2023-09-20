@@ -475,8 +475,8 @@ class LastProcessStandingArena:
         logger.debug('Joining arena %s', self.lockfileDir)
 
         # Make sure we're not in it already.
-        assert self.lockfileName is None
-        assert self.lockfileFD is None
+        if self.lockfileName is not None or self.lockfileFD is not None:
+            raise RuntimeError("A process is already in the arena")
 
         with global_mutex(self.base_dir, self.mutex):
             # Now nobody else should also be trying to join or leave.
@@ -511,8 +511,8 @@ class LastProcessStandingArena:
         """
 
         # Make sure we're in it to start.
-        assert self.lockfileName is not None
-        assert self.lockfileFD is not None
+        if self.lockfileName is None or self.lockfileFD is None:
+            raise RuntimeError("This process is not in the arena.")
 
         logger.debug('Leaving arena %s', self.lockfileDir)
 
