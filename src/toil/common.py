@@ -432,7 +432,6 @@ class Config:
         set_option("defaultCores")
         set_option("defaultDisk")
         set_option("defaultAccelerators")
-        # set_option("readGlobalFileMutableByDefault") # does not exist?
         set_option("maxCores")
         set_option("maxMemory")
         set_option("maxDisk")
