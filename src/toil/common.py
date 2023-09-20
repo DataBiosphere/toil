@@ -144,16 +144,32 @@ class Config:
     cleanWorkDir: str
     max_jobs: int
     max_local_jobs: int
+    manualMemArgs: bool
     run_local_jobs_on_workers: bool
+    coalesceStatusCalls: bool
+    parasolCommand: str
+    parasolMaxBatches: int
+    mesos_endpoint: Optional[str]
+    mesos_framework_id: Optional[str]
+    mesos_role: Optional[str]
+    mesos_name: str
+    kubernetes_host_path: Optional[str]
+    kubernetes_owner: Optional[str]
+    kubernetes_service_account: Optional[str]
+    kubernetes_pod_timeout: float
     tes_endpoint: str
     tes_user: str
     tes_password: str
     tes_bearer_token: str
+    aws_batch_region: Optional[str]
+    aws_batch_queue: Optional[str]
+    aws_batch_job_role_arn: Optional[str]
+    scale: float
     batchSystem: str
     batch_logs_dir: Optional[str]
-    statePollingWait: int
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
+    statePollingWait: int
     disableAutoDeployment: bool
 
     # Core options
@@ -232,6 +248,7 @@ class Config:
     writeLogsGzip: str
     writeLogsFromAllJobs: bool
     write_messages: Optional[str]
+    realTimeLogging: bool
 
     # Misc
     environment: Dict[str, str]
@@ -244,13 +261,13 @@ class Config:
     statusWait: int
     disableProgress: bool
     readGlobalFileMutableByDefault: bool
-    kill_polling_interval: int
 
     # Debug options
     debugWorker: bool
     disableWorkerOutputCapture: bool
     badWorker: float
     badWorkerFailInterval: float
+    kill_polling_interval: int
 
     # CWL
     cwl: bool
@@ -603,7 +620,7 @@ def parser_with_common_options(
     return parser
 
 
-# This is kept in the outer scope as batchSystems/parasol.py uses this
+# This is kept in the outer scope as multiple batchsystem files use this
 def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[Action]:
     """
     Returns an argparse action class to check if the input is within the given half-open interval.
@@ -976,14 +993,14 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
     h2b = lambda x: human2bytes(str(x))
 
-    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=2147483648, type=h2b,
+    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default="2.0 Gi", type=h2b,
                                   action=make_open_interval_action(1),
                                   help=resource_help_msg.format('default', 'memory', disk_mem_note,
                                                                 bytes2human(2147483648)))
     resource_options.add_argument('--defaultCores', dest='defaultCores', default=1, metavar='FLOAT', type=float,
                                   action=make_open_interval_action(1.0),
                                   help=resource_help_msg.format('default', 'cpu', cpu_note, str(1)))
-    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=2147483648, metavar='INT', type=h2b,
+    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default="2.0 Gi", metavar='INT', type=h2b,
                                   action=make_open_interval_action(1),
                                   help=resource_help_msg.format('default', 'disk', disk_mem_note,
                                                                 bytes2human(2147483648)))
