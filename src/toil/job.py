@@ -1074,7 +1074,8 @@ class JobDescription(Requirer):
         first, and must have already been added.
         """
         # Make sure we aren't clobbering something
-        assert serviceID not in self.serviceTree
+        if serviceID in self.serviceTree:
+            raise RuntimeError("Job is already in the service tree.")
         self.serviceTree[serviceID] = []
         if parentServiceID is not None:
             self.serviceTree[parentServiceID].append(serviceID)
@@ -1143,9 +1144,11 @@ class JobDescription(Requirer):
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
         # Old version of this function used to take a config. Make sure that isn't happening.
-        assert not isinstance(exit_status, Config), "Passing a Config as an exit status"
+        if isinstance(exit_status, Config):
+            raise RuntimeError("Passing a Config as an exit status.")
         # Make sure we have an assigned config.
-        assert self._config is not None
+        if self._config is None:
+            raise RuntimeError("The job's config is not assigned.")
 
         if self._config.enableUnlimitedPreemptibleRetries and exit_reason == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
@@ -1337,12 +1340,14 @@ class CheckpointJobDescription(JobDescription):
 
         Returns a list with the IDs of any successors deleted.
         """
-        assert self.checkpoint is not None
+        if self.checkpoint is None:
+            raise RuntimeError("Cannot restart a checkpoint job. The checkpoint was never set.")
         successorsDeleted = []
         all_successors = list(self.allSuccessors())
         if len(all_successors) > 0 or self.serviceTree or self.command is not None:
             if self.command is not None:
-                assert self.command == self.checkpoint
+                if self.command != self.checkpoint:
+                    raise RuntimeError("The command and checkpoint are not the same.")
                 logger.debug("Checkpoint job already has command set to run")
             else:
                 self.command = self.checkpoint
@@ -1628,8 +1633,8 @@ class Job:
 
         :return: childJob: for call chaining
         """
-        assert isinstance(childJob, Job)
-
+        if not isinstance(childJob, Job):
+            raise RuntimeError("The type of the child job is not a job.")
         # Join the job graphs
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
@@ -1655,8 +1660,8 @@ class Job:
 
         :return: followOnJob for call chaining
         """
-        assert isinstance(followOnJob, Job)
-
+        if not isinstance(followOnJob, Job):
+            raise RuntimeError("The type of the follow-on job is not a job.")
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
@@ -2019,7 +2024,8 @@ class Job:
             for successor in [self._registry[jID] for jID in self.description.allSuccessors() if jID in self._registry] + extraEdges[self]:
                 # Grab all the successors in the current registry (i.e. added form this node) and look at them.
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
-            assert stack.pop() == self
+            if stack.pop() != self:
+                raise RuntimeError("The stack ordering/elements was changed.")
         if self in stack:
             stack.append(self)
             raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
@@ -2307,8 +2313,8 @@ class Job:
         unpickler = FilteredUnpickler(fileHandle)
 
         runnable = unpickler.load()
-        if requireInstanceOf is not None:
-            assert isinstance(runnable, requireInstanceOf), f"Did not find a {requireInstanceOf} when expected"
+        if requireInstanceOf is not None and not isinstance(runnable, requireInstanceOf):
+            raise RuntimeError(f"Did not find a {requireInstanceOf} when expected")
 
         return runnable
 
@@ -2478,7 +2484,8 @@ class Job:
 
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, TemporaryID), f"Tried to save job {self} without ID assigned!"
+        if isinstance(self.jobStoreID, TemporaryID):
+            raise RuntimeError(f"Tried to save job {self} without ID assigned!")
 
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
@@ -2584,7 +2591,8 @@ class Job:
         logger.info("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
 
         # Make sure we're the root
-        assert ordering[-1] == self
+        if ordering[-1] != self:
+            raise RuntimeError("The current job is not the root.")
 
         # Don't verify the ordering length: it excludes service host jobs.
         ordered_ids = {o.jobStoreID for o in ordering}
@@ -2669,7 +2677,8 @@ class Job:
         command = jobDescription.command
 
         commandTokens = command.split()
-        assert "_toil" == commandTokens[0]
+        if "_toil" != commandTokens[0]:
+            raise RuntimeError("An invalid command was passed into the job.")
         userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
@@ -3053,22 +3062,23 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn = None
 
     def addChild(self, childJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Children cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Children cannot be added to EncapsulatedJob while it is running")
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
     def addService(self, service, parentService=None):
-        assert self.encapsulatedFollowOn is not None, \
-            "Services cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Services cannot be added to EncapsulatedJob while it is running")
         return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
 
     def addFollowOn(self, followOnJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Follow-ons cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Follow-ons cannot be added to EncapsulatedJob while it is running")
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
     def rv(self, *path) -> "Promise":
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.rv(*path)
 
     def prepareForPromiseRegistration(self, jobStore):
@@ -3080,7 +3090,8 @@ class EncapsulatedJob(Job):
             self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
 
     def _disablePromiseRegistration(self):
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         super()._disablePromiseRegistration()
         self.encapsulatedJob._disablePromiseRegistration()
 
@@ -3096,7 +3107,8 @@ class EncapsulatedJob(Job):
         return self.__class__, (None,)
 
     def getUserScript(self):
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.getUserScript()
 
 
@@ -3113,7 +3125,8 @@ class ServiceHostJob(Job):
         """
 
         # Make sure the service hasn't been given a host already.
-        assert service.hostID is None
+        if service.hostID is not None:
+            raise RuntimeError("Cannot set the host. The service has already been given a host.")
 
         # Make ourselves with name info from the Service and a
         # ServiceJobDescription that has the service control flags.
@@ -3200,14 +3213,17 @@ class ServiceHostJob(Job):
 
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
-            assert self.description.startJobStoreID != None
+            if self.description.startJobStoreID is None:
+                raise RuntimeError("No start jobStoreID to remove.")
             if fileStore.jobStore.file_exists(self.description.startJobStoreID):
                 fileStore.jobStore.delete_file(self.description.startJobStoreID)
-            assert not fileStore.jobStore.file_exists(self.description.startJobStoreID)
+            if fileStore.jobStore.file_exists(self.description.startJobStoreID):
+                raise RuntimeError("The start jobStoreID is not a file.")
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
-            assert self.description.terminateJobStoreID != None
+            if self.description.terminateJobStoreID is None:
+                raise RuntimeError("No terminate jobStoreID to use.")
             while True:
                 # Check for the terminate signal
                 if not fileStore.jobStore.file_exists(self.description.terminateJobStoreID):
@@ -3301,7 +3317,8 @@ class Promise:
     @staticmethod
     def __new__(cls, *args) -> "Promise":
         """Instantiate this Promise."""
-        assert len(args) == 2
+        if len(args) != 2:
+            raise RuntimeError("Cannot instantiate promise. Invalid number of arguments given (Expected 2).")
         if isinstance(args[0], Job):
             # Regular instantiation when promise is created, before it is being pickled
             return super().__new__(cls)
@@ -3385,10 +3402,12 @@ class PromisedRequirement:
         :type args: int or .Promise
         """
         if hasattr(valueOrCallable, '__call__'):
-            assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
+            if len(args) == 0:
+                raise RuntimeError('Need parameters for PromisedRequirement function.')
             func = valueOrCallable
         else:
-            assert len(args) == 0, 'Define a PromisedRequirement function to handle multiple arguments.'
+            if len(args) != 0:
+                raise RuntimeError('Define a PromisedRequirement function to handle multiple arguments.')
             func = lambda x: x
             args = [valueOrCallable]
 

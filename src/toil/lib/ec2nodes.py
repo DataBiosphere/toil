@@ -228,7 +228,8 @@ def updateStaticEC2Instances() -> None:
           "This may take a while, depending on your internet connection (~1Gb file).\n")
 
     origFile = os.path.join(dirname, 'generatedEC2Lists.py')  # original
-    assert os.path.exists(origFile)
+    if not os.path.exists(origFile):
+        raise RuntimeError(f"Path {origFile} does not exist.")
     # use a temporary file until all info is fetched
     genFile = os.path.join(dirname, 'generatedEC2Lists_tmp.py')  # temp
     if os.path.exists(genFile):
