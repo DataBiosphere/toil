@@ -251,7 +251,8 @@ def get_supertype(types: Sequence[Optional[WDL.Type.Base]]) -> WDL.Type.Base:
         if len(types) == 1:
             # Only one type. It isn't None.
             the_type = types[0]
-            assert the_type is not None
+            if the_type is None:
+                raise RuntimeError("The supertype cannot be None.")
             return the_type
         else:
             # Multiple types (or none). Assume Any
@@ -487,7 +488,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = filename
 
         logger.debug('Devirtualized %s as openable file %s', filename, result)
-        assert os.path.exists(result), f"Virtualized file {filename} looks like a local file but isn't!"
+        if not os.path.exists(result):
+            raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
         return result
 
     def _virtualize_filename(self, filename: str) -> str:
@@ -2050,7 +2052,8 @@ class WDLScatterJob(WDLSectionJob):
         # Get what to scatter over
         scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
 
-        assert isinstance(scatter_value, WDL.Value.Array)
+        if not isinstance(scatter_value, WDL.Value.Array):
+            raise RuntimeError("The returned value from a scatter is not an Array type.")
 
         scatter_jobs = []
         for item in scatter_value.value:
@@ -2411,7 +2414,8 @@ def main() -> None:
             # Run the workflow and get its outputs namespaced with the workflow name.
             root_job = WDLRootJob(document.workflow, input_bindings)
             output_bindings = toil.start(root_job)
-        assert isinstance(output_bindings, WDL.Env.Bindings)
+        if not isinstance(output_bindings, WDL.Env.Bindings):
+            raise RuntimeError("The output of the WDL job is not a binding.")
 
         # Fetch all the output files
         # TODO: deduplicate with _devirtualize_filename

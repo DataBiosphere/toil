@@ -57,7 +57,7 @@ class MessageDetector(logging.StreamHandler):
 
 class LogTest(Job):
     def __init__(self):
-        Job.__init__(self, memory=100000, cores=2, disk='3G')
+        Job.__init__(self, memory=100000, cores=1, disk='3G')
 
     def run(self, fileStore):
         RealtimeLogger.info('This should be logged at info level')
