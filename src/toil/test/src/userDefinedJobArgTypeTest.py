@@ -59,7 +59,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
 
 class JobClass(Job):
     def __init__(self, level, foo):
-        Job.__init__(self, memory=100000, cores=2, disk="300M")
+        Job.__init__(self, memory=100000, cores=1, disk="300M")
         self.level = level
         self.foo = foo
 
