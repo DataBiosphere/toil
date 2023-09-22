@@ -238,26 +238,26 @@ cwl_v1.1_kubernetes:
     - mkdir -p ${TOIL_WORKDIR}
     - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
-#cwl_v1.2_kubernetes:
-#  stage: main_tests
-#  script:
-#    - pwd
-#    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-#    - export TOIL_KUBERNETES_OWNER=toiltest
-#    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-#    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-#    - export TOIL_WORKDIR=/var/lib/toil
-#    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-#    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
-#    - mkdir -p ${TOIL_WORKDIR}
-#    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
-#  artifacts:
-#    reports:
-#      junit: "*.junit.xml"
-#    paths:
-#      - "*.junit.xml"
-#    when: always
-#    expire_in: 14 days
+cwl_v1.2_kubernetes:
+  stage: main_tests
+  script:
+    - pwd
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
+    - mkdir -p ${TOIL_WORKDIR}
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+      - "*.junit.xml"
+    when: always
+    expire_in: 14 days
 
 wdl:
   stage: main_tests
@@ -323,31 +323,31 @@ google_jobstore:
     - make test threads="${TEST_THREADS}" tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
-#cactus_integration:
-#  stage: integration
-#  script:
-#    - set -e
-#    - ${MAIN_PYTHON_PKG} -m virtualenv --system-site-packages venv
-#    - . venv/bin/activate
-#    - pip install -U pip wheel
-#    - pip install .[aws]
-#    - export TOIL_KUBERNETES_OWNER=toiltest
-#    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-#    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-#    - export TOIL_WORKDIR=/var/lib/toil
-#    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-#    - mkdir -p ${TOIL_WORKDIR}
-#    - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
-#    - cd
-#    - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
-#    - cd cactus
-#    - git fetch origin
-#    - git checkout f5adf4013326322ae58ef1eccb8409b71d761583
-#    - git submodule update --init --recursive
-#    # We can't use setuptools 66 on Ubuntu due to https://github.com/pypa/setuptools/issues/3772
-#    - pip install --upgrade 'setuptools<66' pip
-#    - pip install --upgrade .
-#    - pip install --upgrade numpy psutil # Cactus installs an old psutil that Toil isn't compatible with. TODO: Do we really need Numpy?
-#    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
-#    - toil clean aws:us-west-2:${BUCKET_NAME}
-#    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --retryCount=3 --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
+cactus_integration:
+  stage: integration
+  script:
+    - set -e
+    - ${MAIN_PYTHON_PKG} -m virtualenv --system-site-packages venv
+    - . venv/bin/activate
+    - pip install -U pip wheel
+    - pip install .[aws,kubernetes]
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - mkdir -p ${TOIL_WORKDIR}
+    - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
+    - cd
+    - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
+    - cd cactus
+    - git fetch origin
+    - git checkout f5adf4013326322ae58ef1eccb8409b71d761583
+    - git submodule update --init --recursive
+    # We can't use setuptools 66 on Ubuntu due to https://github.com/pypa/setuptools/issues/3772
+    - pip install --upgrade 'setuptools<66' pip
+    - pip install --upgrade .
+    - pip install --upgrade numpy psutil # Cactus installs an old psutil that Toil isn't compatible with. TODO: Do we really need Numpy?
+    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
+    - toil clean aws:us-west-2:${BUCKET_NAME}
+    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --retryCount=3 --consCores 2 --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug
