@@ -2,7 +2,7 @@ from toil.common import Toil
 from toil.job import Job
 
 
-def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
+def helloWorld(job, message):
     job.log(f"Hello world, I have a message: {message}")
 
 
