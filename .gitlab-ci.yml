@@ -5,7 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.9"
+  MAIN_PYTHON_PKG: "python3.11"
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
@@ -97,15 +97,6 @@ quick_test_offline:
     - make develop extras=[aws,google,wdl]
     - TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
 
-py37_appliance_build:
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.7 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    - python setup_gitlab_docker.py
-    - make push_docker
-
 py38_appliance_build:
   stage: basic_tests
   script:
@@ -133,11 +124,20 @@ py310_appliance_build:
     - python setup_gitlab_docker.py
     - make push_docker
 
-py310_main:
+py311_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
+    - python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 &&  pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.0.post1'
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
+py311_main:
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
     - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
