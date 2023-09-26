@@ -76,7 +76,9 @@ cwl_dependency_is_stand_alone:
   stage: linting_and_dependencies
   script:
     - pwd
-    - python3 --version
+    - python3.9 --version
+    - python3.10 --version
+    - python3.11 --version
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
