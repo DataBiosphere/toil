@@ -5,7 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.9"
+  MAIN_PYTHON_PKG: "python3.11"
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
@@ -76,6 +76,7 @@ cwl_dependency_is_stand_alone:
   stage: linting_and_dependencies
   script:
     - pwd
+    - python3 --version
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
