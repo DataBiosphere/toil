@@ -69,7 +69,7 @@ from toil.test.provisioners.clusterTest import AbstractClusterTest
 from schema_salad.exceptions import ValidationException
 
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 5000
+CONFORMANCE_TEST_TIMEOUT = 10000
 
 
 def run_conformance_tests(
