@@ -1,4 +1,8 @@
-cwltool==3.1.20240708091337
+# Frozen versions wil cause dependency s conflict with
+# "cwltool 3.1" when installing cwltool from source.
+# But we need to keep "cwltool==" due to
+# https://github.com/jfennick/toil/blob/ac426a0e1c9ef1e1c39448cef97796cccc2e994d/setup.py#L135
+cwltool==3.1.*
 schema-salad>=8.4.20230128170514,<9
 galaxy-tool-util<25
 galaxy-util<25
