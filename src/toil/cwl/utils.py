@@ -167,8 +167,10 @@ def download_structure(
             download_structure(file_store, index, existing, value, subdir)
         else:
             # This must be a file path uploaded to Toil.
-            assert isinstance(value, str)
-            assert value.startswith("toilfile:")
+            if not isinstance(value, str):
+                raise RuntimeError(f"Did not find a file at {value}.")
+            if not value.startswith("toilfile:"):
+                raise RuntimeError(f"Did not find a filestore file at {value}")
             logger.debug("Downloading contained file '%s'", name)
             dest_path = os.path.join(into_dir, name)
             # So download the file into place

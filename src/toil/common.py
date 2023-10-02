@@ -430,10 +430,11 @@ class Config:
             # should make one.
             self.write_messages = gen_message_bus_path()
 
-        assert not (self.writeLogs and self.writeLogsGzip), \
-            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
-        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
-            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
+        if self.writeLogs and self.writeLogsGzip:
+            raise RuntimeError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
+
+        if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
+            raise RuntimeError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
 
         # Misc
         set_option("environment", parseSetEnv)
@@ -444,7 +445,8 @@ class Config:
 
         def check_sse_key(sse_key: str) -> None:
             with open(sse_key) as f:
-                assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
+                if len(f.readline().rstrip()) != 32:
+                    raise RuntimeError("SSE key appears to be invalid.")
 
         set_option("sseKey", check_function=check_sse_key)
         set_option("servicePollingInterval", float, fC(0.0))

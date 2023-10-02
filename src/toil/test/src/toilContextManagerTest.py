@@ -61,10 +61,10 @@ class ToilContextManagerTest(ToilTest):
 
 class HelloWorld(Job):
     def __init__(self):
-        Job.__init__(self, memory=100000, cores=2, disk='1M')
+        Job.__init__(self, memory=100000, disk='1M')
 
     def run(self, fileStore):
-        fileID = self.addChildJobFn(childFn, cores=1, memory='1M', disk='1M').rv()
+        fileID = self.addChildJobFn(childFn, memory='1M', disk='1M').rv()
         return self.addFollowOn(FollowOn(fileID)).rv()
 
 
