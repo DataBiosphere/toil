@@ -107,7 +107,7 @@ quick_test_offline:
 
 py37_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -118,7 +118,7 @@ py37_appliance_build:
 
 py38_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -138,7 +138,7 @@ py39_appliance_build:
 
 py310_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -193,7 +193,7 @@ batch_systems:
 
 slurm_test:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -203,7 +203,7 @@ slurm_test:
 
 cwl_v1.2:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -213,7 +213,7 @@ cwl_v1.2:
 
 cwl_on_arm:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -226,7 +226,7 @@ cwl_on_arm:
 
 cwl_misc:
   rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
+    - if: $CI_PIPELINE_SOURCE != "schedule" || $CI_COMMIT_TAG
   stage: main_tests
   script:
     - pwd
@@ -290,7 +290,7 @@ provisioner:
 
 jobstore_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -305,7 +305,7 @@ jobstore_integration:
 
 server_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -321,7 +321,7 @@ server_integration:
 
 provisioner_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -338,7 +338,7 @@ provisioner_integration:
 
 google_jobstore:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
