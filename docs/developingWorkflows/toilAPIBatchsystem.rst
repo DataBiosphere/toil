@@ -6,12 +6,12 @@ Batch System API
 ================
 
 The batch system interface is used by Toil to abstract over different ways of running
-batches of jobs, for example Slurm, GridEngine, Mesos, Parasol and a single node. The
+batches of jobs, for example on Slurm clusters, Kubernetes clusters, or a single node. The
 :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem` API is implemented to
-run jobs using a given job management system, e.g. Mesos.
+run jobs using a given job management system.
 
-Batch System Enivronmental Variables
-------------------------------------
+Batch System Environment Variables
+----------------------------------
 
 Environmental variables allow passing of scheduler specific parameters.
 

@@ -873,7 +873,9 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             return self.jobQueue.qsize()
 
     def getJobs(self):
-        return self.jobBatchSystemIDToIssuedJob.values()
+        # jobBatchSystemIDToIssuedJob may be modified while we are working.
+        # So copy it.
+        return dict(self.jobBatchSystemIDToIssuedJob).values()
 
     # AbstractScalableBatchSystem functionality
     def getNodes(self, preemptible: Optional[bool] = False, timeout: int = 600):
