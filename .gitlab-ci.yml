@@ -63,6 +63,8 @@ stages:
 
 
 lint:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
@@ -73,6 +75,8 @@ lint:
 
 
 cwl_dependency_is_stand_alone:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
@@ -81,6 +85,8 @@ cwl_dependency_is_stand_alone:
 
 
 wdl_dependency_is_stand_alone:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
@@ -88,6 +94,8 @@ wdl_dependency_is_stand_alone:
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
 
 quick_test_offline:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: basic_tests
   script:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv
@@ -98,6 +106,8 @@ quick_test_offline:
     - TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
 
 py37_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -107,6 +117,8 @@ py37_appliance_build:
     - make push_docker
 
 py38_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -125,6 +137,8 @@ py39_appliance_build:
     - make push_docker
 
 py310_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -134,6 +148,8 @@ py310_appliance_build:
     - make push_docker
 
 py310_main:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: basic_tests
   script:
     - pwd
@@ -142,6 +158,8 @@ py310_main:
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
 batch_systems:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
@@ -174,7 +192,9 @@ batch_systems:
     - kill $(jobs -p) || true
 
 slurm_test:
-  stage: main_tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+  stage: integration
   script:
     - pwd
     - cd contrib/slurm-test/
@@ -182,7 +202,9 @@ slurm_test:
     - ./slurm_test.sh
 
 cwl_v1.2:
-  stage: main_tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+  stage: integration
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
@@ -190,7 +212,9 @@ cwl_v1.2:
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
 
 cwl_on_arm:
-  stage: main_tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+  stage: integration
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
@@ -201,42 +225,14 @@ cwl_on_arm:
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_misc:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule" || $CI_COMMIT_TAG
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make test threads="${TEST_THREADS}" tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
-
-cwl_v1.0_kubernetes:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
-    - mkdir -p ${TOIL_WORKDIR}
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching"
-
-cwl_v1.1_kubernetes:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
-    - mkdir -p ${TOIL_WORKDIR}
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching"
 
 #cwl_v1.2_kubernetes:
 #  stage: main_tests
@@ -260,6 +256,8 @@ cwl_v1.1_kubernetes:
 #    expire_in: 14 days
 
 wdl:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
@@ -269,16 +267,30 @@ wdl:
     - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
 
-jobstore_and_provisioning:
+jobstore:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/lib/aws/ src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1' 
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py"
+
+provisioner:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  stage: main_tests
+  script:
+    - pwd
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1' 
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/lib/aws/ src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
+
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
-integration:
+jobstore_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -289,11 +301,27 @@ integration:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    # Test integration with job stores
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/jobStores/jobStoreTest.py"
+
+server_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+  stage: integration
+  script:
+    - pwd
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
     # Test server and its integration with AWS
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/server"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/server"
 
 provisioner_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -309,6 +337,8 @@ provisioner_integration:
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
