@@ -23,6 +23,7 @@ import copy
 import datetime
 import errno
 import functools
+import glob
 import json
 import logging
 import os
@@ -1273,13 +1274,50 @@ class ToilFsAccess(StdFsAccess):
         return destination
 
     def glob(self, pattern: str) -> List[str]:
-        # We know this falls back on _abs
-        return super().glob(pattern)
+        parse = urlparse(path)
+        if parse.scheme == "file":
+            pattern = os.path.abspath(unquote(parse.path))
+        elif parse.scheme == "":
+            pattern = os.path.abspath(pattern)
+        else:
+            raise RuntimeError(f"Cannot efficiently support globbing on {parse.scheme} URIs")
+
+        # Actually do the glob
+        return [schema_salad.ref_resolver.file_uri(f) for f in glob.glob(pattern)]
 
     def open(self, fn: str, mode: str) -> IO[Any]:
-        # TODO: Also implement JobStore-supported URLs through JobStore methods.
-        # We know this falls back on _abs
-        return super().open(fn, mode)
+        if "w" in mode or "x" in mode or "+" in mode or "a" in mode:
+            raise RuntimeError(f"Mode {mode} for opening {fn} involves writing")
+        
+        parse = urlparse(fn)
+        if parse.scheme in ["", "file"]:
+            # Handle local files
+            return open(self._abs(path), mode)
+        elif parse.scheme in ["toilfile", "toildir"]:
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store: " + fn)
+
+            encoding=None if "b" in mode else "utf-8"
+
+            if parse.scheme == "toildir":
+                contents, subpath, cache_key = decode_directory(path)
+                if cache_key in self.dir_to_download:
+                    # This is already available locally
+                    return open(self._abs(path), mode)
+                else:
+                    # We need to take each path component from subpath and look
+                    # them up in contents, until we find a thing that ought to
+                    # be a string. Then that we need to decode as a FileID and
+                    # stream.
+                    raise NotImplementedError()
+            elif parse.scheme == "toilfile":
+                file_id = FileID.unpack(fn[len("toilfile:") :])
+
+            return self.file_store.readGlobalFileStream(, )
+        else:
+            # This should be supported by a job store.
+            # We need to make a pipe, send off a thread to AbstractJobStore.read_from_url into the pipe as bytes, and read out of the pipe in the appropriate encoding.
+            raise NotImplementedError()
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""
