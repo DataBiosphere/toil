@@ -139,7 +139,7 @@ def broken_job(job, num):
 if __name__=="__main__":
     jobStorePath = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp("debugWorkflow")
     options = Job.Runner.getDefaultOptions(jobStorePath)
-    # options.clean = "always"
+    options.clean = "never"
     options.stats = True
     options.logLevel = "INFO"
     with Toil(options) as toil:

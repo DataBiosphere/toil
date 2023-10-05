@@ -23,10 +23,15 @@ import tempfile
 import time
 import uuid
 import warnings
-from argparse import (ArgumentDefaultsHelpFormatter,
+
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
+from configargparse import ArgParser, YAMLConfigFileParser
+from argparse import (SUPPRESS,
+                      ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
-                      _ArgumentGroup)
+                      _ArgumentGroup, Action, _StoreFalseAction, _StoreTrueAction, _AppendAction)
 from distutils.util import strtobool
 from functools import lru_cache
 from types import TracebackType
@@ -37,7 +42,6 @@ from typing import (IO,
                     ContextManager,
                     Dict,
                     List,
-                    MutableMapping,
                     Optional,
                     Set,
                     Tuple,
@@ -57,7 +61,6 @@ else:
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import (add_all_batchsystem_options,
-                                       set_batchsystem_config_defaults,
                                        set_batchsystem_options)
 from toil.bus import (ClusterDesiredSizeMessage,
                       ClusterSizeMessage,
@@ -66,20 +69,18 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage,
-                      gen_message_bus_path)
+                      QueueSizeMessage)
 from toil.fileStores import FileID
 from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
-from toil.lib.io import try_path
+from toil.lib.io import try_path, AtomicFileCreate
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
                                cluster_factory,
                                parse_node_types)
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
-                                  root_logger,
                                   set_logging_from_options)
 from toil.version import dockerRegistry, dockerTag, version
 
@@ -102,6 +103,39 @@ SYS_MAX_SIZE = 9223372036854775807
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
+# TODO: should this use an XDG config directory or ~/.config to not clutter the
+# base home directory?
+TOIL_HOME_DIR: str = os.path.join(os.path.expanduser("~"), ".toil")
+DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
+
+
+def parse_jobstore(jobstore_uri: str) -> str:
+    """
+    Turn the jobstore string into it's corresponding URI
+    ex:
+    /path/to/jobstore -> file:/path/to/jobstore
+
+    If the jobstore string already is a URI, return the jobstore:
+    aws:/path/to/jobstore -> aws:/path/to/jobstore
+    :param jobstore_uri: string of the jobstore
+    :return: URI of the jobstore
+    """
+    name, rest = Toil.parseLocator(jobstore_uri)
+    if name == 'file':
+        # We need to resolve relative paths early, on the leader, because the worker process
+        # may have a different working directory than the leader, e.g. under Mesos.
+        return Toil.buildLocator(name, os.path.abspath(rest))
+    else:
+        return jobstore_uri
+
+
+def parse_str_list(s: str) -> List[str]:
+    return [str(x) for x in s.split(",")]
+
+
+def parse_int_list(s: str) -> List[int]:
+    return [int(x) for x in s.split(",")]
+
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
@@ -110,118 +144,185 @@ class Config:
     cleanWorkDir: str
     max_jobs: int
     max_local_jobs: int
+    manualMemArgs: bool
     run_local_jobs_on_workers: bool
+    coalesceStatusCalls: bool
+    parasolCommand: str
+    parasolMaxBatches: int
+    mesos_endpoint: Optional[str]
+    mesos_framework_id: Optional[str]
+    mesos_role: Optional[str]
+    mesos_name: str
+    kubernetes_host_path: Optional[str]
+    kubernetes_owner: Optional[str]
+    kubernetes_service_account: Optional[str]
+    kubernetes_pod_timeout: float
     tes_endpoint: str
     tes_user: str
     tes_password: str
     tes_bearer_token: str
-    jobStore: str
+    aws_batch_region: Optional[str]
+    aws_batch_queue: Optional[str]
+    aws_batch_job_role_arn: Optional[str]
+    scale: float
     batchSystem: str
-    batch_logs_dir: Optional[str] = None
+    batch_logs_dir: Optional[str]
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
-    workflowAttemptNumber: int
+    statePollingWait: int
     disableAutoDeployment: bool
 
+    # Core options
+    workflowID: Optional[str]
+    """This attribute uniquely identifies the job store and therefore the workflow. It is
+    necessary in order to distinguish between two consecutive workflows for which
+    self.jobStore is the same, e.g. when a job store name is reused after a previous run has
+    finished successfully and its job store has been clean up."""
+    workflowAttemptNumber: int
+    jobStore: str
+    logLevel: str
+    workDir: Optional[str]
+    coordination_dir: Optional[str]
+    noStdOutErr: bool
+    stats: bool
+
+    # Because the stats option needs the jobStore to persist past the end of the run,
+    # the clean default value depends the specified stats option and is determined in setOptions
+    clean: Optional[str]
+    clusterStats: str
+
+    # Restarting the workflow options
+    restart: bool
+
+    # Batch system options
+
+    # File store options
+    caching: Optional[bool]
+    symlinkImports: bool
+    moveOutputs: bool
+
+    # Autoscaling options
+    provisioner: Optional[str]
+    nodeTypes: List[Tuple[Set[str], Optional[float]]]
+    minNodes: List[int]
+    maxNodes: List[int]
+    targetTime: float
+    betaInertia: float
+    scaleInterval: int
+    preemptibleCompensation: float
+    nodeStorage: int
+    nodeStorageOverrides: List[str]
+    metrics: bool
+    assume_zero_overhead: bool
+
+    # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
+    maxPreemptibleServiceJobs: int
+    maxServiceJobs: int
+    deadlockWait: Union[
+        float, int]
+    deadlockCheckInterval: Union[float, int]
+
+    # Resource requirements
+    defaultMemory: int
+    defaultCores: Union[float, int]
+    defaultDisk: int
+    defaultPreemptible: bool
+    # TODO: These names are generated programmatically in
+    # Requirer._fetchRequirement so we can't use snake_case until we fix
+    # that (and add compatibility getters/setters?)
+    defaultAccelerators: List['AcceleratorRequirement']
+    maxCores: int
+    maxMemory: int
+    maxDisk: int
+
+    # Retrying/rescuing jobs
+    retryCount: int
+    enableUnlimitedPreemptibleRetries: bool
+    doubleMem: bool
+    maxJobDuration: int
+    rescueJobsFrequency: int
+
+    # Log management
+    maxLogFileSize: int
+    writeLogs: str
+    writeLogsGzip: str
+    writeLogsFromAllJobs: bool
+    write_messages: Optional[str]
+    realTimeLogging: bool
+
+    # Misc
+    environment: Dict[str, str]
+    disableChaining: bool
+    disableJobStoreChecksumVerification: bool
+    sseKey: Optional[str]
+    servicePollingInterval: int
+    useAsync: bool
+    forceDockerAppliance: bool
+    statusWait: int
+    disableProgress: bool
+    readGlobalFileMutableByDefault: bool
+
+    # Debug options
+    debugWorker: bool
+    disableWorkerOutputCapture: bool
+    badWorker: float
+    badWorkerFailInterval: float
+    kill_polling_interval: int
+
+    # CWL
+    cwl: bool
+
     def __init__(self) -> None:
-        # Core options
-        self.workflowID: Optional[str] = None
-        """This attribute uniquely identifies the job store and therefore the workflow. It is
-        necessary in order to distinguish between two consecutive workflows for which
-        self.jobStore is the same, e.g. when a job store name is reused after a previous run has
-        finished successfully and its job store has been clean up."""
-        self.workflowAttemptNumber: int = 0
-        self.jobStore: Optional[str] = None  # type: ignore
-        self.logLevel: str = logging.getLevelName(root_logger.getEffectiveLevel())
-        self.workDir: Optional[str] = None
-        self.coordination_dir: Optional[str] = None
-        self.noStdOutErr: bool = False
-        self.stats: bool = False
+        # only default options that are not CLI options defined here (thus CLI options are centralized)
+        self.cwl = False  # will probably remove later
+        self.workflowID = None
+        self.kill_polling_interval = 5
 
-        # Because the stats option needs the jobStore to persist past the end of the run,
-        # the clean default value depends the specified stats option and is determined in setOptions
-        self.clean: Optional[str] = None
-        self.clusterStats = None
+        self.set_from_default_config()
 
-        # Restarting the workflow options
-        self.restart: bool = False
+    def set_from_default_config(self) -> None:
+        # get defaults from a config file by simulating an argparse run
+        # as Config often expects defaults to already be instantiated
+        if not os.path.exists(DEFAULT_CONFIG_FILE):
+            # The default config file did not appear to exist when we checked.
+            # It might exist now, though. Try creating it.
+            self.generate_config_file()
+        # Check on the config file to make sure it is sensible
+        config_status = os.stat(DEFAULT_CONFIG_FILE)
+        if config_status.st_size == 0:
+            # If we have an empty config file, someone has to manually delete
+            # it before we will work again.
+            raise RuntimeError(
+                f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
+        logger.debug("Loading %s byte default configuration", config_status.st_size)
+        try:
+            with open(DEFAULT_CONFIG_FILE, "r") as f:
+                yaml = YAML(typ="safe")
+                s = yaml.load(f)
+                logger.debug("Loaded default configuration: %s", json.dumps(s))
+        except:
+            # Something went wrong reading the default config, so dump its
+            # contents to the log.
+            logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
+            raise
+        parser = ArgParser()
+        addOptions(parser, jobstore_as_flag=True)
+        ns = parser.parse_args(f"--config={DEFAULT_CONFIG_FILE}")
+        self.setOptions(ns)
 
-        # Batch system options
-        set_batchsystem_config_defaults(self)
+    def generate_config_file(self) -> None:
+        """
+        If the default config file does not exist, create it.
 
-        # File store options
-        self.caching: Optional[bool] = None
-        self.linkImports: bool = True
-        self.moveExports: bool = False
+        Raises an error if the default config file cannot be created.
+        Safe to run simultaneously in multiple processes. If this process runs
+        this function, it will always see the default config file existing with
+        parseable contents, even if other processes are racing to create it.
 
-        # Autoscaling options
-        self.provisioner: Optional[str] = None
-        self.nodeTypes: List[Tuple[Set[str], Optional[float]]] = []
-        self.minNodes = None
-        self.maxNodes = [10]
-        self.targetTime: float = defaultTargetTime
-        self.betaInertia: float = 0.1
-        self.scaleInterval: int = 60
-        self.preemptibleCompensation: float = 0.0
-        self.nodeStorage: int = 50
-        self.nodeStorageOverrides: List[str] = []
-        self.metrics: bool = False
-        self.assume_zero_overhead: bool = False
-
-        # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptibleServiceJobs: int = sys.maxsize
-        self.maxServiceJobs: int = sys.maxsize
-        self.deadlockWait: Union[float, int] = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
-        self.deadlockCheckInterval: Union[float, int] = 30  # Minimum polling delay for deadlocks
-
-        # Resource requirements
-        self.defaultMemory: int = 2147483648
-        self.defaultCores: Union[float, int] = 1
-        self.defaultDisk: int = 2147483648
-        self.defaultPreemptible: bool = False
-        # TODO: These names are generated programmatically in
-        # Requirer._fetchRequirement so we can't use snake_case until we fix
-        # that (and add compatibility getters/setters?)
-        self.defaultAccelerators: List['AcceleratorRequirement'] = []
-        self.maxCores: int = SYS_MAX_SIZE
-        self.maxMemory: int = SYS_MAX_SIZE
-        self.maxDisk: int = SYS_MAX_SIZE
-
-        # Retrying/rescuing jobs
-        self.retryCount: int = 1
-        self.enableUnlimitedPreemptibleRetries: bool = False
-        self.doubleMem: bool = False
-        self.maxJobDuration: int = sys.maxsize
-        self.rescueJobsFrequency: int = 60
-
-        # Log management
-        self.maxLogFileSize: int = 64000
-        self.writeLogs = None
-        self.writeLogsGzip = None
-        self.writeLogsFromAllJobs: bool = False
-        self.write_messages: Optional[str] = None
-
-        # Misc
-        self.environment: Dict[str, str] = {}
-        self.disableChaining: bool = False
-        self.disableJobStoreChecksumVerification: bool = False
-        self.sseKey: Optional[str] = None
-        self.servicePollingInterval: int = 60
-        self.useAsync: bool = True
-        self.forceDockerAppliance: bool = False
-        self.statusWait: int = 3600
-        self.disableProgress: bool = False
-        self.readGlobalFileMutableByDefault: bool = False
-        self.kill_polling_interval: int = 5
-
-        # Debug options
-        self.debugWorker: bool = False
-        self.disableWorkerOutputCapture: bool = False
-        self.badWorker = 0.0
-        self.badWorkerFailInterval = 0.01
-
-        # CWL
-        self.cwl: bool = False
+        No process will see an empty or partially-written default config file.
+        """
+        check_and_create_toil_home_dir()
+        generate_config(DEFAULT_CONFIG_FILE)
 
     def prepare_start(self) -> None:
         """
@@ -240,16 +341,10 @@ class Config:
         # exist and that can't safely be re-made.
         self.write_messages = None
 
-
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
-        OptionType = TypeVar("OptionType")
 
         def set_option(option_name: str,
-                       parsing_function: Optional[Callable[[Any], OptionType]] = None,
-                       check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
-                       default: Optional[OptionType] = None,
-                       env: Optional[List[str]] = None,
                        old_names: Optional[List[str]] = None) -> None:
             """
             Determine the correct value for the given option.
@@ -269,200 +364,224 @@ class Config:
             If the option gets a non-None value, sets it as an attribute in
             this Config.
             """
-            option_value = getattr(options, option_name, default)
+            option_value = getattr(options, option_name, None)
 
             if old_names is not None:
                 for old_name in old_names:
+                    # If the option is already set with the new name and not the old name
+                    # prioritize the new name over the old name and break
+                    if option_value is not None and option_value != [] and option_value != {}:
+                        break
                     # Try all the old names in case user code is setting them
                     # in an options object.
-                    if option_value != default:
-                        break
-                    if hasattr(options, old_name):
+                    # This does assume that all deprecated options have a default value of None
+                    if getattr(options, old_name, None) is not None:
                         warnings.warn(f'Using deprecated option field {old_name} to '
                                       f'provide value for config field {option_name}',
                                       DeprecationWarning)
                         option_value = getattr(options, old_name)
-
-            if env is not None:
-                for env_var in env:
-                    # Try all the environment variables
-                    if option_value != default:
-                        break
-                    option_value = os.environ.get(env_var, default)
-
             if option_value is not None or not hasattr(self, option_name):
-                if parsing_function is not None:
-                    # Parse whatever it is (string, argparse-made list, etc.)
-                    option_value = parsing_function(option_value)
-                if check_function is not None:
-                    try:
-                        check_function(option_value)  # type: ignore
-                    except AssertionError:
-                        raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
                 setattr(self, option_name, option_value)
 
-        # Function to parse integer from string expressed in different formats
-        h2b = lambda x: human2bytes(str(x))
-
-        def parse_jobstore(jobstore_uri: str) -> str:
-            name, rest = Toil.parseLocator(jobstore_uri)
-            if name == 'file':
-                # We need to resolve relative paths early, on the leader, because the worker process
-                # may have a different working directory than the leader, e.g. under Mesos.
-                return Toil.buildLocator(name, os.path.abspath(rest))
-            else:
-                return jobstore_uri
-
-        def parse_str_list(s: str) -> List[str]:
-            return [str(x) for x in s.split(",")]
-
-        def parse_int_list(s: str) -> List[int]:
-            return [int(x) for x in s.split(",")]
-
         # Core options
-        set_option("jobStore", parsing_function=parse_jobstore)
+        set_option("jobStore")
         # TODO: LOG LEVEL STRING
         set_option("workDir")
-        if self.workDir is not None:
-            self.workDir = os.path.abspath(self.workDir)
-            if not os.path.exists(self.workDir):
-                raise RuntimeError(f"The path provided to --workDir ({self.workDir}) does not exist.")
-
-            if len(self.workDir) > 80:
-                logger.warning(f'Length of workDir path "{self.workDir}" is {len(self.workDir)} characters.  '
-                               f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
-                               f'like "/tmp" to avoid overly long paths.')
         set_option("coordination_dir")
-        if self.coordination_dir is not None:
-            self.coordination_dir = os.path.abspath(self.coordination_dir)
-            if not os.path.exists(self.coordination_dir):
-                raise RuntimeError(f"The path provided to --coordinationDir ({self.coordination_dir}) does not exist.")
 
         set_option("noStdOutErr")
         set_option("stats")
         set_option("cleanWorkDir")
         set_option("clean")
-        if self.stats:
-            if self.clean != "never" and self.clean is not None:
-                raise RuntimeError("Contradicting options passed: Clean flag is set to %s "
-                                   "despite the stats flag requiring "
-                                   "the jobStore to be intact at the end of the run. "
-                                   "Set clean to \'never\'" % self.clean)
-            self.clean = "never"
-        elif self.clean is None:
-            self.clean = "onSuccess"
         set_option('clusterStats')
         set_option("restart")
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(self.batchSystem, cast("OptionSetter", set_option))
+        set_batchsystem_options(None, cast("OptionSetter",
+                                           set_option))  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
 
         # File store options
-        set_option("linkImports", bool, default=True)
-        set_option("moveExports", bool, default=False)
-        set_option("caching", bool, default=None)
+        set_option("symlinkImports", old_names=["linkImports"])
+        set_option("moveOutputs", old_names=["moveExports"])
+        set_option("caching", old_names=["enableCaching"])
 
         # Autoscaling options
         set_option("provisioner")
-        set_option("nodeTypes", parse_node_types)
-        set_option("minNodes", parse_int_list)
-        set_option("maxNodes", parse_int_list)
-        set_option("targetTime", int)
-        if self.targetTime <= 0:
-            raise RuntimeError(f'targetTime ({self.targetTime}) must be a positive integer!')
-        set_option("betaInertia", float)
-        if not 0.0 <= self.betaInertia <= 0.9:
-            raise RuntimeError(f'betaInertia ({self.betaInertia}) must be between 0.0 and 0.9!')
-        set_option("scaleInterval", float)
+        set_option("nodeTypes")
+        set_option("minNodes")
+        set_option("maxNodes")
+        set_option("targetTime")
+        set_option("betaInertia")
+        set_option("scaleInterval")
         set_option("metrics")
         set_option("assume_zero_overhead")
-        set_option("preemptibleCompensation", float)
-        if not 0.0 <= self.preemptibleCompensation <= 1.0:
-            raise RuntimeError(f'preemptibleCompensation ({self.preemptibleCompensation}) must be between 0.0 and 1.0!')
-        set_option("nodeStorage", int)
+        set_option("preemptibleCompensation")
+        set_option("nodeStorage")
 
-        def check_nodestoreage_overrides(overrides: List[str]) -> bool:
-            for override in overrides:
-                tokens = override.split(":")
-                if len(tokens) != 2:
-                    raise ValueError("Each component of --nodeStorageOverrides must be of the form <instance type>:<storage in GiB>")
-                if not any(tokens[0] in n[0] for n in self.nodeTypes):
-                    raise ValueError("Instance type in --nodeStorageOverrides must be in --nodeTypes")
-                if not tokens[1].isdigit():
-                    raise ValueError("storage must be an integer in --nodeStorageOverrides")
-            return True
-        set_option("nodeStorageOverrides", parse_str_list, check_function=check_nodestoreage_overrides)
+        set_option("nodeStorageOverrides")
 
-        # Parameters to limit service jobs / detect deadlocks
-        set_option("maxServiceJobs", int)
-        set_option("maxPreemptibleServiceJobs", int)
-        set_option("deadlockWait", int)
-        set_option("deadlockCheckInterval", int)
+        if self.cwl is False:
+            # Parameters to limit service jobs / detect deadlocks
+            set_option("maxServiceJobs")
+            set_option("maxPreemptibleServiceJobs")
+            set_option("deadlockWait")
+            set_option("deadlockCheckInterval")
 
-        # Resource requirements
-        set_option("defaultMemory", h2b, iC(1))
-        set_option("defaultCores", float, fC(1.0))
-        set_option("defaultDisk", h2b, iC(1))
-        set_option("defaultAccelerators", parse_accelerator_list)
-        set_option("readGlobalFileMutableByDefault")
-        set_option("maxCores", int, iC(1))
-        set_option("maxMemory", h2b, iC(1))
-        set_option("maxDisk", h2b, iC(1))
+        set_option("defaultMemory")
+        set_option("defaultCores")
+        set_option("defaultDisk")
+        set_option("defaultAccelerators")
+        set_option("maxCores")
+        set_option("maxMemory")
+        set_option("maxDisk")
         set_option("defaultPreemptible")
 
         # Retrying/rescuing jobs
-        set_option("retryCount", int, iC(1))
+        set_option("retryCount")
         set_option("enableUnlimitedPreemptibleRetries")
         set_option("doubleMem")
-        set_option("maxJobDuration", int, iC(1))
-        set_option("rescueJobsFrequency", int, iC(1))
+        set_option("maxJobDuration")
+        set_option("rescueJobsFrequency")
 
         # Log management
-        set_option("maxLogFileSize", h2b, iC(1))
+        set_option("maxLogFileSize")
         set_option("writeLogs")
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
-        set_option("write_messages", os.path.abspath)
-
-        if not self.write_messages:
-            # The user hasn't specified a place for the message bus so we
-            # should make one.
-            self.write_messages = gen_message_bus_path()
-
-        if self.writeLogs and self.writeLogsGzip:
-            raise RuntimeError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
-
-        if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
-            raise RuntimeError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
+        set_option("write_messages")
 
         # Misc
-        set_option("environment", parseSetEnv)
+        set_option("environment")
+
         set_option("disableChaining")
         set_option("disableJobStoreChecksumVerification")
-        set_option("statusWait", int)
+        set_option("statusWait")
         set_option("disableProgress")
 
-        def check_sse_key(sse_key: str) -> None:
-            with open(sse_key) as f:
-                if len(f.readline().rstrip()) != 32:
-                    raise RuntimeError("SSE key appears to be invalid.")
-
-        set_option("sseKey", check_function=check_sse_key)
-        set_option("servicePollingInterval", float, fC(0.0))
+        set_option("sseKey")
+        set_option("servicePollingInterval")
         set_option("forceDockerAppliance")
 
         # Debug options
         set_option("debugWorker")
         set_option("disableWorkerOutputCapture")
-        set_option("badWorker", float, fC(0.0, 1.0))
-        set_option("badWorkerFailInterval", float, fC(0.0))
+        set_option("badWorker")
+        set_option("badWorkerFailInterval")
+        set_option("logLevel")
+
+        self.check_configuration_consistency()
+
+    def check_configuration_consistency(self) -> None:
+        """Old checks that cannot be fit into an action class for argparse"""
+        if self.writeLogs and self.writeLogsGzip:
+            raise ValueError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
+        if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
+            raise ValueError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
+        for override in self.nodeStorageOverrides:
+            tokens = override.split(":")
+            if not any(tokens[0] in n[0] for n in self.nodeTypes):
+                raise ValueError("Instance type in --nodeStorageOverrides must be in --nodeTypes")
+
+        if self.stats:
+            if self.clean != "never" and self.clean is not None:
+                logger.warning("Contradicting options passed: Clean flag is set to %s "
+                               "despite the stats flag requiring "
+                               "the jobStore to be intact at the end of the run. "
+                               "Setting clean to \'never\'." % self.clean)
+            self.clean = "never"
 
     def __eq__(self, other: object) -> bool:
         return self.__dict__ == other.__dict__
 
     def __hash__(self) -> int:
         return self.__dict__.__hash__()  # type: ignore
+
+
+def check_and_create_toil_home_dir() -> None:
+    """
+    Ensure that TOIL_HOME_DIR exists.
+
+    Raises an error if it does not exist and cannot be created. Safe to run
+    simultaneously in multiple processes.
+    """
+
+    dir_path = try_path(TOIL_HOME_DIR)
+    if dir_path is None:
+        raise RuntimeError(f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}")
+
+
+def generate_config(filepath: str) -> None:
+    """
+    Write a Toil config file to the given path.
+
+    Safe to run simultaneously in multiple processes. No process will see an
+    empty or partially-written file at the given path.
+    """
+    # this is placed in common.py rather than toilConfig.py to prevent circular imports
+
+    # configargparse's write_config function does not write options with a None value
+    # Thus, certain CLI options that use None as their default won't be written to the config file.
+    # it also does not support printing config elements in nonalphabetical order
+
+    # Instead, mimic configargparser's write_config behavior and also make it output arguments with
+    # a default value of None
+
+    # To do this, iterate through the options
+    # Skip --help and --config as they should not be included in the config file
+    # Skip deprecated/redundant options
+    #   Various log options are skipped as they are store_const arguments that are redundant to --logLevel
+    #   linkImports, moveExports, disableCaching, are deprecated in favor of --symlinkImports, --moveOutputs,
+    #   and --caching respectively
+    # Skip StoreTrue and StoreFalse options that have opposite defaults as including it in the config would
+    # override those defaults
+    deprecated_or_redundant_options = ("help", "config", "logCritical", "logDebug", "logError", "logInfo", "logOff",
+                                       "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports",
+                                       "enableCaching", "disableCaching")
+
+    parser = ArgParser(YAMLConfigFileParser())
+    addOptions(parser, jobstore_as_flag=True)
+
+    data = CommentedMap()  # to preserve order
+    group_title_key: Dict[str, str] = dict()
+    for action in parser._actions:
+        if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
+            continue
+        # if action is StoreFalse and default is True then don't include
+        if isinstance(action, _StoreFalseAction) and action.default is True:
+            continue
+        # if action is StoreTrue and default is False then don't include
+        if isinstance(action, _StoreTrueAction) and action.default is False:
+            continue
+
+        option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else \
+            action.option_strings[1]
+        option = option_string[2:]
+
+        default = action.default
+
+        data[option] = default
+
+        # store where each argparse group starts
+        group_title = action.container.title  # type: ignore[attr-defined]
+        group_title_key.setdefault(group_title, option)
+
+    # add comment for when each argparse group starts
+    for group_title, key in group_title_key.items():
+        data.yaml_set_comment_before_after_key(key, group_title)
+
+    # Now we need to put the config file in place at filepath.
+    # But someone else may have already created a file at that path, or may be
+    # about to open the file at that path and read it before we can finish
+    # writing the contents. So we write the config file at a temporary path and
+    # atomically move it over. There's still a race to see which process's
+    # config file actually is left at the name in the end, but nobody will ever
+    # see an empty or partially-written file at that name (if there wasn't one
+    # there to begin with).
+    with AtomicFileCreate(filepath) as temp_path:
+        with open(temp_path, "w") as f:
+            yaml = YAML()
+            yaml.dump(data, f)
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
@@ -481,9 +600,9 @@ JOBSTORE_HELP = ("The location of the job store for the workflow.  "
 
 
 def parser_with_common_options(
-    provisioner_options: bool = False, jobstore_option: bool = True
-) -> ArgumentParser:
-    parser = ArgumentParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
+        provisioner_options: bool = False, jobstore_option: bool = True
+) -> ArgParser:
+    parser = ArgParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)
@@ -500,20 +619,67 @@ def parser_with_common_options(
     return parser
 
 
-def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore_as_flag: bool = False) -> None:
+# This is kept in the outer scope as multiple batchsystem files use this
+def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[Action]:
+    """
+    Returns an argparse action class to check if the input is within the given half-open interval.
+    ex:
+    Provided value to argparse must be within the interval [min, max)
+    Types of min and max must be the same (max may be None)
+
+    :param min: float/int
+    :param max: optional float/int
+    :return: argparse action class
+    """
+
+    class IntOrFloatOpenAction(Action):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            if isinstance(min, int):
+                if max is not None:  # for mypy
+                    assert isinstance(max, int)
+                func = iC(min, max)
+            else:
+                func = fC(min, max)
+            try:
+                if not func(values):
+                    raise parser.error(
+                        f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max})")
+            except AssertionError:
+                raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+            setattr(namespace, self.dest, values)
+
+    return IntOrFloatOpenAction
+
+
+def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False) -> None:
     """
     Add Toil command line options to a parser.
+
+    Support for config files.
 
     :param config: If specified, take defaults from the given Config.
 
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
     """
 
-    if config is None:
-        config = Config()
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
-        raise ValueError(f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
+        raise ValueError(
+            f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
 
+    if isinstance(parser, ArgParser):
+        # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
+        # this forces configargparser to process the config file in YAML rather than in it's own format
+        parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
+    else:
+        # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
+        # through this code still seems to work (with the exception of --config and environmental variables)
+        warnings.warn(f'Using deprecated library argparse for options parsing.'
+                      f'This will not parse config files or use environment variables.'
+                      f'Use configargparse instead or call Job.Runner.getDefaultArgumentParser()',
+                      DeprecationWarning)
+
+    opt_strtobool = lambda b: b if b is None else bool(strtobool(b))
+    convert_bool = lambda b: bool(strtobool(b))
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
 
@@ -524,10 +690,74 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                     "turn on stats collation about the performance of jobs."
     )
     if jobstore_as_flag:
-        core_options.add_argument('--jobStore', '--jobstore', dest='jobStore', type=str, default=None, help=JOBSTORE_HELP)
+        core_options.add_argument('--jobstore', '--jobStore', dest='jobStore', type=parse_jobstore, default=None,
+                                  help=JOBSTORE_HELP)
     else:
-        core_options.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
-    core_options.add_argument("--workDir", dest="workDir", default=None,
+        core_options.add_argument('jobStore', type=parse_jobstore, help=JOBSTORE_HELP)
+
+    class WorkDirAction(Action):
+        """
+        Argparse action class to check that the provided --workDir exists
+        """
+
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            workDir = values
+            if workDir is not None:
+                workDir = os.path.abspath(workDir)
+                if not os.path.exists(workDir):
+                    raise RuntimeError(f"The path provided to --workDir ({workDir}) does not exist.")
+
+                if len(workDir) > 80:
+                    logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
+                                   f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
+                                   f'like "/tmp" to avoid overly long paths.')
+            setattr(namespace, self.dest, values)
+
+    class CoordinationDirAction(Action):
+        """
+        Argparse action class to check that the provided --coordinationDir exists
+        """
+
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            coordination_dir = values
+            if coordination_dir is not None:
+                coordination_dir = os.path.abspath(coordination_dir)
+                if not os.path.exists(coordination_dir):
+                    raise RuntimeError(
+                        f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
+            setattr(namespace, self.dest, values)
+
+    def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[
+        Action]:
+        """
+        Returns an argparse action class to check if the input is within the given half-open interval.
+        ex:
+        Provided value to argparse must be within the interval [min, max]
+
+        :param min: int/float
+        :param max: optional int/float
+        :return: argparse action
+        """
+
+        class ClosedIntOrFloatAction(Action):
+            def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+                def is_within(x: Union[int, float]) -> bool:
+                    if max is None:
+                        return min <= x
+                    else:
+                        return min <= x <= max
+
+                try:
+                    if not is_within(values):
+                        raise parser.error(
+                            f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max}]")
+                except AssertionError:
+                    raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
+                setattr(namespace, self.dest, values)
+
+        return ClosedIntOrFloatAction
+
+    core_options.add_argument("--workDir", dest="workDir", default=None, env_var="TOIL_WORKDIR", action=WorkDirAction,
                               help="Absolute path to directory where temporary files generated during the Toil "
                                    "run should be placed. Standard output and error from batch system jobs "
                                    "(unless --noStdOutErr is set) will be placed in this directory. A cache directory "
@@ -540,15 +770,16 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
     core_options.add_argument("--coordinationDir", dest="coordination_dir", default=None,
+                              env_var="TOIL_COORDINATION_DIR", action=CoordinationDirAction,
                               help="Absolute path to directory where Toil will keep state and lock files."
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
-    core_options.add_argument("--noStdOutErr", dest="noStdOutErr", action="store_true", default=None,
+    core_options.add_argument("--noStdOutErr", dest="noStdOutErr", default=False, action="store_true",
                               help="Do not capture standard output and error from batch system jobs.")
-    core_options.add_argument("--stats", dest="stats", action="store_true", default=None,
+    core_options.add_argument("--stats", dest="stats", default=False, action="store_true",
                               help="Records statistics about the toil workflow to be used by 'toil stats'.")
     clean_choices = ['always', 'onError', 'never', 'onSuccess']
-    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default=None,
+    core_options.add_argument("--clean", dest="clean", choices=clean_choices, default="onSuccess",
                               help=f"Determines the deletion of the jobStore upon completion of the program.  "
                                    f"Choices: {clean_choices}.  The --stats option requires information from the "
                                    f"jobStore upon completion so the jobStore will never be deleted with that flag.  "
@@ -571,7 +802,7 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
         title="Toil options for restarting an existing workflow.",
         description="Allows the restart of an existing workflow"
     )
-    restart_options.add_argument("--restart", dest="restart", default=None, action="store_true",
+    restart_options.add_argument("--restart", dest="restart", default=False, action="store_true",
                                  help="If --restart is specified then will attempt to restart existing workflow "
                                       "at the location pointed to by the --jobStore option. Will raise an exception "
                                       "if the workflow does not exist")
@@ -590,27 +821,25 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     )
     link_imports = file_store_options.add_mutually_exclusive_group()
     link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
-                         "Specifying this option instead copies the files into the job store, which may protect "
-                         "them from being modified externally.  When not specified and as long as caching is enabled, "
-                         "Toil will protect the file automatically by changing the permissions to read-only.")
-    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
-    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
-    link_imports.set_defaults(linkImports=True)
-
+                         "Setting this option to True instead copies the files into the job store, which may protect "
+                         "them from being modified externally.  When set to False, as long as caching is enabled, "
+                         "Toil will protect the file automatically by changing the permissions to read-only."
+                         "default=%(default)s")
+    link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=convert_bool, default=True,
+                              help=link_imports_help)
     move_exports = file_store_options.add_mutually_exclusive_group()
     move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
                          'output directory, and a symlink to the moved exported file is created at the initial '
-                         'location.  Specifying this option instead copies the files into the output directory.  '
-                         'Applies to filesystem-based job stores only.')
-    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
-    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
-    move_exports.set_defaults(moveExports=False)
+                         'location.  Setting this option to True instead copies the files into the output directory.  '
+                         'Applies to filesystem-based job stores only.'
+                         'default=%(default)s')
+    move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=convert_bool, default=False,
+                              help=move_exports_help)
 
     caching = file_store_options.add_mutually_exclusive_group()
     caching_help = ("Enable or disable caching for your workflow, specifying this overrides default from job store")
-    caching.add_argument('--disableCaching', dest='caching', action='store_false', help=caching_help)
-    caching.add_argument('--caching', dest='caching', type=lambda val: bool(strtobool(val)), help=caching_help)
-    caching.set_defaults(caching=None)
+    caching.add_argument('--caching', dest='caching', type=opt_strtobool, default=None, help=caching_help)
+    # default is None according to PR 4299, seems to be generated at runtime
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
@@ -619,13 +848,16 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                     "as well as parameters to control the level of provisioning."
     )
     provisioner_choices = ['aws', 'gce', None]
+
     # TODO: Better consolidate this provisioner arg and the one in provisioners/__init__.py?
     autoscaling_options.add_argument('--provisioner', '-p', dest="provisioner", choices=provisioner_choices,
+                                     default=None,
                                      help=f"The provisioner for cluster auto-scaling.  This is the main Toil "
                                           f"'--provisioner' option, and defaults to None for running on single "
                                           f"machine and non-auto-scaling batch systems.  The currently supported "
-                                          f"choices are {provisioner_choices}.  The default is {config.provisioner}.")
-    autoscaling_options.add_argument('--nodeTypes', default=None,
+                                          f"choices are {provisioner_choices}.  The default is %(default)s.")
+    autoscaling_options.add_argument('--nodeTypes', default=[], dest="nodeTypes", type=parse_node_types,
+                                     action="extend",
                                      help="Specifies a list of comma-separated node types, each of which is "
                                           "composed of slash-separated instance types, and an optional spot "
                                           "bid set off by a colon, making the node type preemptible. Instance "
@@ -640,80 +872,105 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                                           "Semantics:\n"
                                           "\tBid $0.42/hour for either c5.4xlarge or c5a.4xlarge instances,\n"
                                           "\ttreated interchangeably, while they are available at that price,\n"
-                                          "\tand buy t2.large instances at full price")
-    autoscaling_options.add_argument('--minNodes', default=None,
-                                     help="Mininum number of nodes of each type in the cluster, if using "
-                                          "auto-scaling.  This should be provided as a comma-separated list of the "
-                                          "same length as the list of node types. default=0")
-    autoscaling_options.add_argument('--maxNodes', default=None,
+                                          "\tand buy t2.large instances at full price.\n"
+                                          "default=%(default)s")
+    class NodeExtendAction(_AppendAction):
+        """
+        argparse Action class to remove the default value on first call, and act as an extend action after
+        """
+        # with action=append/extend, the argparse default is always prepended to the option
+        # so make the CLI have priority by rewriting the option on the first run
+        def __init__(self, option_strings: Any, dest: Any, **kwargs: Any):
+            super().__init__(option_strings, dest, **kwargs)
+            self.is_default = True
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            if self.is_default:
+                setattr(namespace, self.dest, values)
+                self.is_default = False
+            else:
+                super().__call__(parser, namespace, values, option_string)
+
+    autoscaling_options.add_argument('--maxNodes', default=[10], dest="maxNodes", type=parse_int_list, action=NodeExtendAction,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
                                           f"provided as a comma-separated list.  The first value is used as a default "
                                           f"if the list length is less than the number of nodeTypes.  "
-                                          f"default={config.maxNodes[0]}")
-    autoscaling_options.add_argument("--targetTime", dest="targetTime", default=None,
+                                          f"default=%(default)s")
+    autoscaling_options.add_argument('--minNodes', default=[0], dest="minNodes", type=parse_int_list, action=NodeExtendAction,
+                                     help="Mininum number of nodes of each type in the cluster, if using "
+                                          "auto-scaling.  This should be provided as a comma-separated list of the "
+                                          "same length as the list of node types. default=%(default)s")
+    autoscaling_options.add_argument("--targetTime", dest="targetTime", default=defaultTargetTime, type=int,
+                                     action=make_closed_interval_action(0),
                                      help=f"Sets how rapidly you aim to complete jobs in seconds. Shorter times mean "
                                           f"more aggressive parallelization. The autoscaler attempts to scale up/down "
                                           f"so that it expects all queued jobs will complete within targetTime "
-                                          f"seconds.  default={config.targetTime}")
-    autoscaling_options.add_argument("--betaInertia", dest="betaInertia", default=None,
+                                          f"seconds.  default=%(default)s")
+    autoscaling_options.add_argument("--betaInertia", dest="betaInertia", default=0.1, type=float,
+                                     action=make_closed_interval_action(0.0, 0.9),
                                      help=f"A smoothing parameter to prevent unnecessary oscillations in the number "
                                           f"of provisioned nodes. This controls an exponentially weighted moving "
                                           f"average of the estimated number of nodes. A value of 0.0 disables any "
                                           f"smoothing, and a value of 0.9 will smooth so much that few changes will "
-                                          f"ever be made.  Must be between 0.0 and 0.9.  default={config.betaInertia}")
-    autoscaling_options.add_argument("--scaleInterval", dest="scaleInterval", default=None,
+                                          f"ever be made.  Must be between 0.0 and 0.9. default=%(default)s")
+    autoscaling_options.add_argument("--scaleInterval", dest="scaleInterval", default=60, type=int,
                                      help=f"The interval (seconds) between assessing if the scale of "
-                                          f"the cluster needs to change. default={config.scaleInterval}")
-    autoscaling_options.add_argument("--preemptibleCompensation", "--preemptableCompensation", dest="preemptibleCompensation", default=None,
+                                          f"the cluster needs to change. default=%(default)s")
+    autoscaling_options.add_argument("--preemptibleCompensation", "--preemptableCompensation",
+                                     dest="preemptibleCompensation", default=0.0, type=float,
+                                     action=make_closed_interval_action(0.0, 1.0),
                                      help=f"The preference of the autoscaler to replace preemptible nodes with "
                                           f"non-preemptible nodes, when preemptible nodes cannot be started for some "
-                                          f"reason. Defaults to {config.preemptibleCompensation}. This value must be "
-                                          f"between 0.0 and 1.0, inclusive.  A value of 0.0 disables such "
+                                          f"reason. This value must be between 0.0 and 1.0, inclusive.  "
+                                          f"A value of 0.0 disables such "
                                           f"compensation, a value of 0.5 compensates two missing preemptible nodes "
                                           f"with a non-preemptible one. A value of 1.0 replaces every missing "
-                                          f"pre-emptable node with a non-preemptible one.")
-    autoscaling_options.add_argument("--nodeStorage", dest="nodeStorage", default=50,
+                                          f"pre-emptable node with a non-preemptible one. default=%(default)s")
+    autoscaling_options.add_argument("--nodeStorage", dest="nodeStorage", default=50, type=int,
                                      help="Specify the size of the root volume of worker nodes when they are launched "
                                           "in gigabytes. You may want to set this if your jobs require a lot of disk "
-                                          "space.  (default: %(default)s).")
-    autoscaling_options.add_argument('--nodeStorageOverrides', default=None,
+                                          f"space.  (default=%(default)s).")
+    autoscaling_options.add_argument('--nodeStorageOverrides', dest="nodeStorageOverrides", default=[],
+                                     type=parse_str_list, action="extend",
                                      help="Comma-separated list of nodeType:nodeStorage that are used to override "
                                           "the default value from --nodeStorage for the specified nodeType(s).  "
                                           "This is useful for heterogeneous jobs where some tasks require much more "
                                           "disk than others.")
-    autoscaling_options.add_argument("--metrics", dest="metrics", default=False, action="store_true",
+
+    autoscaling_options.add_argument("--metrics", dest="metrics", default=False, type=convert_bool,
                                      help="Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, "
                                           "queue size, and issued jobs.")
-    autoscaling_options.add_argument("--assumeZeroOverhead", dest="assume_zero_overhead", default=False, action="store_true",
+    autoscaling_options.add_argument("--assumeZeroOverhead", dest="assume_zero_overhead", default=False,
+                                     type=convert_bool,
                                      help="Ignore scheduler and OS overhead and assume jobs can use every last byte "
                                           "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
-    if not config.cwl:
+    if not cwl:
         service_options = parser.add_argument_group(
             title="Toil options for limiting the number of service jobs and detecting service deadlocks",
             description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
                         "this limited we can avoid nodes occupied with services causing deadlocks."
         )
-        service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
+        service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
                                      help=f"The maximum number of service jobs that can be run concurrently, "
                                           f"excluding service jobs running on preemptible nodes.  "
-                                          f"default={config.maxServiceJobs}")
-        service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs", default=None,
+                                          f"default=%(default)s")
+        service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs",
+                                     default=SYS_MAX_SIZE,
                                      type=int,
                                      help=f"The maximum number of service jobs that can run concurrently on "
-                                          f"preemptible nodes.  default={config.maxPreemptibleServiceJobs}")
-        service_options.add_argument("--deadlockWait", dest="deadlockWait", default=None, type=int,
+                                          f"preemptible nodes.  default=%(default)s")
+        service_options.add_argument("--deadlockWait", dest="deadlockWait", default=60, type=int,
                                      help=f"Time, in seconds, to tolerate the workflow running only the same service "
                                           f"jobs, with no jobs to use them, before declaring the workflow to be "
-                                          f"deadlocked and stopping.  default={config.deadlockWait}")
-        service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=None, type=int,
+                                          f"deadlocked and stopping.  default=%(default)s")
+        service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=30, type=int,
                                      help="Time, in seconds, to wait between checks to see if the workflow is stuck "
                                           "running only service jobs, with no jobs to use them. Should be shorter "
                                           "than --deadlockWait. May need to be increased if the batch system cannot "
                                           "enumerate running jobs quickly enough, or if polling for running jobs is "
                                           "placing an unacceptable load on a shared cluster.  "
-                                          "default={config.deadlockCheckInterval}")
+                                          f"default=%(default)s")
 
     # Resource requirements
     resource_options = parser.add_argument_group(
@@ -727,63 +984,84 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
                          'Default is {}.')
     cpu_note = 'Fractions of a core (for example 0.1) are supported on some batch systems [mesos, single_machine]'
     disk_mem_note = 'Standard suffixes like K, Ki, M, Mi, G or Gi are supported'
-    accelerators_note = ('Each accelerator specification can have a type (gpu [default], nvidia, amd, cuda, rocm, opencl, '
-                         'or a specific model like nvidia-tesla-k80), and a count [default: 1]. If both a type and a count '
-                         'are used, they must be separated by a colon. If multiple types of accelerators are '
-                         'used, the specifications are separated by commas')
-    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default=None, metavar='INT',
-                                  help=resource_help_msg.format('default', 'memory', disk_mem_note, bytes2human(config.defaultMemory)))
-    resource_options.add_argument('--defaultCores', dest='defaultCores', default=None, metavar='FLOAT',
-                                  help=resource_help_msg.format('default', 'cpu', cpu_note, str(config.defaultCores)))
-    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default=None, metavar='INT',
-                                  help=resource_help_msg.format('default', 'disk', disk_mem_note, bytes2human(config.defaultDisk)))
-    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=None, metavar='ACCELERATOR[,ACCELERATOR...]',
-                                  help=resource_help_msg.format('default', 'accelerators', accelerators_note, config.defaultAccelerators))
-    resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible', metavar='BOOL',
-                                  type=bool, nargs='?', const=True, default=False,
+    accelerators_note = (
+        'Each accelerator specification can have a type (gpu [default], nvidia, amd, cuda, rocm, opencl, '
+        'or a specific model like nvidia-tesla-k80), and a count [default: 1]. If both a type and a count '
+        'are used, they must be separated by a colon. If multiple types of accelerators are '
+        'used, the specifications are separated by commas')
+
+    h2b = lambda x: human2bytes(str(x))
+
+    resource_options.add_argument('--defaultMemory', dest='defaultMemory', default="2.0 Gi", type=h2b,
+                                  action=make_open_interval_action(1),
+                                  help=resource_help_msg.format('default', 'memory', disk_mem_note,
+                                                                bytes2human(2147483648)))
+    resource_options.add_argument('--defaultCores', dest='defaultCores', default=1, metavar='FLOAT', type=float,
+                                  action=make_open_interval_action(1.0),
+                                  help=resource_help_msg.format('default', 'cpu', cpu_note, str(1)))
+    resource_options.add_argument('--defaultDisk', dest='defaultDisk', default="2.0 Gi", metavar='INT', type=h2b,
+                                  action=make_open_interval_action(1),
+                                  help=resource_help_msg.format('default', 'disk', disk_mem_note,
+                                                                bytes2human(2147483648)))
+    resource_options.add_argument('--defaultAccelerators', dest='defaultAccelerators', default=[],
+                                  metavar='ACCELERATOR[,ACCELERATOR...]', type=parse_accelerator_list, action="extend",
+                                  help=resource_help_msg.format('default', 'accelerators', accelerators_note, []))
+    resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible',
+                                  metavar='BOOL',
+                                  type=convert_bool, nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptible (spot) nodes by default.')
-    resource_options.add_argument('--maxCores', dest='maxCores', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'cpu', cpu_note, str(config.maxCores)))
-    resource_options.add_argument('--maxMemory', dest='maxMemory', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'memory', disk_mem_note, bytes2human(config.maxMemory)))
-    resource_options.add_argument('--maxDisk', dest='maxDisk', default=None, metavar='INT',
-                                  help=resource_help_msg.format('max', 'disk', disk_mem_note, bytes2human(config.maxDisk)))
+    resource_options.add_argument('--maxCores', dest='maxCores', default=SYS_MAX_SIZE, metavar='INT', type=int,
+                                  action=make_open_interval_action(1),
+                                  help=resource_help_msg.format('max', 'cpu', cpu_note, str(SYS_MAX_SIZE)))
+    resource_options.add_argument('--maxMemory', dest='maxMemory', default=SYS_MAX_SIZE, metavar='INT', type=h2b,
+                                  action=make_open_interval_action(1),
+                                  help=resource_help_msg.format('max', 'memory', disk_mem_note,
+                                                                bytes2human(SYS_MAX_SIZE)))
+    resource_options.add_argument('--maxDisk', dest='maxDisk', default=SYS_MAX_SIZE, metavar='INT', type=h2b,
+                                  action=make_open_interval_action(1),
+                                  help=resource_help_msg.format('max', 'disk', disk_mem_note,
+                                                                bytes2human(SYS_MAX_SIZE)))
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
         title="Toil options for rescuing/killing/restarting jobs.",
         description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)."
     )
-    job_options.add_argument("--retryCount", dest="retryCount", default=None,
+    job_options.add_argument("--retryCount", dest="retryCount", default=1, type=int,
+                             action=make_open_interval_action(0),
                              help=f"Number of times to retry a failing job before giving up and "
-                                  f"labeling job failed. default={config.retryCount}")
-    job_options.add_argument("--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptibleRetries",
-                             action='store_true', default=False,
+                                  f"labeling job failed. default={1}")
+    job_options.add_argument("--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries",
+                             dest="enableUnlimitedPreemptibleRetries",
+                             type=convert_bool, default=False,
                              help="If set, preemptible failures (or any failure due to an instance getting "
                                   "unexpectedly terminated) will not count towards job failures and --retryCount.")
-    job_options.add_argument("--doubleMem", dest="doubleMem", action='store_true', default=False,
+    job_options.add_argument("--doubleMem", dest="doubleMem", type=convert_bool, default=False,
                              help="If set, batch jobs which die to reaching memory limit on batch schedulers "
                                   "will have their memory doubled and they will be retried. The remaining "
                                   "retry count will be reduced by 1. Currently supported by LSF.")
-    job_options.add_argument("--maxJobDuration", dest="maxJobDuration", default=None,
+    job_options.add_argument("--maxJobDuration", dest="maxJobDuration", default=SYS_MAX_SIZE, type=int,
+                             action=make_open_interval_action(1),
                              help=f"Maximum runtime of a job (in seconds) before we kill it (this is a lower bound, "
                                   f"and the actual time before killing the job may be longer).  "
-                                  f"default={config.maxJobDuration}")
-    job_options.add_argument("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
+                                  f"default=%(default)s")
+    job_options.add_argument("--rescueJobsFrequency", dest="rescueJobsFrequency", default=60, type=int,
+                             action=make_open_interval_action(1),
                              help=f"Period of time to wait (in seconds) between checking for missing/overlong jobs, "
                                   f"that is jobs which get lost by the batch system. Expert parameter.  "
-                                  f"default={config.rescueJobsFrequency}")
+                                  f"default=%(default)s")
 
     # Log management options
     log_options = parser.add_argument_group(
         title="Toil log management options.",
         description="Options for how Toil should manage its logs."
     )
-    log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=None,
+    log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=64000, type=h2b,
+                             action=make_open_interval_action(1),
                              help=f"The maximum size of a job log file to keep (in bytes), log files larger than "
                                   f"this will be truncated to the last X bytes. Setting this option to zero will "
                                   f"prevent any truncation. Setting this option to a negative value will truncate "
-                                  f"from the beginning.  Default={bytes2human(config.maxLogFileSize)}")
+                                  f"from the beginning.  Default={bytes2human(64000)}")
     log_options.add_argument("--writeLogs", dest="writeLogs", nargs='?', action='store', default=None,
                              const=os.getcwd(),
                              help="Write worker logs received by the leader into their own files at the specified "
@@ -796,14 +1074,15 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
     log_options.add_argument("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store', default=None,
                              const=os.getcwd(),
                              help="Identical to --writeLogs except the logs files are gzipped on the leader.")
-    log_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
+    log_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", type=convert_bool,
                              default=False,
                              help="Whether to write logs from all jobs (including the successful ones) without "
                                   "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
                                   "or --writeLogsGzip is set if enabling this option.")
     log_options.add_argument("--writeMessages", dest="write_messages", default=None,
+                             type=lambda x: None if x is None else os.path.abspath(x),
                              help="File to send messages from the leader's message bus to.")
-    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
+    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", type=convert_bool, default=False,
                              help="Enable real-time logging from workers to leader")
 
     # Misc options
@@ -811,52 +1090,114 @@ def addOptions(parser: ArgumentParser, config: Optional[Config] = None, jobstore
         title="Toil miscellaneous options.",
         description="Everything else."
     )
-    misc_options.add_argument('--disableChaining', dest='disableChaining', action='store_true', default=False,
+    misc_options.add_argument('--disableChaining', dest='disableChaining', type=convert_bool, default=False,
                               help="Disables chaining of jobs (chaining uses one job's resource allocation "
                                    "for its successor job if possible).")
     misc_options.add_argument("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
-                              default=False, action="store_true",
+                              default=False, type=convert_bool,
                               help="Disables checksum verification for files transferred to/from the job store.  "
                                    "Checksum verification is a safety check to ensure the data is not corrupted "
                                    "during transfer. Currently only supported for non-streaming AWS files.")
-    misc_options.add_argument("--sseKey", dest="sseKey", default=None,
+
+    class SSEKeyAction(Action):
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            if values is not None:
+                sse_key = values
+                if sse_key is None:
+                    return
+                with open(sse_key) as f:
+                    assert len(f.readline().rstrip()) == 32, 'SSE key appears to be invalid.'
+            setattr(namespace, self.dest, values)
+
+    misc_options.add_argument("--sseKey", dest="sseKey", default=None, action=SSEKeyAction,
                               help="Path to file containing 32 character key to be used for server-side encryption on "
                                    "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
-    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment", default=[],
-                              action="append",
-                              help="Set an environment variable early on in the worker. If VALUE is omitted, it will "
+
+    # yaml.safe_load is being deprecated, this is the suggested workaround
+    def yaml_safe_load(stream: Any) -> Any:
+        yaml = YAML(typ='safe', pure=True)
+        d = yaml.load(stream)
+        if isinstance(d, dict):
+            # this means the argument was a dictionary and is valid yaml (for configargparse)
+            return d
+        else:
+            # this means the argument is likely in it's string format (for CLI)
+            return parseSetEnv(parse_str_list(stream))
+
+    class ExtendActionDict(Action):
+        """
+        Argparse action class to implement the action="extend" functionality on dictionaries
+        """
+
+        def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
+            items = getattr(namespace, self.dest, None)
+            assert items is not None # for mypy. This should never be None, esp. if called in setEnv
+            # note: this will overwrite existing entries
+            items.update(values)
+
+    misc_options.add_argument("--setEnv", '-e', metavar='NAME=VALUE or NAME', dest="environment",
+                              default={}, type=yaml_safe_load, action=ExtendActionDict,
+                              help="Set an environment variable early on in the worker. If VALUE is null, it will "
                                    "be looked up in the current environment. Independently of this option, the worker "
                                    "will try to emulate the leader's environment before running a job, except for "
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
-    misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=None,
+    misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float,
+                              action=make_open_interval_action(0.0),
                               help=f"Interval of time service jobs wait between polling for the existence of the "
-                                   f"keep-alive flag.  Default: {config.servicePollingInterval}")
-    misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true', default=False,
+                                   f"keep-alive flag.  Default: {60.0}")
+    misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', type=convert_bool, default=False,
                               help='Disables sanity checking the existence of the docker image specified by '
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
     misc_options.add_argument('--statusWait', dest='statusWait', type=int, default=3600,
                               help="Seconds to wait between reports of running jobs.")
-    misc_options.add_argument('--disableProgress', dest='disableProgress', action='store_true', default=False,
+    misc_options.add_argument('--disableProgress', dest='disableProgress', type=convert_bool, default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
+    # If using argparse instead of configargparse, this should just not parse when calling parse_args()
+    # default config value is set to none as defaults should already be populated at config init
+    misc_options.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
+                              help="Get options from a config file.")
 
     # Debug options
     debug_options = parser.add_argument_group(
         title="Toil debug options.",
         description="Debug options for finding problems or helping with testing."
     )
-    debug_options.add_argument("--debugWorker", default=False, action="store_true",
+    debug_options.add_argument("--debugWorker", dest="debugWorker", default=False, action="store_true",
                                help="Experimental no forking mode for local debugging.  Specifically, workers "
                                     "are not forked and stderr/stdout are not redirected to the log.")
-    debug_options.add_argument("--disableWorkerOutputCapture", default=False, action="store_true",
+    debug_options.add_argument("--disableWorkerOutputCapture", dest="disableWorkerOutputCapture", default=False,
+                               action="store_true",
                                help="Let worker output go to worker's standard out/error instead of per-job logs.")
-    debug_options.add_argument("--badWorker", dest="badWorker", default=None,
+    debug_options.add_argument("--badWorker", dest="badWorker", default=0.0, type=float,
+                               action=make_closed_interval_action(0.0, 1.0),
                                help=f"For testing purposes randomly kill --badWorker proportion of jobs using "
-                                    f"SIGKILL.  default={config.badWorker}")
-    debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
+                                    f"SIGKILL.  default={0.0}")
+    debug_options.add_argument("--badWorkerFailInterval", dest="badWorkerFailInterval", default=0.01, type=float,
+                               action=make_open_interval_action(0.0),
                                help=f"When killing the job pick uniformly within the interval from 0.0 to "
                                     f"--badWorkerFailInterval seconds after the worker starts.  "
-                                    f"default={config.badWorkerFailInterval}")
+                                    f"default={0.01}")
+
+    # All deprecated options:
+
+    # These are deprecated in favor of a simpler option
+    #   ex: noLinkImports and linkImports can be simplified into a single link_imports argument
+    link_imports.add_argument("--noLinkImports", dest="linkImports", action="store_false",
+                              help=SUPPRESS)
+    link_imports.add_argument("--linkImports", dest="linkImports", action="store_true",
+                              help=SUPPRESS)
+    link_imports.set_defaults(linkImports=None)
+
+    move_exports.add_argument("--moveExports", dest="moveExports", action="store_true",
+                              help=SUPPRESS)
+    move_exports.add_argument("--noMoveExports", dest="moveExports", action="store_false",
+                              help=SUPPRESS)
+    link_imports.set_defaults(moveExports=None)
+
+    # dest is set to enableCaching to not conflict with the current --caching destination
+    caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
+    caching.set_defaults(disableCaching=None)
 
 
 def parseBool(val: str) -> bool:
@@ -866,6 +1207,7 @@ def parseBool(val: str) -> bool:
         return False
     else:
         raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
+
 
 @lru_cache(maxsize=None)
 def getNodeID() -> str:
@@ -962,10 +1304,12 @@ class Toil(ContextManager["Toil"]):
         set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
+        if config.jobStore is None:
+            raise RuntimeError("No jobstore provided!")
         jobStore = self.getJobStore(config.jobStore)
         if config.caching is None:
             config.caching = jobStore.default_caching()
-            #Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
+            # Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
             self.options.caching = config.caching
 
         if not config.restart:
@@ -988,10 +1332,10 @@ class Toil(ContextManager["Toil"]):
         return self
 
     def __exit__(
-        self,
-        exc_type: Optional[Type[BaseException]],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+            self,
+            exc_type: Optional[Type[BaseException]],
+            exc_val: Optional[BaseException],
+            exc_tb: Optional[TracebackType],
     ) -> Literal[False]:
         """
         Clean up after a workflow invocation.
@@ -1194,7 +1538,7 @@ class Toil(ContextManager["Toil"]):
         return batch_system(**kwargs)
 
     def _setupAutoDeployment(
-        self, userScript: Optional["ModuleDescriptor"] = None
+            self, userScript: Optional["ModuleDescriptor"] = None
     ) -> None:
         """
         Determine the user script, save it to the job store and inject a reference to the saved copy into the batch system.
@@ -1249,13 +1593,15 @@ class Toil(ContextManager["Toil"]):
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: str,
-                   symlink: bool = True) -> None: ...
+                   symlink: bool = True) -> None:
+        ...
 
     @overload
     def importFile(self,
                    srcUrl: str,
                    sharedFileName: None = None,
-                   symlink: bool = True) -> FileID: ...
+                   symlink: bool = True) -> FileID:
+        ...
 
     @deprecated(new_function_name='import_file')
     def importFile(self,
@@ -1269,14 +1615,16 @@ class Toil(ContextManager["Toil"]):
                     src_uri: str,
                     shared_file_name: str,
                     symlink: bool = True,
-                    check_existence: bool = True) -> None: ...
+                    check_existence: bool = True) -> None:
+        ...
 
     @overload
     def import_file(self,
                     src_uri: str,
                     shared_file_name: None = None,
                     symlink: bool = True,
-                    check_existence: bool = True) -> FileID: ...
+                    check_existence: bool = True) -> FileID:
+        ...
 
     def import_file(self,
                     src_uri: str,
@@ -1394,7 +1742,8 @@ class Toil(ContextManager["Toil"]):
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil work directory, constant across all machines
         """
-        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
+        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv(
+            'TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
@@ -1418,31 +1767,33 @@ class Toil(ContextManager["Toil"]):
         if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
             # Slurm has been observed providing this variable but not keeping
             # the directory live as long as we run for.
-            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!', os.environ['XDG_RUNTIME_DIR'])
+            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!',
+                           os.environ['XDG_RUNTIME_DIR'])
 
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
         # succeeds.
         coordination_dir: Optional[str] = (
             # First try an override env var
-            os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
-            # Then the value from the config
-            config_coordination_dir or
-            # Then a normal env var
-            # TODO: why/how would this propagate when not using single machine?
-            os.getenv('TOIL_COORDINATION_DIR') or
-            # Then try a `toil` subdirectory of the XDG runtime directory
-            # (often /var/run/users/<UID>). But only if we are actually in a
-            # session that has the env var set. Otherwise it might belong to a
-            # different set of sessions and get cleaned up out from under us
-            # when that session ends.
-            # We don't think Slurm XDG sessions are trustworthy, depending on
-            # the cluster's PAM configuration, so don't use them.
-            ('XDG_RUNTIME_DIR' in os.environ and 'SLURM_JOBID' not in os.environ and try_path(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
-            # Try under /run/lock. It might be a temp dir style sticky directory.
-            try_path('/run/lock') or
-            # Finally, fall back on the work dir and hope it's a legit filesystem.
-            cls.getToilWorkDir(config_work_dir)
+                os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
+                # Then the value from the config
+                config_coordination_dir or
+                # Then a normal env var
+                # TODO: why/how would this propagate when not using single machine?
+                os.getenv('TOIL_COORDINATION_DIR') or
+                # Then try a `toil` subdirectory of the XDG runtime directory
+                # (often /var/run/users/<UID>). But only if we are actually in a
+                # session that has the env var set. Otherwise it might belong to a
+                # different set of sessions and get cleaned up out from under us
+                # when that session ends.
+                # We don't think Slurm XDG sessions are trustworthy, depending on
+                # the cluster's PAM configuration, so don't use them.
+                ('XDG_RUNTIME_DIR' in os.environ and 'SLURM_JOBID' not in os.environ and try_path(
+                    os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
+                # Try under /run/lock. It might be a temp dir style sticky directory.
+                try_path('/run/lock') or
+                # Finally, fall back on the work dir and hope it's a legit filesystem.
+                cls.getToilWorkDir(config_work_dir)
         )
 
         if coordination_dir is None:
@@ -1464,7 +1815,7 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def getLocalWorkflowDir(
-        cls, workflowID: str, configWorkDir: Optional[str] = None
+            cls, workflowID: str, configWorkDir: Optional[str] = None
     ) -> str:
         """
         Return the directory where worker directories and the cache will be located for this workflow on this machine.
@@ -1491,10 +1842,10 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def get_local_workflow_coordination_dir(
-        cls,
-        workflow_id: str,
-        config_work_dir: Optional[str],
-        config_coordination_dir: Optional[str]
+            cls,
+            workflow_id: str,
+            config_work_dir: Optional[str],
+            config_coordination_dir: Optional[str]
     ) -> str:
         """
         Return the directory where coordination files should be located for
@@ -1656,8 +2007,10 @@ class ToilMetrics:
         # The only way to make this inteligible to MyPy is to wrap the dict in
         # a function that can cast.
         MessageType = TypeVar('MessageType')
+
         def get_listener(message_type: Type[MessageType]) -> Callable[[MessageType], None]:
             return cast(Callable[[MessageType], None], TARGETS[message_type])
+
         # Then set up the listeners.
         self._listeners = [bus.subscribe(message_type, get_listener(message_type)) for message_type in TARGETS.keys()]
 
@@ -1722,12 +2075,12 @@ class ToilMetrics:
     # remaining intact
 
     def logClusterSize(
-        self, m: ClusterSizeMessage
+            self, m: ClusterSizeMessage
     ) -> None:
         self.log("current_size '%s' %i" % (m.instance_type, m.current_size))
 
     def logClusterDesiredSize(
-        self, m: ClusterDesiredSizeMessage
+            self, m: ClusterDesiredSizeMessage
     ) -> None:
         self.log("desired_size '%s' %i" % (m.instance_type, m.desired_size))
 
@@ -1800,10 +2153,13 @@ def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
     return d
 
 
-def iC(minValue: int, maxValue: int = SYS_MAX_SIZE) -> Callable[[int], bool]:
+def iC(minValue: int, maxValue: Optional[int] = None) -> Callable[[int], bool]:
     """Returns a function that checks if a given int is in the given half-open interval."""
-    assert isinstance(minValue, int) and isinstance(maxValue, int)
-    return lambda x: minValue <= x < maxValue
+    assert isinstance(minValue, int)
+    if maxValue is None:
+        return lambda x: minValue <= x
+    assert isinstance(maxValue, int)
+    return lambda x: minValue <= x < maxValue  # type: ignore
 
 
 def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
@@ -1813,6 +2169,7 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
     return lambda x: minValue <= x < maxValue  # type: ignore
+
 
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
     """

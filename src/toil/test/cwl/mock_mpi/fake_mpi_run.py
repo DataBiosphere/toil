@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+from configargparse import ArgumentParser
 import subprocess
 import sys
 from typing import List
 
 
 def make_parser():
-    p = argparse.ArgumentParser()
+    p = ArgumentParser()
     p.add_argument("progargs", nargs=argparse.REMAINDER, help="The program and its arguments")
     p.add_argument("--num", type=int, help="number of times to run the application")
     p.add_argument("--no-fail", help="add this flag to actually work", action="store_true")

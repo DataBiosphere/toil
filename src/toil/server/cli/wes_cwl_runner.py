@@ -1,4 +1,4 @@
-import argparse
+from configargparse import ArgumentParser
 import json
 import logging
 import os
@@ -425,7 +425,7 @@ def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: s
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="A CWL runner that runs workflows through WES.")
+    parser = ArgumentParser(description="A CWL runner that runs workflows through WES.")
 
     # the first two positional arguments are the CWL file and its input file
     parser.add_argument("cwl_file", type=str)
