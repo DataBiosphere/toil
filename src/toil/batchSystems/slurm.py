@@ -387,5 +387,5 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("allocate_mem", bool, default=False)
+        setOption("allocate_mem")
 
