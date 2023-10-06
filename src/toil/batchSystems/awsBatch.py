@@ -559,17 +559,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None,
+        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
                             help="The AWS region containing the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None,
+        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
                             help="The name or ARN of the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None,
+        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
                             help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
                                   "can e.g. access a job store. Must be assumable by "
                                   "ecs-tasks.amazonaws.com."))
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("aws_batch_region", default=None)
-        setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
-        setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])
+        setOption("aws_batch_region")
+        setOption("aws_batch_queue")
+        setOption("aws_batch_job_role_arn")
