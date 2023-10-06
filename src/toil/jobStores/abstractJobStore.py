@@ -537,12 +537,7 @@ class AbstractJobStore(ABC):
             otherCls._write_to_url(readable, url, executable)
 
     @classmethod
-    @deprecated(new_function_name='get_size')
-    def getSize(cls, url: ParseResult) -> None:
-        return cls.get_size(url)
-
-    @classmethod
-    def url_exists(cls, src_uri: str) -> None:
+    def url_exists(cls, src_uri: str) -> bool:
         """
         Return True if the file at the given URI exists, and False otherwise.
 
@@ -554,7 +549,7 @@ class AbstractJobStore(ABC):
         return otherCls._url_exists(parseResult)
 
     @classmethod
-    def get_size(cls, src_uri: str) -> None:
+    def get_size(cls, src_uri: str) -> Optional[int]:
         """
         Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
@@ -1767,7 +1762,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     ) -> Tuple[int, bool]:
         # We can't actually retry after we start writing.
         # TODO: Implement retry with byte range requests
-        with closing(cls._open_url(url)) as readable:
+        with cls._open_url(url) as readable:
             # Make something to count the bytes we get
             # We need to put the actual count in a container so our
             # nested function can modify it without creating its own
@@ -1791,7 +1786,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     )
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
         try:
-            return urlopen(url.geturl())
+            return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
             if e.code == 404:
                 # Translate into a FileNotFoundError for detecting

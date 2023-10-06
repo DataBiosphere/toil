@@ -145,7 +145,7 @@ def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, Di
         return dir_dict
     if parts[0] in ('..', '/'):
         raise RuntimeError(f"Path {path} not resolvable in virtual directory")
-    found = dir_dict
+    found: Union[str, DirectoryStructure] = dir_dict
     for part in parts:
         # Go down by each path component in turn
         if isinstance(found, str):
