@@ -537,6 +537,45 @@ class AbstractJobStore(ABC):
             otherCls._write_to_url(readable, url, executable)
 
     @classmethod
+    @deprecated(new_function_name='get_size')
+    def getSize(cls, url: ParseResult) -> None:
+        return cls.get_size(url)
+
+    @classmethod
+    def url_exists(cls, src_uri: str) -> None:
+        """
+        Return True if the file at the given URI exists, and False otherwise.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._url_exists(parseResult)
+
+    @classmethod
+    def get_size(cls, src_uri: str) -> None:
+        """
+        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_size(parseResult)
+
+    @classmethod
+    def get_is_directory(cls, src_uri: str) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file. The URL may or may not end in '/'.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_is_directory(parseResult)
+
+    @classmethod
     def list_url(cls, src_uri: str) -> List[str]:
         """
         List the directory at the given URL. Returned path components can be
@@ -560,30 +599,6 @@ class AbstractJobStore(ABC):
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._list_url(parseResult)
-
-    @classmethod
-    def get_is_directory(cls, src_uri: str) -> bool:
-        """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file. The URL may or may not end in '/'.
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._get_is_directory(parseResult)
-
-    @classmethod
-    @abstractmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
-        """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file or it is known not to exist. The URL may or may not end in
-        '/'.
-
-        :param url: URL that points to a file or object, or directory or prefix,
-               in the storage mechanism of a supported URL scheme e.g. a blob
-               in an AWS s3 bucket.
-        """
-        raise NotImplementedError
 
     @classmethod
     def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
@@ -611,24 +626,36 @@ class AbstractJobStore(ABC):
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._open_url(parseResult)
-        
-
+    
     @classmethod
-    @deprecated(new_function_name='get_size')
-    def getSize(cls, url: ParseResult) -> None:
-        return cls.get_size(url)
+    @abstractmethod
+    def _url_exists(cls, url: ParseResult) -> bool:
+        """
+        Return True if the item at the given URL exists, and Flase otherwise.
+        """
+        raise NotImplementedError()
 
     @classmethod
     @abstractmethod
-    def get_size(cls, src_uri: ParseResult) -> None:
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
         """
-        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
+        Get the size of the object at the given URL, or None if it cannot be obtained.
+        """
+        raise NotImplementedError()
 
-        :param src_uri: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+    @classmethod
+    @abstractmethod
+    def _get_is_directory(cls, url: ParseResult) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file or it is known not to exist. The URL may or may not end in
+        '/'.
+
+        :param url: URL that points to a file or object, or directory or prefix,
+               in the storage mechanism of a supported URL scheme e.g. a blob
+               in an AWS s3 bucket.
         """
         raise NotImplementedError
-
 
     @classmethod
     @abstractmethod
@@ -647,6 +674,25 @@ class AbstractJobStore(ABC):
         :param IO[bytes] writable: a writable stream
 
         :return: The size of the file in bytes and whether the executable permission bit is set
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    @abstractmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        """
+        List the contents of the given URL, which may or may not end in '/'
+
+        Returns a list of URL components. Those that end in '/' are meant to be
+        directories, while those that do not are meant to be files.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        :param ParseResult url: URL that points to a directory or prefix in the
+        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
+        bucket.
+
+        :return: The children of the given URL, already URL-encoded.
         """
         raise NotImplementedError()
 
@@ -677,25 +723,6 @@ class AbstractJobStore(ABC):
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param bool executable: determines if the file has executable permissions
-        """
-        raise NotImplementedError()
-
-    @classmethod
-    @abstractmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
-        """
-        List the contents of the given URL, which may or may not end in '/'
-
-        Returns a list of URL components. Those that end in '/' are meant to be
-        directories, while those that do not are meant to be files.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        :param ParseResult url: URL that points to a directory or prefix in the
-        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
-        bucket.
-
-        :return: The children of the given URL, already URL-encoded.
         """
         raise NotImplementedError()
 
@@ -1726,7 +1753,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
         ]
     )
-    def get_size(cls, url: ParseResult) -> Optional[int]:
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == 'ftp':
             return None
         with closing(urlopen(url.geturl())) as readable:

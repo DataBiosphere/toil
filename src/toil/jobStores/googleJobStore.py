@@ -394,7 +394,15 @@ class GoogleJobStore(AbstractJobStore):
         return blob
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            cls._get_blob_from_url(url, exists=True)
+            return True
+        except NoSuchFileException:
+            return False
+
+    @classmethod
+    def _get_size(cls, url):
         return cls._get_blob_from_url(url, exists=True).size
 
     @classmethod

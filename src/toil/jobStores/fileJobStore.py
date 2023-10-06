@@ -361,7 +361,11 @@ class FileJobStore(AbstractJobStore):
             os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        return os.path.exists(cls._extract_path_from_url(url))
+
+    @classmethod
+    def _get_size(cls, url):
         return os.stat(cls._extract_path_from_url(url)).st_size
 
     @classmethod

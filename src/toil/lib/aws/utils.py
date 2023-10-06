@@ -345,6 +345,8 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         """
         Extracts a key (object) from a given parsed s3:// URL.
 
+        If existing is true and the object does not exist, raises FileNotFoundError.
+
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
                 exists and it will be created. If None, the key will be created if it doesn't exist.
         """
@@ -386,7 +388,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
             else:
                 raise
         if existing is True and not objExists:
-            raise RuntimeError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
+            raise FileNotFoundError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
         elif existing is False and objExists:
             raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 

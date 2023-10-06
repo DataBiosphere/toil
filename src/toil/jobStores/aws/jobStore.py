@@ -470,7 +470,15 @@ class AWSJobStore(AbstractJobStore):
             super()._default_export_file(otherCls, file_id, uri)
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            get_object_for_url(url, existing=True)
+            return True
+        except FileNotFoundError:
+            return False
+
+    @classmethod
+    def _get_size(cls, url):
         return get_object_for_url(url, existing=True).content_length
 
     @classmethod

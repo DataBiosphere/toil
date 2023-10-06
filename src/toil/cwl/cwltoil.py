@@ -1293,26 +1293,26 @@ class ToilFsAccess(StdFsAccess):
         if parse.scheme in ["", "file"]:
             # Handle local files
             return open(self._abs(path), mode)
-        elif parse.scheme in ["toilfile", "toildir"]:
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(path)
+            if cache_key in self.dir_to_download:
+                # This is already available locally, so fall back on the local copy
+                return open(self._abs(path), mode)
+            else:
+                # We need to get the URI out of the virtual directory
+                if subpath is None:
+                    raise RuntimeError(f"{fn} is a toildir directory")
+                uri = get_from_structure(contents, subpath)
+                if not isinstance(uri, str):
+                    raise RuntimeError(f"{fn} does not point to a file")
+                # Recurse on that URI
+                return self.open(uri, mode)
+        elif parse.scheme == "toilfile":
             if self.file_store is None:
                 raise RuntimeError("URL requires a file store: " + fn)
-
-            if parse.scheme == "toildir":
-                contents, subpath, cache_key = decode_directory(path)
-                if cache_key in self.dir_to_download:
-                    # This is already available locally, so fall back on the local copy
-                    return open(self._abs(path), mode)
-                else:
-                    # We need to get the URI out of the virtual directory
-                    uri = get_from_structure(contents, subpath)
-                    if not isinstance(uri, str):
-                        raise RuntimeError(f"{fn} does not point to a file")
-                    # Recurse on that URI
-                    return self.open(uri, mode)
-            elif parse.scheme == "toilfile":
-                file_id = FileID.unpack(fn[len("toilfile:") :])
-                encoding = None if "b" in mode else "utf-8"
-                return self.file_store.readGlobalFileStream(file_id, encoding)
+            file_id = FileID.unpack(fn[len("toilfile:") :])
+            encoding = None if "b" in mode else "utf-8"
+            return self.file_store.readGlobalFileStream(file_id, encoding)
         else:
             # This should be supported by a job store.
             byte_stream = AbstractJobStore.open_url(fn)
@@ -1325,61 +1325,102 @@ class ToilFsAccess(StdFsAccess):
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""
-        # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
-        try:
-            # TODO: Also implement JobStore-supported URLs through JobStore methods.
-            return os.path.exists(self._abs(path))
-        except NoSuchFileException:
-            return False
+        parse = urlparse(fn)
+        if parse.scheme in ["", "file"]:
+            # Handle local files
+            # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+            try:
+                return os.path.exists(self._abs(path))
+            except NoSuchFileException:
+                return False
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(path)
+            if subpath is None:
+                # The toildir directory itself exists
+                return True
+            uri = get_from_structure(contents, subpath)
+            if uri is None:
+                # It's not in the virtual directory, so it doesn't exist
+                return False
+            # We recurse and poll the URI directly to make sure it really exists
+            return self.exists(uri)
+        elif parse.scheme == "toilfile":
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+            return True
+        else:
+            # This should be supported by a job store.
+            return AbstractJobStore.url_exists(fn)
 
     def size(self, path: str) -> int:
-        # This should avoid _abs for things actually in the file store, to
-        # prevent multiple downloads as in
-        # https://github.com/DataBiosphere/toil/issues/3665
-        if path.startswith("toilfile:"):
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + path)
-            return self.file_store.getGlobalFileSize(
-                FileID.unpack(path[len("toilfile:") :])
-            )
-        elif path.startswith("toildir:"):
+        parse = urlparse(path)
+        if parse.scheme in ["", "file"]:
+            return os.stat(self._abs(path)).st_size
+        elif parse.scheme == "toildir":
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            here, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key = decode_directory(path)
 
             # We can't get the size of just a directory.
             if subpath is None:
                 raise RuntimeError(f"Attempted to check size of directory {path}")
 
-            for part in subpath.split("/"):
-                # Follow the path inside the directory contents.
-                here = cast(DirectoryContents, here[part])
+            uri = get_from_structure(contents, subpath)
 
-            # We ought to end up with a toilfile: URI.
-            if not isinstance(here, str):
+            # We ought to end up with a URI.
+            if not isinstance(uri, str):
                 raise RuntimeError(f"Did not find a file at {path}")
-            if not here.startswith("toilfile:"):
-                raise RuntimeError(f"Did not find a filestore file at {path}")
-
-            return self.size(here)
+            return self.size(uri)
+        elif parse.scheme == "toilfile":
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store: " + path)
+            return self.file_store.getGlobalFileSize(
+                FileID.unpack(path[len("toilfile:") :])
+            )
         else:
-            # TODO: Also implement JobStore-supported URLs through JobStore methods.
-            # We know this falls back on _abs
-            return super().size(path)
+            # This should be supported by a job store.
+            size = AbstractJobStore.get_size(path)
+            if size is None:
+                # get_size can be unimplemented or unavailable
+                raise RuntimeError(f"Could not get size of {path}")
+            return size
 
     def isfile(self, fn: str) -> bool:
+        if not self.exists(fn):
+            # Nonexistent things aren't files
+            return False
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # We know this falls back on _abs
-            return super().isfile(fn)
+        if parse.scheme in ["file", ""]:
+            return os.path.isfile(self._abs(path))
+        elif parse.scheme == "toilfile":
+            return True
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(path)
+            if subpath is None:
+                # This is the toildir directory itself
+                return False
+            found = get_from_structure(contents, subpath)
+            # If we find a string, that's a file
+            return isinstance(found, str)
         else:
             return not AbstractJobStore.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
+        if not self.exists(fn):
+            # Nonexistent things aren't directories
+            return False
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # We know this falls back on _abs
-            return super().isdir(fn)
+        if parse.scheme in ["file", ""]:
+            return os.path.isdir(self._abs(path))
+        elif parse.scheme == "toilfile":
+            return False
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(path)
+            if subpath is None:
+                # This is the toildir directory itself
+                return True
+            found = get_from_structure(contents, subpath)
+            # If we find a dict, that's a directory
+            return isinstance(found, dict)
         else:
             return AbstractJobStore.get_is_directory(fn)
 
@@ -1389,12 +1430,19 @@ class ToilFsAccess(StdFsAccess):
         logger.debug("ToilFsAccess listing %s", fn)
 
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # Download the file or directory to a local path
+        if parse.scheme in ["file", ""]:
+            # Find the local path
             directory = self._abs(fn)
-
             # Now list it (it is probably a directory)
             return [abspath(quote(entry), fn) for entry in os.listdir(directory)]
+        elif parse.scheme == "toilfile":
+            raise RuntimeError(f"Cannot list a file: {fn}")
+        elif parse.scheme == "toildir":
+            here, subpath, cache_key = decode_directory(path)
+            if subpath is not None:
+                here = get_from_structure(contents, here)
+            # List all the things in here and make full URIs to them
+            return [os.path.join(fn, k) for k in here.keys()]
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
