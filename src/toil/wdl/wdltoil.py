@@ -494,7 +494,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 if not os.path.exists(parent_id):
                     os.mkdir(parent_id)
                 # Put the UUID in the destination path in order for tasks to see where to put files depending on their parents
-                dest_path = os.path.join(parent_id, file_basename)
+                dest_path = os.path.join(self._file_store.localTempDir, parent_id, file_basename)
             else:
                 # In case a file was not virtualized with a UUID
                 # But this shouldn't happen
@@ -1236,7 +1236,7 @@ class WDLTaskJob(WDLBaseJob):
         # Set up the WDL standard library
         # UUID to use for virtualizing files
         stdlib_id = uuid.uuid4()
-        standard_library = ToilWDLStdLibBase(file_store, stdlib_id)
+        standard_library = ToilWDLStdLibBase(file_store, stdlib_id=stdlib_id)
 
         if self._task.inputs:
             logger.debug("Evaluating task inputs")
@@ -1595,7 +1595,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
         with monkeypatch_coerce(standard_library):
             if isinstance(self._node, WDL.Tree.Decl):
                 # This is a variable assignment
@@ -1684,7 +1684,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
 
         with monkeypatch_coerce(standard_library):
             for node in self._nodes:
@@ -2339,7 +2339,7 @@ class WDLWorkflowJob(WDLSectionJob):
         # For a task we only see the insode-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
 
         if self._workflow.inputs:
             with monkeypatch_coerce(standard_library):
@@ -2384,7 +2384,7 @@ class WDLOutputsJob(WDLBaseJob):
         super().run(file_store)
 
         # Evaluate all the outputs in the normal, non-task-outputs library context
-        standard_library = ToilWDLStdLibBase(file_store, self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
         # Combine the bindings from the previous job
 
         output_bindings = evaluate_output_decls(self._outputs, unwrap(self._bindings), standard_library)
