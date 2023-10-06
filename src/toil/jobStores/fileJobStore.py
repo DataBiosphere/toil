@@ -375,12 +375,18 @@ class FileJobStore(AbstractJobStore):
         """
 
         # we use a ~10Mb buffer to improve speed
-        with open(cls._extract_path_from_url(url), 'rb') as readable:
+        with cls._open_url(url) as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
             executable = os.stat(readable.name).st_mode & stat.S_IXUSR
             return readable.tell(), executable
 
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        """
+        Open a file URL as a binary stream.
+        """
+        return open(cls._extract_path_from_url(url), 'rb')
 
     @classmethod
     def _write_to_url(cls, readable, url, executable=False):

@@ -1297,27 +1297,31 @@ class ToilFsAccess(StdFsAccess):
             if self.file_store is None:
                 raise RuntimeError("URL requires a file store: " + fn)
 
-            encoding=None if "b" in mode else "utf-8"
-
             if parse.scheme == "toildir":
                 contents, subpath, cache_key = decode_directory(path)
                 if cache_key in self.dir_to_download:
-                    # This is already available locally
+                    # This is already available locally, so fall back on the local copy
                     return open(self._abs(path), mode)
                 else:
-                    # We need to take each path component from subpath and look
-                    # them up in contents, until we find a thing that ought to
-                    # be a string. Then that we need to decode as a FileID and
-                    # stream.
-                    raise NotImplementedError()
+                    # We need to get the URI out of the virtual directory
+                    uri = get_from_structure(contents, subpath)
+                    if not isinstance(uri, str):
+                        raise RuntimeError(f"{fn} does not point to a file")
+                    # Recurse on that URI
+                    return self.open(uri, mode)
             elif parse.scheme == "toilfile":
                 file_id = FileID.unpack(fn[len("toilfile:") :])
-
-            return self.file_store.readGlobalFileStream(, )
+                encoding = None if "b" in mode else "utf-8"
+                return self.file_store.readGlobalFileStream(file_id, encoding)
         else:
             # This should be supported by a job store.
-            # We need to make a pipe, send off a thread to AbstractJobStore.read_from_url into the pipe as bytes, and read out of the pipe in the appropriate encoding.
-            raise NotImplementedError()
+            byte_stream = AbstractJobStore.open_url(fn)
+            if 'b' in mode:
+                # Pass stream along in binary
+                return byte_stream
+            else:
+                # Wrap it in a text decoder
+                return codecs.getreader('utf-8')(byte_stream)
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""

@@ -16,6 +16,8 @@
 
 import logging
 import os
+from pathlib import PurePosixPath
+import posixpath
 from typing import (
     Any,
     Callable,
@@ -128,6 +130,32 @@ def visit_cwl_class_and_reduce(
 
 
 DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]
+
+def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, DirectoryStructure, None]:
+    """
+    Given a relative path, follow it in the given directory structure.
+
+    Return the string URI for files, the directory dict for
+    subdirectories, or None for nonexistent things.
+    """
+
+    # Resolve .. and split into path components
+    parts = PurePosixPath(posixpath.normpath(path)).parts
+    if len(parts) == 0:
+        return dir_dict
+    if parts[0] in ('..', '/'):
+        raise RuntimeError(f"Path {path} not resolvable in virtual directory")
+    found = dir_dict
+    for part in parts:
+        # Go down by each path component in turn
+        if isinstance(found, str):
+            # Looking for a subdirectory of a file, which doesn't exist
+            return None
+        if part not in found:
+            return None
+        found = found[part]
+    # Now we're at the place we want to be.
+    return found
 
 
 def download_structure(

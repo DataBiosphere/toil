@@ -593,11 +593,25 @@ class AbstractJobStore(ABC):
         Raises FileNotFoundError if the URL doesn't exist.
 
         :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
         """
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._read_from_url(parseResult, writable)
+    
+    @classmethod
+    def open_url(cls, src_uri: str) -> IO[bytes]:
+        """
+        Read from the given URI.
+
+        Raises FileNotFoundError if the URL doesn't exist.
+
+        Has a readable stream interface, unlike :meth:`read_from_url` which
+        takes a writable stream.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._open_url(parseResult)
+        
 
     @classmethod
     @deprecated(new_function_name='get_size')
@@ -623,8 +637,6 @@ class AbstractJobStore(ABC):
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
-        Raises FileNotFoundError if the URL doesn't exist.
-
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         Raises FileNotFoundError if the thing at the URL is not found.
@@ -635,7 +647,18 @@ class AbstractJobStore(ABC):
         :param IO[bytes] writable: a writable stream
 
         :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
+        """
+        raise NotImplementedError()
+
+    @classmethod
+    @abstractmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        """
+        Get a stream of the object at the specified location.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        Raises FileNotFoundError if the thing at the URL is not found.
         """
         raise NotImplementedError()
 
@@ -1712,33 +1735,36 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             return int(size) if size is not None else None
 
     @classmethod
+    def _read_from_url(
+        cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
+    ) -> Tuple[int, bool]:
+        # We can't actually retry after we start writing.
+        # TODO: Implement retry with byte range requests
+        with closing(cls._open_url(url)) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l: int) -> None:
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
+
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0], False
+
+    @classmethod
     @retry(
         errors=[
             BadStatusLine,
             ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
         ]
     )
-    def _read_from_url(
-        cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
-    ) -> Tuple[int, bool]:
-        # We can only retry on errors that happen as responses to the request.
-        # If we start getting file data, and the connection drops, we fail.
-        # So we don't have to worry about writing the start of the file twice.
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
         try:
-            with closing(urlopen(url.geturl())) as readable:
-                # Make something to count the bytes we get
-                # We need to put the actual count in a container so our
-                # nested function can modify it without creating its own
-                # local with the same name.
-                size = [0]
-                def count(l: int) -> None:
-                    size[0] += l
-                counter = WriteWatchingStream(writable)
-                counter.onWrite(count)
-
-                # Do the download
-                shutil.copyfileobj(readable, counter)
-                return size[0], False
+            return urlopen(url.geturl())
         except HTTPError as e:
             if e.code == 404:
                 # Translate into a FileNotFoundError for detecting

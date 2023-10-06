@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from io import BytesIO
+from io import BytesIO, IO
 from typing import List, Optional
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -481,6 +481,15 @@ class AWSJobStore(AbstractJobStore):
             srcObj.content_length,
             False  # executable bit is always False
         )
+
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        src_obj = get_object_for_url(url, existing=True)
+        response = src_obj.get()
+        # We should get back a response with a stream in 'Body'
+        if 'Body' not in response:
+            raise RuntimeError(f"Could not fetch body stream for {url}")
+        return response['Body']
 
     @classmethod
     def _write_to_url(cls, readable, url, executable=False):

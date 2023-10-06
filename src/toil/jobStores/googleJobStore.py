@@ -404,6 +404,11 @@ class GoogleJobStore(AbstractJobStore):
         return blob.size, False
 
     @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        blob = cls._get_blob_from_url(url, exists=True)
+        return blob.open("rb")
+
+    @classmethod
     def _supports_url(cls, url, export=False):
         return url.scheme.lower() == 'gs'
 
