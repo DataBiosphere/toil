@@ -32,8 +32,9 @@ import stat
 import sys
 import tempfile
 import textwrap
-import urllib
 import uuid
+from collections import OrderedDict
+from io import StringIO
 from threading import Thread
 from typing import (
     IO,
@@ -66,7 +67,8 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
-from configargparse import ArgParser
+from configargparse import ArgParser, already_on_command_line, _COMMAND_LINE_SOURCE_KEY, _ENV_VAR_SOURCE_KEY, \
+    ConfigFileParserException, ACTION_TYPES_THAT_DONT_NEED_A_VALUE, _DEFAULTS_SOURCE_KEY, _CONFIG_FILE_SOURCE_KEY
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -3251,23 +3253,7 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
-
-def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
-    """Run the main loop for toil-cwl-runner."""
-    # Remove cwltool logger's stream handler so it uses Toil's
-    cwllogger.removeHandler(defaultStreamHandler)
-
-    if args is None:
-        args = sys.argv[1:]
-
-    config = Config()
-    config.disableChaining = True
-    config.cwl = True
-    parser = ArgParser()
-    addOptions(parser, jobstore_as_flag=True, cwl=True)
-    parser.add_argument("cwltool", type=str)
-    parser.add_argument("cwljob", nargs=argparse.REMAINDER)
-
+def add_base_cwl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3574,8 +3560,93 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         type=str,
     )
 
-    # Parse all the options once.
-    options = parser.parse_args(args)
+def get_options(args: List[str]) -> argparse.Namespace:
+    """
+    Get around configargparse's incompatibility with nargs=REMAINDER
+    :param args: List of args from command line
+    :return: options namespace
+    """
+    parser = ArgParser()
+    addOptions(parser, jobstore_as_flag=True, cwl=True)
+    add_base_cwl_options(parser)
+
+    config_args = []
+    cmd_line_args = args
+    # find if the config argument is specified on the command line
+    for i in range(len(args)):
+        if args[i].startswith("--config"):
+            # if found, remove config file definition from args
+            split_by_equal = args[i].split("=")
+            if len(split_by_equal) > 1:
+                # --config=file.yaml
+                config_args = ["--config", (split_by_equal[1])]
+                cmd_line_args = args[:i] + args[i+1:]
+            elif i < len(args):
+                # --config file.yaml
+                config_args = ["--config", (args[i+1])]
+                cmd_line_args = args[:i] + args[i+2:]
+            else:
+                # not properly defined
+                # don't define the config file so that argparse can raise the proper error
+                config_args = ["--config"]
+            break
+
+    # Parse only the config file to not conflict with the cmd line options
+    config_options = parser.parse_args(config_args)
+
+    # These arguments are defined here so the previous parse_args can run
+    # This will mean that these cannot be defined in the config file and must be defined on the command line
+    parser.add_argument("cwltool", type=str)
+    parser.add_argument("cwljob", nargs=argparse.REMAINDER)
+
+    # Parse rest of cmd line args
+    cmd_line_options = parser.parse_args(cmd_line_args)
+    source = parser.get_source_to_settings_dict()
+
+    # get_source_to_settings_dict advertises itself as containing the argparse Action object too, except for some reason it's None
+    # instead, get the actions information from the parser
+    # the important information is the mapping of action name to namespace dest
+    action_name_to_dest = dict()
+    for action in parser._actions:
+        option_strings = [x for x in action.option_strings if x.startswith("--")]
+        for option in option_strings:
+            action_name_to_dest[option[2:]] = action.dest
+
+    # Now remove unwanted actions from cmd line options
+    # First build set of actions to not remove
+    do_not_remove = set()
+    for _, cmd_line_args in source.get("command_line").values():
+        for arg in cmd_line_args:
+            if arg.startswith("--"):
+                # This will only find nonpositional arguments
+                # The only positional arguments in toil-cwl-runner is cwltool and cwljob, so this should be fine here
+                i = arg.find("=")
+                action_name = arg[2:] if i < 0 else arg[2:i]
+                arg_dest = action_name_to_dest[action_name]
+                do_not_remove.add(arg_dest)
+
+    # Then remove all actions already defined in config from cmd line options namespace
+    for option_name in vars(config_options).keys():
+        # This is done in an exclusionary style so that nonpositional arguments are not accidentally removed, as those
+        # are harder to detect on the command line
+        if option_name not in do_not_remove:
+            delattr(cmd_line_options, option_name)
+
+    # Merge namespaces, with command line taking precedence
+    options_dict = vars(config_options)
+    options_dict.update(vars(cmd_line_options))
+
+    return argparse.Namespace(**options_dict)
+
+def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
+    """Run the main loop for toil-cwl-runner."""
+    # Remove cwltool logger's stream handler so it uses Toil's
+    cwllogger.removeHandler(defaultStreamHandler)
+
+    if args is None:
+        args = sys.argv[1:]
+
+    options = get_options(args)
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
