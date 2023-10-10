@@ -33,8 +33,6 @@ import sys
 import tempfile
 import textwrap
 import uuid
-from collections import OrderedDict
-from io import StringIO
 from threading import Thread
 from typing import (
     IO,
@@ -67,8 +65,7 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
-from configargparse import ArgParser, already_on_command_line, _COMMAND_LINE_SOURCE_KEY, _ENV_VAR_SOURCE_KEY, \
-    ConfigFileParserException, ACTION_TYPES_THAT_DONT_NEED_A_VALUE, _DEFAULTS_SOURCE_KEY, _CONFIG_FILE_SOURCE_KEY
+from configargparse import ArgParser
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -106,7 +103,7 @@ from schema_salad.sourceline import SourceLine
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -3603,7 +3600,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
     cmd_line_options = parser.parse_args(cmd_line_args)
     source = parser.get_source_to_settings_dict()
 
-    # get_source_to_settings_dict advertises itself as containing the argparse Action object too, except for some reason it's None
+    # get_source_to_settings_dict says it contains the relevant argparse Action objects too, except for some reason it's None
     # instead, get the actions information from the parser
     # the important information is the mapping of action name to namespace dest
     action_name_to_dest = dict()
@@ -3615,15 +3612,17 @@ def get_options(args: List[str]) -> argparse.Namespace:
     # Now remove unwanted actions from cmd line options
     # First build set of actions to not remove
     do_not_remove = set()
-    for _, cmd_line_args in source.get("command_line").values():
-        for arg in cmd_line_args:
-            if arg.startswith("--"):
-                # This will only find nonpositional arguments
-                # The only positional arguments in toil-cwl-runner is cwltool and cwljob, so this should be fine here
-                i = arg.find("=")
-                action_name = arg[2:] if i < 0 else arg[2:i]
-                arg_dest = action_name_to_dest[action_name]
-                do_not_remove.add(arg_dest)
+    command_line_info = source.get("command_line")
+    if command_line_info is not None:  # for mypy
+        for _, command_line_args in command_line_info.values():
+            for arg in command_line_args:
+                if arg.startswith("--"):
+                    # This will only find nonpositional arguments
+                    # The only positional arguments in toil-cwl-runner is cwltool and cwljob, so this should be fine here
+                    i = arg.find("=")
+                    action_name = arg[2:] if i < 0 else arg[2:i]
+                    arg_dest = action_name_to_dest[action_name]
+                    do_not_remove.add(arg_dest)
 
     # Then remove all actions already defined in config from cmd line options namespace
     for option_name in vars(config_options).keys():
