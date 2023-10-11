@@ -3265,7 +3265,7 @@ def add_base_cwl_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--quiet", dest="quiet", action="store_true", default=False)
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
-    parser.add_argument("--outdir", type=str, default=os.getcwd())
+    parser.add_argument("--outdir", type=str, default=None)
     parser.add_argument("--version", action="version", version=baseVersion)
     parser.add_argument(
         "--log-dir",
@@ -3307,7 +3307,7 @@ def add_base_cwl_options(parser: argparse.ArgumentParser) -> None:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    extra_dockergroup = parser.add_argument_group()
+    extra_dockergroup = parser.add_argument_group("extra_dockergroup")
     extra_dockergroup.add_argument(
         "--custom-net",
         help="Specify docker network name to pass to docker run command",
@@ -3621,8 +3621,10 @@ def get_options(args: List[str]) -> argparse.Namespace:
                     # The only positional arguments in toil-cwl-runner is cwltool and cwljob, so this should be fine here
                     i = arg.find("=")
                     action_name = arg[2:] if i < 0 else arg[2:i]
-                    arg_dest = action_name_to_dest[action_name]
-                    do_not_remove.add(arg_dest)
+                    arg_dest = action_name_to_dest.get(action_name, None)
+                    # None implies it is a cwl argument which isn't in the namespace, so don't deal with it
+                    if arg_dest is not None:
+                        do_not_remove.add(arg_dest)
 
     # Then remove all actions already defined in config from cmd line options namespace
     for option_name in vars(config_options).keys():
@@ -3631,7 +3633,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
         if option_name not in do_not_remove:
             delattr(cmd_line_options, option_name)
 
-    # Merge namespaces, with command line taking precedence
+    # Merge namespaces, with command line taking precedence over config
     options_dict = vars(config_options)
     options_dict.update(vars(cmd_line_options))
 
@@ -3697,7 +3699,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
-    outdir = os.path.abspath(options.outdir)
+    outdir = os.path.abspath(os.getcwd()) if options.outdir is  None else os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
     fileindex: Dict[str, str] = {}
