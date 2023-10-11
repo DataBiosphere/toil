@@ -294,19 +294,19 @@ class Config:
             # it before we will work again.
             raise RuntimeError(
                 f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
-        logger.debug("Loading %s byte default configuration", config_status.st_size)
+        logger.debug("Initializing %s byte default configuration", config_status.st_size)
         try:
             with open(DEFAULT_CONFIG_FILE, "r") as f:
                 yaml = YAML(typ="safe")
                 s = yaml.load(f)
-                logger.debug("Loaded default configuration: %s", json.dumps(s))
+                logger.debug("Initialized default configuration: %s", json.dumps(s))
         except:
             # Something went wrong reading the default config, so dump its
             # contents to the log.
             logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
             raise
         parser = ArgParser()
-        addOptions(parser, jobstore_as_flag=True)
+        addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
         ns = parser.parse_args(f"--config={DEFAULT_CONFIG_FILE}")
         self.setOptions(ns)
 
@@ -472,6 +472,8 @@ class Config:
 
         self.check_configuration_consistency()
 
+        logger.debug("Loaded configuration: %s", vars(options))
+
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
         if self.writeLogs and self.writeLogsGzip:
@@ -537,38 +539,63 @@ def generate_config(filepath: str) -> None:
     # override those defaults
     deprecated_or_redundant_options = ("help", "config", "logCritical", "logDebug", "logError", "logInfo", "logOff",
                                        "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports",
-                                       "enableCaching", "disableCaching")
+                                       "enableCaching", "disableCaching", "version")
 
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser, jobstore_as_flag=True)
 
-    data = CommentedMap()  # to preserve order
-    group_title_key: Dict[str, str] = dict()
-    for action in parser._actions:
-        if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
-            continue
-        # if action is StoreFalse and default is True then don't include
-        if isinstance(action, _StoreFalseAction) and action.default is True:
-            continue
-        # if action is StoreTrue and default is False then don't include
-        if isinstance(action, _StoreTrueAction) and action.default is False:
-            continue
+    def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
+        data = CommentedMap()  # to preserve order
+        group_title_key: Dict[str, str] = dict()
+        for action in parser._actions:
+            if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
+                continue
+            # if action is StoreFalse and default is True then don't include
+            if isinstance(action, _StoreFalseAction) and action.default is True:
+                continue
+            # if action is StoreTrue and default is False then don't include
+            if isinstance(action, _StoreTrueAction) and action.default is False:
+                continue
 
-        option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else \
-            action.option_strings[1]
-        option = option_string[2:]
+            if len(action.option_strings) == 0:
+                continue
 
-        default = action.default
+            option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else \
+                action.option_strings[1]
+            option = option_string[2:]
 
-        data[option] = default
+            default = action.default
 
-        # store where each argparse group starts
-        group_title = action.container.title  # type: ignore[attr-defined]
-        group_title_key.setdefault(group_title, option)
+            data[option] = default
 
-    # add comment for when each argparse group starts
-    for group_title, key in group_title_key.items():
-        data.yaml_set_comment_before_after_key(key, group_title)
+            # store where each argparse group starts
+            group_title = action.container.title  # type: ignore[attr-defined]
+            group_title_key.setdefault(group_title, option)
+
+        # add comment for when each argparse group starts
+        for group_title, key in group_title_key.items():
+            data.yaml_set_comment_before_after_key(key, group_title)
+
+        return data
+
+    toil_base_data = create_config_dict_from_parser(parser)
+    toil_base_data.yaml_set_start_comment("BASE TOIL OPTIONS")
+
+    # to avoid circular imports
+    from toil.wdl.wdltoil import add_wdl_options
+    from toil.cwl.cwltoil import add_base_cwl_options
+
+    parser = ArgParser(YAMLConfigFileParser())
+    add_base_cwl_options(parser)
+    toil_cwl_data = create_config_dict_from_parser(parser)
+    toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
+
+    parser = ArgParser(YAMLConfigFileParser())
+    add_wdl_options(parser)
+    toil_wdl_data = create_config_dict_from_parser(parser)
+    toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
+
+    toil_all_data = [toil_base_data, toil_cwl_data, toil_wdl_data]
 
     # Now we need to put the config file in place at filepath.
     # But someone else may have already created a file at that path, or may be
@@ -581,7 +608,8 @@ def generate_config(filepath: str) -> None:
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
             yaml = YAML()
-            yaml.dump(data, f)
+            for data in toil_all_data:
+                yaml.dump(data, f)
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
@@ -670,6 +698,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         # this forces configargparser to process the config file in YAML rather than in it's own format
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
+        # So that CWL and WDL options can be in the same file, make configargparse ignore undefined options
+        parser._ignore_unknown_config_file_keys = True  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)

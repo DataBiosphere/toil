@@ -2406,15 +2406,7 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
         WDL.Value.Base.coerce = old_base_coerce  # type: ignore[method-assign]
         WDL.Value.String.coerce = old_str_coerce  # type: ignore[method-assign]
 
-
-def main() -> None:
-    """
-    A Toil workflow to interpret WDL input files.
-    """
-
-    parser = ArgParser(description='Runs WDL files with toil.')
-    addOptions(parser, jobstore_as_flag=True)
-
+def add_wdl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("wdl_uri", type=str,
                         help="WDL document URI")
     parser.add_argument("inputs_uri", type=str, nargs='?',
@@ -2429,6 +2421,14 @@ def main() -> None:
                         help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
                         help="File or URI to save output JSON to.")
+def main() -> None:
+    """
+    A Toil workflow to interpret WDL input files.
+    """
+
+    parser = ArgParser(description='Runs WDL files with toil.')
+    addOptions(parser, jobstore_as_flag=True)
+    add_wdl_options(parser)
 
     options = parser.parse_args(sys.argv[1:])
 
