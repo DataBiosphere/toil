@@ -3560,6 +3560,8 @@ def add_base_cwl_options(parser: argparse.ArgumentParser) -> None:
 def get_options(args: List[str]) -> argparse.Namespace:
     """
     Get around configargparse's incompatibility with nargs=REMAINDER
+    It does so by running parse_args twice, one on just the config file and one on the rest of args, then merges
+    Takes the list of args and returns the resulting options namespace
     :param args: List of args from command line
     :return: options namespace
     """
@@ -3596,43 +3598,17 @@ def get_options(args: List[str]) -> argparse.Namespace:
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
-    # Parse rest of cmd line args
+    cmd_line_args_actions = {y for x in cmd_line_args for y in x.split("=")}
+    # remove parser actions that are not specified on the command line
+    i = 0
+    while i < len(parser._actions):
+        action = parser._actions[i]
+        if set(action.option_strings).isdisjoint(cmd_line_args_actions) and len(action.option_strings) > 0:
+            del parser._actions[i]
+        else:
+            i += 1
+    # Parse only cmd line args
     cmd_line_options = parser.parse_args(cmd_line_args)
-    source = parser.get_source_to_settings_dict()
-
-    # get_source_to_settings_dict says it contains the relevant argparse Action objects too, except for some reason it's None
-    # instead, get the actions information from the parser
-    # the important information is the mapping of action name to namespace dest
-    action_name_to_dest = dict()
-    for action in parser._actions:
-        option_strings = [x for x in action.option_strings if x.startswith("--")]
-        for option in option_strings:
-            action_name_to_dest[option[2:]] = action.dest
-
-    # Now remove unwanted actions from cmd line options
-    # First build set of actions to not remove
-    do_not_remove = set()
-    command_line_info = source.get("command_line")
-    if command_line_info is not None:  # for mypy
-        for _, command_line_args in command_line_info.values():
-            for arg in command_line_args:
-                if arg.startswith("--"):
-                    # This will only find nonpositional arguments
-                    # The only positional arguments in toil-cwl-runner is cwltool and cwljob, so this should be fine here
-                    i = arg.find("=")
-                    action_name = arg[2:] if i < 0 else arg[2:i]
-                    arg_dest = action_name_to_dest.get(action_name, None)
-                    # None implies it is a cwl argument which isn't in the namespace, so don't deal with it
-                    if arg_dest is not None:
-                        do_not_remove.add(arg_dest)
-
-    # Then remove all actions already defined in config from cmd line options namespace
-    for option_name in vars(config_options).keys():
-        # This is done in an exclusionary style so that nonpositional arguments are not accidentally removed, as those
-        # are harder to detect on the command line
-        if option_name not in do_not_remove:
-            delattr(cmd_line_options, option_name)
-
     # Merge namespaces, with command line taking precedence over config
     options_dict = vars(config_options)
     options_dict.update(vars(cmd_line_options))
