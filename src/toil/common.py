@@ -601,7 +601,7 @@ def generate_config(filepath: str, include: Optional[str] = None) -> None:
         add_base_cwl_options(parser)
         toil_cwl_data = create_config_dict_from_parser(parser)
         toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
-        all_data.append(toil_base_data)
+        all_data.append(toil_cwl_data)
 
     if include == "wdl":
         from toil.wdl.wdltoil import add_wdl_options
@@ -609,7 +609,7 @@ def generate_config(filepath: str, include: Optional[str] = None) -> None:
         add_wdl_options(parser)
         toil_wdl_data = create_config_dict_from_parser(parser)
         toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
-        all_data.append(toil_base_data)
+        all_data.append(toil_cwl_data)
 
     # Now we need to put the config file in place at filepath.
     # But someone else may have already created a file at that path, or may be

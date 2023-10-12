@@ -26,10 +26,21 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = ArgParser()
 
-    parser.add_argument("output", default="config.yaml")
+    parser.add_argument("output", default="config.yaml", help="Filepath to write the config file too. Default=%(default)s")
+    parser.add_argument("--include", default=None, choices=["cwl", "wdl", "CWL", "WDL"], help="Include CWL or WDL options in the config file. Set to "
+                                                        "\"cwl\" to include CWL options and \"wdl\" to include WDL options. Default=%(default)s")
+
     add_logging_options(parser)
     options = parser.parse_args()
     set_logging_from_options(options)
-    logger.debug("Attempting to write a default config file to %s.", os.path.abspath(options.output))
-    generate_config(os.path.abspath(options.output))
-    logger.info("Successfully wrote a default config file to %s.", os.path.abspath(options.output))
+    include = None if options.include is None else options.include.lower()
+    if include == "cwl":
+        s = "with Toil CWL options"
+    elif include == "wdl":
+        s = "with Toil WDL options"
+    else:
+        s = "with base Toil options"
+    logger.debug(f"Attempting to write a default config file {s} to %s.", os.path.abspath(options.output))
+    generate_config(os.path.abspath(options.output), include=include)
+    logger.info(f"Successfully wrote a default config file {s} to %s.", os.path.abspath(options.output))
+
