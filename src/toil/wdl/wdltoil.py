@@ -306,7 +306,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
 TOIL_URI_SCHEME = 'toilfile:'
 
-def pack_toil_uri(file_id: FileID, file_dir: str, file_basename: str) -> str:
+def pack_toil_uri(file_id: FileID, dir_id: uuid.UUID, file_basename: str) -> str:
     """
     Encode a Toil file ID and its source path in a URI that starts with the scheme in TOIL_URI_SCHEME.
     """
@@ -314,7 +314,7 @@ def pack_toil_uri(file_id: FileID, file_dir: str, file_basename: str) -> str:
     # We urlencode everything, including any slashes. We need to use a slash to
     # set off the actual filename, so the WDL standard library basename
     # function works correctly.
-    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(file_dir)}/{quote(file_basename, safe='')}"
+    return f"{TOIL_URI_SCHEME}{quote(file_id.pack(), safe='')}/{quote(str(dir_id))}/{quote(file_basename, safe='')}"
 
 def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str]:
     """
@@ -431,7 +431,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
     """
-    def __init__(self, file_store: AbstractFileStore, stdlib_id: Optional[Any] = None, execution_dir: Optional[str] = None):
+    def __init__(self, file_store: AbstractFileStore, execution_dir: Optional[str] = None):
         """
         Set up the standard library.
         """
@@ -450,7 +450,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self._file_store = file_store
 
         # UUID to differentiate which node files are virtualized from
-        self.stdlib_id = stdlib_id or uuid.uuid4()
+        self._parent_dir_to_ids: Dict[str, uuid.UUID] = dict()
 
         self._execution_dir = execution_dir
 
@@ -462,16 +462,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if filename.startswith(scheme):
                 return True
         return False
-
-    def _is_uuid(self, id: str) -> bool:
-        """
-        Test if a string is a valid UUID
-        """
-        try:
-            uuid.UUID(id)
-            return True
-        except ValueError:
-            return False
 
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
@@ -488,18 +478,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_id, parent_id, file_basename = unpack_toil_uri(filename)
 
             # Decide where it should be put
-            if self._is_uuid(parent_id):
-                # This is a URI with the "parent" UUID attached to the filename
-                # Use UUID as folder name rather than a new temp folder to reduce internal clutter
-                if not os.path.exists(parent_id):
-                    os.mkdir(parent_id)
-                # Put the UUID in the destination path in order for tasks to see where to put files depending on their parents
-                dest_path = os.path.join(self._file_store.localTempDir, parent_id, file_basename)
-            else:
-                # In case a file was not virtualized with a UUID
-                # But this shouldn't happen
-                file_tmp_dir = self._file_store.getLocalTempDir()
-                dest_path = os.path.join(file_tmp_dir, file_basename)
+            # This is a URI with the "parent" UUID attached to the filename
+            # Use UUID as folder name rather than a new temp folder to reduce internal clutter
+            dir_path = os.path.join(self._file_store.localTempDir, parent_id)
+            if not os.path.exists(parent_id):
+                os.mkdir(dir_path)
+            # Put the UUID in the destination path in order for tasks to see where to put files depending on their parents
+            dest_path = os.path.join(dir_path, file_basename)
 
             # And get a local path to the file
             result = self._file_store.readGlobalFile(file_id, dest_path)
@@ -531,8 +516,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         from a local path in write_dir, 'virtualize' into the filename as it should present in a
         File value
         """
-
-
         if self._is_url(filename):
             # Already virtual
             logger.debug('Already virtualized %s as WDL file %s', filename, filename)
@@ -546,7 +529,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             file_id = self._file_store.writeGlobalFile(os.path.join(self._execution_dir, filename))
         else:
             file_id = self._file_store.writeGlobalFile(filename)
-        result = pack_toil_uri(file_id, str(self.stdlib_id), os.path.basename(filename))
+        dir = os.path.dirname(os.path.abspath(filename)) # is filename always an abspath?
+        parent_id = self._parent_dir_to_ids.setdefault(dir, uuid.uuid4())
+        result = pack_toil_uri(file_id, parent_id, os.path.basename(filename))
         logger.debug('Virtualized %s as WDL file %s', filename, result)
         return result
 
@@ -559,13 +544,13 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     are host-side paths.
     """
 
-    def __init__(self, file_store: AbstractFileStore, container: TaskContainer, stdlib_id: Optional[Any] = None):
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer):
         """
         Set up the standard library for the task command section.
         """
 
         # TODO: Don't we want to make sure we don't actually use the file store?
-        super().__init__(file_store, stdlib_id)
+        super().__init__(file_store)
         self.container = container
 
     @memoize
@@ -614,7 +599,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     functions only allowed in task output sections.
     """
 
-    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None, stdlib_id: Optional[Any] = None):
+    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None):
         """
         Set up the standard library for a task output section. Needs to know
         where standard output and error from the task have been stored.
@@ -625,7 +610,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Just set up as ToilWDLStdLibBase, but it will call into
         # WDL.StdLib.TaskOutputs next.
-        super().__init__(file_store, stdlib_id)
+        super().__init__(file_store)
 
         # Remember task putput files
         self._stdout_path = stdout_path
@@ -919,7 +904,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Pack a UUID of the parent directory
             dir_id = path_to_id.setdefault(os.path.dirname(candidate_uri), uuid.uuid4())
 
-            return pack_toil_uri(imported, str(dir_id), file_basename)
+            return pack_toil_uri(imported, dir_id, file_basename)
 
         # If we get here we tried all the candidates
         raise RuntimeError(f"Could not find {uri} at any of: {tried}")
@@ -1235,8 +1220,7 @@ class WDLTaskJob(WDLBaseJob):
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         # UUID to use for virtualizing files
-        stdlib_id = uuid.uuid4()
-        standard_library = ToilWDLStdLibBase(file_store, stdlib_id=stdlib_id)
+        standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
             logger.debug("Evaluating task inputs")
@@ -1501,7 +1485,7 @@ class WDLTaskJob(WDLBaseJob):
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
-            command_library = ToilWDLStdLibTaskCommand(file_store, task_container, stdlib_id)
+            command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
 
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
@@ -1548,7 +1532,7 @@ class WDLTaskJob(WDLBaseJob):
         # container-determined strings that are absolute paths to WDL File
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container, stdlib_id=stdlib_id)
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
         output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
         # Drop any files from the output which don't actually exist
