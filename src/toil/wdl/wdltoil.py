@@ -45,7 +45,8 @@ from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.runtime.config
 
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil, addOptions, TOIL_HOME_DIR, check_and_create_toil_home_dir, \
+    check_and_create_config_file
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -55,6 +56,8 @@ from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_WDL_CONFIG_FILE: str =  os.path.join(TOIL_HOME_DIR, "default-cwl.yaml")
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
     """
@@ -2426,9 +2429,13 @@ def main() -> None:
     A Toil workflow to interpret WDL input files.
     """
 
-    parser = ArgParser(description='Runs WDL files with toil.')
+    parser = ArgParser(description='Runs WDL files with toil.', default_config_files=[DEFAULT_WDL_CONFIG_FILE])
     addOptions(parser, jobstore_as_flag=True)
     add_wdl_options(parser)
+
+    # Ensure there is a default config file
+    check_and_create_toil_home_dir()
+    check_and_create_config_file(DEFAULT_WDL_CONFIG_FILE, include="wdl")
 
     options = parser.parse_args(sys.argv[1:])
 

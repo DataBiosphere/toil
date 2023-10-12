@@ -103,7 +103,7 @@ from schema_salad.sourceline import SourceLine
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, TOIL_HOME_DIR, check_and_create_toil_home_dir, check_and_create_config_file
 from toil.cwl import check_cwltool_version
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -131,6 +131,8 @@ DEFAULT_TMPDIR = tempfile.gettempdir()
 # We used to not put this inside anything and we would drop loads of temp
 # directories in the current directory and leave them there.
 DEFAULT_TMPDIR_PREFIX = os.path.join(DEFAULT_TMPDIR, "tmp")
+
+DEFAULT_CWL_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default-cwl.yaml")
 
 
 def cwltoil_was_removed() -> None:
@@ -3565,7 +3567,10 @@ def get_options(args: List[str]) -> argparse.Namespace:
     :param args: List of args from command line
     :return: options namespace
     """
-    parser = ArgParser()
+    # Ensure there is a default config file
+    check_and_create_toil_home_dir()
+    check_and_create_config_file(DEFAULT_CWL_CONFIG_FILE, include="cwl")
+    parser = ArgParser(default_config_files=[DEFAULT_CWL_CONFIG_FILE])
     addOptions(parser, jobstore_as_flag=True, cwl=True)
     add_base_cwl_options(parser)
 

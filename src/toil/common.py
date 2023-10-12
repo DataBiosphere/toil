@@ -283,10 +283,8 @@ class Config:
     def set_from_default_config(self) -> None:
         # get defaults from a config file by simulating an argparse run
         # as Config often expects defaults to already be instantiated
-        if not os.path.exists(DEFAULT_CONFIG_FILE):
-            # The default config file did not appear to exist when we checked.
-            # It might exist now, though. Try creating it.
-            self.generate_config_file()
+        # Check config file and create it if needed
+        check_and_create_default_config_file()
         # Check on the config file to make sure it is sensible
         config_status = os.stat(DEFAULT_CONFIG_FILE)
         if config_status.st_size == 0:
@@ -309,20 +307,6 @@ class Config:
         addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
         ns = parser.parse_args(f"--config={DEFAULT_CONFIG_FILE}")
         self.setOptions(ns)
-
-    def generate_config_file(self) -> None:
-        """
-        If the default config file does not exist, create it.
-
-        Raises an error if the default config file cannot be created.
-        Safe to run simultaneously in multiple processes. If this process runs
-        this function, it will always see the default config file existing with
-        parseable contents, even if other processes are racing to create it.
-
-        No process will see an empty or partially-written default config file.
-        """
-        check_and_create_toil_home_dir()
-        generate_config(DEFAULT_CONFIG_FILE)
 
     def prepare_start(self) -> None:
         """
@@ -512,13 +496,41 @@ def check_and_create_toil_home_dir() -> None:
     if dir_path is None:
         raise RuntimeError(f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}")
 
+def check_and_create_default_config_file() -> None:
+    """
+    If the default config file does not exist, create it in the Toil home directory. Create the Toil home directory
+    if needed
 
-def generate_config(filepath: str) -> None:
+    Raises an error if the default config file cannot be created.
+    Safe to run simultaneously in multiple processes. If this process runs
+    this function, it will always see the default config file existing with
+    parseable contents, even if other processes are racing to create it.
+
+    No process will see an empty or partially-written default config file.
+    """
+    check_and_create_toil_home_dir()
+    # The default config file did not appear to exist when we checked.
+    # It might exist now, though. Try creating it.
+    check_and_create_config_file(DEFAULT_CONFIG_FILE)
+
+def check_and_create_config_file(filepath: str, include: Optional[str] = None) -> None:
+    """
+    If the config file at the filepath does not exist, try creating it.
+    The parent directory should be created prior to calling this
+    :param filepath: path to config file
+    :return: None
+    """
+    if not os.path.exists(filepath):
+        generate_config(filepath, include=include)
+
+def generate_config(filepath: str, include: Optional[str] = None) -> None:
     """
     Write a Toil config file to the given path.
 
     Safe to run simultaneously in multiple processes. No process will see an
     empty or partially-written file at the given path.
+
+    Set include to "cwl" or "wdl" to include cwl options and wdl options respectfully
     """
     # this is placed in common.py rather than toilConfig.py to prevent circular imports
 
@@ -540,9 +552,6 @@ def generate_config(filepath: str) -> None:
     deprecated_or_redundant_options = ("help", "config", "logCritical", "logDebug", "logError", "logInfo", "logOff",
                                        "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports",
                                        "enableCaching", "disableCaching", "version")
-
-    parser = ArgParser(YAMLConfigFileParser())
-    addOptions(parser, jobstore_as_flag=True)
 
     def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
         data = CommentedMap()  # to preserve order
@@ -578,24 +587,29 @@ def generate_config(filepath: str) -> None:
 
         return data
 
+    all_data = []
+
+    parser = ArgParser(YAMLConfigFileParser())
+    addOptions(parser, jobstore_as_flag=True)
     toil_base_data = create_config_dict_from_parser(parser)
     toil_base_data.yaml_set_start_comment("BASE TOIL OPTIONS")
+    all_data.append(toil_base_data)
 
-    # to avoid circular imports
-    from toil.wdl.wdltoil import add_wdl_options
-    from toil.cwl.cwltoil import add_base_cwl_options
+    if include == "cwl":
+        from toil.cwl.cwltoil import add_base_cwl_options
+        parser = ArgParser(YAMLConfigFileParser())
+        add_base_cwl_options(parser)
+        toil_cwl_data = create_config_dict_from_parser(parser)
+        toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
+        all_data.append(toil_base_data)
 
-    parser = ArgParser(YAMLConfigFileParser())
-    add_base_cwl_options(parser)
-    toil_cwl_data = create_config_dict_from_parser(parser)
-    toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
-
-    parser = ArgParser(YAMLConfigFileParser())
-    add_wdl_options(parser)
-    toil_wdl_data = create_config_dict_from_parser(parser)
-    toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
-
-    toil_all_data = [toil_base_data, toil_cwl_data, toil_wdl_data]
+    if include == "wdl":
+        from toil.wdl.wdltoil import add_wdl_options
+        parser = ArgParser(YAMLConfigFileParser())
+        add_wdl_options(parser)
+        toil_wdl_data = create_config_dict_from_parser(parser)
+        toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
+        all_data.append(toil_base_data)
 
     # Now we need to put the config file in place at filepath.
     # But someone else may have already created a file at that path, or may be
@@ -608,7 +622,7 @@ def generate_config(filepath: str) -> None:
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
             yaml = YAML()
-            for data in toil_all_data:
+            for data in all_data:
                 yaml.dump(data, f)
 
 
