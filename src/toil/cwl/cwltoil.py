@@ -1662,6 +1662,7 @@ def import_files(
     existing: Dict[str, str],
     cwl_object: Optional[CWLObjectType],
     skip_broken: bool = False,
+    skip_remote: bool = False,
     bypass_file_store: bool = False,
 ) -> None:
     """
@@ -1699,6 +1700,9 @@ def import_files(
 
     :param skip_broken: If True, when files can't be imported because they e.g.
     don't exist, leave their locations alone rather than failing with an error.
+
+    :param skp_remote: If True, leave remote URIs in place instead of importing
+    files.
 
     :param bypass_file_store: If True, leave file:// URIs in place instead of
     importing files and directories.
@@ -1805,7 +1809,7 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_function, fileindex, existing, rec, skip_broken=skip_broken
+                import_function, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
             )
 
             # Make a record for this file under its name
@@ -1910,11 +1914,16 @@ def upload_file(
     existing: Dict[str, str],
     file_metadata: CWLObjectType,
     skip_broken: bool = False,
+    skip_remote: bool = False
 ) -> None:
     """
-    Update a file object so that the location is a reference to the toil file store.
+    Update a file object so that the file will be accessible from another machine.
 
-    Write the file object to the file store if necessary.
+    Uploads local files to the Toil file store, and sets their location to a
+    reference to the toil file store.
+    
+    Unless skip_remote is set, downloads remote files into the file store and
+    sets their locations to references into the file store as well.
     """
     location = cast(str, file_metadata["location"])
     if (
@@ -1937,7 +1946,10 @@ def upload_file(
             return
         else:
             raise cwl_utils.errors.WorkflowException("File is missing: %s" % location)
-    file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
+
+    if location.startswith("file://") or not skip_remote:
+        # This is a local file, or we also need to download and re-upload remote files
+        file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
 
     logger.debug("Sending file at: %s", file_metadata["location"])
 
@@ -2134,34 +2146,50 @@ def toilStageFiles(
                         # At the end we should get a direct toilfile: URI
                         file_id_or_contents = cast(str, here)
 
+                    # This might be an e.g. S3 URI now
+                    if not file_id_or_contents.startswith("toilfile:"):
+                        # We need to import it so we can export it.
+                        # TODO: Use direct S3 to S3 copy on exports as well
+                        file_id_or_contents = (
+                            "toilfile:"
+                            + toil.import_file(file_id_or_contents, symlink=False).pack()
+                        )
+
                     if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
                         destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
-                        toil.exportFile(
+                        toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
                             destUrl,
                         )
                     # TODO: can a toildir: "file" get here?
             else:
-                # We are saving to the filesystem so we only really need exportFile for actual files.
+                # We are saving to the filesystem so we only really need export_file for actual files.
                 if not os.path.exists(p.target) and p.type in [
                     "Directory",
                     "WritableDirectory",
                 ]:
                     os.makedirs(p.target)
                 if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
-                    if p.resolved.startswith("toilfile:"):
-                        # We can actually export this
-                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
-                        toil.exportFile(
-                            FileID.unpack(p.resolved[len("toilfile:") :]),
-                            "file://" + p.target,
-                        )
-                    elif p.resolved.startswith("/"):
+                    if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
-                    # TODO: can a toildir: "file" get here?
+                    else:
+                        uri = p.resolved
+                        if not uri.startswith("toilfile:"):
+                            # We need to import so we can export
+                            uri = (
+                                "toilfile:"
+                                + toil.import_file(uri, symlink=False).pack()
+                            )
+
+                        # Actually export from the file store
+                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
+                        toil.export_file(
+                            FileID.unpack(uri[len("toilfile:") :]),
+                            "file://" + p.target,
+                        )
                 if not os.path.exists(p.target) and p.type in [
                     "CreateFile",
                     "CreateWritableFile",
@@ -3609,6 +3637,15 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         dest="bypass_file_store",
     )
     parser.add_argument(
+        "--reference-inputs",
+        action="store_true",
+        default=False,
+        help="Do not copy remote inputs into Toil's file "
+        "store and assume they are accessible in place from "
+        "all nodes.",
+        dest="reference_inputs",
+    )
+    parser.add_argument(
         "--disable-streaming",
         action="store_true",
         default=False,
@@ -3765,6 +3802,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Otherwise, if it takes a File with loadContents from a URL, we won't
         # be able to load the contents when we need to.
         runtime_context.make_fs_access = ToilFsAccess
+    if options.reference_inputs and options.bypass_file_store:
+        # We can't do both of these at the same time.
+        logger.error("Cannot reference inputs when bypassing the file store")
+        return 1
 
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
@@ -3961,6 +4002,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 existing,
                 initialized_job_order,
                 skip_broken=True,
+                skip_remote=options.reference_inputs,
                 bypass_file_store=options.bypass_file_store,
             )
             # Import all the files associated with tools (binaries, etc.).
@@ -3975,6 +4017,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     fileindex,
                     existing,
                     skip_broken=True,
+                    skip_remote=options.reference_inputs,
                     bypass_file_store=options.bypass_file_store,
                 ),
             )
