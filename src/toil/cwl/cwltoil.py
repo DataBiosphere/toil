@@ -1617,8 +1617,8 @@ def toil_get_file(
                         # Download into the file
                        size, executable = AbstractJobStore.read_from_url(uri, fh)
                        if executable:
-                           # Make the file executable
-                           os.fchmod(fh.fileno(), stat.S_IXUSR)
+                           # Set the execute bit in the file's permissions
+                           os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
 
         index[src_path] = uri
         existing[uri] = src_path
