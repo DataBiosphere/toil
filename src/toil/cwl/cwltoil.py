@@ -1476,7 +1476,7 @@ def toil_get_file(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
-    file_store_id: str,
+    uri: str,
     streamable: bool = False,
     streaming_allowed: bool = True,
     pipe_threads: Optional[List[Tuple[Thread, int]]] = None,
@@ -1493,9 +1493,9 @@ def toil_get_file(
 
     :param index: Maps from downloaded file path back to input Toil URI.
 
-    :param existing: Maps from file_store_id URI to downloaded file path.
+    :param existing: Maps from URI to downloaded file path.
 
-    :param file_store_id: The URI for the file to download.
+    :param uri: The URI for the file to download.
 
     :param streamable: If the file is has 'streamable' flag set
 
@@ -1508,13 +1508,13 @@ def toil_get_file(
     pipe_threads_real = pipe_threads or []
     # We can't use urlparse here because we need to handle the '_:' scheme and
     # urlparse sees that as a path and not a URI scheme.
-    if file_store_id.startswith("toildir:"):
+    if uri.startswith("toildir:"):
         # This is a file in a directory, or maybe a directory itself.
         # See ToilFsAccess and upload_directory.
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfile: name for the file is.
 
-        parts = file_store_id[len("toildir:") :].split("/")
+        parts = uri[len("toildir:") :].split("/")
         contents = json.loads(
             base64.urlsafe_b64decode(parts[0].encode("utf-8")).decode("utf-8")
         )
@@ -1534,21 +1534,41 @@ def toil_get_file(
             download_structure(file_store, index, existing, contents, dest_path)
             # Return where we put it, but as a file:// URI
             return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("toilfile:"):
-        # This is a plain file with no context.
+    elif uri.startswith("_:"):
+        # Someone is asking us for an empty temp directory.
+        # We need to check this before the file path case because urlsplit()
+        # will call this a path with no scheme.
+        dest_path = file_store.getLocalTempDir()
+        return schema_salad.ref_resolver.file_uri(dest_path)
+    elif uri.startswith("file:") or urlsplit(uri).scheme == "":
+        # There's a file: scheme or no scheme, and we know this isn't a _: URL.
+
+        # We need to support file: URIs and local paths, because we might be
+        # involved in moving files around on the local disk when uploading
+        # things after a job. We might want to catch cases where a leader
+        # filesystem file URI leaks in here, but we can't, so we just rely on
+        # the rest of the code to be correct.
+        return uri
+    else:
+        # This is a toilfile: uri or other remote URI
         def write_to_pipe(
-            file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
+            file_store: AbstractFileStore, pipe_name: str, uri: str
         ) -> None:
             try:
                 with open(pipe_name, "wb") as pipe:
-                    with file_store.jobStore.read_file_stream(file_store_id) as fi:
-                        file_store.logAccess(file_store_id)
-                        chunk_sz = 1024
-                        while True:
-                            data = fi.read(chunk_sz)
-                            if not data:
-                                break
-                            pipe.write(data)
+                    if uri.startswith("toilfile:"):
+                        # Stream from the file store
+                        file_store_id = FileID.unpack(uri[len("toilfile:") :])
+                        with file_store.readGlobalFileStream(file_store_id) as fi:
+                            chunk_sz = 1024
+                            while True:
+                                data = fi.read(chunk_sz)
+                                if not data:
+                                    break
+                                pipe.write(data)
+                    else:
+                        # Stream from some other URI
+                        AbstractJobStore.read_from_url(uri, pipe)
             except OSError as e:
                 # The other side of the pipe may have been closed by the
                 # reading thread, which is OK.
@@ -1561,7 +1581,7 @@ def toil_get_file(
             and not isinstance(file_store.jobStore, FileJobStore)
         ):
             logger.debug(
-                "Streaming file %s", FileID.unpack(file_store_id[len("toilfile:") :])
+                "Streaming file %s", uri
             )
             src_path = file_store.getLocalTempFileName()
             os.mkfifo(src_path)
@@ -1570,43 +1590,40 @@ def toil_get_file(
                 args=(
                     file_store,
                     src_path,
-                    FileID.unpack(file_store_id[len("toilfile:") :]),
+                    uri,
                 ),
             )
             th.start()
             pipe_threads_real.append((th, os.open(src_path, os.O_RDONLY)))
         else:
-            src_path = file_store.readGlobalFile(
-                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=True
-            )
+            # We need to do a real file
+            if uri in existing:
+                # Already did it
+                src_path = existing[uri]
+            else:
+                if uri.startswith("toilfile:"):
+                    # Download from the file store
+                    file_store_id = FileID.unpack(uri[len("toilfile:") :])
+                    src_path = file_store.readGlobalFile(
+                        file_store_id, symlink=True
+                    )
+                else:
+                    # Download from the URI via the job store.
 
-        # TODO: shouldn't we be using these as a cache?
-        index[src_path] = file_store_id
-        existing[file_store_id] = src_path
+                    # Figure out where it goes.
+                    src_path = file_store.getLocalTempFileName()
+                    # Open that path exclusively to make sure we created it
+                    with open(src_path, 'xb') as fh:
+                        # Download into the file
+                       size, executable = AbstractJobStore.read_from_url(uri, fh)
+                       if executable:
+                           # Make the file executable
+                           os.fchmod(fh.fileno(), stat.S_IXUSR)
+
+        index[src_path] = uri
+        existing[uri] = src_path
         return schema_salad.ref_resolver.file_uri(src_path)
-    elif file_store_id.startswith("_:"):
-        # Someone is asking us for an empty temp directory.
-        # We need to check this before the file path case because urlsplit()
-        # will call this a path with no scheme.
-        dest_path = file_store.getLocalTempDir()
-        return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("file:") or urlsplit(file_store_id).scheme == "":
-        # There's a file: scheme or no scheme, and we know this isn't a _: URL.
-
-        # We need to support file: URIs and local paths, because we might be
-        # involved in moving files around on the local disk when uploading
-        # things after a job. We might want to catch cases where a leader
-        # filesystem file URI leaks in here, but we can't, so we just rely on
-        # the rest of the code to be correct.
-        return file_store_id
-    else:
-        raise RuntimeError(
-            f"Cannot obtain file {file_store_id} while on host "
-            f"{socket.gethostname()}; all imports must happen on the "
-            f"leader!"
-        )
-
-
+    
 def write_file(
     writeFunc: Callable[[str], FileID],
     index: Dict[str, str],

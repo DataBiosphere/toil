@@ -382,6 +382,9 @@ class CWLWorkflowTest(ToilTest):
     def test_download_https(self):
         self.download("download_https.json", self._tester)
 
+    def test_download_https_reference(self):
+        self.download("download_https.json", partial(self._tester, main_args=["--reference-inputs"]))
+
     def test_download_file(self):
         self.download("download_file.json", self._tester)
 

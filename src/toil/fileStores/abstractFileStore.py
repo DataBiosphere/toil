@@ -26,12 +26,14 @@ from typing import (IO,
                     Generator,
                     Iterator,
                     List,
+                    Literal,
                     Optional,
                     Set,
                     Tuple,
                     Type,
                     Union,
-                    cast)
+                    cast,
+                    overload)
 
 import dill
 
@@ -412,6 +414,21 @@ class AbstractFileStore(ABC):
                  by fileStoreID.
         """
         raise NotImplementedError()
+
+    @overload
+    def readGlobalFileStream(
+        self,
+        fileStoreID: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> ContextManager[IO[bytes]]:
+        ...
+
+    @overload
+    def readGlobalFileStream(
+        self, fileStoreID: str, encoding: str, errors: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        ...
 
     @abstractmethod
     def readGlobalFileStream(
