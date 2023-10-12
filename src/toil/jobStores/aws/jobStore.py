@@ -25,8 +25,8 @@ import urllib.error
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from io import BytesIO, IO
-from typing import List, Optional
+from io import BytesIO
+from typing import List, Optional, IO
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 import boto.s3.connection
