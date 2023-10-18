@@ -2852,7 +2852,7 @@ class CWLWorkflow(CWLNamedJob):
             return self.conditional.skipped_outputs()
 
         # Apply default values set in the workflow
-        fs_access = ToilFsAccess(runtime_context.basedir, file_store=file_store)
+        fs_access = ToilFsAccess(self.runtime_context.basedir, file_store=file_store)
         fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
 
         # `promises` dict
