@@ -2851,6 +2851,10 @@ class CWLWorkflow(CWLNamedJob):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
+        # Apply default values set in the workflow
+        fs_access = ToilFsAccess(runtime_context.basedir, file_store=file_store)
+        fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
+
         # `promises` dict
         # from: each parameter (workflow input or step output)
         #   that may be used as a "source" for a step input workflow output
@@ -3820,10 +3824,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     )
                 raise
 
-            # We make a ToilFSAccess to access URLs with, but it has no
-            # FileStore so it can't do toildir: and toilfile:
-            fs_access = ToilFsAccess(options.basedir)
-            fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
+            # Leave the defaults un-filled in the top-level order. The tool or
+            # workflow will fill them when it runs
 
             for inp in tool.tool["inputs"]:
                 if (
