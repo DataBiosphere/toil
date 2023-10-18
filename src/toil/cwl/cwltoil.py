@@ -3250,7 +3250,7 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
-def add_base_cwl_options(parser: argparse.ArgumentParser) -> None:
+def add_cwl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3567,7 +3567,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
     """
     parser = ArgParser()
     addOptions(parser, jobstore_as_flag=True, cwl=True)
-    add_base_cwl_options(parser)
+    add_cwl_options(parser)
 
     config_args = []
     cmd_line_args = args
