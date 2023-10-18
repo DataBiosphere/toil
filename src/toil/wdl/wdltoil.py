@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import asyncio
 import collections
 import copy
@@ -45,8 +44,7 @@ from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.runtime.config
 
-from toil.common import Config, Toil, addOptions, TOIL_HOME_DIR, check_and_create_toil_home_dir, \
-    check_and_create_config_file
+from toil.common import Toil, addOptions, add_wdl_options, check_and_create_default_config_file, add_cwl_options
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -56,8 +54,6 @@ from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_WDL_CONFIG_FILE: str =  os.path.join(TOIL_HOME_DIR, "default-cwl.yaml")
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
     """
@@ -2409,35 +2405,40 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
         WDL.Value.Base.coerce = old_base_coerce  # type: ignore[method-assign]
         WDL.Value.String.coerce = old_str_coerce  # type: ignore[method-assign]
 
-def add_wdl_options(parser: argparse.ArgumentParser) -> None:
+def main() -> None:
+    """
+    A Toil workflow to interpret WDL input files.
+    """
+    args = sys.argv[1:]
+
+    parser = ArgParser(description='Runs WDL files with toil.')
+    addOptions(parser, jobstore_as_flag=True)
+    add_wdl_options(parser, suppress=False)
+    add_cwl_options(parser, suppress=True)
+
+
+    exclude_parser = ArgParser(add_help=False)
+    add_cwl_options(exclude_parser)
+
+    exclude_option_strings = set(exclude_parser._option_string_actions)
+
+    for arg in args:
+        split_by_equal = arg.split("=")
+        # CWL options will be caught and errored
+        if split_by_equal[0] in exclude_option_strings:
+            parser.error(f"unrecognized arguments: {arg}")
+
     parser.add_argument("wdl_uri", type=str,
                         help="WDL document URI")
     parser.add_argument("inputs_uri", type=str, nargs='?',
                         help="WDL input JSON URI")
     parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
                         help="WDL input JSON URI")
-    parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell', choices=['cromwell', 'miniwdl'],
-                        help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
-                              "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
-                              "includes a 'dir' key where files are written."))
-    parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
-    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
-                        help="File or URI to save output JSON to.")
-def main() -> None:
-    """
-    A Toil workflow to interpret WDL input files.
-    """
-
-    parser = ArgParser(description='Runs WDL files with toil.', default_config_files=[DEFAULT_WDL_CONFIG_FILE])
-    addOptions(parser, jobstore_as_flag=True)
-    add_wdl_options(parser)
 
     # Ensure there is a default config file
-    check_and_create_toil_home_dir()
-    check_and_create_config_file(DEFAULT_WDL_CONFIG_FILE, include="wdl")
+    check_and_create_default_config_file()
 
-    options = parser.parse_args(sys.argv[1:])
+    options = parser.parse_args(args)
 
     # Make sure we have a jobStore
     if options.jobStore is None:

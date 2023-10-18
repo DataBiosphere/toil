@@ -82,7 +82,7 @@ from toil.provisioners import (add_provisioner_options,
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   set_logging_from_options)
-from toil.version import dockerRegistry, dockerTag, version
+from toil.version import dockerRegistry, dockerTag, version, baseVersion
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -496,6 +496,7 @@ def check_and_create_toil_home_dir() -> None:
     if dir_path is None:
         raise RuntimeError(f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}")
 
+
 def check_and_create_default_config_file() -> None:
     """
     If the default config file does not exist, create it in the Toil home directory. Create the Toil home directory
@@ -513,7 +514,8 @@ def check_and_create_default_config_file() -> None:
     # It might exist now, though. Try creating it.
     check_and_create_config_file(DEFAULT_CONFIG_FILE)
 
-def check_and_create_config_file(filepath: str, include: Optional[str] = None) -> None:
+
+def check_and_create_config_file(filepath: str) -> None:
     """
     If the config file at the filepath does not exist, try creating it.
     The parent directory should be created prior to calling this
@@ -521,9 +523,10 @@ def check_and_create_config_file(filepath: str, include: Optional[str] = None) -
     :return: None
     """
     if not os.path.exists(filepath):
-        generate_config(filepath, include=include)
+        generate_config(filepath)
 
-def generate_config(filepath: str, include: Optional[str] = None) -> None:
+
+def generate_config(filepath: str) -> None:
     """
     Write a Toil config file to the given path.
 
@@ -595,21 +598,17 @@ def generate_config(filepath: str, include: Optional[str] = None) -> None:
     toil_base_data.yaml_set_start_comment("BASE TOIL OPTIONS")
     all_data.append(toil_base_data)
 
-    if include == "cwl":
-        from toil.cwl.cwltoil import add_base_cwl_options
-        parser = ArgParser(YAMLConfigFileParser())
-        add_base_cwl_options(parser)
-        toil_cwl_data = create_config_dict_from_parser(parser)
-        toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
-        all_data.append(toil_cwl_data)
+    parser = ArgParser(YAMLConfigFileParser())
+    add_cwl_options(parser)
+    toil_cwl_data = create_config_dict_from_parser(parser)
+    toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
+    all_data.append(toil_cwl_data)
 
-    if include == "wdl":
-        from toil.wdl.wdltoil import add_wdl_options
-        parser = ArgParser(YAMLConfigFileParser())
-        add_wdl_options(parser)
-        toil_wdl_data = create_config_dict_from_parser(parser)
-        toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
-        all_data.append(toil_wdl_data)
+    parser = ArgParser(YAMLConfigFileParser())
+    add_wdl_options(parser)
+    toil_wdl_data = create_config_dict_from_parser(parser)
+    toil_wdl_data.yaml_set_start_comment("\nTOIL WDL RUNNER OPTIONS")
+    all_data.append(toil_wdl_data)
 
     # Now we need to put the config file in place at filepath.
     # But someone else may have already created a file at that path, or may be
@@ -712,8 +711,6 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         # this forces configargparser to process the config file in YAML rather than in it's own format
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
-        # So that CWL and WDL options can be in the same file, make configargparse ignore undefined options
-        parser._ignore_unknown_config_file_keys = True  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)
@@ -918,15 +915,18 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           "\ttreated interchangeably, while they are available at that price,\n"
                                           "\tand buy t2.large instances at full price.\n"
                                           "default=%(default)s")
+
     class NodeExtendAction(_AppendAction):
         """
         argparse Action class to remove the default value on first call, and act as an extend action after
         """
+
         # with action=append/extend, the argparse default is always prepended to the option
         # so make the CLI have priority by rewriting the option on the first run
         def __init__(self, option_strings: Any, dest: Any, **kwargs: Any):
             super().__init__(option_strings, dest, **kwargs)
             self.is_default = True
+
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             if self.is_default:
                 setattr(namespace, self.dest, values)
@@ -934,12 +934,14 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
             else:
                 super().__call__(parser, namespace, values, option_string)
 
-    autoscaling_options.add_argument('--maxNodes', default=[10], dest="maxNodes", type=parse_int_list, action=NodeExtendAction,
+    autoscaling_options.add_argument('--maxNodes', default=[10], dest="maxNodes", type=parse_int_list,
+                                     action=NodeExtendAction,
                                      help=f"Maximum number of nodes of each type in the cluster, if using autoscaling, "
                                           f"provided as a comma-separated list.  The first value is used as a default "
                                           f"if the list length is less than the number of nodeTypes.  "
                                           f"default=%(default)s")
-    autoscaling_options.add_argument('--minNodes', default=[0], dest="minNodes", type=parse_int_list, action=NodeExtendAction,
+    autoscaling_options.add_argument('--minNodes', default=[0], dest="minNodes", type=parse_int_list,
+                                     action=NodeExtendAction,
                                      help="Mininum number of nodes of each type in the cluster, if using "
                                           "auto-scaling.  This should be provided as a comma-separated list of the "
                                           "same length as the list of node types. default=%(default)s")
@@ -989,32 +991,31 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
-    if not cwl:
-        service_options = parser.add_argument_group(
-            title="Toil options for limiting the number of service jobs and detecting service deadlocks",
-            description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
-                        "this limited we can avoid nodes occupied with services causing deadlocks."
-        )
-        service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
-                                     help=f"The maximum number of service jobs that can be run concurrently, "
-                                          f"excluding service jobs running on preemptible nodes.  "
-                                          f"default=%(default)s")
-        service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs",
-                                     default=SYS_MAX_SIZE,
-                                     type=int,
-                                     help=f"The maximum number of service jobs that can run concurrently on "
-                                          f"preemptible nodes.  default=%(default)s")
-        service_options.add_argument("--deadlockWait", dest="deadlockWait", default=60, type=int,
-                                     help=f"Time, in seconds, to tolerate the workflow running only the same service "
-                                          f"jobs, with no jobs to use them, before declaring the workflow to be "
-                                          f"deadlocked and stopping.  default=%(default)s")
-        service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=30, type=int,
-                                     help="Time, in seconds, to wait between checks to see if the workflow is stuck "
-                                          "running only service jobs, with no jobs to use them. Should be shorter "
-                                          "than --deadlockWait. May need to be increased if the batch system cannot "
-                                          "enumerate running jobs quickly enough, or if polling for running jobs is "
-                                          "placing an unacceptable load on a shared cluster.  "
-                                          f"default=%(default)s")
+    service_options = parser.add_argument_group(
+        title="Toil options for limiting the number of service jobs and detecting service deadlocks",
+        description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
+                    "this limited we can avoid nodes occupied with services causing deadlocks."
+    )
+    service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
+                                 help=SUPPRESS if cwl else f"The maximum number of service jobs that can be run concurrently, "
+                                                           f"excluding service jobs running on preemptible nodes.  "
+                                                           f"default=%(default)s")
+    service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs",
+                                 default=SYS_MAX_SIZE,
+                                 type=int,
+                                 help=SUPPRESS if cwl else "The maximum number of service jobs that can run concurrently on "
+                                                           f"preemptible nodes.  default=%(default)s")
+    service_options.add_argument("--deadlockWait", dest="deadlockWait", default=60, type=int,
+                                 help=SUPPRESS if cwl else f"Time, in seconds, to tolerate the workflow running only the same service "
+                                                           f"jobs, with no jobs to use them, before declaring the workflow to be "
+                                                           f"deadlocked and stopping.  default=%(default)s")
+    service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=30, type=int,
+                                 help=SUPPRESS if cwl else "Time, in seconds, to wait between checks to see if the workflow is stuck "
+                                                           "running only service jobs, with no jobs to use them. Should be shorter "
+                                                           "than --deadlockWait. May need to be increased if the batch system cannot "
+                                                           "enumerate running jobs quickly enough, or if polling for running jobs is "
+                                                           "placing an unacceptable load on a shared cluster.  "
+                                                           f"default=%(default)s")
 
     # Resource requirements
     resource_options = parser.add_argument_group(
@@ -1175,7 +1176,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
         def __call__(self, parser: Any, namespace: Any, values: Any, option_string: Any = None) -> None:
             items = getattr(namespace, self.dest, None)
-            assert items is not None # for mypy. This should never be None, esp. if called in setEnv
+            assert items is not None  # for mypy. This should never be None, esp. if called in setEnv
             # note: this will overwrite existing entries
             items.update(values)
 
@@ -1242,6 +1243,329 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # dest is set to enableCaching to not conflict with the current --caching destination
     caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
     caching.set_defaults(disableCaching=None)
+
+
+def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
+    suppress_help = SUPPRESS if suppress else None
+    parser.add_argument("--not-strict", action="store_true", help=suppress_help)
+    parser.add_argument(
+        "--enable-dev",
+        action="store_true",
+        help=suppress_help or suppress_help or "Enable loading and running development versions of CWL",
+    )
+    parser.add_argument(
+        "--enable-ext",
+        action="store_true",
+        help=suppress_help or "Enable loading and running 'cwltool:' extensions to the CWL standards.",
+        default=False,
+    )
+    parser.add_argument("--quiet", dest="quiet", action="store_true", default=False, help=suppress_help)
+    parser.add_argument("--basedir", type=str, help=suppress_help)  # TODO: Might be hard-coded?
+    parser.add_argument("--outdir", type=str, default=None, help=suppress_help)
+    parser.add_argument("--version", action="version", version=baseVersion, help=suppress_help)
+    parser.add_argument(
+        "--log-dir",
+        type=str,
+        default="",
+        help=suppress_help or "Log your tools stdout/stderr to this location outside of container",
+    )
+    dockergroup = parser.add_mutually_exclusive_group()
+    dockergroup.add_argument(
+        "--user-space-docker-cmd",
+        help=suppress_help or "(Linux/OS X only) Specify a user space docker command (like "
+             "udocker or dx-docker) that will be used to call 'pull' and 'run'",
+    )
+    dockergroup.add_argument(
+        "--singularity",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Use Singularity runtime for running containers. "
+             "Requires Singularity v2.6.1+ and Linux with kernel version v3.18+ or "
+             "with overlayfs support backported.",
+    )
+    dockergroup.add_argument(
+        "--podman",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Use Podman runtime for running containers. ",
+    )
+    dockergroup.add_argument(
+        "--no-container",
+        action="store_true",
+        help=suppress_help or "Do not execute jobs in a "
+             "Docker container, even when `DockerRequirement` "
+             "is specified under `hints`.",
+    )
+    dockergroup.add_argument(
+        "--leave-container",
+        action="store_false",
+        default=True,
+        help=suppress_help or "Do not delete Docker container used by jobs after they exit",
+        dest="rm_container",
+    )
+    extra_dockergroup = parser.add_argument_group("extra_dockergroup")
+    extra_dockergroup.add_argument(
+        "--custom-net",
+        help=suppress_help or "Specify docker network name to pass to docker run command",
+    )
+    cidgroup = parser.add_argument_group(
+        "Options for recording the Docker container identifier into a file."
+    )
+    cidgroup.add_argument(
+        # Disabled as containerid is now saved by default
+        "--record-container-id",
+        action="store_true",
+        default=False,
+        help=suppress_help or SUPPRESS,
+        dest="record_container_id",
+    )
+
+    cidgroup.add_argument(
+        "--cidfile-dir",
+        type=str,
+        help=suppress_help or "Store the Docker container ID into a file in the specified directory.",
+        default=None,
+        dest="cidfile_dir",
+    )
+
+    cidgroup.add_argument(
+        "--cidfile-prefix",
+        type=str,
+        help=suppress_help or "Specify a prefix to the container ID filename. "
+             "Final file name will be followed by a timestamp. "
+             "The default is no prefix.",
+        default=None,
+        dest="cidfile_prefix",
+    )
+
+    parser.add_argument(
+        "--preserve-environment",
+        type=str,
+        nargs="+",
+        help=suppress_help or "Preserve specified environment variables when running"
+             " CommandLineTools",
+        metavar=("VAR1 VAR2"),
+        default=("PATH",),
+        dest="preserve_environment",
+    )
+    parser.add_argument(
+        "--preserve-entire-environment",
+        action="store_true",
+        help=suppress_help or "Preserve all environment variable when running CommandLineTools.",
+        default=False,
+        dest="preserve_entire_environment",
+    )
+    parser.add_argument(
+        "--destBucket",
+        type=str,
+        help=suppress_help or "Specify a cloud bucket endpoint for output files.",
+    )
+    parser.add_argument("--beta-dependency-resolvers-configuration", default=None, help=suppress_help)
+    parser.add_argument("--beta-dependencies-directory", default=None, help=suppress_help)
+    parser.add_argument("--beta-use-biocontainers", default=None, action="store_true", help=suppress_help)
+    parser.add_argument("--beta-conda-dependencies", default=None, action="store_true", help=suppress_help)
+    parser.add_argument(
+        "--tmpdir-prefix",
+        type=str,
+        help=suppress_help or "Path prefix for temporary directories",
+        default=None,
+    )
+    parser.add_argument(
+        "--tmp-outdir-prefix",
+        type=str,
+        help=suppress_help or "Path prefix for intermediate output directories",
+        default=None,
+    )
+    parser.add_argument(
+        "--force-docker-pull",
+        action="store_true",
+        default=False,
+        dest="force_docker_pull",
+        help=suppress_help or "Pull latest docker image even if it is locally present",
+    )
+    parser.add_argument(
+        "--no-match-user",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Disable passing the current uid to `docker run --user`",
+    )
+    parser.add_argument(
+        "--no-read-only",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not set root directory in the container as read-only",
+    )
+    parser.add_argument(
+        "--strict-memory-limit",
+        action="store_true",
+        help=suppress_help or "When running with "
+             "software containers and the Docker engine, pass either the "
+             "calculated memory allocation from ResourceRequirements or the "
+             "default of 1 gigabyte to Docker's --memory option.",
+    )
+    parser.add_argument(
+        "--strict-cpu-limit",
+        action="store_true",
+        help=suppress_help or "When running with "
+             "software containers and the Docker engine, pass either the "
+             "calculated cpu allocation from ResourceRequirements or the "
+             "default of 1 core to Docker's --cpu option. "
+             "Requires docker version >= v1.13.",
+    )
+    parser.add_argument(
+        "--relax-path-checks",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Relax requirements on path names to permit "
+             "spaces and hash characters.",
+        dest="relax_path_checks",
+    )
+    parser.add_argument(
+        "--default-container",
+        help=suppress_help or "Specify a default docker container that will be "
+             "used if the workflow fails to specify one.",
+    )
+    parser.add_argument(
+        "--disable-validate",
+        dest="do_validate",
+        action="store_false",
+        default=True,
+        help=suppress_help or SUPPRESS,
+    )
+    parser.add_argument(
+        "--fast-parser",
+        dest="fast_parser",
+        action="store_true",
+        default=False,
+        help=suppress_help or SUPPRESS,
+    )
+    checkgroup = parser.add_mutually_exclusive_group()
+    checkgroup.add_argument(
+        "--compute-checksum",
+        action="store_true",
+        default=True,
+        help=suppress_help or "Compute checksum of contents while collecting outputs",
+        dest="compute_checksum",
+    )
+    checkgroup.add_argument(
+        "--no-compute-checksum",
+        action="store_false",
+        help=suppress_help or "Do not compute checksum of contents while collecting outputs",
+        dest="compute_checksum",
+    )
+
+    parser.add_argument(
+        "--eval-timeout",
+        help=suppress_help or "Time to wait for a Javascript expression to evaluate before giving "
+             "an error, default 20s.",
+        type=float,
+        default=20,
+    )
+    parser.add_argument(
+        "--overrides",
+        type=str,
+        default=None,
+        help=suppress_help or "Read process requirement overrides from file.",
+    )
+
+    parser.add_argument(
+        "--mpi-config-file",
+        type=str,
+        default=None,
+        help=suppress_help or "Platform specific configuration for MPI (parallel "
+             "launcher, its flag etc). See the cwltool README "
+             "section 'Running MPI-based tools' for details of the format: "
+             "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
+    )
+    parser.add_argument(
+        "--bypass-file-store",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not use Toil's file store and assume all "
+             "paths are accessible in place from all nodes.",
+        dest="bypass_file_store",
+    )
+    parser.add_argument(
+        "--disable-streaming",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Disable file streaming for files that have 'streamable' flag True",
+        dest="disable_streaming",
+    )
+
+    provgroup = parser.add_argument_group(
+        "Options for recording provenance information of the execution"
+    )
+    provgroup.add_argument(
+        "--provenance",
+        help=suppress_help or "Save provenance to specified folder as a "
+             "Research Object that captures and aggregates "
+             "workflow execution and data products.",
+        type=str,
+    )
+
+    provgroup.add_argument(
+        "--enable-user-provenance",
+        default=False,
+        action="store_true",
+        help=suppress_help or "Record user account info as part of provenance.",
+        dest="user_provenance",
+    )
+    provgroup.add_argument(
+        "--disable-user-provenance",
+        default=False,
+        action="store_false",
+        help=suppress_help or "Do not record user account info in provenance.",
+        dest="user_provenance",
+    )
+    provgroup.add_argument(
+        "--enable-host-provenance",
+        default=False,
+        action="store_true",
+        help=suppress_help or "Record host info as part of provenance.",
+        dest="host_provenance",
+    )
+    provgroup.add_argument(
+        "--disable-host-provenance",
+        default=False,
+        action="store_false",
+        help=suppress_help or "Do not record host info in provenance.",
+        dest="host_provenance",
+    )
+    provgroup.add_argument(
+        "--orcid",
+        help=suppress_help or "Record user ORCID identifier as part of "
+             "provenance, e.g. https://orcid.org/0000-0002-1825-0097 "
+             "or 0000-0002-1825-0097. Alternatively the environment variable "
+             "ORCID may be set.",
+        dest="orcid",
+        default=os.environ.get("ORCID", ""),
+        type=str,
+    )
+    provgroup.add_argument(
+        "--full-name",
+        help=suppress_help or "Record full name of user as part of provenance, "
+             "e.g. Josiah Carberry. You may need to use shell quotes to preserve "
+             "spaces. Alternatively the environment variable CWL_FULL_NAME may "
+             "be set.",
+        dest="cwl_full_name",
+        default=os.environ.get("CWL_FULL_NAME", ""),
+        type=str,
+    )
+
+
+def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
+    suppress_help = SUPPRESS if suppress else None
+    parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell',
+                        choices=['cromwell', 'miniwdl'],
+                        help=suppress_help or ("JSON output format dialect. 'cromwell' just returns the workflow's output"
+                              "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
+                              "includes a 'dir' key where files are written."))
+    parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
+                        help=suppress_help or (
+                            "Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
+    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
+                        help=suppress_help or "File or URI to save output JSON to.")
 
 
 def parseBool(val: str) -> bool:
