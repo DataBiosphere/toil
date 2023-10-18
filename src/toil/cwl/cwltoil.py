@@ -1232,7 +1232,8 @@ class ToilFsAccess(StdFsAccess):
 
                 logger.debug("ToilFsAccess downloading %s to %s", cache_key, temp_dir)
 
-                # Save it all into this new temp directory
+                # Save it all into this new temp directory.
+                # Guaranteed to fill it with real files and not symlinks.
                 download_structure(self.file_store, {}, {}, contents, temp_dir)
 
                 # Make sure we use the same temp directory if we go traversing
