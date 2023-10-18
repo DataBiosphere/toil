@@ -371,8 +371,6 @@ class ResolveSource:
     def resolve(self) -> Any:
         """First apply linkMerge then pickValue if either present."""
 
-        logger.debug("Resolving %s", self.name)
-
         result: Optional[Any] = None
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
@@ -398,8 +396,6 @@ class ResolveSource:
         """
 
         link_merge_type = self.input.get("linkMerge", "merge_nested")
-
-        logger.debug("Applying linkMerge for %s type %s to:\n%s", self.name, link_merge_type, pprint.pformat(values))
 
         if link_merge_type == "merge_nested":
             return values
@@ -428,8 +424,6 @@ class ResolveSource:
         """
 
         pick_value_type = cast(str, self.input.get("pickValue"))
-
-        logger.debug("Applying pickValue for %s type %s to:\n%s", self.name, pick_value_type, pprint.pformat(values))
 
         if pick_value_type is None:
             return values
@@ -503,9 +497,7 @@ class StepValueFrom:
     def __repr__(self) -> str:
         """Allow for debug printing."""
 
-        parts = [f"expression {self.expr}", f"source {self.source}"]
-
-        return f"StepValueFrom({', '.join(parts)})"
+        return f"StepValueFrom({self.expr}, {self.source}, {self.req}, {self.container_engine})"
 
     def eval_prep(
         self, step_inputs: CWLObjectType, file_store: AbstractFileStore
@@ -2342,7 +2334,7 @@ class CWLJob(CWLNamedJob):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        logger.debug("Loaded order:\n%s", pprint.pformat(self.cwljob))
+        logger.debug("Loaded order:\n%s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
