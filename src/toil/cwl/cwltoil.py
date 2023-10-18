@@ -26,6 +26,7 @@ import functools
 import json
 import logging
 import os
+import pprint
 import shutil
 import socket
 import stat
@@ -352,16 +353,26 @@ class ResolveSource:
 
     def __repr__(self) -> str:
         """Allow for debug printing."""
-        try:
-            return "ResolveSource(" + repr(self.resolve()) + ")"
-        except Exception:
-            return (
-                f"ResolveSource({self.name}, {self.input}, {self.source_key}, "
-                f"{self.promise_tuples})"
-            )
+
+        parts = [f"source key {self.source_key}"]
+
+        if "pickValue" in self.input:
+            parts.append(f"pick value {self.input['pickValue']} from")
+
+        if isinstance(self.promise_tuples, list):
+            names = [n for n, _ in self.promise_tuples]
+            parts.append(f"names {names} in promises")
+        else:
+            name, _ = self.promise_tuples
+            parts.append(f"name {name} in promise")
+
+        return f"ResolveSource({', '.join(parts)})"
 
     def resolve(self) -> Any:
         """First apply linkMerge then pickValue if either present."""
+
+        logger.debug("Resolving %s", self.name)
+
         result: Optional[Any] = None
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
@@ -385,7 +396,10 @@ class ResolveSource:
 
         :param values: result of step
         """
+
         link_merge_type = self.input.get("linkMerge", "merge_nested")
+
+        logger.debug("Applying linkMerge for %s type %s to:\n%s", self.name, link_merge_type, pprint.pformat(values))
 
         if link_merge_type == "merge_nested":
             return values
@@ -412,7 +426,10 @@ class ResolveSource:
                        without modification.
         :return:
         """
+
         pick_value_type = cast(str, self.input.get("pickValue"))
+
+        logger.debug("Applying pickValue for %s type %s to:\n%s", self.name, pick_value_type, pprint.pformat(values))
 
         if pick_value_type is None:
             return values
@@ -428,6 +445,7 @@ class ResolveSource:
 
         if pick_value_type == "first_non_null":
             if len(result) < 1:
+                logger.error("Could not find non-null entry for %s:\n%s", self.name, pprint.pformat(self.promise_tuples))
                 raise cwl_utils.errors.WorkflowException(
                     "%s: first_non_null operator found no non-null values" % self.name
                 )
@@ -481,6 +499,13 @@ class StepValueFrom:
         self.context = None
         self.req = req
         self.container_engine = container_engine
+
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        parts = [f"expression {self.expr}", f"source {self.source}"]
+
+        return f"StepValueFrom({', '.join(parts)})"
 
     def eval_prep(
         self, step_inputs: CWLObjectType, file_store: AbstractFileStore
@@ -554,6 +579,11 @@ class DefaultWithSource:
         self.default = default
         self.source = source
 
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        return f"DefaultWithSource({self.default}, {self.source})"
+
     def resolve(self) -> Any:
         """
         Determine the final input value when the time is right.
@@ -575,6 +605,11 @@ class JustAValue:
     def __init__(self, val: Any):
         """Store the value."""
         self.val = val
+
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        return f"JustAValue({self.val})"
 
     def resolve(self) -> Any:
         """Return the value."""
@@ -2307,7 +2342,7 @@ class CWLJob(CWLNamedJob):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        logger.debug("Loaded order: %s", self.cwljob)
+        logger.debug("Loaded order:\n%s", pprint.pformat(self.cwljob))
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -2885,6 +2920,8 @@ class CWLWorkflow(CWLNamedJob):
                                     self.cwlwf.requirements,
                                     get_container_engine(self.runtime_context),
                                 )
+
+                            logger.debug("Value will come from %s", jobobj.get(key, None))
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
