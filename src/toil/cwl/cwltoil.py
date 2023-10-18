@@ -3883,6 +3883,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Import all the input files, some of which may be missing optional
             # files.
+            fs_access = ToilFsAccess(options.basedir)
             import_files(
                 file_import_function,
                 fs_access,
