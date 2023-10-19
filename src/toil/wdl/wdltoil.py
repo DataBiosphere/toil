@@ -37,12 +37,13 @@ from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequen
     Iterable, Generator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
-from WDL import Error
 from configargparse import ArgParser
 from WDL._util import byte_size_units
+from WDL.CLI import print_error
 from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
+import WDL.Error
 import WDL.runtime.config
 
 from toil.common import Config, Toil, addOptions
@@ -832,7 +833,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
         host_path_strip = host_path.rstrip("/")
         if host_path not in task_container.input_path_map and host_path_strip not in task_container.input_path_map:
             if not os.path.exists(host_path_strip):
-                raise Error.InputError("input path not found: " + host_path)
+                raise WDL.Error.InputError("input path not found: " + host_path)
             host_paths_by_dir.setdefault(os.path.dirname(host_path_strip), set()).add(host_path)
     # for each such partition of files
     # - if there are no basename collisions under input subdirectory 0, then mount them there.
@@ -2496,24 +2497,42 @@ def main() -> None:
         if options.restart:
             output_bindings = toil.restart()
         else:
-            # Load the WDL document
-            document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
+            try:
+                # Load the WDL document
+                document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
-            if document.workflow is None:
-                logger.critical("No workflow in document!")
+                if document.workflow is None:
+                    # Complain that we need a workflow.
+                    # We need the absolute path or URL to raise the error
+                    wdl_abspath = options.wdl_uri if not os.path.exists(options.wdl_uri) else os.path.abspath(options.wdl_uri)
+                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0), "No workflow found in document")
+
+                if options.inputs_uri:
+                    # Load the inputs. Use the same loading mechanism, which means we
+                    # have to break into async temporarily.
+                    downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
+                    try:
+                        inputs = json.loads(downloaded.source_text)
+                    except json.JSONDecodeError as e:
+                        # Complain about the JSON document.
+                        # We need the absolute path or URL to raise the error
+                        inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
+                        raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno), "Cannot parse input JSON: " + e.msg) from e
+                else:
+                    inputs = {}
+            except (
+                WDL.Error.SyntaxError,
+                WDL.Error.ImportError,
+                WDL.Error.ValidationError,
+                WDL.Error.MultipleValidationErrors,
+                FileNotFoundError
+            ) as e:
+                logger.critical("Could not load workflow/inputs")
+                # These are the errors that MiniWDL's parser can raise. See https://github.com/chanzuckerberg/miniwdl/blob/a780b1bf2db61f18de37616068968b2bb4c2d21c/WDL/CLI.py#L91-L97.
+                # We are going to use MiniWDL's pretty printer to print them.
+                print_error(e)
                 sys.exit(1)
 
-            if options.inputs_uri:
-                # Load the inputs. Use the same loading mechanism, which means we
-                # have to break into async temporarily.
-                downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
-                try:
-                    inputs = json.loads(downloaded.source_text)
-                except json.JSONDecodeError as e:
-                    logger.critical('Cannot parse JSON at %s: %s', downloaded.abspath, e)
-                    sys.exit(1)
-            else:
-                inputs = {}
             # Parse out the available and required inputs. Each key in the
             # JSON ought to start with the workflow's name and then a .
             # TODO: WDL's Bindings[] isn't variant in the right way, so we
