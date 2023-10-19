@@ -93,7 +93,7 @@ def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] 
     Create a decorator to report WDL errors with the given task message.
     
     Decorator can then be applied to a function, and if a WDL error happens it
-    will say that it cannot {task} and quit.
+    will say that it could not {task}.
     """
     def decorator(decoratee: F) -> F:
         """
@@ -2521,7 +2521,7 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
         WDL.Value.Base.coerce = old_base_coerce  # type: ignore[method-assign]
         WDL.Value.String.coerce = old_str_coerce  # type: ignore[method-assign]
 
-
+@report_wdl_errors("run workflow", exit=True)
 def main() -> None:
     """
     A Toil workflow to interpret WDL input files.
@@ -2561,29 +2561,28 @@ def main() -> None:
         if options.restart:
             output_bindings = toil.restart()
         else:
-            with wdl_error_reporter("parse workflow/inputs", exit=True):
-                # Load the WDL document
-                document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
+            # Load the WDL document
+            document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
-                if document.workflow is None:
-                    # Complain that we need a workflow.
+            if document.workflow is None:
+                # Complain that we need a workflow.
+                # We need the absolute path or URL to raise the error
+                wdl_abspath = options.wdl_uri if not os.path.exists(options.wdl_uri) else os.path.abspath(options.wdl_uri)
+                raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0, 0, 1), "No workflow found in document")
+
+            if options.inputs_uri:
+                # Load the inputs. Use the same loading mechanism, which means we
+                # have to break into async temporarily.
+                downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
+                try:
+                    inputs = json.loads(downloaded.source_text)
+                except json.JSONDecodeError as e:
+                    # Complain about the JSON document.
                     # We need the absolute path or URL to raise the error
-                    wdl_abspath = options.wdl_uri if not os.path.exists(options.wdl_uri) else os.path.abspath(options.wdl_uri)
-                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0, 0, 1), "No workflow found in document")
-
-                if options.inputs_uri:
-                    # Load the inputs. Use the same loading mechanism, which means we
-                    # have to break into async temporarily.
-                    downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
-                    try:
-                        inputs = json.loads(downloaded.source_text)
-                    except json.JSONDecodeError as e:
-                        # Complain about the JSON document.
-                        # We need the absolute path or URL to raise the error
-                        inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
-                        raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
-                else:
-                    inputs = {}
+                    inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
+                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
+            else:
+                inputs = {}
             
             # Parse out the available and required inputs. Each key in the
             # JSON ought to start with the workflow's name and then a .
