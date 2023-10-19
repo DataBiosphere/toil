@@ -415,6 +415,7 @@ class CWLWorkflowTest(ToilTest):
         self.load_contents("download_file.json", self._tester)
 
     @slow
+    @pytest.mark.integrative
     def test_bioconda(self):
         self._tester(
             "src/toil/test/cwl/seqtk_seq.cwl",
@@ -425,6 +426,7 @@ class CWLWorkflowTest(ToilTest):
         )
 
     @needs_docker
+    @pytest.mark.integrative
     def test_biocontainers(self):
         self._tester(
             "src/toil/test/cwl/seqtk_seq.cwl",
