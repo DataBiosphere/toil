@@ -104,7 +104,7 @@ def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] 
             Run the decoratee and handle WDL errors.
             """
             with wdl_error_reporter(task, exit=exit, log=log):
-                return decoratee(*args, **kwargs) #  type: ignore
+                return decoratee(*args, **kwargs)
         return cast(F, decorated)
     return decorator
 
