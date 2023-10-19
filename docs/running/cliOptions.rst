@@ -7,9 +7,28 @@ Commandline Options
 
 A quick way to see all of Toil's commandline options is by executing the following on a toil script::
 
-    $ toil example.py --help
+    $ python example.py --help
 
 For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
+
+The Config File
+-------------
+Instead of changing the arguments on the CLI, Toil offers support for using a configuration file (Note: Support for the
+configuration file and environmental variables require the use of ``configargparse``).
+
+To generate a default configuration file::
+
+    $ toil config [file].yaml
+
+After editing the config file, make Toil take in the new options::
+
+    $ python example.py --config=[file].yaml
+
+If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
+options::
+
+    $ python example.py --config=[file].yaml --maxNodes 20
+    # maxNodes=[20] even though default maxNodes=[10]
 
 The Job Store
 -------------
@@ -228,22 +247,19 @@ levels in toil are based on priority from the logging module:
 **Data Storage Options**
 Allows configuring Toil's data storage.
 
-  --linkImports         When using a filesystem based job store, CWL input files
-                        are by default symlinked in. Specifying this option
+  --symlinkImports BOOL When using a filesystem based job store, CWL input files
+                        are by default symlinked in. Setting this option to True
                         instead copies the files into the job store, which may
-                        protect them from being modified externally. When not
-                        specified and as long as caching is enabled, Toil will
+                        protect them from being modified externally. When set
+                        to False and as long as caching is enabled, Toil will
                         protect the file automatically by changing the permissions
-                        to read-only.
-  --moveExports         When using a filesystem based job store, output files
+                        to read-only. (Default=True)
+  --moveOutputs BOOL    When using a filesystem based job store, output files
                         are by default moved to the output directory, and a
                         symlink to the moved exported file is created at the
-                        initial location. Specifying this option instead copies
-                        the files into the output directory. Applies to
-                        filesystem-based job stores only.
-  --disableCaching      Disables caching in the file store. This flag must be
-                        set to use a batch system that does not support
-                        cleanup, such as Parasol.
+                        initial location. Setting this option to True instead
+                        copies the files into the output directory. Applies to
+                        filesystem-based job stores only. (Default=False)
   --caching BOOL        Set caching options. This must be set to "false"
                         to use a batch system that does not support
                         cleanup, such as Parasol. Set to "true" if caching
@@ -280,7 +296,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
                         node types. default=0
-  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,
+  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,                        Maximum number of nodes of each type in the cluster,
                         if using autoscaling, provided as a comma-separated
                         list. The first value is used as a default if the list
                         length is less than the number of nodeTypes.
@@ -363,7 +379,7 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultCores FLOAT  The default number of CPU cores to dedicate a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Fractions of a
@@ -374,7 +390,7 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultAccelerators ACCELERATOR
                         The default amount of accelerators to request for a
                         job. Only applicable to jobs that do not specify an

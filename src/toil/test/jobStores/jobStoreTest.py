@@ -101,7 +101,8 @@ class AbstractJobStoreTest:
             return super().__new__(cls)
 
         def _createConfig(self):
-            return Config()
+            config = Config()
+            return config
 
         @abstractmethod
         def _createJobStore(self):

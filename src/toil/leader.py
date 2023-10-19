@@ -35,7 +35,8 @@ from toil.bus import (JobAnnotationMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       JobUpdatedMessage,
-                      QueueSizeMessage)
+                      QueueSizeMessage,
+                      gen_message_bus_path)
 from toil.common import Config, Toil, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.job import (CheckpointJobDescription,
@@ -115,10 +116,14 @@ class Leader:
         # state change information about jobs.
         self.toilState = ToilState(self.jobStore)
 
-        if self.config.write_messages is not None:
-            # Message bus messages need to go to the given file.
-            # Keep a reference to the return value so the listener stays alive.
-            self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
+        if self.config.write_messages is None:
+            # The user hasn't specified a place for the message bus so we
+            # should make one.
+            self.config.write_messages = gen_message_bus_path()
+
+        # Message bus messages need to go to the given file.
+        # Keep a reference to the return value so the listener stays alive.
+        self._message_subscription = self.toilState.bus.connect_output_file(self.config.write_messages)
 
         # Connect to the message bus, so we will get all the messages of these
         # types in an inbox.

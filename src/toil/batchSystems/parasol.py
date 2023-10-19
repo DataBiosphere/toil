@@ -22,12 +22,12 @@ from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Type, Any
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-from toil.common import SYS_MAX_SIZE, Toil
+from toil.common import SYS_MAX_SIZE, Toil, make_open_interval_action
 from toil.lib.iterables import concat
 from toil.test import get_temp_file
 
@@ -365,15 +365,14 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
+        parser.add_argument("--parasol_command", "--parasolCommand", dest="parasolCommand", default='parasol',
                             help="The name or path of the parasol program. Will be looked up on PATH "
                                  "unless it starts with a slash.  (default: %(default)s).")
-        parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
+        parser.add_argument("--parasol_max_batches", "--parasolMaxBatches", dest="parasolMaxBatches", default=1000, type=int, action=make_open_interval_action(1),
                             help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
                                  "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        from toil.common import iC
-        setOption("parasolCommand", None, None, 'parasol')
-        setOption("parasolMaxBatches", int, iC(1), 10000)
+        setOption("parasolCommand")
+        setOption("parasolMaxBatches")
