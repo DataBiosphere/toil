@@ -58,6 +58,58 @@ from toil.lib.threading import global_mutex
 
 logger = logging.getLogger(__name__)
 
+@contextmanager
+def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None, None, None]:
+    """
+    Run code in a context where WDL errors will be reported with pretty formatting.
+    """
+
+    try:
+        yield
+    except (
+        WDL.Error.SyntaxError,
+        WDL.Error.ImportError,
+        WDL.Error.ValidationError,
+        WDL.Error.MultipleValidationErrors,
+        FileNotFoundError
+    ) as e:
+        log("Could not " + task)
+        # These are the errors that MiniWDL's parser can raise and its reporter
+        # can report. See
+        # https://github.com/chanzuckerberg/miniwdl/blob/a780b1bf2db61f18de37616068968b2bb4c2d21c/WDL/CLI.py#L91-L97.
+        #
+        # We are going to use MiniWDL's pretty printer to print them.
+        print_error(e)
+        if exit:
+            # Stop right now
+            sys.exit(1)
+        else:
+            # Reraise the exception to stop
+            raise
+
+F = TypeVar('F', bound=Callable[..., Any])
+def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Callable[[F], F]:
+    """
+    Create a decorator to report WDL errors with the given task message.
+    
+    Decorator can then be applied to a function, and if a WDL error happens it
+    will say that it cannot {task} and quit.
+    """
+    def decorator(decoratee: F) -> F:
+        """
+        Decorate a function with WDL error reporting.
+        """
+        def decorated(*args: Any, **kwargs: Any) -> Any:
+            """
+            Run the decoratee and handle WDL errors.
+            """
+            with wdl_error_reporter(task, exit=exit, log=log):
+                return decoratee(*args, **kwargs) #  type: ignore
+        return cast(F, decorated)
+    return decorator
+
+
+
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
     """
     Get potential absolute URIs to check for an imported file.
@@ -1072,6 +1124,8 @@ class WDLBaseJob(Job):
     def run(self, file_store: AbstractFileStore) -> Any:
         """
         Run a WDL-related job.
+
+        Remember to decorate non-trivial overrides with :func:`report_wdl_errors`.
         """
         # Make sure that pickle is prepared to save our return values, which
         # might take a lot of recursive calls. TODO: This might be because
@@ -1209,6 +1263,7 @@ class WDLTaskJob(WDLBaseJob):
         logger.warning('No subuids are assigned to %s; cannot fake root.', username)
         return False
 
+    @report_wdl_errors("run task")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually run the task.
@@ -1570,6 +1625,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         if isinstance(self._node, WDL.Tree.Call):
             logger.debug("Preparing job for call node %s", self._node.workflow_node_id)
 
+    @report_wdl_errors("run workflow node")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually execute the workflow node.
@@ -1660,6 +1716,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
             if isinstance(n, (WDL.Tree.Call, WDL.Tree.Scatter, WDL.Tree.Conditional)):
                 raise RuntimeError("Node cannot be evaluated with other nodes: " + str(n))
 
+    @report_wdl_errors("run workflow node list")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually execute the workflow nodes.
@@ -1702,6 +1759,7 @@ class WDLCombineBindingsJob(WDLBaseJob):
 
         self._prev_node_results = prev_node_results
 
+    @report_wdl_errors("combine bindings")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Aggregate incoming results.
@@ -2117,6 +2175,7 @@ class WDLScatterJob(WDLSectionJob):
         self._scatter = scatter
         self._prev_node_results = prev_node_results
 
+    @report_wdl_errors("run scatter")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the scatter.
@@ -2199,6 +2258,7 @@ class WDLArrayBindingsJob(WDLBaseJob):
         self._input_bindings = input_bindings
         self._base_bindings = base_bindings
 
+    @report_wdl_errors("create array bindings")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Actually produce the array-ified bindings now that promised values are available.
@@ -2250,6 +2310,7 @@ class WDLConditionalJob(WDLSectionJob):
         self._conditional = conditional
         self._prev_node_results = prev_node_results
 
+    @report_wdl_errors("run conditional")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the conditional.
@@ -2312,6 +2373,7 @@ class WDLWorkflowJob(WDLSectionJob):
         self._workflow_id = workflow_id
         self._namespace = namespace
 
+    @report_wdl_errors("run workflow")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Run the workflow. Return the result of the workflow.
@@ -2362,6 +2424,7 @@ class WDLOutputsJob(WDLBaseJob):
         self._bindings = bindings
         self._workflow = workflow
 
+    @report_wdl_errors("evaluate outputs")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
         """
         Make bindings for the outputs.
@@ -2409,6 +2472,7 @@ class WDLRootJob(WDLSectionJob):
         self._workflow = workflow
         self._inputs = inputs
 
+    @report_wdl_errors("run root job")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually build the subgraph.
@@ -2497,7 +2561,7 @@ def main() -> None:
         if options.restart:
             output_bindings = toil.restart()
         else:
-            try:
+            with wdl_error_reporter("parse workflow/inputs", exit=True):
                 # Load the WDL document
                 document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
@@ -2505,7 +2569,7 @@ def main() -> None:
                     # Complain that we need a workflow.
                     # We need the absolute path or URL to raise the error
                     wdl_abspath = options.wdl_uri if not os.path.exists(options.wdl_uri) else os.path.abspath(options.wdl_uri)
-                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0), "No workflow found in document")
+                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0, 0, 1), "No workflow found in document")
 
                 if options.inputs_uri:
                     # Load the inputs. Use the same loading mechanism, which means we
@@ -2517,22 +2581,10 @@ def main() -> None:
                         # Complain about the JSON document.
                         # We need the absolute path or URL to raise the error
                         inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
-                        raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno), "Cannot parse input JSON: " + e.msg) from e
+                        raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
                 else:
                     inputs = {}
-            except (
-                WDL.Error.SyntaxError,
-                WDL.Error.ImportError,
-                WDL.Error.ValidationError,
-                WDL.Error.MultipleValidationErrors,
-                FileNotFoundError
-            ) as e:
-                logger.critical("Could not load workflow/inputs")
-                # These are the errors that MiniWDL's parser can raise. See https://github.com/chanzuckerberg/miniwdl/blob/a780b1bf2db61f18de37616068968b2bb4c2d21c/WDL/CLI.py#L91-L97.
-                # We are going to use MiniWDL's pretty printer to print them.
-                print_error(e)
-                sys.exit(1)
-
+            
             # Parse out the available and required inputs. Each key in the
             # JSON ought to start with the workflow's name and then a .
             # TODO: WDL's Bindings[] isn't variant in the right way, so we
