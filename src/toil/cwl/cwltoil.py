@@ -3572,6 +3572,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
     addOptions(parser, jobstore_as_flag=True, cwl=True)
     add_cwl_options(parser)
 
+    options: argparse.Namespace
     options, cwl_options = parser.parse_known_args(args)
     options.cwljob.extend(cwl_options)
 
