@@ -220,6 +220,18 @@ class CWLWorkflowTest(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
+    def test_cwl_cmdline_input(self):
+        """
+        Test that running a CWL workflow with inputs specified on the command line passes.
+        """
+        from toil.cwl import cwltoil
+
+        cwlfile = "conditional_wf.cwl"
+        args = [cwlfile, "--message", "str", "--sleep", "2"]
+        st = StringIO()
+        # If the workflow runs, it must have had options
+        cwltoil.main(args, stdout=st)
+
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
 
