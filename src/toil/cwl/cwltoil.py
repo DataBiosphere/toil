@@ -3312,7 +3312,7 @@ def add_cwl_options(parser: argparse.ArgumentParser) -> None:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    extra_dockergroup = parser.add_argument_group("extra_dockergroup")
+    extra_dockergroup = parser.add_argument_group()
     extra_dockergroup.add_argument(
         "--custom-net",
         help="Specify docker network name to pass to docker run command",
