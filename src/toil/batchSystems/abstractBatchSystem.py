@@ -37,6 +37,7 @@ from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription, ParsedRequirement, Requirer
+from toil.lib.memoize import memoize
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()
 
+    @memoize
     def get_batch_logs_dir(self) -> str:
         """
         Get the directory where the backing batch system should save its logs.
@@ -404,6 +406,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if self.config.batch_logs_dir:
             # Use what is specified
+            if not os.path.isdir(self.config.batch_logs_dir):
+                # But if it doesn't exist, make it exist
+                os.makedirs(self.config.batch_logs_dir, exist_ok=True)
             return self.config.batch_logs_dir
         # And if nothing is specified use the workDir.
         return Toil.getToilWorkDir(self.config.workDir)
