@@ -2462,9 +2462,7 @@ def main() -> None:
     args = sys.argv[1:]
 
     parser = ArgParser(description='Runs WDL files with toil.')
-    addOptions(parser, jobstore_as_flag=True)
-    add_wdl_options(parser, suppress=False)
-    add_cwl_options(parser, suppress=True)
+    addOptions(parser, jobstore_as_flag=True, cwl=False, wdl=True)
 
 
     exclude_parser = ArgParser(add_help=False)

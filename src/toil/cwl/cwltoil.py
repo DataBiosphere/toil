@@ -3261,9 +3261,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
     # Ensure there is a default config file
     check_and_create_default_config_file()
     parser = ArgParser()
-    addOptions(parser, jobstore_as_flag=True, cwl=True)
-    add_cwl_options(parser, suppress=False)
-    add_wdl_options(parser, suppress=True)
+    addOptions(parser, jobstore_as_flag=True, cwl=True, wdl=False)
 
     config_args = []
     cmd_line_args = args

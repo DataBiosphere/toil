@@ -692,7 +692,7 @@ def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, f
     return IntOrFloatOpenAction
 
 
-def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False) -> None:
+def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False, wdl: bool = False) -> None:
     """
     Add Toil command line options to a parser.
 
@@ -701,6 +701,10 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     :param config: If specified, take defaults from the given Config.
 
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+
+    :param cwl: Whether CWL options are expected. If so, CWL options won't be suppressed.
+
+    :param wdl:  Whether WDL options are expected. If so, WDL options won't be suppressed.
     """
 
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
@@ -1244,8 +1248,20 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
     caching.set_defaults(disableCaching=None)
 
+    # Add CWL and WDL options
+    # This is done so the config file can hold all available options
+    add_cwl_options(parser, suppress=not cwl)
+    add_wdl_options(parser, suppress=not wdl)
+
 
 def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
+    """
+    Add CWL options to the parser. This only adds nonpositional CWL arguments.
+
+    :param parser: Parser to add options to
+    :param suppress: Suppress help output
+    :return: None
+    """
     suppress_help = SUPPRESS if suppress else None
     parser.add_argument("--not-strict", action="store_true", help=suppress_help)
     parser.add_argument(
@@ -1555,6 +1571,12 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
 
 
 def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
+    """
+    Add WDL options to a parser. This only adds nonpositional WDL arguments
+    :param parser: Parser to add options to
+    :param suppress: Suppress help output
+    :return: None
+    """
     suppress_help = SUPPRESS if suppress else None
     parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell',
                         choices=['cromwell', 'miniwdl'],
