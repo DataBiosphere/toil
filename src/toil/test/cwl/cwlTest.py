@@ -1530,9 +1530,9 @@ def test_download_structure(tmp_path) -> None:
     # The file store should have been asked to do the download
     file_store.readGlobalFile.assert_has_calls(
         [
-            call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=True),
-            call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=True),
-            call(fid2, os.path.join(to_dir, "anotherfile"), symlink=True),
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=False),
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=False),
+            call(fid2, os.path.join(to_dir, "anotherfile"), symlink=False),
         ],
         any_order=True,
     )
