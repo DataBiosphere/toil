@@ -16,7 +16,7 @@ docker exec ${LEADER} sudo apt install python3-pip -y
 docker exec ${LEADER} pip3 install "git+https://github.com/DataBiosphere/toil.git@${GIT_COMMIT}"
 docker exec ${LEADER} sinfo -N -l
 # Test 1: A really basic workflow to check Slurm is working correctly
-docker exec ${LEADER} python3 /home/admin/toil_workflow.py file:my-job-store --batchSystem slurm --disableCaching --retryCount 0
+docker exec ${LEADER} python3 /home/admin/toil_workflow.py file:my-job-store --batchSystem slurm --disableCaching --retryCount 0 --batchLogsDir ./nonexistent/paths
 docker cp ${LEADER}:/home/admin/output.txt output_Docker.txt
 # Test 2: Make sure that "sort" workflow runs under slurm
 docker exec ${LEADER} python3 /home/admin/sort.py file:my-job-store --batchSystem slurm --disableCaching --retryCount 0
