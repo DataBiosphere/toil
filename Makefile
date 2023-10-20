@@ -299,7 +299,7 @@ format: $(wildcard src/toil/cwl/*.py)
 	black $^ contrib/mypy-stubs
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
+	python3.12 -m mypy --ignore-missing-imports --no-strict-optional \
 		--warn-redundant-casts --warn-unused-ignores \
 		$(CURDIR)/src/toil/cwl/cwltoil.py
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py

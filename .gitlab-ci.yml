@@ -69,7 +69,7 @@ lint:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] packages='htcondor==10.2.0.post1'
-    - pip freeze
+    - python3.12 -m pip freeze
     - python3.12 --version
     - make mypy
     - make docs
