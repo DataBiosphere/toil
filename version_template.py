@@ -77,7 +77,7 @@ def exactPython():
     for. Something like 'python2.7' or 'python3.6'.
     """
     import sys
-    return f'python{sys.version_info[0]}.{sys.version_info[1]}'
+    return 'python{sys.version_info[0]}.{sys.version_info[1]}'
 
 
 def python():

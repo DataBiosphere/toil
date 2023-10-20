@@ -32,6 +32,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.9-distutils' if python == 'python3.9' else '',
                          'python3.10-distutils' if python == 'python3.10' else '',
                          'python3.11-distutils' if python == 'python3.11' else '',
+                         'python3.12-distutils' if python== 'python3.12' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
