@@ -98,11 +98,11 @@ def run_conformance_tests(
 
     :param batchSystem: If set, use this batch system instead of the default single_machine.
 
-    :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
+    :param selected_tests: If set, use this list of tests to run (comma-separated test IDs)
 
     :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
 
-    :param skipped_tests: Comma-separated string labels of tests to skip.
+    :param skipped_tests: Comma-separated string IDs of tests to skip.
 
     :param extra_args: Provide these extra arguments to runner for each test.
 
@@ -121,7 +121,7 @@ def run_conformance_tests(
             f"--basedir={workDir}",
         ]
         if selected_tests:
-            cmd.append(f"-n={selected_tests}")
+            cmd.append(f"-s={selected_tests}")
         if selected_tags:
             cmd.append(f"--tags={selected_tags}")
         if skipped_tests:
@@ -139,9 +139,8 @@ def run_conformance_tests(
             "--logDebug",
             "--statusWait=10",
             "--retryCount=2",
+            f"--caching={caching}"
         ]
-
-        args_passed_directly_to_runner.append(f"--caching={caching}")
 
         if extra_args:
             args_passed_directly_to_runner += extra_args
@@ -684,7 +683,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, "v1.0")
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = "6a955874ade22080b8ef962b4e0d6e408112c1ef"  # Date:   Tue Dec 16 2020 8:43pm PST
+        testhash = "06c0cba1a178e20af2634b33dee648faff144bf8"  # Date:   Thu Mar 23 19:07:05 2023 +0900 (move label to id)
         url = (
             "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip"
             % testhash
@@ -762,9 +761,8 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # This test doesn't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # This CWL v1.0 test doesn't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L99
             skipped_tests="docker_entrypoint",
             **kwargs,
         )
@@ -825,7 +823,7 @@ class CWLv11Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.1.git"
-        commit = "664835e83eb5e57eee18a04ce7b05fb9d70d77b7"
+        commit = "b1d4a69df86350059bd49aa127c02be0c349f7de"
         p = subprocess.Popen(
             f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
             shell=True,
@@ -852,9 +850,8 @@ class CWLv11Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # These tests don't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # These CWL v1.1 tests don't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L105
             skipped_tests="docker_entrypoint,stdin_shorcut",
             **kwargs,
         )
@@ -879,7 +876,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.2.git"
-        commit = "8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6"
+        commit = "5f4a24cfd46aa9072d8418733b61a42261365b7b"
         p = subprocess.Popen(
             f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
             shell=True,
@@ -922,9 +919,8 @@ class CWLv12Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # This test doesn't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # This CWL v1.2 test doesn't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L99
             # and
             # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
             skipped_tests="docker_entrypoint",
@@ -959,18 +955,13 @@ class CWLv12Test(ToilTest):
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
         extra_args = [f"--wes_endpoint={endpoint}"]
 
-        # These are the ones that currently fail:
-        #   - 310: mixed_version_v10_wf
-        #   - 311: mixed_version_v11_wf
-        #   - 312: mixed_version_v12_wf
-
         # Main issues:
         # 1. `cwltool --print-deps` doesn't seem to include secondary files from the default
         #     e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/mixed-versions/wf-v10.cwl#L4-L10
 
         return self.test_run_conformance(
             runner="toil-wes-cwl-runner",
-            selected_tests="1-309,313-337",
+            skipped_tests="mixed_version_v10_wf,mixed_version_v11_wf,mixed_version_v12_wf",
             extra_args=extra_args,
         )
 
