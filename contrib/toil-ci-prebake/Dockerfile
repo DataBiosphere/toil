@@ -42,5 +42,6 @@ RUN sudo add-apt-repository -y ppa:deadsnakes/ppa && \
 RUN rm -f /usr/bin/python
 RUN ln -s /usr/bin/python3.11 /usr/bin/python
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.12 get-pip.py && python3.12 -m pip install virtualenv -U # for python 3.12, default pip seems to be broken and default virtualenv is about 2 years old and does not run with python 3.12
+RUN python3.8 get-pip.py && python3.9 get-pip.py && python3.10 get-pip.py && python3.11 get-pip.py
 
 LABEL maintainers="anovak@soe.ucsc.edu lblauvel@ucsc.edu"
