@@ -225,8 +225,7 @@ class CWLWorkflowTest(ToilTest):
         Test that running a CWL workflow with inputs specified on the command line passes.
         """
         from toil.cwl import cwltoil
-
-        cwlfile = "conditional_wf.cwl"
+        cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
         args = [cwlfile, "--message", "str", "--sleep", "2"]
         st = StringIO()
         # If the workflow runs, it must have had options
