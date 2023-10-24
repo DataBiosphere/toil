@@ -17,14 +17,14 @@ Invoke like:
 """
 
 import argparse
-from configargparse import ArgumentParser
-
 import collections
 import os
 import random
 import socket
 import sys
 import time
+
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job

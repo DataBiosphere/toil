@@ -1,8 +1,9 @@
 import os
-from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
+
 
 class HelloWorld(Job):
     def __init__(self, message):

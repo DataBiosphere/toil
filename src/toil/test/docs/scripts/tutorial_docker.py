@@ -1,9 +1,9 @@
 import os
-from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.docker import apiDockerCall
+from toil.lib.io import mkdtemp
 
 align = Job.wrapJobFn(apiDockerCall,
                       image='ubuntu',
