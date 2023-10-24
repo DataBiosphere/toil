@@ -5,7 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.12"
+  MAIN_PYTHON_PKG: "python3.11"
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
   # Currently specifies special tests that are not run by quick_test_offline.
