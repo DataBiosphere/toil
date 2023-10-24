@@ -711,7 +711,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                     logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
                                    f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
                                    f'like "/tmp" to avoid overly long paths.')
-            setattr(namespace, self.dest, values)
+            setattr(namespace, self.dest, workDir)
 
     class CoordinationDirAction(Action):
         """
@@ -725,7 +725,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                 if not os.path.exists(coordination_dir):
                     raise RuntimeError(
                         f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
-            setattr(namespace, self.dest, values)
+            setattr(namespace, self.dest, coordination_dir)
 
     def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[
         Action]:
