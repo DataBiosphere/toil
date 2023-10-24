@@ -167,7 +167,7 @@ batch_systems:
   stage: main_tests
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - wget https://github.com/ohsu-comp-bio/funnel/releases/download/0.10.1/funnel-linux-amd64-0.10.1.tar.gz
     - tar -xvf funnel-linux-amd64-0.10.1.tar.gz funnel
     - export FUNNEL_SERVER_USER=toil
@@ -277,7 +277,7 @@ jobstore:
   stage: main_tests
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1' 
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py"
 
 provisioner:
@@ -286,7 +286,7 @@ provisioner:
   stage: main_tests
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1' 
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/lib/aws/ src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
 
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
@@ -298,7 +298,7 @@ jobstore_integration:
   stage: integration
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -313,7 +313,7 @@ server_integration:
   stage: integration
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -329,7 +329,7 @@ provisioner_integration:
   stage: integration
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -346,7 +346,7 @@ google_jobstore:
   stage: integration
   script:
     - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.0.post1'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[aws,google,encryption,cwl,wdl,kubernetes,server] packages='htcondor==10.2.3'
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
