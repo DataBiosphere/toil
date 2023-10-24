@@ -1,5 +1,5 @@
 import os
-import tempfile
+from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
@@ -35,7 +35,7 @@ j.addChildFn(dbFn, loginCredentialsPromise)
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_services")
+    jobstore: str = mkdtemp("tutorial_services")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

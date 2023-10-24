@@ -1,5 +1,5 @@
 import os
-import tempfile
+from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job, PromisedRequirement
@@ -26,7 +26,7 @@ def analysisJob(job, fileStoreID):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_requirements")
+    jobstore: str = mkdtemp("tutorial_requirements")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

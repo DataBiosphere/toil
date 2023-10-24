@@ -1,5 +1,5 @@
 import os
-import tempfile
+from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
@@ -14,7 +14,7 @@ def binaryStringFn(job, depth, message=""):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_dynamic")
+    jobstore: str = mkdtemp("tutorial_dynamic")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

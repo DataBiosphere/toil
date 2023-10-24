@@ -1,5 +1,5 @@
 import os
-import tempfile
+from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
@@ -10,7 +10,7 @@ def helloWorld(job, message):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_jobfunctions")
+    jobstore: str = mkdtemp("tutorial_jobfunctions")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

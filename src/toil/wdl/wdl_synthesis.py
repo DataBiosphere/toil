@@ -13,9 +13,9 @@
 # limitations under the License.
 import logging
 import os
-import tempfile
 from typing import Optional
 
+from toil.lib.io import mkdtemp
 from toil.wdl.wdl_functions import heredoc_wdl
 from toil.wdl.wdl_types import (WDLArrayType,
                                 WDLCompoundType,
@@ -69,7 +69,7 @@ class SynthesizeWDL:
         if jobstore:
             self.jobstore = jobstore
         else:
-            self.jobstore = tempfile.mkdtemp(prefix=f"{os.getcwd()}{os.sep}toilWorkflowRun")
+            self.jobstore = mkdtemp(prefix=f"{os.getcwd()}{os.sep}toilWorkflowRun")
             os.rmdir(self.jobstore)
 
         if docker_user != 'None':

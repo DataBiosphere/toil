@@ -31,7 +31,6 @@ import shutil
 import socket
 import stat
 import sys
-import tempfile
 import textwrap
 import urllib
 import uuid
@@ -102,6 +101,7 @@ from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
+from tempfile import NamedTemporaryFile, gettempdir
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
@@ -121,6 +121,7 @@ from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
+from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
@@ -128,7 +129,7 @@ from toil.version import baseVersion
 logger = logging.getLogger(__name__)
 
 # Find the default temporary directory
-DEFAULT_TMPDIR = tempfile.gettempdir()
+DEFAULT_TMPDIR = gettempdir()
 # And compose a CWL-style default prefix inside it.
 # We used to not put this inside anything and we would drop loads of temp
 # directories in the current directory and leave them there.
@@ -1263,7 +1264,7 @@ class ToilFsAccess(StdFsAccess):
                     logger.debug(
                         "ToilFsAccess fetching directory %s from a JobStore", path
                     )
-                    dest_dir = tempfile.mkdtemp()
+                    dest_dir = mkdtemp()
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
@@ -1286,7 +1287,7 @@ class ToilFsAccess(StdFsAccess):
                     logger.debug("ToilFsAccess fetching file %s from a JobStore", path)
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
-                    dest_file = tempfile.NamedTemporaryFile(delete=False)
+                    dest_file = NamedTemporaryFile(delete=False)
                     AbstractJobStore.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
@@ -2041,7 +2042,7 @@ def toilStageFiles(
                         "CreateFile",
                         "CreateWritableFile",
                     ]:  # TODO: CreateFile for buckets is not under testing
-                        with tempfile.NamedTemporaryFile() as f:
+                        with NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode("utf-8"))
                             f.close()
@@ -3621,7 +3622,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
     else:
         # Use a directory in the default tmpdir
-        workdir = tempfile.mkdtemp()
+        workdir = mkdtemp()
     # Make sure workdir doesn't exist so it can be a job store
     os.rmdir(workdir)
 

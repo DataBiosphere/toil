@@ -1,5 +1,5 @@
 import os
-import tempfile
+from toil.lib.io import mkdtemp
 
 from toil.common import Toil
 from toil.job import Job
@@ -18,7 +18,7 @@ def merge(strings):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_promises2")
+    jobstore: str = mkdtemp("tutorial_promises2")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.loglevel = "OFF"
