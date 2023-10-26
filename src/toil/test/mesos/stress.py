@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from argparse import ArgumentParser
+from configargparse import ArgumentParser
 
 from toil.job import Job
 

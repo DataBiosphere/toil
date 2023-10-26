@@ -1,4 +1,4 @@
-import argparse
+from configargparse import ArgumentParser
 import sys
 
 from toil.common import Toil
@@ -18,7 +18,7 @@ def main():
         toil status --printLogs ./jobstore
 
     """
-    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser = ArgumentParser(description=main.__doc__)
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args(sys.argv[1:])
 
