@@ -192,7 +192,7 @@ batch_systems:
     - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
     - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
     - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
-#    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/batchSystems/batchSystemTest.py"
     - kill $(jobs -p) || true
 
 slurm_test:
