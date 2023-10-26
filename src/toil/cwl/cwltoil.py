@@ -3252,70 +3252,22 @@ usage_message = "\n\n" + textwrap.dedent(
 
 def get_options(args: List[str]) -> argparse.Namespace:
     """
-    Get around configargparse's incompatibility with nargs=REMAINDER
-    It does so by running parse_args twice, one on just the config file and one on the rest of args, then merges
-    Takes the list of args and returns the resulting options namespace
+    Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
     :param args: List of args from command line
     :return: options namespace
     """
-    # Ensure there is a default config file
-    check_and_create_default_config_file()
     parser = ArgParser()
-    addOptions(parser, jobstore_as_flag=True, cwl=True, wdl=False)
+    addOptions(parser, jobstore_as_flag=True, cwl=True)
+    add_cwl_options(parser)
 
-    config_args = []
-    cmd_line_args = args
+    options: argparse.Namespace
+    options, cwl_options = parser.parse_known_args(args)
+    options.cwljob.extend(cwl_options)
 
-    exclude_parser = ArgParser(add_help=False)
-    add_wdl_options(exclude_parser)
+    return options
 
-    exclude_option_strings = set(exclude_parser._option_string_actions)
+def check_options(options: argparse.Namespace):
 
-    # find if the config argument is specified on the command line
-    for i in range(len(args)):
-        split_by_equal = args[i].split("=")
-        # WDL options will be caught and errored
-        if split_by_equal[0] in exclude_option_strings:
-            parser.error(f"unrecognized arguments: {args[i]}")
-        if split_by_equal[0] == "--config":
-            # if found, remove config file definition from args
-            if len(split_by_equal) > 1:
-                # --config=file.yaml
-                config_args = ["--config", (split_by_equal[1])]
-                cmd_line_args = args[:i] + args[i+1:]
-            elif i < len(args):
-                # --config file.yaml
-                config_args = ["--config", (args[i+1])]
-                cmd_line_args = args[:i] + args[i+2:]
-            else:
-                # not properly defined
-                # don't define the config file so that argparse can raise the proper error
-                config_args = ["--config"]
-
-    # Parse only the config file to not conflict with the cmd line options
-    config_options = parser.parse_args(config_args)
-
-    # These arguments are defined here so the previous parse_args can run
-    # This will mean that these cannot be defined in the config file and must be defined on the command line
-    parser.add_argument("cwltool", type=str)
-    parser.add_argument("cwljob", nargs=argparse.REMAINDER)
-
-    cmd_line_args_actions = {y for x in cmd_line_args for y in x.split("=")}
-    # remove parser actions that are not specified on the command line
-    i = 0
-    while i < len(parser._actions):
-        action = parser._actions[i]
-        if set(action.option_strings).isdisjoint(cmd_line_args_actions) and len(action.option_strings) > 0:
-            del parser._actions[i]
-        else:
-            i += 1
-    # Parse only cmd line args
-    cmd_line_options = parser.parse_args(cmd_line_args)
-    # Merge namespaces, with command line taking precedence over config
-    options_dict = vars(config_options)
-    options_dict.update(vars(cmd_line_options))
-
-    return argparse.Namespace(**options_dict)
 
 def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Run the main loop for toil-cwl-runner."""
