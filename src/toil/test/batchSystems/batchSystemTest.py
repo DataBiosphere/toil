@@ -54,7 +54,6 @@ from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
                        needs_slurm,
-                       needs_tes,
                        needs_torque,
                        slow)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
