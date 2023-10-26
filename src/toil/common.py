@@ -945,32 +945,31 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                                           "of memory and disk on a node when autoscaling.")
 
     # Parameters to limit service jobs / detect service deadlocks
-    if not cwl:
-        service_options = parser.add_argument_group(
-            title="Toil options for limiting the number of service jobs and detecting service deadlocks",
-            description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
-                        "this limited we can avoid nodes occupied with services causing deadlocks."
-        )
-        service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
-                                     help=f"The maximum number of service jobs that can be run concurrently, "
-                                          f"excluding service jobs running on preemptible nodes.  "
-                                          f"default=%(default)s")
-        service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs",
-                                     default=SYS_MAX_SIZE,
-                                     type=int,
-                                     help=f"The maximum number of service jobs that can run concurrently on "
-                                          f"preemptible nodes.  default=%(default)s")
-        service_options.add_argument("--deadlockWait", dest="deadlockWait", default=60, type=int,
-                                     help=f"Time, in seconds, to tolerate the workflow running only the same service "
-                                          f"jobs, with no jobs to use them, before declaring the workflow to be "
-                                          f"deadlocked and stopping.  default=%(default)s")
-        service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=30, type=int,
-                                     help="Time, in seconds, to wait between checks to see if the workflow is stuck "
-                                          "running only service jobs, with no jobs to use them. Should be shorter "
-                                          "than --deadlockWait. May need to be increased if the batch system cannot "
-                                          "enumerate running jobs quickly enough, or if polling for running jobs is "
-                                          "placing an unacceptable load on a shared cluster.  "
-                                          f"default=%(default)s")
+    service_options = parser.add_argument_group(
+        title="Toil options for limiting the number of service jobs and detecting service deadlocks",
+        description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
+                    "this limited we can avoid nodes occupied with services causing deadlocks."
+    )
+    service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
+                                 help=SUPPRESS if cwl else f"The maximum number of service jobs that can be run concurrently, "
+                                      f"excluding service jobs running on preemptible nodes.  "
+                                      f"default=%(default)s")
+    service_options.add_argument("--maxPreemptibleServiceJobs", dest="maxPreemptibleServiceJobs",
+                                 default=SYS_MAX_SIZE,
+                                 type=int,
+                                 help=SUPPRESS if cwl else f"The maximum number of service jobs that can run concurrently on "
+                                      f"preemptible nodes.  default=%(default)s")
+    service_options.add_argument("--deadlockWait", dest="deadlockWait", default=60, type=int,
+                                 help=SUPPRESS if cwl else f"Time, in seconds, to tolerate the workflow running only the same service "
+                                      f"jobs, with no jobs to use them, before declaring the workflow to be "
+                                      f"deadlocked and stopping.  default=%(default)s")
+    service_options.add_argument("--deadlockCheckInterval", dest="deadlockCheckInterval", default=30, type=int,
+                                 help=SUPPRESS if cwl else "Time, in seconds, to wait between checks to see if the workflow is stuck "
+                                      "running only service jobs, with no jobs to use them. Should be shorter "
+                                      "than --deadlockWait. May need to be increased if the batch system cannot "
+                                      "enumerate running jobs quickly enough, or if polling for running jobs is "
+                                      "placing an unacceptable load on a shared cluster.  "
+                                      f"default=%(default)s")
 
     # Resource requirements
     resource_options = parser.add_argument_group(
