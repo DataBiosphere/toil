@@ -1520,13 +1520,13 @@ class Toil(ContextManager["Toil"]):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY
+        from toil.batchSystems.registry import get_batch_system, get_batch_systems
 
         try:
-            batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
+            batch_system = get_batch_system(config.batchSystem)
         except KeyError:
             raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
-                               f'(choose from: {BATCH_SYSTEM_FACTORY_REGISTRY.keys()})')
+                               f'(choose from: {", ".join(get_batch_systems())})')
 
         if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '

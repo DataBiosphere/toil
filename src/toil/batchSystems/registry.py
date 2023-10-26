@@ -12,13 +12,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+import pkgutil
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, List, Tuple, Type
+from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Tuple, Type
+
+from toil.lib.memoize import memoize
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
 
 logger = logging.getLogger(__name__)
+
+#####
+# Plugin system/API
+#####
+
+def add_batch_system_factory(key: str, class_factory: Callable[[], Type['AbstractBatchSystem']]):
+    """
+    Adds a batch system to the registry for workflow or plugin-supplied batch systems.
+
+    :param class_factory: A function that returns a batch system class (NOT an instance), which implements :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
+    """
+    BATCH_SYSTEMS.append(key)
+    BATCH_SYSTEM_FACTORY_REGISTRY[key] = factory
+
+def get_batch_systems() -> Sequence[str]:
+    """
+    Get the names of all the availsble batch systems.
+    """
+    _load_all_plugins()
+
+    return BATCH_SYSTEMS
+
+def get_batch_system(key: str) -> Type['AbstractBatchSystem']:
+    """
+    Get a batch system class by name.
+
+    :raises: KeyError if the key is not the name of a batch system, and
+             ImportError if the batch system's class cannot be loaded.
+    """
+
+    return BATCH_SYSTEM_FACTORY_REGISTRY[key]()
+
+
+DEFAULT_BATCH_SYSTEM = 'single_machine'
+
+#####
+# Built-in batch systems
+#####
 
 def aws_batch_batch_system_factory():
     from toil.batchSystems.awsBatch import AWSBatchBatchSystem
@@ -71,8 +113,11 @@ def kubernetes_batch_system_factory():
     from toil.batchSystems.kubernetes import KubernetesBatchSystem
     return KubernetesBatchSystem
 
+#####
+# Registry implementation
+#####
 
-BATCH_SYSTEM_FACTORY_REGISTRY: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
+_registry: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
     'aws_batch'      : aws_batch_batch_system_factory,
     'parasol'        : parasol_batch_system_factory,
     'single_machine' : single_machine_batch_system_factory,
@@ -85,15 +130,50 @@ BATCH_SYSTEM_FACTORY_REGISTRY: Dict[str, Callable[[], Type["AbstractBatchSystem"
     'htcondor'       : htcondor_batch_system_factory,
     'kubernetes'     : kubernetes_batch_system_factory
 }
-BATCH_SYSTEMS = list(BATCH_SYSTEM_FACTORY_REGISTRY.keys())
-DEFAULT_BATCH_SYSTEM = 'single_machine'
+_registry_keys = list(_registry.keys())
 
+# We will load any packages starting with this prefix and let them call
+# add_batch_system_factory()
+_PLUGIN_NAME_PREFIX = "toil_batch_system_")
+
+@memoize
+def _load_all_plugins() -> None:
+    """
+    Load all the batch system plugins that are installed.
+    """
+
+    for finder, name, is_pkg in pkgutil.iter_modules():
+        # For all installed packages
+        if name.startswith(_PLUGIN_NAME_PREFIX):
+            # If it is a Toil batch system plugin, import it
+            importlib.import_module(name)
+
+#####
+# Deprecated API
+#####
+
+# We used to directly access these constants, but now the Right Way to use this
+# module is add_batch_system_factory() to register and get_batch_systems() to
+# get the list/get_batch_system() to get a class by name.
+
+@deprecated("Use get_batch_system() or add_batch_system_factory() instead")
+BATCH_SYSTEM_FACTORY_REGISTRY = _registry
+
+@deprecated("Use get_batch_systems() instead")
+BATCH_SYSTEMS = _registry_keys
+
+
+@deprecated(new_function_name="add_batch_system_factory")
 def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['AbstractBatchSystem']]):
     """
-    Adds a batch system to the registry for workflow-supplied batch systems.
+    Deprecated method to add a batch system.
     """
-    BATCH_SYSTEMS.append(key)
-    BATCH_SYSTEM_FACTORY_REGISTRY[key] = batchSystemFactory
+    return add_batch_system_factory(key, batchSystemFactory)
+
+
+#####
+# Testing utilities
+#####
 
 # We need a snapshot save/restore system for testing. We can't just tamper with
 # the globals because module-level globals are their own references, so we

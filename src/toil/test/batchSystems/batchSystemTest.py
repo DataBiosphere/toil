@@ -32,9 +32,9 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        addBatchSystemFactory,
+from toil.batchSystems.registry import (get_batch_system,
+                                        get_batch_systems,
+                                        add_batch_system_factory,
                                         restore_batch_system_plugin_state,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -88,16 +88,16 @@ class BatchSystemPluginTest(ToilTest):
         restore_batch_system_plugin_state(self.__state)
         super().tearDown()
 
-    def testAddBatchSystemFactory(self):
+    def test_add_batch_system_factory(self):
         def test_batch_system_factory():
             # TODO: Adding the same batch system under multiple names means we
             # can't actually create Toil options, because each version tries to
             # add its arguments.
             return SingleMachineBatchSystem
 
-        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-        assert 'testBatchSystem' in BATCH_SYSTEMS
+        add_batch_system_factory('testBatchSystem', test_batch_system_factory)
+        assert 'testBatchSystem' in get_batch_systems()
+        assert get_batch_system('testBatchSystem') == SingleMachineBatchSystem
 
 class hidden:
     """
