@@ -15,6 +15,7 @@
 import importlib
 import pkgutil
 import logging
+import warnings
 from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Tuple, Type
 
 from toil.lib.memoize import memoize
@@ -155,10 +156,22 @@ def _load_all_plugins() -> None:
 # We used to directly access these constants, but now the Right Way to use this
 # module is add_batch_system_factory() to register and get_batch_systems() to
 # get the list/get_batch_system() to get a class by name.
-#
-# Unfortunately we can't @deprecated these.
-BATCH_SYSTEM_FACTORY_REGISTRY = _registry
-BATCH_SYSTEMS = _registry_keys
+
+
+def __getattr__(name):
+    """
+    Implement a fallback attribute getter to handle deprecated constants.
+
+    See <https://stackoverflow.com/a/48242860>.
+    """
+    if name == "BATCH_SYSTEM_FACTORY_REGISTRY":
+        warnings.warn("BATCH_SYSTEM_FACTORY_REGISTRY is deprecated; use get_batch_system() or add_batch_system_factory()", DeprecationWarning)
+        return _registry
+    elif name == "BATCH_SYSTEMS":
+        warnings.warn("BATCH_SYSTEMS is deprecated; use get_batch_systems()", DeprecationWarning)
+        return _registry_keys
+    else:
+        raise AttributeError(f"Module {__name__} ahs no attribute {name}")
 
 
 @deprecated(new_function_name="add_batch_system_factory")
@@ -184,7 +197,7 @@ def save_batch_system_plugin_state() -> Tuple[List[str], Dict[str, Callable[[], 
     tests.
     """
 
-    snapshot = (list(BATCH_SYSTEMS), dict(BATCH_SYSTEM_FACTORY_REGISTRY))
+    snapshot = (list(_registry_keys), dict(_registry))
     return snapshot
 
 def restore_batch_system_plugin_state(snapshot: Tuple[List[str], Dict[str, Callable[[], Type['AbstractBatchSystem']]]]):
@@ -196,7 +209,7 @@ def restore_batch_system_plugin_state(snapshot: Tuple[List[str], Dict[str, Calla
     # We need to apply the snapshot without rebinding the names, because that
     # won't affect modules that imported the names.
     wanted_batch_systems, wanted_registry = snapshot
-    BATCH_SYSTEMS.clear()
-    BATCH_SYSTEMS.extend(wanted_batch_systems)
-    BATCH_SYSTEM_FACTORY_REGISTRY.clear()
-    BATCH_SYSTEM_FACTORY_REGISTRY.update(wanted_registry)
+    _registry_keys.clear()
+    _registry_keys.extend(wanted_batch_systems)
+    _registry.clear()
+    _registry.update(wanted_registry)
