@@ -32,9 +32,16 @@ RUN apt-get -q -y update && \
 RUN sudo add-apt-repository -y ppa:deadsnakes/ppa && \
     sudo apt-get update && \
     sudo apt-get install -y \
-        python3.7 python3.7-dev python3.7-venv python3.7-distutils \
         python3.8 python3.8-dev python3.8-venv python3.8-distutils \
         python3.9 python3.9-dev python3.9-venv python3.9-distutils \
-        python3.10 python3.10-dev python3.10-venv python3.10-distutils
+        python3.10 python3.10-dev python3.10-venv python3.10-distutils \
+        python3.11 python3.11-dev python3.11-venv python3.11-distutils \
+        python3.12 python3.12-dev python3.12-venv python3.12-distutils
+
+RUN rm -f /usr/bin/python
+RUN ln -s /usr/bin/python3.11 /usr/bin/python
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && python3.8 get-pip.py && python3.9 get-pip.py && python3.10 get-pip.py && python3.11 get-pip.py && python3.12 get-pip.py # for python 3.12, get-pip seems to remove other pip versions
+RUN python3.12 -m pip install virtualenv -U && python3.8 -m pip install virtualenv && python3.9 -m pip install virtualenv && python3.10 -m pip install virtualenv && python3.11 -m pip install virtualenv # python3.12 needs latest version of virtualenv
+
 
 LABEL maintainers="anovak@soe.ucsc.edu lblauvel@ucsc.edu"

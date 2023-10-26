@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import imp
+# import imp
+import types
+from importlib.machinery import SourceFileLoader
 import os
 from tempfile import NamedTemporaryFile
 
@@ -82,10 +84,10 @@ def run_setup():
           'Operating System :: MacOS :: MacOS X',
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
-          'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
           'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10',
+          'Programming Language :: Python :: 3.11',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',
@@ -146,7 +148,10 @@ def import_version():
     #     return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
     #
     # Because SourceFileLoader will error and load "src/toil/__init__.py" .
-    return imp.load_source('toil.version', 'src/toil/version.py')
+    loader = SourceFileLoader('toil.version', 'src/toil/version.py')
+    mod = types.ModuleType(loader.name)
+    loader.exec_module(mod)
+    return mod
 
 
 version = import_version()
