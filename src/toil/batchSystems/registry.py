@@ -18,6 +18,7 @@ import logging
 import warnings
 from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Tuple, Type
 
+from toil.lib.compatibility import deprecated
 from toil.lib.memoize import memoize
 
 if TYPE_CHECKING:
@@ -35,8 +36,8 @@ def add_batch_system_factory(key: str, class_factory: Callable[[], Type['Abstrac
 
     :param class_factory: A function that returns a batch system class (NOT an instance), which implements :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
     """
-    BATCH_SYSTEMS.append(key)
-    BATCH_SYSTEM_FACTORY_REGISTRY[key] = factory
+    _registry_keys.append(key)
+    _registry[key] = class_factory
 
 def get_batch_systems() -> Sequence[str]:
     """
@@ -44,7 +45,7 @@ def get_batch_systems() -> Sequence[str]:
     """
     _load_all_plugins()
 
-    return BATCH_SYSTEMS
+    return _registry_keys
 
 def get_batch_system(key: str) -> Type['AbstractBatchSystem']:
     """
@@ -54,7 +55,7 @@ def get_batch_system(key: str) -> Type['AbstractBatchSystem']:
              ImportError if the batch system's class cannot be loaded.
     """
 
-    return BATCH_SYSTEM_FACTORY_REGISTRY[key]()
+    return _registry[key]()
 
 
 DEFAULT_BATCH_SYSTEM = 'single_machine'
@@ -96,10 +97,6 @@ def slurm_batch_system_factory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
 
-def tes_batch_system_factory():
-    from toil.batchSystems.tes import TESBatchSystem
-    return TESBatchSystem
-
 def torque_batch_system_factory():
     from toil.batchSystems.torque import TorqueBatchSystem
     return TorqueBatchSystem
@@ -126,7 +123,6 @@ _registry: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
     'lsf'            : lsf_batch_system_factory,
     'mesos'          : mesos_batch_system_factory,
     'slurm'          : slurm_batch_system_factory,
-    'tes'            : tes_batch_system_factory,
     'torque'         : torque_batch_system_factory,
     'htcondor'       : htcondor_batch_system_factory,
     'kubernetes'     : kubernetes_batch_system_factory

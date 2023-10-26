@@ -575,23 +575,6 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.assertEqual(str(spec.tolerations), "None")
 
 
-@needs_tes
-@needs_fetchable_appliance
-class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
-    """
-    Tests against the TES batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def createBatchSystem(self):
-        # Import the batch system when we know we have it.
-        # Doesn't really matter for TES right now, but someday it might.
-        from toil.batchSystems.tes import TESBatchSystem
-        return TESBatchSystem(config=self.config,
-                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
 @needs_aws_batch
 @needs_fetchable_appliance
 class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
