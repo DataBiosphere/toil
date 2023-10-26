@@ -134,7 +134,7 @@ _registry_keys = list(_registry.keys())
 
 # We will load any packages starting with this prefix and let them call
 # add_batch_system_factory()
-_PLUGIN_NAME_PREFIX = "toil_batch_system_")
+_PLUGIN_NAME_PREFIX = "toil_batch_system_"
 
 @memoize
 def _load_all_plugins() -> None:
@@ -155,11 +155,9 @@ def _load_all_plugins() -> None:
 # We used to directly access these constants, but now the Right Way to use this
 # module is add_batch_system_factory() to register and get_batch_systems() to
 # get the list/get_batch_system() to get a class by name.
-
-@deprecated("Use get_batch_system() or add_batch_system_factory() instead")
+#
+# Unfortunately we can't @deprecated these.
 BATCH_SYSTEM_FACTORY_REGISTRY = _registry
-
-@deprecated("Use get_batch_systems() instead")
 BATCH_SYSTEMS = _registry_keys
 
 
