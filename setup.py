@@ -65,7 +65,7 @@ def run_setup():
         all_reqs += extras_require[extra]
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
-    extras_require['mesos:python_version < "3.11"'] = get_requirements("mesos")
+    extras_require['mesos'] = get_requirements("mesos")
     all_reqs += get_requirements("mesos")
     extras_require["all"] = all_reqs
     setup(
