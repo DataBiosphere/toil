@@ -45,7 +45,7 @@ from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.Error
 import WDL.runtime.config
 
-from toil.common import Toil, addOptions, add_wdl_options, check_and_create_default_config_file, add_cwl_options
+from toil.common import Toil, addOptions, check_and_create_default_config_file
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -2530,27 +2530,12 @@ def main() -> None:
     parser = ArgParser(description='Runs WDL files with toil.')
     addOptions(parser, jobstore_as_flag=True, cwl=False, wdl=True)
 
-
-    exclude_parser = ArgParser(add_help=False)
-    add_cwl_options(exclude_parser)
-
-    exclude_option_strings = set(exclude_parser._option_string_actions)
-
-    for arg in args:
-        split_by_equal = arg.split("=")
-        # CWL options will be caught and errored
-        if split_by_equal[0] in exclude_option_strings:
-            parser.error(f"unrecognized arguments: {arg}")
-
     parser.add_argument("wdl_uri", type=str,
                         help="WDL document URI")
     parser.add_argument("inputs_uri", type=str, nargs='?',
                         help="WDL input JSON URI")
     parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
                         help="WDL input JSON URI")
-
-    # Ensure there is a default config file
-    check_and_create_default_config_file()
 
     options = parser.parse_args(args)
 

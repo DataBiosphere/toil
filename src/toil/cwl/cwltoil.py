@@ -103,7 +103,7 @@ from schema_salad.sourceline import SourceLine
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, addOptions, add_cwl_options, check_and_create_default_config_file, add_wdl_options
+from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -3258,15 +3258,18 @@ def get_options(args: List[str]) -> argparse.Namespace:
     """
     parser = ArgParser()
     addOptions(parser, jobstore_as_flag=True, cwl=True)
-    add_cwl_options(parser)
+
+    parser.add_argument("cwltool", type=str, help="CWL file to run.")
+    parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
+                                                  "the name of the input can be used as an option. "
+                                                  "For example: \"%(prog)s workflow.cwl --file1 file\". "
+                                                  "If an input has the same name as a Toil option, pass '--' before it.")
 
     options: argparse.Namespace
     options, cwl_options = parser.parse_known_args(args)
     options.cwljob.extend(cwl_options)
 
     return options
-
-def check_options(options: argparse.Namespace):
 
 
 def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:

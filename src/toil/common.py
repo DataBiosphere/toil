@@ -283,29 +283,9 @@ class Config:
     def set_from_default_config(self) -> None:
         # get defaults from a config file by simulating an argparse run
         # as Config often expects defaults to already be instantiated
-        # Check config file and create it if needed
-        check_and_create_default_config_file()
-        # Check on the config file to make sure it is sensible
-        config_status = os.stat(DEFAULT_CONFIG_FILE)
-        if config_status.st_size == 0:
-            # If we have an empty config file, someone has to manually delete
-            # it before we will work again.
-            raise RuntimeError(
-                f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
-        logger.debug("Initializing %s byte default configuration", config_status.st_size)
-        try:
-            with open(DEFAULT_CONFIG_FILE, "r") as f:
-                yaml = YAML(typ="safe")
-                s = yaml.load(f)
-                logger.debug("Initialized default configuration: %s", json.dumps(s))
-        except:
-            # Something went wrong reading the default config, so dump its
-            # contents to the log.
-            logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
-            raise
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
-        ns = parser.parse_args(f"--config={DEFAULT_CONFIG_FILE}")
+        ns = parser.parse_args("")
         self.setOptions(ns)
 
     def prepare_start(self) -> None:
@@ -595,7 +575,10 @@ def generate_config(filepath: str) -> None:
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser, jobstore_as_flag=True)
     toil_base_data = create_config_dict_from_parser(parser)
-    toil_base_data.yaml_set_start_comment("BASE TOIL OPTIONS")
+    
+    toil_base_data.yaml_set_start_comment("This is the configuration file for Toil. To set an option, uncomment an "
+                                          "existing option and set its value. The current values are the "
+                                          "defaults.\n\nBASE TOIL OPTIONS\n")
     all_data.append(toil_base_data)
 
     parser = ArgParser(YAMLConfigFileParser())
@@ -620,9 +603,16 @@ def generate_config(filepath: str) -> None:
     # there to begin with).
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
-            yaml = YAML()
+            f.write("config_version: 1.0\n")
+            yaml = YAML(typ=['rt', 'string'])
             for data in all_data:
-                yaml.dump(data, f)
+                if "config_version" in data:
+                    del data["config_version"]
+                for line in yaml.dump_to_string(data).split("\n"):
+                    if line:
+                        f.write("#")
+                    f.write(line)
+                    f.write("\n")
 
 
 JOBSTORE_HELP = ("The location of the job store for the workflow.  "
@@ -715,6 +705,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         # this forces configargparser to process the config file in YAML rather than in it's own format
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
+        parser._default_config_files = [DEFAULT_CONFIG_FILE]  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)
@@ -723,8 +714,31 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                       f'Use configargparse instead or call Job.Runner.getDefaultArgumentParser()',
                       DeprecationWarning)
 
+    check_and_create_default_config_file()
+    # Check on the config file to make sure it is sensible
+    config_status = os.stat(DEFAULT_CONFIG_FILE)
+    if config_status.st_size == 0:
+        # If we have an empty config file, someone has to manually delete
+        # it before we will work again.
+        raise RuntimeError(
+            f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
+    try:
+        with open(DEFAULT_CONFIG_FILE, "r") as f:
+            yaml = YAML(typ="safe")
+            s = yaml.load(f)
+            logger.debug("Initialized default configuration: %s", json.dumps(s))
+    except:
+        # Something went wrong reading the default config, so dump its
+        # contents to the log.
+        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
+        raise
     opt_strtobool = lambda b: b if b is None else bool(strtobool(b))
     convert_bool = lambda b: bool(strtobool(b))
+
+    # This is necessary as the config file must have at least one valid key to parse properly and we want to use a dummy key
+    config_version = parser.add_argument_group()
+    config_version.add_argument("--config_version", default=None, help=SUPPRESS)
+
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
 
