@@ -28,3 +28,6 @@ lxml
 docutils>=0.16,<0.21
 pyupgrade
 pytest-xdist
+boto3-stubs[s3,sdb,iam,sts,boto3]>=1.28.3.post2, <2
+mypy-boto3-iam>=1.28.3.post2, <2 # Need to force .post1 to be replaced
+moto>=4.1.11, <5
