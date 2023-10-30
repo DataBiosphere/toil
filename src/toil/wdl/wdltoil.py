@@ -36,7 +36,7 @@ from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequen
     Iterable, Generator
 from urllib.parse import urlsplit, urljoin, quote, unquote
 
-from configargparse import ArgParser
+from configargparse import ArgParser, SUPPRESS
 from WDL._util import byte_size_units
 from WDL.CLI import print_error
 from WDL.runtime.task_container import TaskContainer
@@ -45,7 +45,7 @@ from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.Error
 import WDL.runtime.config
 
-from toil.common import Toil, addOptions, check_and_create_default_config_file
+from toil.common import Toil, addOptions, check_and_create_default_config_file, add_cwl_options
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -2536,6 +2536,14 @@ def main() -> None:
                         help="WDL input JSON URI")
     parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
                         help="WDL input JSON URI")
+
+    cwl_parser = ArgParser()
+    add_cwl_options(cwl_parser)
+    for action in cwl_parser._actions:
+        action.default = SUPPRESS
+    possible_cwl_options, _ = cwl_parser.parse_known_args(args)
+    if len(vars(possible_cwl_options)) != 0:
+        raise parser.error(f"CWL options are not allowed on the command line.")
 
     options = parser.parse_args(args)
 

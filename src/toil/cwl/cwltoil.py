@@ -17,7 +17,6 @@
 
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
-import argparse
 import base64
 import copy
 import datetime
@@ -65,7 +64,7 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
-from configargparse import ArgParser
+from configargparse import ArgParser, SUPPRESS, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -103,7 +102,7 @@ from schema_salad.sourceline import SourceLine
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, add_base_toil_options, add_cwl_options, add_wdl_options
 from toil.cwl import check_cwltool_version
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -3250,7 +3249,7 @@ usage_message = "\n\n" + textwrap.dedent(
 )
 
 
-def get_options(args: List[str]) -> argparse.Namespace:
+def get_options(args: List[str]) -> Namespace:
     """
     Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
     :param args: List of args from command line
@@ -3258,14 +3257,21 @@ def get_options(args: List[str]) -> argparse.Namespace:
     """
     parser = ArgParser()
     addOptions(parser, jobstore_as_flag=True, cwl=True)
-
     parser.add_argument("cwltool", type=str, help="CWL file to run.")
     parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
                                                   "the name of the input can be used as an option. "
                                                   "For example: \"%(prog)s workflow.cwl --file1 file\". "
                                                   "If an input has the same name as a Toil option, pass '--' before it.")
 
-    options: argparse.Namespace
+    wdl_parser = ArgParser()
+    add_wdl_options(wdl_parser)
+    for action in wdl_parser._actions:
+        action.default = SUPPRESS
+    possible_wdl_options, _ = wdl_parser.parse_known_args(args)
+    if len(vars(possible_wdl_options)) != 0:
+        raise parser.error(f"WDL options are not allowed on the command line.")
+
+    options: Namespace
     options, cwl_options = parser.parse_known_args(args)
     options.cwljob.extend(cwl_options)
 
@@ -3279,6 +3285,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     if args is None:
         args = sys.argv[1:]
+
+    # ensure_no_wdl(args)
 
     options = get_options(args)
 
@@ -3678,7 +3686,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
 
 def find_default_container(
-    args: argparse.Namespace, builder: cwltool.builder.Builder
+    args: Namespace, builder: cwltool.builder.Builder
 ) -> Optional[str]:
     """Find the default constructor by consulting a Toil.options object."""
     if args.default_container:

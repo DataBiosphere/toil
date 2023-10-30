@@ -575,7 +575,7 @@ def generate_config(filepath: str) -> None:
     parser = ArgParser(YAMLConfigFileParser())
     addOptions(parser, jobstore_as_flag=True)
     toil_base_data = create_config_dict_from_parser(parser)
-    
+
     toil_base_data.yaml_set_start_comment("This is the configuration file for Toil. To set an option, uncomment an "
                                           "existing option and set its value. The current values are the "
                                           "defaults.\n\nBASE TOIL OPTIONS\n")
@@ -608,7 +608,7 @@ def generate_config(filepath: str) -> None:
             for data in all_data:
                 if "config_version" in data:
                     del data["config_version"]
-                for line in yaml.dump_to_string(data).split("\n"):
+                for line in yaml.dump_to_string(data).split("\n"):  # type: ignore[attr-defined]
                     if line:
                         f.write("#")
                     f.write(line)
@@ -684,11 +684,9 @@ def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, f
 
 def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False, wdl: bool = False) -> None:
     """
-    Add Toil command line options to a parser.
+    Add all Toil command line options to a parser.
 
-    Support for config files.
-
-    :param config: If specified, take defaults from the given Config.
+    Support for config files if using configargparse. This will also check and set up the default config file.
 
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
 
@@ -732,12 +730,39 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         # contents to the log.
         logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
         raise
-    opt_strtobool = lambda b: b if b is None else bool(strtobool(b))
-    convert_bool = lambda b: bool(strtobool(b))
 
     # This is necessary as the config file must have at least one valid key to parse properly and we want to use a dummy key
-    config_version = parser.add_argument_group()
-    config_version.add_argument("--config_version", default=None, help=SUPPRESS)
+    config = parser.add_argument_group()
+    config.add_argument("--config_version", default=None, help=SUPPRESS)
+
+    # If using argparse instead of configargparse, this should just not parse when calling parse_args()
+    # default config value is set to none as defaults should already be populated at config init
+    config.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
+                              help="Get options from a config file.")
+
+    # Add base toil options
+    add_base_toil_options(parser, jobstore_as_flag, cwl)
+    # Add CWL and WDL options
+    # This is done so the config file can hold all available options
+    add_cwl_options(parser, suppress=not cwl)
+    add_wdl_options(parser, suppress=not wdl)
+
+
+def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False) -> None:
+    """
+    Add base Toil command line options to the parser.
+    :param parser: Argument parser to add options to
+    :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
+    :param cwl: whether CWL should be included or not
+    """
+
+    def convert_bool(b: str) -> bool:
+        """Convert a string representation of bool to bool"""
+        return bool(strtobool(b))
+
+    def opt_strtobool(b: Optional[str]) -> Optional[bool]:
+        """Convert an optional string representation of bool to None or bool"""
+        return b if b is None else convert_bool(b)
 
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
@@ -1216,10 +1241,6 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                               help="Seconds to wait between reports of running jobs.")
     misc_options.add_argument('--disableProgress', dest='disableProgress', type=convert_bool, default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
-    # If using argparse instead of configargparse, this should just not parse when calling parse_args()
-    # default config value is set to none as defaults should already be populated at config init
-    misc_options.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
-                              help="Get options from a config file.")
 
     # Debug options
     debug_options = parser.add_argument_group(
@@ -1261,12 +1282,6 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # dest is set to enableCaching to not conflict with the current --caching destination
     caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
     caching.set_defaults(disableCaching=None)
-
-    # Add CWL and WDL options
-    # This is done so the config file can hold all available options
-    add_cwl_options(parser, suppress=not cwl)
-    add_wdl_options(parser, suppress=not wdl)
-
 
 def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     """
