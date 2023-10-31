@@ -396,7 +396,7 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
         input_file,
         attachments=attachments,
         workflow_engine_parameters=engine_options)
-    return run_result.get("run_id", None)
+    return str(run_result["run_id"])
 
 
 def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool:
