@@ -49,13 +49,13 @@ def run_setup():
     # to how wheels work, so it is not included in all and
     # must be explicitly installed as an extra
     all_reqs = []
+
     non_htcondor_extras = [
         "aws",
         "cwl",
         "encryption",
         "google",
         "kubernetes",
-        "mesos",
         "wdl",
         "server"
     ]
@@ -64,8 +64,9 @@ def run_setup():
         all_reqs += extras_require[extra]
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
+    extras_require['mesos'] = get_requirements("mesos")
+    all_reqs += get_requirements("mesos")
     extras_require["all"] = all_reqs
-
     setup(
         name='toil',
         version=version.distVersion,
