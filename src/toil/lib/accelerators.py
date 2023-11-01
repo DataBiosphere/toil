@@ -100,13 +100,7 @@ def count_nvidia_gpus() -> int:
                 .firstChild,
             ).data
         )
-    except (
-        FileNotFoundError,
-        subprocess.CalledProcessError,
-        IndexError,
-        ValueError,
-        PermissionError,
-    ):
+    except: 
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some

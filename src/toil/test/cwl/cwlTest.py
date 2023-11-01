@@ -219,6 +219,17 @@ class CWLWorkflowTest(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
+    def test_cwl_cmdline_input(self):
+        """
+        Test that running a CWL workflow with inputs specified on the command line passes.
+        """
+        from toil.cwl import cwltoil
+        cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
+        args = [cwlfile, "--message", "str", "--sleep", "2"]
+        st = StringIO()
+        # If the workflow runs, it must have had options
+        cwltoil.main(args, stdout=st)
+
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
 
@@ -1230,56 +1241,6 @@ def test_pick_value_with_one_null_value(caplog):
         cwltoil.main(args)
         for line in caplog.messages:
             assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
-
-
-@needs_cwl
-@pytest.mark.cwl_small
-def test_usage_message():
-    """
-    This is purely to ensure a (more) helpful error message is printed if a user does
-    not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
-    """
-    toil = "toil-cwl-runner"
-    cwl = "test/cwl/revsort.cwl"
-    cwl_job_json = "test/cwl/revsort-job.json"
-    jobstore = "delete-test-toil"
-    random_option_1 = "--logInfo"
-    random_option_2 = "--disableChaining"
-    cmd_wrong_ordering_1 = [
-        toil,
-        cwl,
-        cwl_job_json,
-        jobstore,
-        random_option_1,
-        random_option_2,
-    ]
-    cmd_wrong_ordering_2 = [
-        toil,
-        cwl,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl_job_json,
-    ]
-    cmd_wrong_ordering_3 = [
-        toil,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl,
-        cwl_job_json,
-    ]
-
-    for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert (
-            b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml" in stderr
-        )
-        assert (
-            b"All positional arguments [cwl, yml_or_json] "
-            b"must always be specified last for toil-cwl-runner." in stderr
-        )
 
 
 @needs_cwl

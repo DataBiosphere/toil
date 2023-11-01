@@ -74,6 +74,7 @@ def human2bytes(string: str) -> int:
     integer number of bytes.
     """
     value, unit = parse_memory_string(string)
+
     return int(convert_units(value, src_unit=unit, dst_unit='b'))
 
 

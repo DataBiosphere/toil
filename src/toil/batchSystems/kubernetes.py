@@ -152,6 +152,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Re-type the config to make sure it has all the fields we need.
+        # This convinces MyPy we really do have this type.
         assert isinstance(config, KubernetesBatchSystem.KubernetesConfig)
 
         # Turn down log level for Kubernetes modules and dependencies.
@@ -167,26 +168,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self._apis: KubernetesBatchSystem._ApiStorageDict = {}
 
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
-        self.namespace = self._api('namespace')
+        self.namespace: str = self._api('namespace')
 
         # Decide if we are going to mount a Kubernetes host path as the Toil
         # work dir in the workers, for shared caching.
-        self.host_path = config.kubernetes_host_path
+        self.host_path: Optional[str] = config.kubernetes_host_path
 
         # Get the service account name to use, if any.
-        self.service_account = config.kubernetes_service_account
+        self.service_account: Optional[str] = config.kubernetes_service_account
 
         # Get how long we should wait for a pod that lands on a node to
         # actually start.
-        self.pod_timeout = config.kubernetes_pod_timeout
+        self.pod_timeout: float = config.kubernetes_pod_timeout
 
         # Get the username to mark jobs with
-        username = config.kubernetes_owner
+        username = config.kubernetes_owner or self.get_default_kubernetes_owner()
         # And a unique ID for the run
         self.unique_id = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
-        self.job_prefix = f'{username}-toil-{self.unique_id}-'
+        self.job_prefix: str = f'{username}-toil-{self.unique_id}-'
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
         # BatchSystemLocalSupport.
@@ -199,17 +200,17 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # conformance tests. To work around this, we tag all our jobs with an
         # explicit TTL that is long enough that we're sure we can deal with all
         # the finished jobs before they expire.
-        self.finished_job_ttl = 3600  # seconds
+        self.finished_job_ttl: int = 3600  # seconds
 
         # Here is where we will store the user script resource object if we get one.
         self.user_script: Optional[Resource] = None
 
         # Ge the image to deploy from Toil's configuration
-        self.docker_image = applianceSelf()
+        self.docker_image: str = applianceSelf()
 
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
-        self.worker_work_dir = Toil.getToilWorkDir(config.workDir)
+        self.worker_work_dir: str = Toil.getToilWorkDir(config.workDir)
         if (config.workDir is None and
             os.getenv('TOIL_WORKDIR') is None and
             self.worker_work_dir == tempfile.gettempdir()):
@@ -226,17 +227,17 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.environment['TMPDIR'] = '/var/tmp'
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        self.aws_secret_name = os.environ.get("TOIL_AWS_SECRET_NAME", None)
+        self.aws_secret_name: Optional[str] = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        self.enable_watching = os.environ.get("KUBE_WATCH_ENABLED", False)
+        self.enable_watching: bool = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         # This will be a label to select all our jobs.
-        self.run_id = f'toil-{self.unique_id}'
+        self.run_id: str = f'toil-{self.unique_id}'
 
         # Keep track of available resources.
         maxMillicores = int(SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000)
-        self.resource_sources = [
+        self.resource_sources: List[ResourcePool] = [
             # A pool representing available job slots
             ResourcePool(self.config.max_jobs, 'job slots'),
             # A pool representing available CPU in units of millicores (1 CPU
@@ -261,16 +262,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self._killed_queue_jobs: Set[int] = set()
 
         # We use this event to signal shutdown
-        self._shutting_down = Event()
+        self._shutting_down: Event = Event()
 
         # A lock to protect critical regions when working with queued jobs.
-        self._mutex = RLock()
+        self._mutex: RLock = RLock()
 
         # A condition set to true when there is more work to do. e.g.: new job
         # in the queue or any resource becomes available.
-        self._work_available = Condition(lock=self._mutex)
+        self._work_available: Condition = Condition(lock=self._mutex)
 
-        self.schedulingThread = Thread(target=self._scheduler, daemon=True)
+        self.schedulingThread: Thread = Thread(target=self._scheduler, daemon=True)
         self.schedulingThread.start()
 
     def _pretty_print(self, kubernetes_object: Any) -> str:
@@ -1864,24 +1865,25 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None,
+        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None, env_var="TOIL_KUBERNETES_HOST_PATH",
                             help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=cls.get_default_kubernetes_owner(),
-                            help="Username to mark Kubernetes jobs with.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None,
+        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=None, env_var="TOIL_KUBERNETES_OWNER",
+                            help=f"Username to mark Kubernetes jobs with. If the provided value is None, the value will "
+                                 f"be generated at runtime. "
+                                 f"(Generated default: {cls.get_default_kubernetes_owner()})")
+        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None, env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
                             help="Service account to run jobs as.  "
                                  "(default: %(default)s)")
-        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120,
+        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT", type=float,
                             help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
                                  "(default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("kubernetes_host_path", default=None, env=['TOIL_KUBERNETES_HOST_PATH'])
-        setOption("kubernetes_owner", default=cls.get_default_kubernetes_owner(), env=['TOIL_KUBERNETES_OWNER'])
-        setOption("kubernetes_service_account", default=None, env=['TOIL_KUBERNETES_SERVICE_ACCOUNT'])
-        setOption("kubernetes_pod_timeout", default=120, env=['TOIL_KUBERNETES_POD_TIMEOUT'])
+        setOption("kubernetes_host_path")
+        setOption("kubernetes_owner")
+        setOption("kubernetes_service_account",)
+        setOption("kubernetes_pod_timeout")
 

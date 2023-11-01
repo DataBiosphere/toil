@@ -29,6 +29,8 @@ import traceback
 from contextlib import contextmanager
 from typing import Any, Callable, Iterator, List, Optional
 
+from configargparse import ArgParser
+
 from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -640,7 +642,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     else:
         return 0
 
-def parse_args(args: List[str]) -> argparse.Namespace:
+def parse_args(args: List[str]) -> Any:
     """
     Parse command-line arguments to the worker.
     """
@@ -649,7 +651,7 @@ def parse_args(args: List[str]) -> argparse.Namespace:
     args = args[1:]
 
     # Make the parser
-    parser = argparse.ArgumentParser()
+    parser = ArgParser()
 
     # Now add all the options to it
 

@@ -19,6 +19,7 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import JobDescription
+from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,9 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+        max_local_jobs = config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
-            config, maxCores, maxMemory, maxDisk, max_jobs=config.max_local_jobs
+            config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
     def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:
