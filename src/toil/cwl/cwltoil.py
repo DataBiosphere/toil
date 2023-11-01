@@ -3292,8 +3292,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-
-    tmpdir_prefix = options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
+    tmpdir_prefix = options.tmpdir_prefix = options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
 
     # We need a workdir for the CWL runtime contexts.
     if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
