@@ -573,7 +573,7 @@ def generate_config(filepath: str) -> None:
     all_data = []
 
     parser = ArgParser(YAMLConfigFileParser())
-    addOptions(parser, jobstore_as_flag=True)
+    add_base_toil_options(parser, jobstore_as_flag=True, cwl=False)
     toil_base_data = create_config_dict_from_parser(parser)
 
     toil_base_data.yaml_set_start_comment("This is the configuration file for Toil. To set an option, uncomment an "
@@ -731,15 +731,6 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
         raise
 
-    # This is necessary as the config file must have at least one valid key to parse properly and we want to use a dummy key
-    config = parser.add_argument_group()
-    config.add_argument("--config_version", default=None, help=SUPPRESS)
-
-    # If using argparse instead of configargparse, this should just not parse when calling parse_args()
-    # default config value is set to none as defaults should already be populated at config init
-    config.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
-                              help="Get options from a config file.")
-
     # Add base toil options
     add_base_toil_options(parser, jobstore_as_flag, cwl)
     # Add CWL and WDL options
@@ -755,6 +746,15 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
     :param cwl: whether CWL should be included or not
     """
+
+    # This is necessary as the config file must have at least one valid key to parse properly and we want to use a dummy key
+    config = parser.add_argument_group()
+    config.add_argument("--config_version", default=None, help=SUPPRESS)
+
+    # If using argparse instead of configargparse, this should just not parse when calling parse_args()
+    # default config value is set to none as defaults should already be populated at config init
+    config.add_argument('--config', dest='config', is_config_file_arg=True, default=None,
+                              help="Get options from a config file.")
 
     def convert_bool(b: str) -> bool:
         """Convert a string representation of bool to bool"""
