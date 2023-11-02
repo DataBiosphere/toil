@@ -232,7 +232,7 @@ cwl_v1.2:
     reports:
       junit: "*.junit.xml"
     paths:
-      - "*.junit.xml
+    - "*.junit.xml
 
 cwl_on_arm:
   rules:
@@ -257,7 +257,7 @@ cwl_on_arm:
     reports:
       junit: "*.junit.xml"
     paths:
-      - "*.junit.xml
+    - "*.junit.xml
 
 cwl_misc:
   rules:
