@@ -3286,8 +3286,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if args is None:
         args = sys.argv[1:]
 
-    # ensure_no_wdl(args)
-
     options = get_options(args)
 
     # Do cwltool setup
