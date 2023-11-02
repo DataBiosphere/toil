@@ -214,6 +214,11 @@ cwl_v1.2:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
   stage: integration
   script:
     - pwd
@@ -221,13 +226,18 @@ cwl_v1.2:
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     # Run CWL integration tests excluded from cwl_misc
     - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
-    # Run CWL conformance tests
+    # Run CWL conformance tests, with file store bypassed
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
 
 cwl_on_arm:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
   stage: integration
   script:
     - pwd
@@ -236,6 +246,7 @@ cwl_on_arm:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
+    # Run CWL conformance tests, on an ARM cluster on AWS, using the file store
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
 
 cwl_misc:
