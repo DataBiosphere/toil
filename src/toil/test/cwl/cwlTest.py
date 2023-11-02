@@ -903,12 +903,21 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, **kwargs):
+        if "junit_file" not in kwargs:
+            kwargs["junit_file"] = os.path.join(
+                self.rootDir, "conformance-1.2.junit.xml"
+            )
         run_conformance_tests(workDir=self.cwlSpec, yml=self.test_yaml, **kwargs)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
-        self.test_run_conformance(caching=True)
+        self.test_run_conformance(
+            caching=True,
+            junit_file = os.path.join(
+                self.rootDir, "caching-conformance-1.2.junit.xml"
+            )
+        )
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
@@ -919,7 +928,10 @@ class CWLv12Test(ToilTest):
         features.
         """
         self.test_run_conformance(
-            extra_args=["--bypass-file-store"], must_support_all_features=True
+            extra_args=["--bypass-file-store"], must_support_all_features=True,
+            junit_file = os.path.join(
+                self.rootDir, "in-place-update-conformance-1.2.junit.xml"
+            )
         )
 
     @slow
@@ -927,7 +939,7 @@ class CWLv12Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         if "junit_file" not in kwargs:
             kwargs["junit_file"] = os.path.join(
-                self.rootDir, "kubernetes-conformance.junit.xml"
+                self.rootDir, "kubernetes-conformance-1.2.junit.xml"
             )
         return self.test_run_conformance(
             batchSystem="kubernetes",
@@ -946,7 +958,7 @@ class CWLv12Test(ToilTest):
         return self.test_kubernetes_cwl_conformance(
             caching=True,
             junit_file=os.path.join(
-                self.rootDir, "kubernetes-caching-conformance.junit.xml"
+                self.rootDir, "kubernetes-caching-conformance-1.2.junit.xml"
             ),
         )
 
@@ -1049,6 +1061,15 @@ class CWLOnARMTest(AbstractClusterTest):
             ]
         )
 
+        # We know if it succeeds it should save a junit XML for us to read.
+        # Bring it back to be an artifact.
+        self.rsync_util(
+            f":{self.cwl_test_dir}/toil/conformance-1.2.junit.xml",
+            os.path.join(
+                self._projectRootPath(),
+                "arm-conformance-1.2.junit.xml"
+            )
+        )
 
 @needs_cwl
 @pytest.mark.cwl_small_log_dir

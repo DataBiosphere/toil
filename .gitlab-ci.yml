@@ -228,6 +228,11 @@ cwl_v1.2:
     - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
     # Run CWL conformance tests, with file store bypassed
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+      - "*.junit.xml
 
 cwl_on_arm:
   rules:
@@ -248,6 +253,11 @@ cwl_on_arm:
     - chmod 400 /root/.ssh/id_rsa
     # Run CWL conformance tests, on an ARM cluster on AWS, using the file store
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+      - "*.junit.xml
 
 cwl_misc:
   rules:
