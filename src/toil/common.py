@@ -1607,15 +1607,19 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     :return: None
     """
     suppress_help = SUPPRESS if suppress else None
-    parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell',
+    # include arg names without a wdl specifier if suppress is False, whi
+    output_dialect_arguments = ["--wdlOutputDialect"] + (["--outputDialect"] if not suppress else [])
+    parser.add_argument(*output_dialect_arguments, dest="output_dialect", type=str, default='cromwell',
                         choices=['cromwell', 'miniwdl'],
                         help=suppress_help or ("JSON output format dialect. 'cromwell' just returns the workflow's output"
                               "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
                               "includes a 'dir' key where files are written."))
-    parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
+    output_directory_arguments = ["--wdlOutputDirectory"] + (["--outputDirectory", "-o"] if not suppress else [])
+    parser.add_argument(*output_directory_arguments, dest="output_directory", type=str, default=None,
                         help=suppress_help or (
                             "Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
-    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
+    output_file_arguments = ["--wdlOutputFile"] + (["--outputFile", "-m"] if not suppress else [])
+    parser.add_argument(*output_file_arguments, dest="output_file", type=str, default=None,
                         help=suppress_help or "File or URI to save output JSON to.")
 
 
