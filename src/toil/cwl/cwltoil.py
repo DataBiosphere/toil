@@ -656,6 +656,8 @@ class ToilPathMapper(PathMapper):
                streaming on, and returns a file: URI to where the file or
                directory has been downloaded to. Meant to be a partially-bound
                version of toil_get_file().
+        :param referenced_files: List of CWL File and Directory objects, which can have their locations set as both
+               virtualized and absolute local paths
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -677,8 +679,9 @@ class ToilPathMapper(PathMapper):
         This is called on each File or Directory CWL object. The Files and
         Directories all have "location" fields. For the Files, these are from
         upload_file(), and for the Directories, these are from
-        upload_directory(), with their children being assigned
-        locations based on listing the Directories using ToilFsAccess.
+        upload_directory() or cwltool internally. With upload_directory(), they and their children will be assigned
+        locations based on listing the Directories using ToilFsAccess. With cwltool, locations will be set as absolute
+        paths.
 
         :param obj: The CWL File or Directory to process
 
@@ -809,6 +812,13 @@ class ToilPathMapper(PathMapper):
                     # We can't really make the directory. Maybe we are
                     # exporting from the leader and it doesn't matter.
                     resolved = location
+            elif location.startswith("/"):
+                # Test if path is an absolute local path
+                # Does not check if the path is relative
+                # While Toil encodes paths into a URL with ToilPathMapper,
+                # something called internally in cwltool may return an absolute path
+                # ex: if cwltool collects outputs with collect_output, revmap_file will use its own internal pathmapper
+                resolved = location
             else:
                 raise RuntimeError("Unsupported location: " + location)
 
