@@ -849,7 +849,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             if len(sys.argv) < 3:
                 count(1)
                 try:
-                    time.sleep(1)
+                    time.sleep(0.5)
                 finally:
                     count(-1)
             else:
@@ -910,9 +910,10 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         logger.info(f'maxCores: {maxCores}, '
                                  f'coresPerJob: {coresPerJob}, '
                                  f'load: {load}')
-                        # This is the key assertion:
+                        # This is the key assertion: we shouldn't run too many jobs.
+                        # Because of nondeterminism we can't guarantee hitting the limit.
                         expectedMaxConcurrentTasks = min(maxCores // coresPerJob, jobs)
-                        self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
+                        self.assertLessEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')

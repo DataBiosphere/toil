@@ -36,7 +36,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
 
-from toil.common import SYS_MAX_SIZE, Config, Toil, fC
+from toil.common import SYS_MAX_SIZE, Config, Toil, make_open_interval_action
 from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
 from toil.lib.threading import cpu_count
@@ -81,21 +81,30 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(
-        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int, max_jobs: Optional[int] = None
     ) -> None:
         self.config = config
+
+        if max_jobs is None:
+            # Use the main limit for jobs from the config
+            self.max_jobs = self.config.max_jobs
+        else:
+            # Use the override (probably because we are the local batch system
+            # and not the main one).
+            self.max_jobs = max_jobs
+
         # Limit to the smaller of the user-imposed limit and what we actually
         # have on this machine for each resource.
         #
         # If we don't have up to the limit of the resource (and the resource
         # isn't the inlimited sentinel), warn.
         if maxCores > self.numCores:
-            if maxCores != SYS_MAX_SIZE:
+            if maxCores != SYS_MAX_SIZE and maxCores != float('inf'):
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            if maxMemory != SYS_MAX_SIZE:
+            if maxMemory < SYS_MAX_SIZE:  # todo: looks like humans2bytes converts SYS_MAX_SIZE to SYS_MAX_SIZE+1
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
@@ -103,7 +112,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
-            if maxDisk != SYS_MAX_SIZE:
+            if maxDisk < SYS_MAX_SIZE:  # same as maxMemory logger.warning
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
@@ -125,8 +134,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self.debugWorker = config.debugWorker
 
-        # A counter to generate job IDs and a lock to guard it
-        self.jobIndex = 0
+        # A counter to generate job IDs and a lock to guard it.
+        # We make sure to start this at 1 so that job IDs are never falsy.
+        self.jobIndex = 1
         self.jobIndexLock = Lock()
 
         # A dictionary mapping batch system IDs of submitted jobs to the command line
@@ -154,6 +164,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Put them all organized by resource type
         self.resource_sources = [
+            # A pool representing available job slots
+            ResourcePool(self.max_jobs, 'job slots'),
             # A pool representing available CPU in units of minCores
             ResourcePool(int(self.maxCores / self.minCores), 'cores'),
             # A pool representing available memory in bytes
@@ -580,8 +592,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         startTime = time.time()
 
         # And what do we want from each resource in self.resource_sources?
-        # We know they go cores, memory, disk, accelerators.
-        resource_requests: List[Union[int, Set[int]]] = [coreFractions, jobMemory, jobDisk]
+        # We know they go job slot, cores, memory, disk, accelerators.
+        resource_requests: List[Union[int, Set[int]]] = [1, coreFractions, jobMemory, jobDisk]
 
         # Keep a reference to the accelerators separately
         accelerators_needed = None
@@ -589,7 +601,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if job_accelerators:
             # Try and find some accelerators to use.
             # Start with all the accelerators that are free right now
-            accelerator_set : ResourceSet = self.resource_sources[3]
+            accelerator_set : ResourceSet = self.resource_sources[-1]
             snapshot = accelerator_set.get_free_snapshot()
             # And build a plan of the ones we want
             accelerators_needed, problem = self._identify_sufficient_accelerators(job_accelerators, snapshot)
@@ -831,7 +843,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--scale", dest="scale", default=1,
+        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_open_interval_action(0.0),
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                                  "Used in the single_machine batch system. Useful for running workflows on "
                                  "smaller machines than they were designed for, by setting a value less than 1. "
@@ -839,7 +851,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        setOption("scale", float, fC(0.0), default=1)
+        setOption("scale")
 
 
 class Info:

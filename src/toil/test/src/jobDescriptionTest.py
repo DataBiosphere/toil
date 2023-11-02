@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import os
-from argparse import ArgumentParser
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
@@ -63,7 +63,6 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(list(j.serviceHostIDsInBatches()), [])
         self.assertEqual(list(j.services), [])
         self.assertEqual(list(j.nextSuccessors()), [])
-        self.assertEqual(sum(len(level) for level in j.stack), 0)
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
 

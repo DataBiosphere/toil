@@ -40,6 +40,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
+from toil.lib.retry import retry, ErrorCondition
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -58,6 +59,44 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStateFile: Optional[str] = None
         self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
 
+        self.check_for_state_corruption()
+
+    @staticmethod
+    def check_for_coordination_corruption(coordination_dir: Optional[str]) -> None:
+        """
+        Make sure the coordination directory hasn't been deleted unexpectedly.
+
+        Slurm has been known to delete XDG_RUNTIME_DIR out from under processes
+        it was promised to, so it is possible that in certain misconfigured
+        environments the coordination directory and everything in it could go
+        away unexpectedly. We are going to regularly make sure that the things
+        we think should exist actually exist, and we are going to abort if they
+        do not.
+        """
+
+        if coordination_dir and not os.path.exists(coordination_dir):
+            raise RuntimeError(
+                f'The Toil coordination directory at {coordination_dir} '
+                f'was removed while the workflow was running! Please provide a '
+                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
+                f'is safe from automated cleanup during the workflow run.'
+            )
+
+    def check_for_state_corruption(self) -> None:
+        """
+        Make sure state tracking information hasn't been deleted unexpectedly.
+        """
+
+        NonCachingFileStore.check_for_coordination_corruption(self.coordination_dir)
+
+        if self.jobStateFile and not os.path.exists(self.jobStateFile):
+            raise RuntimeError(
+                f'The job state file {self.jobStateFile} '
+                f'was removed while the workflow was running! Please provide a '
+                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
+                f'is safe from automated cleanup during the workflow run.'
+            )
+
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
         jobReqs = job.disk
@@ -65,6 +104,7 @@ class NonCachingFileStore(AbstractFileStore):
         self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
+        self.check_for_state_corruption()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
             logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
@@ -85,6 +125,7 @@ class NonCachingFileStore(AbstractFileStore):
                 self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
+            self.check_for_state_corruption()
             os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
@@ -153,18 +194,21 @@ class NonCachingFileStore(AbstractFileStore):
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
 
+        # We are going to commit synchronously, so no need to clone a snapshot
+        # of the job description or mess with its version numbering.
+
         if not jobState:
             # All our operations that need committing are job state related
             return
 
         try:
-            # Indicate any files that should be deleted once the update of
-            # the job wrapper is completed.
+            # Indicate any files that should be seen as deleted once the
+            # update of the job description is visible.
+            if len(self.jobDesc.filesToDelete) > 0:
+                raise RuntimeError("Job is already in the process of being committed!")
             self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
             self.jobStore.update_job(self.jobDesc)
-            # Delete any remnant jobs
-            list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.delete_file, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
@@ -175,6 +219,7 @@ class NonCachingFileStore(AbstractFileStore):
         except:
             self._terminateEvent.set()
             raise
+
 
     def __del__(self) -> None:
         """
@@ -192,6 +237,8 @@ class NonCachingFileStore(AbstractFileStore):
         :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
         :return:
         """
+
+        cls.check_for_coordination_corruption(coordination_dir)
 
         for jobState in cls._getAllJobStates(coordination_dir):
             if not process_name_exists(coordination_dir, jobState['jobProcessName']):
@@ -226,8 +273,8 @@ class NonCachingFileStore(AbstractFileStore):
                         fcntl.lockf(dirFD, fcntl.LOCK_UN)
                         os.close(dirFD)
 
-    @staticmethod
-    def _getAllJobStates(coordination_dir: str) -> Iterator[Dict[str, str]]:
+    @classmethod
+    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[Dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
@@ -237,7 +284,9 @@ class NonCachingFileStore(AbstractFileStore):
         :return: dict with keys (jobName,  jobProcessName, jobDir)
         """
         jobStateFiles = []
-        
+
+        cls.check_for_coordination_corruption(coordination_dir)
+
         # Note that the directory may contain files whose names are not decodable to Unicode.
         # So we need to work in bytes.
         for entry in os.scandir(os.fsencode(coordination_dir)):
@@ -245,18 +294,30 @@ class NonCachingFileStore(AbstractFileStore):
             if entry.name.endswith(b'.jobState'):
                 # This is the state of a job
                 jobStateFiles.append(os.fsdecode(entry.path))
-        
+
         for fname in jobStateFiles:
             try:
                 yield NonCachingFileStore._readJobState(fname)
             except OSError as e:
-                if e.errno == 2:
+                if e.errno == errno.ENOENT:
+                    # This is a FileNotFoundError.
                     # job finished & deleted its jobState file since the jobState files were discovered
+                    continue
+                elif e.errno == 5:
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # on network file system sometimes)
                     continue
                 else:
                     raise
 
     @staticmethod
+    # Retry on any OSError except FileNotFoundError, which we throw immediately
+    @retry(errors=[
+        OSError,
+        ErrorCondition(
+            error=FileNotFoundError,
+            retry_on_this_condition=False
+        )])
     def _readJobState(jobStateFileName: str) -> Dict[str, str]:
         with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
@@ -272,6 +333,7 @@ class NonCachingFileStore(AbstractFileStore):
         :return: Path to the job state file
         :rtype: str
         """
+        self.check_for_state_corruption()
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}

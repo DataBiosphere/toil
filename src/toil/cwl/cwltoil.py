@@ -32,7 +32,6 @@ import stat
 import sys
 import tempfile
 import textwrap
-import urllib
 import uuid
 from threading import Thread
 from typing import (
@@ -60,12 +59,13 @@ import cwl_utils.expression
 import cwltool.builder
 import cwltool.command_line_tool
 import cwltool.context
+import cwltool.cwlprov
 import cwltool.job
 import cwltool.load_tool
 import cwltool.main
-import cwltool.provenance
 import cwltool.resolver
 import schema_salad.ref_resolver
+from configargparse import ArgParser
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -85,9 +85,9 @@ from cwltool.software_requirements import (
 )
 from cwltool.stdfsaccess import StdFsAccess, abspath
 from cwltool.utils import (
-    DirectoryType,
     CWLObjectType,
     CWLOutputType,
+    DirectoryType,
     adjustDirObjs,
     aslist,
     downloadHttpFile,
@@ -103,13 +103,16 @@ from schema_salad.sourceline import SourceLine
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Config, Toil, addOptions
+from toil.common import Toil, addOptions
+from toil.cwl import check_cwltool_version
+check_cwltool_version()
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     visit_cwl_class_and_reduce,
 )
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
@@ -119,7 +122,6 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
-from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -203,12 +205,15 @@ def _filter_skip_null(value: Any, err_flag: List[bool]) -> Any:
         return {k: _filter_skip_null(v, err_flag) for k, v in value.items()}
     return value
 
-def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str] = None) -> None:
+
+def ensure_no_collisions(
+    directory: DirectoryType, dir_description: Optional[str] = None
+) -> None:
     """
     Make sure no items in the given CWL Directory have the same name.
 
-    If any do, raise a WorkflowException about a "File staging conflict". 
-    
+    If any do, raise a WorkflowException about a "File staging conflict".
+
     Does not recurse into subdirectories.
     """
 
@@ -225,12 +230,11 @@ def ensure_no_collisions(directory: DirectoryType, dir_description: Optional[str
             if wanted_name in seen_names:
                 # We used this name already so bail out
                 raise cwl_utils.errors.WorkflowException(
-                    f"File staging conflict: Duplicate entries for \"{wanted_name}\""
+                    f'File staging conflict: Duplicate entries for "{wanted_name}"'
                     f" prevent actually creating {dir_description}"
                 )
             seen_names.add(wanted_name)
-        
-        
+
 
 class Conditional:
     """
@@ -1002,23 +1006,26 @@ class ToilTool:
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
 
-    def _initialworkdir(self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder) -> None:
+    def _initialworkdir(
+        self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
+    ) -> None:
         """
         Hook the InitialWorkDirRequirement setup to make sure that there are no
         name conflicts at the top level of the work directory.
         """
 
         super()._initialworkdir(j, builder)
-        
+
         # The initial work dir listing is now in j.generatefiles["listing"]
         # Also j.generatrfiles is a CWL Directory.
         # So check the initial working directory.
-        logger.info('Initial work dir: %s', j.generatefiles)
+        logger.info("Initial work dir: %s", j.generatefiles)
         ensure_no_collisions(
             j.generatefiles,
-            "the job's working directory as specified by the InitialWorkDirRequirement"
+            "the job's working directory as specified by the InitialWorkDirRequirement",
         )
-        
+
+
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
 
@@ -1075,9 +1082,8 @@ def decode_directory(
     None), and the deduplication key string that uniquely identifies the
     directory.
     """
-    assert dir_path.startswith(
-        "toildir:"
-    ), f"Cannot decode non-directory path: {dir_path}"
+    if not dir_path.startswith("toildir:"):
+        raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
 
     # We will decode the directory and then look inside it
 
@@ -1229,6 +1235,7 @@ class ToilFsAccess(StdFsAccess):
                         "ToilFsAccess fetching directory %s from a JobStore", path
                     )
                     dest_dir = tempfile.mkdtemp()
+
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
                         if AbstractJobStore.get_is_directory(url):
@@ -1298,17 +1305,18 @@ class ToilFsAccess(StdFsAccess):
             here, subpath, cache_key = decode_directory(path)
 
             # We can't get the size of just a directory.
-            assert subpath is not None, f"Attempted to check size of directory {path}"
+            if subpath is None:
+                raise RuntimeError(f"Attempted to check size of directory {path}")
 
             for part in subpath.split("/"):
                 # Follow the path inside the directory contents.
                 here = cast(DirectoryContents, here[part])
 
             # We ought to end up with a toilfile: URI.
-            assert isinstance(here, str), f"Did not find a file at {path}"
-            assert here.startswith(
-                "toilfile:"
-            ), f"Did not find a filestore file at {path}"
+            if not isinstance(here, str):
+                raise RuntimeError(f"Did not find a file at {path}")
+            if not here.startswith("toilfile:"):
+                raise RuntimeError(f"Did not find a filestore file at {path}")
 
             return self.size(here)
         else:
@@ -1860,9 +1868,11 @@ class CWLNamedJob(Job):
         memory: Union[int, str, None] = "1GiB",
         disk: Union[int, str, None] = "1MiB",
         accelerators: Optional[List[AcceleratorRequirement]] = None,
+        preemptible: Optional[bool] = None,
         tool_id: Optional[str] = None,
         parent_name: Optional[str] = None,
         subjob_name: Optional[str] = None,
+        local: Optional[bool] = None,
     ) -> None:
         """
         Make a new job and set up its requirements and naming.
@@ -1903,8 +1913,10 @@ class CWLNamedJob(Job):
             memory=memory,
             disk=disk,
             accelerators=accelerators,
+            preemptible=preemptible,
             unitName=unit_name,
             displayName=display_name,
+            local=local,
         )
 
 
@@ -1916,9 +1928,11 @@ class ResolveIndirect(CWLNamedJob):
     of actual values.
     """
 
-    def __init__(self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None):
+    def __init__(
+        self, cwljob: Promised[CWLObjectType], parent_name: Optional[str] = None
+    ):
         """Store the dictionary of promises for later resolution."""
-        super().__init__(parent_name=parent_name, subjob_name="_resolve")
+        super().__init__(parent_name=parent_name, subjob_name="_resolve", local=True)
         self.cwljob = cwljob
 
     def run(self, file_store: AbstractFileStore) -> CWLObjectType:
@@ -1998,14 +2012,14 @@ def toilStageFiles(
                         "CreateFile",
                         "CreateWritableFile",
                     ]:  # TODO: CreateFile for buckets is not under testing
-
                         with tempfile.NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode("utf-8"))
                             f.close()
                             # Import it and pack up the file ID so we can turn around and export it.
                             file_id_or_contents = (
-                                "toilfile:" + toil.import_file(f.name).pack()
+                                "toilfile:"
+                                + toil.import_file(f.name, symlink=False).pack()
                             )
 
                     if file_id_or_contents.startswith("toildir:"):
@@ -2094,7 +2108,10 @@ class CWLJobWrapper(CWLNamedJob):
     ):
         """Store our context for later evaluation."""
         super().__init__(
-            tool_id=tool.tool.get("id"), parent_name=parent_name, subjob_name="_wrapper"
+            tool_id=tool.tool.get("id"),
+            parent_name=parent_name,
+            subjob_name="_wrapper",
+            local=True,
         )
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
@@ -2169,7 +2186,7 @@ class CWLJob(CWLNamedJob):
 
         accelerators: Optional[List[AcceleratorRequirement]] = None
         if req.get("cudaDeviceCount", 0) > 0:
-            # There's a CUDARequirement
+            # There's a CUDARequirement, which cwltool processed for us
             # TODO: How is cwltool deciding what value to use between min and max?
             accelerators = [
                 {
@@ -2179,6 +2196,42 @@ class CWLJob(CWLNamedJob):
                 }
             ]
 
+        # cwltool doesn't handle http://arvados.org/cwl#UsePreemptible as part
+        # of its resource logic so we have to do it manually.
+        #
+        # Note that according to
+        # https://github.com/arvados/arvados/blob/48a0d575e6de34bcda91c489e4aa98df291a8cca/sdk/cwl/arvados_cwl/arv-cwl-schema-v1.1.yml#L345
+        # this can only be a literal boolean! cwltool doesn't want to evaluate
+        # expressions in the value for us like it does for CUDARequirement
+        # which has a schema which allows for CWL expressions:
+        # https://github.com/common-workflow-language/cwltool/blob/1573509eea2faa3cd1dc959224e52ff1d796d3eb/cwltool/extensions.yml#L221
+        #
+        # By default we have default preemptibility.
+        preemptible: Optional[bool] = None
+        preemptible_req, _ = tool.get_requirement("http://arvados.org/cwl#UsePreemptible")
+        if preemptible_req:
+            if "usePreemptible" not in preemptible_req:
+                # If we have a requirement it has to have the value
+                raise ValidationException(
+                    f"Unacceptable syntax for http://arvados.org/cwl#UsePreemptible: "
+                    f"expected key usePreemptible but got: {preemptible_req}"
+                )
+            parsed_value = preemptible_req["usePreemptible"]
+            if isinstance(parsed_value, str) and ("$(" in parsed_value or "${" in parsed_value):
+                # Looks like they tried to use an expression
+                 raise ValidationException(
+                    f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
+                    f"expected true or false but got what appears to be an expression: {repr(parsed_value)}. "
+                    f"Note that expressions are not allowed here by Arvados's schema."
+                )
+            if not isinstance(parsed_value, bool):
+                # If we have a value it has to be a bool flag
+                raise ValidationException(
+                    f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
+                    f"expected true or false but got: {repr(parsed_value)}"
+                )
+            preemptible = parsed_value
+
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
@@ -2187,8 +2240,10 @@ class CWLJob(CWLNamedJob):
                 + (cast(int, req["outdirSize"]) * (2**20))
             ),
             accelerators=accelerators,
+            preemptible=preemptible,
             tool_id=self.cwltool.tool["id"],
             parent_name=parent_name,
+            local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
         )
 
         self.cwljob = cwljob
@@ -2482,7 +2537,7 @@ class CWLScatter(Job):
         conditional: Union[Conditional, None],
     ):
         """Store our context for later execution."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -2642,7 +2697,7 @@ class CWLGather(Job):
         outputs: Promised[Union[CWLObjectType, List[CWLObjectType]]],
     ):
         """Collect our context for later gathering."""
-        super().__init__(cores=1, memory="1GiB", disk="1MiB")
+        super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.outputs = outputs
 
@@ -2674,9 +2729,11 @@ class CWLGather(Job):
                 return shortname(n["id"])
             if isinstance(n, str):
                 return shortname(n)
-        
+
         # TODO: MyPy can't understand that this is the type we should get by unwrapping the promise
-        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs))
+        outputs: Union[CWLObjectType, List[CWLObjectType]] = cast(
+            Union[CWLObjectType, List[CWLObjectType]], unwrap(self.outputs)
+        )
         for k in [sn(i) for i in self.step.tool["out"]]:
             outobj[k] = self.extract(outputs, k)
 
@@ -2743,7 +2800,9 @@ class CWLWorkflow(CWLNamedJob):
         conditional: Union[Conditional, None] = None,
     ):
         """Gather our context for later execution."""
-        super().__init__(tool_id=cwlwf.tool.get("id"), parent_name=parent_name)
+        super().__init__(
+            tool_id=cwlwf.tool.get("id"), parent_name=parent_name, local=True
+        )
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
@@ -3191,23 +3250,12 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
-
-def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
-    """Run the main loop for toil-cwl-runner."""
-    # Remove cwltool logger's stream handler so it uses Toil's
-    cwllogger.removeHandler(defaultStreamHandler)
-
-    if args is None:
-        args = sys.argv[1:]
-
-    config = Config()
-    config.disableChaining = True
-    config.cwl = True
-    parser = argparse.ArgumentParser()
-    addOptions(parser, config, jobstore_as_flag=True)
-    parser.add_argument("cwltool", type=str)
-    parser.add_argument("cwljob", nargs=argparse.REMAINDER)
-
+def add_cwl_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("cwltool", type=str, help="CWL file to run.")
+    parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
+                                                  "the name of the input can be used as an option. "
+                                                  "For example: \"%(prog)s workflow.cwl --file1 file\". "
+                                                  "If an input has the same name as a Toil option, pass '--' before it.")
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3222,7 +3270,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     )
     parser.add_argument("--quiet", dest="quiet", action="store_true", default=False)
     parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
-    parser.add_argument("--outdir", type=str, default=os.getcwd())
+    parser.add_argument("--outdir", type=str, default=None)
     parser.add_argument("--version", action="version", version=baseVersion)
     parser.add_argument(
         "--log-dir",
@@ -3264,7 +3312,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         help="Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    dockergroup.add_argument(
+    extra_dockergroup = parser.add_argument_group()
+    extra_dockergroup.add_argument(
         "--custom-net",
         help="Specify docker network name to pass to docker run command",
     )
@@ -3512,13 +3561,37 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
     )
-    
-    # Parse all the options once.
-    options = parser.parse_args(args)
-    
+
+def get_options(args: List[str]) -> argparse.Namespace:
+    """
+    Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
+    :param args: List of args from command line
+    :return: options namespace
+    """
+    parser = ArgParser()
+    addOptions(parser, jobstore_as_flag=True, cwl=True)
+    add_cwl_options(parser)
+
+    options: argparse.Namespace
+    options, cwl_options = parser.parse_known_args(args)
+    options.cwljob.extend(cwl_options)
+
+    return options
+
+
+def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
+    """Run the main loop for toil-cwl-runner."""
+    # Remove cwltool logger's stream handler so it uses Toil's
+    cwllogger.removeHandler(defaultStreamHandler)
+
+    if args is None:
+        args = sys.argv[1:]
+
+    options = get_options(args)
+
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    
+
     # We need a workdir for the CWL runtime contexts.
     if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
         # if tmpdir_prefix is not the default value, move
@@ -3528,8 +3601,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Use a directory in the default tmpdir
         workdir = tempfile.mkdtemp()
     # Make sure workdir doesn't exist so it can be a job store
-    os.rmdir(workdir) 
-    
+    os.rmdir(workdir)
+
     if options.jobStore is None:
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
@@ -3566,7 +3639,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
-    outdir = os.path.abspath(options.outdir)
+    outdir = os.path.abspath(os.getcwd()) if options.outdir is  None else os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
     fileindex: Dict[str, str] = {}
@@ -3606,7 +3679,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
     if options.provenance:
-        research_obj = cwltool.provenance.ResearchObject(
+        research_obj = cwltool.cwlprov.ro.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix,
             orcid=options.orcid,
             full_name=options.cwl_full_name,
@@ -3682,15 +3755,17 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
                 loading_context, workflowobj, uri
             )
-            assert loading_context.loader
+            if not loading_context.loader:
+                raise RuntimeError("cwltool loader is not set.")
             processobj, metadata = loading_context.loader.resolve_ref(uri)
             processobj = cast(Union[CommentedMap, CommentedSeq], processobj)
 
             document_loader = loading_context.loader
 
             if options.provenance and runtime_context.research_obj:
-                runtime_context.research_obj.packed_workflow(
-                    cwltool.main.print_pack(loading_context, uri)
+                cwltool.cwlprov.writablebagfile.packed_workflow(
+                    runtime_context.research_obj,
+                    cwltool.main.print_pack(loading_context, uri),
                 )
 
             try:
@@ -3860,7 +3935,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
 
         if runtime_context.research_obj is not None:
-            runtime_context.research_obj.create_job(outobj, True)
+            cwltool.cwlprov.writablebagfile.create_job(
+                runtime_context.research_obj, outobj, True
+            )
 
             def remove_at_id(doc: Any) -> None:
                 if isinstance(doc, MutableMapping):
@@ -3882,12 +3959,15 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 ("File",),
                 functools.partial(add_sizes, runtime_context.make_fs_access("")),
             )
-            assert document_loader
+            if not document_loader:
+                raise RuntimeError("cwltool loader is not set.")
             prov_dependencies = cwltool.main.prov_deps(
                 workflowobj, document_loader, uri
             )
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
-            runtime_context.research_obj.close(options.provenance)
+            cwltool.cwlprov.writablebagfile.close_ro(
+                runtime_context.research_obj, options.provenance
+            )
 
         if not options.destBucket and options.compute_checksum:
             visit_class(

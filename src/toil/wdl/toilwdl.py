@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
+from configargparse import ArgumentParser
 import logging
 import os
 import subprocess
@@ -57,7 +57,7 @@ def main():
 
     Additional support to be broadened to include more features soon.
     """
-    parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
+    parser = ArgumentParser(description='Runs WDL files with toil.')
     parser.add_argument('wdl_file', help='A WDL workflow file.')
     parser.add_argument('secondary_file', help='A secondary data file (json).')
     parser.add_argument("--jobStore", type=str, required=False, default=None)

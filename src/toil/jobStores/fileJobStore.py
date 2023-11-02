@@ -121,8 +121,8 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.filesDir, exist_ok=True)
         os.makedirs(self.jobFilesDir, exist_ok=True)
         os.makedirs(self.sharedFilesDir, exist_ok=True)
-        self.linkImports = config.linkImports
-        self.moveExports = config.moveExports
+        self.linkImports = config.symlinkImports
+        self.moveExports = config.moveOutputs
         super().initialize(config)
 
     def resume(self):
@@ -233,7 +233,7 @@ class FileJobStore(AbstractJobStore):
             # This is the good case; the delete arrived in time.
             # If it didn't, we might go on to re-execute the already-finished job.
             # Anyway, this job doesn't really exist after all.
-            raise NoSuchJobException()
+            raise NoSuchJobException(job_id)
 
         # Pass along the current config, which is the JobStore's responsibility.
         job.assignConfig(self.config)
@@ -252,18 +252,19 @@ class FileJobStore(AbstractJobStore):
 
         job.pre_update_hook()
 
+        dest_filename = self._get_job_file_name(job.jobStoreID)
+
         # The job is serialised to a file suffixed by ".new"
         # We insist on creating the file; an existing .new file indicates
         # multiple simultaneous attempts to update the job, which will lose
         # updates.
         # The file is then moved to its correct path.
-        # Atomicity guarantees use the fact the underlying file systems "move"
+        # Atomicity guarantees use the fact the underlying file system's "move"
         # function is atomic.
-        with open(self._get_job_file_name(job.jobStoreID) + ".new", 'xb') as f:
+        with open(dest_filename + ".new", 'xb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
-        os.rename(self._get_job_file_name(job.jobStoreID) + ".new", self._get_job_file_name(job.jobStoreID))
-
+        os.rename(dest_filename + ".new", dest_filename)
     def delete_job(self, job_id):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
@@ -307,13 +308,19 @@ class FileJobStore(AbstractJobStore):
     def _copy_or_link(self, src_path, dst_path, symlink=False):
         # linking is not done be default because of issue #1755
         srcPath = self._extract_path_from_url(src_path)
-        if self.linkImports or symlink:
+        if self.linkImports and symlink:
             os.symlink(os.path.realpath(srcPath), dst_path)
         else:
             atomic_copy(srcPath, dst_path)
 
-    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=False):
+    def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
+        # symlink argument says whether the caller can take symlinks or not
+        # ex: if false, it implies the workflow cannot work with symlinks and thus will hardlink imports
+        # default is true since symlinking everything is ideal
         if issubclass(otherCls, FileJobStore):
+            if os.path.isdir(uri.path):
+                # Don't allow directories (unless someone is racing us)
+                raise IsADirectoryError(f"URI {uri} points to a directory but a file was expected")
             if shared_file_name is None:
                 executable = os.stat(uri.path).st_mode & stat.S_IXUSR != 0
                 absPath = self._get_unique_file_path(uri.path)  # use this to get a valid path to write to in job store
@@ -335,6 +342,9 @@ class FileJobStore(AbstractJobStore):
         if issubclass(otherCls, FileJobStore):
             srcPath = self._get_file_path_from_id(file_id)
             destPath = self._extract_path_from_url(uri)
+            # Make sure we don't need to worry about directories when exporting
+            # to local files, just like for cloud storage.
+            os.makedirs(os.path.dirname(destPath), exist_ok=True)
             executable = getattr(file_id, 'executable', False)
             if self.moveExports:
                 self._move_and_linkback(srcPath, destPath, executable=executable)

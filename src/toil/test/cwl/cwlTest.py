@@ -37,6 +37,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil.cwl.utils import (download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.aws import zone_to_region
@@ -61,13 +62,14 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.exceptions import FailedJobsException
 from toil.test.provisioners.aws.awsProvisionerTest import \
     AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
+from schema_salad.exceptions import ValidationException
+
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 3600
+CONFORMANCE_TEST_TIMEOUT = 5000
 
 
 def run_conformance_tests(
@@ -96,11 +98,11 @@ def run_conformance_tests(
 
     :param batchSystem: If set, use this batch system instead of the default single_machine.
 
-    :param selected_tests: If set, use this description of test numbers to run (comma-separated numbers or ranges)
+    :param selected_tests: If set, use this list of tests to run (comma-separated test IDs)
 
     :param selected_tags: As an alternative to selected_tests, run tests with the given tags.
 
-    :param skipped_tests: Comma-separated string labels of tests to skip.
+    :param skipped_tests: Comma-separated string IDs of tests to skip.
 
     :param extra_args: Provide these extra arguments to runner for each test.
 
@@ -119,7 +121,7 @@ def run_conformance_tests(
             f"--basedir={workDir}",
         ]
         if selected_tests:
-            cmd.append(f"-n={selected_tests}")
+            cmd.append(f"-s={selected_tests}")
         if selected_tags:
             cmd.append(f"--tags={selected_tags}")
         if skipped_tests:
@@ -137,9 +139,8 @@ def run_conformance_tests(
             "--logDebug",
             "--statusWait=10",
             "--retryCount=2",
+            f"--caching={caching}"
         ]
-
-        args_passed_directly_to_runner.append(f"--caching={caching}")
 
         if extra_args:
             args_passed_directly_to_runner += extra_args
@@ -148,6 +149,10 @@ def run_conformance_tests(
             args_passed_directly_to_runner.append(
                 "--setEnv=SINGULARITY_DOCKER_HUB_MIRROR"
             )
+
+        if batchSystem is None or batchSystem == "single_machine":
+            # Make sure we can run on small machines
+            args_passed_directly_to_runner.append("--scale=0.1")
 
         job_store_override = None
 
@@ -159,7 +164,8 @@ def run_conformance_tests(
         else:
             # Run tests in parallel on the local machine. Don't run too many
             # tests at once; we want at least a couple cores for each.
-            parallel_tests = max(int(cpu_count() / 2), 1)
+            # But we need to have at least a few going in parallel or we risk hitting our timeout.
+            parallel_tests = max(int(cpu_count() / 2), 4)
         cmd.append(f"-j{parallel_tests}")
 
         if batchSystem:
@@ -212,6 +218,17 @@ class CWLWorkflowTest(ToilTest):
         if os.path.exists(self.outDir):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
+
+    def test_cwl_cmdline_input(self):
+        """
+        Test that running a CWL workflow with inputs specified on the command line passes.
+        """
+        from toil.cwl import cwltoil
+        cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
+        args = [cwlfile, "--message", "str", "--sleep", "2"]
+        st = StringIO()
+        # If the workflow runs, it must have had options
+        cwltoil.main(args, stdout=st)
 
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
@@ -519,6 +536,53 @@ class CWLWorkflowTest(ToilTest):
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
 
+    def test_preemptible(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is supported.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible.cwl"
+        jobfile = "src/toil/test/cwl/empty.json"
+        out_name = "output"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        cwltoil.main(args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        with open(out[out_name]["location"][len("file://") :]) as f:
+            self.assertEqual(f.read().strip(), "hello")
+
+    def test_preemptible_expression(self):
+        """
+        Tests that the http://arvados.org/cwl#UsePreemptible extension is validated.
+        """
+        cwlfile = "src/toil/test/cwl/preemptible_expression.cwl"
+        jobfile = "src/toil/test/cwl/preemptible_expression.json"
+        from toil.cwl import cwltoil
+
+        st = StringIO()
+        args = [
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+        ]
+        try:
+            cwltoil.main(args, stdout=st)
+            raise RuntimeError("Did not raise correct exception")
+        except ValidationException as e:
+            # Make sure we chastise the user appropriately.
+            assert "expressions are not allowed" in str(e)
+        
+
     @staticmethod
     def _expected_seqtk_output(outDir):
         loc = "file://" + os.path.join(outDir, "out")
@@ -630,7 +694,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, "v1.0")
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = "6a955874ade22080b8ef962b4e0d6e408112c1ef"  # Date:   Tue Dec 16 2020 8:43pm PST
+        testhash = "06c0cba1a178e20af2634b33dee648faff144bf8"  # Date:   Thu Mar 23 19:07:05 2023 +0900 (move label to id)
         url = (
             "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip"
             % testhash
@@ -708,9 +772,8 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # This test doesn't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # This CWL v1.0 test doesn't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L99
             skipped_tests="docker_entrypoint",
             **kwargs,
         )
@@ -771,7 +834,7 @@ class CWLv11Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.1.git"
-        commit = "664835e83eb5e57eee18a04ce7b05fb9d70d77b7"
+        commit = "b1d4a69df86350059bd49aa127c02be0c349f7de"
         p = subprocess.Popen(
             f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
             shell=True,
@@ -798,9 +861,8 @@ class CWLv11Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # These tests don't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # These CWL v1.1 tests don't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L105
             skipped_tests="docker_entrypoint,stdin_shorcut",
             **kwargs,
         )
@@ -825,7 +887,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.2.git"
-        commit = "8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6"
+        commit = "5f4a24cfd46aa9072d8418733b61a42261365b7b"
         p = subprocess.Popen(
             f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
             shell=True,
@@ -868,9 +930,8 @@ class CWLv12Test(ToilTest):
         return self.test_run_conformance(
             batchSystem="kubernetes",
             extra_args=["--retryCount=3"],
-            # This test doesn't work with
-            # Singularity; see
-            # https://github.com/common-workflow-language/cwltool/blob/7094ede917c2d5b16d11f9231fe0c05260b51be6/conformance-test.sh#L99-L117
+            # This CWL v1.2 test doesn't work with Singularity; see
+            # https://github.com/common-workflow-language/cwltool/blob/9398f3253558b6c972033b5f4ac397a61f355556/conformance-test.sh#L97-L99
             # and
             # https://github.com/common-workflow-language/cwltool/issues/1441#issuecomment-826747975
             skipped_tests="docker_entrypoint",
@@ -905,18 +966,13 @@ class CWLv12Test(ToilTest):
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
         extra_args = [f"--wes_endpoint={endpoint}"]
 
-        # These are the ones that currently fail:
-        #   - 310: mixed_version_v10_wf
-        #   - 311: mixed_version_v11_wf
-        #   - 312: mixed_version_v12_wf
-
         # Main issues:
         # 1. `cwltool --print-deps` doesn't seem to include secondary files from the default
         #     e.g.: https://github.com/common-workflow-language/cwl-v1.2/blob/1.2.1_proposed/tests/mixed-versions/wf-v10.cwl#L4-L10
 
         return self.test_run_conformance(
             runner="toil-wes-cwl-runner",
-            selected_tests="1-309,313-337",
+            skipped_tests="mixed_version_v10_wf,mixed_version_v11_wf,mixed_version_v12_wf",
             extra_args=extra_args,
         )
 
@@ -1185,56 +1241,6 @@ def test_pick_value_with_one_null_value(caplog):
         cwltoil.main(args)
         for line in caplog.messages:
             assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
-
-
-@needs_cwl
-@pytest.mark.cwl_small
-def test_usage_message():
-    """
-    This is purely to ensure a (more) helpful error message is printed if a user does
-    not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
-    """
-    toil = "toil-cwl-runner"
-    cwl = "test/cwl/revsort.cwl"
-    cwl_job_json = "test/cwl/revsort-job.json"
-    jobstore = "delete-test-toil"
-    random_option_1 = "--logInfo"
-    random_option_2 = "--disableChaining"
-    cmd_wrong_ordering_1 = [
-        toil,
-        cwl,
-        cwl_job_json,
-        jobstore,
-        random_option_1,
-        random_option_2,
-    ]
-    cmd_wrong_ordering_2 = [
-        toil,
-        cwl,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl_job_json,
-    ]
-    cmd_wrong_ordering_3 = [
-        toil,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl,
-        cwl_job_json,
-    ]
-
-    for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert (
-            b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml" in stderr
-        )
-        assert (
-            b"All positional arguments [cwl, yml_or_json] "
-            b"must always be specified last for toil-cwl-runner." in stderr
-        )
 
 
 @needs_cwl

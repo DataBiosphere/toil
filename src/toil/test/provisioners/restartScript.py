@@ -1,4 +1,4 @@
-import argparse
+from configargparse import ArgumentParser
 import os
 
 from toil.job import Job
@@ -9,7 +9,7 @@ def f0(job):
         raise RuntimeError('failed on purpose')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args()
     rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')

@@ -7,7 +7,7 @@ from toil.job import Job
 
 class HelloWorld(Job):
     def __init__(self, id):
-        Job.__init__(self, memory="2G", cores=2, disk="3G")
+        Job.__init__(self)
         self.inputFileID = id
 
     def run(self, fileStore):

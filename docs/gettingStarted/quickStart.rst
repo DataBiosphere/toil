@@ -32,14 +32,14 @@ Toil uses batch systems to manage the jobs it creates.
 
 The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
 local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
-Toil supports many different batch systems such as `Apache Mesos`_ and Grid Engine; its versatility makes it
+Toil supports many different batch systems such as `Kubernetes`_ and Grid Engine; its versatility makes it
 easy to run your workflow in all kinds of places.
 
 Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
-.. _Apache Mesos: https://mesos.apache.org/getting-started/
+.. _Kubernetes: https://kubernetes.io/
 
 .. _cwlquickstart:
 
@@ -137,9 +137,9 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
         (venv) $ cat wdl-helloworld-output.txt
         Hello world!
 
-To learn more about WDL, see the main `WDL website`_ .
+To learn more about WDL in general, see the `Terra WDL documentation`_ . For more on using WDL in Toil, see :ref:`wdl`.
 
-.. _WDL website: https://software.broadinstitute.org/wdl/
+.. _Terra WDL documentation: https://support.terra.bio/hc/en-us/sections/360007274612-WDL-Documentation
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _runningDetail:
@@ -279,7 +279,7 @@ workflow there is always one leader process, and potentially many worker process
 
 When using the single-machine batch system (the default), the worker processes will be running
 on the same machine as the leader process. With full-fledged batch systems like
-Mesos the worker processes will typically be started on separate machines. The
+Kubernetes the worker processes will typically be started on separate machines. The
 boilerplate ensures that the pipeline is only started once---on the leader---but
 not when its job functions are imported and executed on the individual workers.
 
@@ -394,8 +394,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a cluster in AWS using the :ref:`launchCluster` command::
 
         (venv) $ toil launch-cluster <cluster-name> \
+                     --clusterType kubernetes \
                      --keyPairName <AWS-key-pair-name> \
                      --leaderNodeType t2.medium \
+                     --nodeTypes t2.medium -w 1 \
                      --zone us-west-2a
 
    The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster.
@@ -448,8 +450,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. First launch a node in AWS using the :ref:`launchCluster` command::
 
       (venv) $ toil launch-cluster <cluster-name> \
+                   --clusterType kubernetes \
                    --keyPairName <AWS-key-pair-name> \
                    --leaderNodeType t2.medium \
+                   --nodeTypes t2.medium -w 1 \
                    --zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
@@ -462,24 +466,25 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
       (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
-#. Once on the leader node, it's a good idea to update and install the following::
+#. Once on the leader node, command line tools such as ``kubectl`` will be available to you. It's also a good idea to
+   update and install the following::
 
     sudo apt-get update
     sudo apt-get -y upgrade
     sudo apt-get -y dist-upgrade
     sudo apt-get -y install git
-    sudo pip install mesos.cli
 
 #. Now create a new ``virtualenv`` with the ``--system-site-packages`` option and activate::
 
     virtualenv --system-site-packages venv
     source venv/bin/activate
 
-#. Now run the CWL workflow::
+#. Now run the CWL workflow with the Kubernetes batch system::
 
       (venv) $ toil-cwl-runner \
                    --provisioner aws \
-                   --jobStore aws:us-west-2a:any-name \
+                   --batchSystem kubernetes \
+                   --jobStore aws:us-west-2:any-name \
                    /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
@@ -528,12 +533,14 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`
 
-#. Launch a leader node using the :ref:`launchCluster` command::
+#. Launch a cluster using the :ref:`launchCluster` command::
 
         (venv) $ toil launch-cluster <cluster-name> \
                      --provisioner <aws, gce> \
                      --keyPairName <key-pair-name> \
                      --leaderNodeType <type> \
+                     --nodeType <type> \
+                     -w 1-2 \
                      --zone <zone>
 
 
@@ -579,13 +586,9 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus \
-                         --provisioner <aws, gce> \
-                         --nodeType <type> \
-                         --maxNodes 2 \
-                         --minNodes 0 \
+       (cact_venv) $ cactus \
                          --retry 10 \
-                         --batchSystem mesos \
+                         --batchSystem kubernetes \
                          --logDebug \
                          --logFile /logFile_pestis3 \
                          --configFile \
@@ -596,15 +599,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
    .. note::
 
       **Pieces of the Puzzle**:
-
-      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0`` --- specifies the version of Toil being used, 3.14.0;
-      if the latest one is desired, please eliminate.
-
-      ``--nodeType`` --- determines the instance type used for worker nodes. The instance type specified here must be on
-      the same cloud provider as the one specified with ``--leaderNodeType``
-
-      ``--maxNodes 2`` --- creates up to two instances of the type specified with ``--nodeType`` and
-      launches Mesos worker containers inside them.
 
       ``--logDebug`` --- equivalent to ``--logLevel DEBUG``.
 

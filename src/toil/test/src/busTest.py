@@ -13,11 +13,18 @@
 # limitations under the License.
 
 import logging
+import os
 from threading import Thread, current_thread
+from typing import Optional
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.bus import JobCompletedMessage, JobIssuedMessage, MessageBus, replay_message_bus
+from toil.common import Toil
+from toil.job import Job
+from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, get_temp_file
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +101,63 @@ class MessageBusTest(ToilTest):
         self.assertEqual(box.count(JobIssuedMessage), 11)
         # And having polled for those, our handler should have run
         self.assertEqual(message_count, 11)
+
+    def test_restart_without_bus_path(self) -> None:
+        """
+        Test the ability to restart a workflow when the message bus path used
+        by the previous attempt is gone.
+        """
+        temp_dir = self._createTempDir(purpose='tempDir')
+        job_store = self._getTestJobStorePath()
+
+        bus_holder_dir = os.path.join(temp_dir, 'bus_holder')
+        os.mkdir(bus_holder_dir)
+
+        start_options = Job.Runner.getDefaultOptions(job_store)
+        start_options.logLevel = 'DEBUG'
+        start_options.retryCount = 0
+        start_options.clean = "never"
+        start_options.write_messages = os.path.abspath(os.path.join(bus_holder_dir, 'messagebus.txt'))
+
+        root = Job.wrapJobFn(failing_job_fn)
+
+        try:
+            with Toil(start_options) as toil:
+                # Run once and observe a failed job
+                toil.start(root)
+        except FailedJobsException:
+            pass
+
+        logger.info('First attempt successfully failed, removing message bus log')
+
+        # Get rid of the bus
+        os.unlink(start_options.write_messages)
+        os.rmdir(bus_holder_dir)
+
+        logger.info('Making second attempt')
+
+        # Set up options without a specific bus path
+        restart_options = Job.Runner.getDefaultOptions(job_store)
+        restart_options.logLevel = 'DEBUG'
+        restart_options.retryCount = 0
+        restart_options.clean = "never"
+        restart_options.restart = True
+
+        try:
+            with Toil(restart_options) as toil:
+                # Run again and observe a failed job (and not a failure to start)
+                toil.restart()
+        except FailedJobsException:
+            pass
+
+        logger.info('Second attempt successfully failed')
+
+
+def failing_job_fn(job: Job) -> None:
+    """
+    This function is guaranteed to fail.
+    """
+    raise RuntimeError('Job attempted to run but failed')
 
 
 

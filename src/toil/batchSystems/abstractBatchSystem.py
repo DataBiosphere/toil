@@ -37,6 +37,7 @@ from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription, ParsedRequirement, Requirer
+from toil.lib.memoize import memoize
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()
 
+    @memoize
     def get_batch_logs_dir(self) -> str:
         """
         Get the directory where the backing batch system should save its logs.
@@ -404,6 +406,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if self.config.batch_logs_dir:
             # Use what is specified
+            if not os.path.isdir(self.config.batch_logs_dir):
+                # But if it doesn't exist, make it exist
+                os.makedirs(self.config.batch_logs_dir, exist_ok=True)
             return self.config.batch_logs_dir
         # And if nothing is specified use the workDir.
         return Toil.getToilWorkDir(self.config.workDir)
@@ -447,6 +452,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param WorkerCleanupInfo info: A named tuple consisting of all the relevant information
                for cleaning up the worker.
         """
+        logger.debug('Attempting worker cleanup')
         assert isinstance(info, WorkerCleanupInfo)
         assert info.workflow_id is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
@@ -456,9 +462,11 @@ class BatchSystemSupport(AbstractBatchSystem):
         AbstractFileStore.shutdownFileStore(info.workflow_id, info.work_dir, info.coordination_dir)
         if info.clean_work_dir in ('always', 'onSuccess', 'onError'):
             if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
+                logger.debug('Deleting workflow directory %s', workflowDir)
                 shutil.rmtree(workflowDir, ignore_errors=True)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.
+                logger.debug('Deleting coordination directory %s', coordination_dir)
                 shutil.rmtree(coordination_dir, ignore_errors=True)
 
 class NodeInfo:
@@ -559,11 +567,7 @@ class InsufficientSystemResources(Exception):
         :param details: Any extra details about the problem that can be attached to the error.
         """
 
-        self.job_name : Optional[str] = None
-        if hasattr(requirer, 'jobName') and isinstance(getattr(requirer, 'jobName'), str):
-            # Keep the job name if any
-            self.job_name = cast(str, getattr(requirer, 'jobName'))
-
+        self.job_name : Optional[str] = str(requirer)
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available

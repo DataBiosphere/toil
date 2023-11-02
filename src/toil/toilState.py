@@ -183,6 +183,7 @@ class ToilState:
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
+            old_truth.check_new_version(new_truth)
             old_truth.__dict__.update(new_truth.__dict__)
         else:
             # Just keep the new one
@@ -293,7 +294,8 @@ class ToilState:
                     successor.predecessorsFinished.add(jobDesc.jobStoreID)
 
                 # If the successor has no predecessors to finish
-                assert len(successor.predecessorsFinished) <= successor.predecessorNumber
+                if len(successor.predecessorsFinished) > successor.predecessorNumber:
+                    raise RuntimeError("There are more finished predecessors than possible.")
                 if len(successor.predecessorsFinished) == successor.predecessorNumber:
 
                     # It is ready to be run, so remove it from the set of waiting jobs
@@ -322,7 +324,8 @@ class ToilState:
 
                         # We put the successor job in the set of waiting successor
                         # jobs with multiple predecessors
-                        assert successorJobStoreID not in self.jobsToBeScheduledWithMultiplePredecessors
+                        if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
+                            raise RuntimeError("Failed to schedule the successor job. The successor job is already scheduled.")
                         self.jobsToBeScheduledWithMultiplePredecessors.add(successorJobStoreID)
 
                         # Process successor
@@ -337,10 +340,8 @@ class ToilState:
                     # We've already seen the successor
 
                     # Add the job as a predecessor
-                    assert (
-                        jobDesc.jobStoreID
-                        not in self.successor_to_predecessors[successorJobStoreID]
-                    )
+                    if jobDesc.jobStoreID in self.successor_to_predecessors[successorJobStoreID]:
+                        raise RuntimeError("Failed to add the job as a predecessor. The job is already added as a predecessor.")
                     self.successor_to_predecessors[successorJobStoreID].add(
                         str(jobDesc.jobStoreID)
                     )

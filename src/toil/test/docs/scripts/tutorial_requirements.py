@@ -15,12 +15,12 @@ def parentJob(job):
     job.addFollowOn(analysis)
 
 
-def stageFn(job, url, cores=1):
+def stageFn(job, url):
     importedFile = job.fileStore.import_file(url)
     return importedFile, importedFile.size
 
 
-def analysisJob(job, fileStoreID, cores=2):
+def analysisJob(job, fileStoreID):
     # now do some analysis on the file
     pass
 

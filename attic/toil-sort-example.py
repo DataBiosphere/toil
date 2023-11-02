@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 from six.moves import xrange
-from argparse import ArgumentParser
+from configargparse import ArgumentParser
 import os
 import logging
 import random

@@ -18,8 +18,8 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
-from toil.cwl.utils import CWL_INTERNAL_JOBS
 from toil.job import JobDescription
+from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +29,9 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+        max_local_jobs = config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
-            config, config.maxLocalJobs, maxMemory, maxDisk
+            config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
     def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:
@@ -40,11 +41,11 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
         """
-        if (not self.config.runCwlInternalJobsOnWorkers
-                and jobDesc.jobName.startswith(CWL_INTERNAL_JOBS)):
+        if (not self.config.run_local_jobs_on_workers
+                and jobDesc.local):
             # Since singleMachine.py doesn't typecheck yet and MyPy is ignoring
             # it, it will raise errors here unless we add type annotations to
-            # everything we get back from it. THe easiest way to do that seems
+            # everything we get back from it. The easiest way to do that seems
             # to be to put it in a variable with a type annotation on it. That
             # somehow doesn't error whereas just returning the value complains
             # we're returning an Any. TODO: When singleMachine.py typechecks,

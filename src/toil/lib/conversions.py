@@ -46,8 +46,10 @@ def convert_units(num: float,
                   src_unit: str,
                   dst_unit: str = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
-    assert src_unit.lower() in VALID_PREFIXES, f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}."
-    assert dst_unit.lower() in VALID_PREFIXES, f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}."
+    if not src_unit.lower() in VALID_PREFIXES:
+        raise RuntimeError(f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
+    if not dst_unit.lower() in VALID_PREFIXES:
+        raise RuntimeError(f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
@@ -60,7 +62,8 @@ def parse_memory_string(string: str) -> Tuple[float, str]:
         # find the first character of the unit
         if character not in '0123456789.-_ ':
             units = string[i:].strip()
-            assert units.lower() in VALID_PREFIXES, f"{units} not a valid unit, valid units are {VALID_PREFIXES}."
+            if not units.lower() in VALID_PREFIXES:
+                raise RuntimeError(f"{units} not a valid unit, valid units are {VALID_PREFIXES}.")
             return float(string[:i]), units
     return float(string), 'b'
 
@@ -71,6 +74,7 @@ def human2bytes(string: str) -> int:
     integer number of bytes.
     """
     value, unit = parse_memory_string(string)
+
     return int(convert_units(value, src_unit=unit, dst_unit='b'))
 
 

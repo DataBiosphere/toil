@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 
 import logging
-import os
 import sys
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, TypeVar, Union, cast
@@ -70,16 +69,18 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
             # Ask the batch system to tell us all its options.
             batch_system_type.setOptions(set_option)
     # Options shared between multiple batch systems
-    set_option("disableAutoDeployment", bool, default=False)
-    set_option("coalesceStatusCalls")
-    set_option("maxLocalJobs", int)
+    set_option("disableAutoDeployment")
+    # Make limits maximum if set to 0
+    set_option("max_jobs")
+    set_option("max_local_jobs")
     set_option("manualMemArgs")
-    set_option("runCwlInternalJobsOnWorkers", bool, default=False)
+    set_option("run_local_jobs_on_workers")
     set_option("statePollingWait")
-    set_option("batch_logs_dir", env=["TOIL_BATCH_LOGS_DIR"])
+    set_option("batch_logs_dir")
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+    from toil.common import SYS_MAX_SIZE
     # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",
@@ -92,45 +93,54 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--disableHotDeployment",
         dest="disableAutoDeployment",
+        default=False,
         action="store_true",
-        default=None,
         help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
         "--disableAutoDeployment.  Left in for backwards compatibility.",
     )
     parser.add_argument(
         "--disableAutoDeployment",
         dest="disableAutoDeployment",
-        action="store_true",
-        default=None,
+        default=False,
         help="Should auto-deployment of the user script be deactivated? If True, the user "
         "script/package should be present at the same location on all workers.  Default = False.",
     )
     parser.add_argument(
+        "--maxJobs",
+        dest="max_jobs",
+        default=SYS_MAX_SIZE, # This is *basically* unlimited and saves a lot of Optional[]
+        type=lambda x: int(x) or SYS_MAX_SIZE,
+        help="Specifies the maximum number of jobs to submit to the "
+             "backing scheduler at once. Not supported on Mesos or "
+             "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
+    )
+    parser.add_argument(
         "--maxLocalJobs",
-        default=cpu_count(),
-        help=f"For batch systems that support a local queue for housekeeping jobs "
-        f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
-        f"number of these housekeeping jobs to run on the local system.  The default "
-        f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
-        f"local housekeeping jobs.",
+        dest="max_local_jobs",
+        default=None,
+        type=lambda x: int(x) or 0,
+        help=f"Specifies the maximum number of housekeeping jobs to "
+             f"run sumultaneously on the local system. Use 0 for "
+             f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
     )
     parser.add_argument(
         "--manualMemArgs",
         default=False,
-        action="store_true",
         dest="manualMemArgs",
+        action="store_true",
         help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
         "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
+        "--runLocalJobsOnWorkers",
         "--runCwlInternalJobsOnWorkers",
-        dest="runCwlInternalJobsOnWorkers",
+        dest="run_local_jobs_on_workers",
+        default=False,
         action="store_true",
-        default=None,
-        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-        "instead of the primary node. If false (default), then all such jobs are run on "
-        "the primary node. Setting this to true can speed up the pipeline for very large "
+        help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
+        "instead of the leader node. If false (default), then all such jobs are run on "
+        "the leader node. Setting this to true can speed up CWL pipelines for very large "
         "workflows with many sub-workflows and/or scatters, provided that the worker "
         "pool is large enough.",
     )
@@ -138,13 +148,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--coalesceStatusCalls",
         dest="coalesceStatusCalls",
         action="store_true",
-        default=None,
+        default=True,
         help=(
-            "Coalese status calls to the batch system to prevent toil from being overloaded. "
-            "Note that if you do NOT use this option, the loop which polls the batch "
-            "system for status updates will be O(n^2) time complexity!"
-            "Currently only supported for --batchSystem lsf and slurm. "
-            "default=false"
+            "Ask for job statuses from the batch system in a batch. Deprecated; now always "
+            "enabled where supported."
         ),
     )
     parser.add_argument(
@@ -160,9 +167,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--batchLogsDir",
         dest="batch_logs_dir",
         default=None,
+        env_var="TOIL_BATCH_LOGS_DIR",
         help="Directory to tell the backing batch system to log into. Should be available "
              "on both the leader and the workers, if the backing batch system writes logs "
-             "to the worker machines' filesystems, as many HPC schedulers do. If unset, " 
+             "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
              "the Toil work directory will be used. Only works for grid engine batch "
              "systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
@@ -178,57 +186,3 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         # Ask the batch system to create its options in the parser
         logger.debug('Add options for %s', batch_system_type)
         batch_system_type.add_options(parser)
-
-def set_batchsystem_config_defaults(config) -> None:
-    """
-    Set default and environment-based options for builtin batch systems. This
-    is required if a Config object is not constructed from an Options object.
-    """
-
-    # Do the global options across batch systems
-    config.batchSystem = "single_machine"
-    config.disableAutoDeployment = False
-    config.maxLocalJobs = cpu_count()
-    config.manualMemArgs = False
-    config.coalesceStatusCalls = False
-    config.statePollingWait: Optional[Union[float, int]] = None  # Number of seconds to wait before querying job state
-
-    OptionType = TypeVar('OptionType')
-    def set_option(option_name: str,
-                   parsing_function: Optional[Callable[[Any], OptionType]] = None,
-                   check_function: Optional[Callable[[OptionType], None]] = None,
-                   default: Optional[OptionType] = None,
-                   env: Optional[List[str]] = None,
-                   old_names: Optional[List[str]] = None) -> None:
-        """
-        Function to set a batch-system-defined option to its default value, or
-        one from the environment.
-        """
-
-        # TODO: deduplicate with Config
-
-        option_value = default
-
-        if env is not None:
-            for env_var in env:
-                # Try all the environment variables
-                if option_value != default:
-                    break
-                option_value = os.environ.get(env_var, default)
-
-        if option_value is not None or not hasattr(config, option_name):
-            if parsing_function is not None:
-                # Parse whatever it is (string, argparse-made list, etc.)
-                option_value = parsing_function(option_value)
-            if check_function is not None:
-                try:
-                    check_function(option_value)
-                except AssertionError:
-                    raise RuntimeError(f"The {option_name} option has an invalid value: {option_value}")
-            setattr(config, option_name, option_value)
-
-    # Set up defaults from all the batch systems
-    set_batchsystem_options(None, cast(OptionSetter, set_option))
-
-
-
