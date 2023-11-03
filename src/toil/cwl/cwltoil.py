@@ -50,7 +50,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    cast,
+    cast, Sequence,
 )
 from urllib.parse import ParseResult, quote, unquote, urlparse, urlsplit
 
@@ -896,7 +896,6 @@ class ToilPathMapper(PathMapper):
                         )
                     else:
                         deref = ab
-
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urlsplit(deref).scheme in ["http", "https"]:
@@ -1016,7 +1015,9 @@ class ToilTool:
 
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
-
+    def __init__(self, toolpath_object: 'CommentedMap', loadingContext: 'LoadingContext'):
+        loadingContext.relax_path_checks = True
+        super().__init__(toolpath_object, loadingContext)
     def _initialworkdir(
         self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
     ) -> None:
@@ -1813,7 +1814,7 @@ def upload_directory(
 
 
 def upload_file(
-    uploadfunc: Callable[[str], FileID],
+    uploadfunc: Callable[[str, str], FileID],
     fileindex: Dict[str, str],
     existing: Dict[str, str],
     file_metadata: CWLObjectType,
@@ -2057,7 +2058,7 @@ def toilStageFiles(
                     "WritableDirectory",
                 ]:
                     os.makedirs(p.target)
-                if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
+                if p.type in ["File", "WritableFile"]:
                     if p.resolved.startswith("toilfile:"):
                         # We can actually export this
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
@@ -2070,7 +2071,7 @@ def toilStageFiles(
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
                     # TODO: can a toildir: "file" get here?
-                if not os.path.exists(p.target) and p.type in [
+                if p.type in [
                     "CreateFile",
                     "CreateWritableFile",
                 ]:
@@ -3261,12 +3262,46 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
+def format_output(output: Any) -> None:
+    """
+    Change the output object to match cwltool
+    """
+    if not isinstance(output, dict):
+        return
+    def change_output(output: Sequence) -> None:
+        if isinstance(output, list):
+            for nested_output in output:
+                change_output(nested_output)
+        if isinstance(output, dict) and output.get("class") in ("File", "Directory"):
+            # Add 'path' with unquoted filepath
+            if output["location"].startswith("file://"):
+                if output.get("path") is None:
+                    output["path"] = uri_file_path(output["location"])
+                # Else if not a file, then don't decode and don't put in path
+                # Remove 'nameroot' and 'nameext'
+                if output.get("nameroot") is not None:
+                    del output["nameroot"]
+                if output.get("nameext") is not None:
+                    del output["nameext"]
+            # Recurse through nested objects
+            if output.get("listing") is not None:
+                for nested_object in output["listing"]:
+                    change_output(nested_object)
+    # Both the 'result' and 'log' output objects need to be changed
+    if output.get("result") is not None:
+        change_output(output["result"])
+    if output.get("log") is not None:
+        change_output(output["log"])
+    if output.get("output") is not None:
+        change_output(output["output"])
+
 def add_cwl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("cwltool", type=str, help="CWL file to run.")
     parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
                                                   "the name of the input can be used as an option. "
                                                   "For example: \"%(prog)s workflow.cwl --file1 file\". "
                                                   "If an input has the same name as a Toil option, pass '--' before it.")
+
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3944,6 +3979,9 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # options. If destination bucket not passed in,
         # options.destBucket's value will be None.
         toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+
+        # Change output to match cwltool
+        format_output(outobj)
 
         if runtime_context.research_obj is not None:
             cwltool.cwlprov.writablebagfile.create_job(
