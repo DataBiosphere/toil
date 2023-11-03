@@ -817,7 +817,8 @@ class ToilPathMapper(PathMapper):
                 # Does not check if the path is relative
                 # While Toil encodes paths into a URL with ToilPathMapper,
                 # something called internally in cwltool may return an absolute path
-                # ex: if cwltool collects outputs with collect_output, revmap_file will use its own internal pathmapper
+                # ex: if cwltool calls itself internally in command_line_tool.py,
+                # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
                 resolved = location
             else:
                 raise RuntimeError("Unsupported location: " + location)
