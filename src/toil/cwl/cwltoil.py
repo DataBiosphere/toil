@@ -1015,7 +1015,7 @@ class ToilTool:
 
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
-    def __init__(self, toolpath_object: 'CommentedMap', loadingContext: 'LoadingContext'):
+    def __init__(self, toolpath_object: 'CommentedMap', loadingContext: 'cwltool.context.LoadingContext'):
         loadingContext.relax_path_checks = True
         super().__init__(toolpath_object, loadingContext)
     def _initialworkdir(
@@ -1814,7 +1814,7 @@ def upload_directory(
 
 
 def upload_file(
-    uploadfunc: Callable[[str, str], FileID],
+    uploadfunc: Callable[[str], FileID],
     fileindex: Dict[str, str],
     existing: Dict[str, str],
     file_metadata: CWLObjectType,
@@ -3268,7 +3268,7 @@ def format_output(output: Any) -> None:
     """
     if not isinstance(output, dict):
         return
-    def change_output(output: Sequence) -> None:
+    def change_output(output: Union[List[Any], Dict[Any, Any]]) -> None:
         if isinstance(output, list):
             for nested_output in output:
                 change_output(nested_output)
