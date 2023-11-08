@@ -166,7 +166,6 @@ batch_systems:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
-#    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
 
 slurm_test:
   rules:
