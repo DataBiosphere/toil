@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
+from configargparse import ArgumentParser
 import logging
 import os
 from typing import Type
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def parser_with_server_options() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Toil server mode.")
+    parser = ArgumentParser(description="Toil server mode.")
 
     parser.add_argument("--debug", action="store_true", default=False,
                         help="Enable debug mode.")

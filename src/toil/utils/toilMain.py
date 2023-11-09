@@ -57,6 +57,7 @@ def loadModules() -> Dict[str, types.ModuleType]:
     from toil.utils import toilSshCluster  # noqa
     from toil.utils import toilStats  # noqa
     from toil.utils import toilStatus  # noqa
+    from toil.utils import toilConfig  # noqa
 
     return {'-'.join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 

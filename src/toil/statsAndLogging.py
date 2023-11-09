@@ -225,6 +225,8 @@ def add_logging_options(parser: ArgumentParser) -> None:
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
     group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
                        action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
+    # Maybe deprecate the above in favor of --logLevel?
+
     group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
                        help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
     group.add_argument("--logFile", dest="logFile", help="File to log in.")

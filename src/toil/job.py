@@ -44,6 +44,8 @@ from typing import (TYPE_CHECKING,
                     cast,
                     overload)
 
+from configargparse import ArgParser
+
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
@@ -267,7 +269,8 @@ def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> Acce
         elif possible_description in APIS:
             parsed['api'] = possible_description
         else:
-            parsed['model'] = possible_description
+            if possible_description is not None:
+                parsed['model'] = possible_description
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
         parsed.update(spec)
@@ -423,6 +426,7 @@ class Requirer:
         if self._config is not None:
             raise RuntimeError(f"Config assigned multiple times to {self}")
         self._config = config
+
 
     def __getstate__(self) -> Dict[str, Any]:
         """Return the dict to use as the instance's __dict__ when pickling."""
@@ -595,7 +599,8 @@ class Requirer:
                 )
             return value
         elif self._config is not None:
-            value = getattr(self._config, 'default' + requirement.capitalize())
+            values = [getattr(self._config, 'default_' + requirement, None), getattr(self._config, 'default' + requirement.capitalize(), None)]
+            value = values[0] if values[0] is not None else values[1]
             if value is None:
                 raise AttributeError(
                     f"Encountered None for default '{requirement}' requirement "
@@ -2143,37 +2148,49 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser() -> ArgumentParser:
+        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgumentParser:
             """
             Get argument parser with added toil workflow options.
 
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The argument parser used by a toil workflow with added Toil options.
             """
-            parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-            Job.Runner.addToilOptions(parser)
+            parser = ArgParser(formatter_class=ArgumentDefaultsHelpFormatter)
+            Job.Runner.addToilOptions(parser, jobstore_as_flag=jobstore_as_flag)
             return parser
 
         @staticmethod
-        def getDefaultOptions(jobStore: str) -> Namespace:
+        def getDefaultOptions(jobStore: Optional[str] = None, jobstore_as_flag: bool = False) -> Namespace:
             """
             Get default options for a toil workflow.
 
             :param jobStore: A string describing the jobStore \
             for the workflow.
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The options used by a toil workflow.
             """
-            parser = Job.Runner.getDefaultArgumentParser()
-            return parser.parse_args(args=[jobStore])
+            # setting jobstore_as_flag to True allows the user to declare the jobstore in the config file instead
+            if not jobstore_as_flag and jobStore is None:
+                raise RuntimeError("The jobstore argument cannot be missing if the jobstore_as_flag argument is set "
+                                   "to False!")
+            parser = Job.Runner.getDefaultArgumentParser(jobstore_as_flag=jobstore_as_flag)
+            arguments = []
+            if jobstore_as_flag and jobStore is not None:
+                arguments = ["--jobstore", jobStore]
+            if not jobstore_as_flag and jobStore is not None:
+                arguments = [jobStore]
+            return parser.parse_args(args=arguments)
 
         @staticmethod
-        def addToilOptions(parser: Union["OptionParser", ArgumentParser]) -> None:
+        def addToilOptions(parser: Union["OptionParser", ArgumentParser], jobstore_as_flag: bool = False) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
             parser object.
 
             :param parser: Options object to add toil options to.
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             """
-            addOptions(parser)
+            addOptions(parser, jobstore_as_flag=jobstore_as_flag)
 
         @staticmethod
         def startToil(job: "Job", options) -> Any:
