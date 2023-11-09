@@ -4,5 +4,5 @@ galaxy-tool-util<23
 galaxy-util<23
 ruamel.yaml>=0.15,<=0.18.3
 ruamel.yaml.clib>=0.2.6
-networkx>=2,<2.8.9
+networkx!=2.8.1,<4
 CacheControl[filecache]
