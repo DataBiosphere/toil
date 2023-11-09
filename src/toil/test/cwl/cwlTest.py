@@ -623,7 +623,8 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_download_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
@@ -631,6 +632,7 @@ class CWLWorkflowTest(ToilTest):
                 "size": 0,
                 "class": "File",
                 "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+                "path": path
             }
         }
 
