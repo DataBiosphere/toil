@@ -219,6 +219,7 @@ cwl_v1.2:
         compare_to: 'refs/heads/master'
         paths:
           - 'src/toil/cwl/*'
+          - 'src/toil/test/cwl/*'
   stage: integration
   script:
     - pwd
