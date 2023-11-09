@@ -20,10 +20,10 @@ import re
 import shutil
 import sqlite3
 import stat
-import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from tempfile import mkstemp
 from typing import Any, Callable, Generator, Iterator, Optional, Sequence, Tuple 
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
@@ -36,6 +36,7 @@ from toil.lib.conversions import bytes2human
 from toil.lib.io import (atomic_copy,
                          atomic_copyobj,
                          make_public_dir,
+                         mkdtemp,
                          robust_rmtree)
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
@@ -600,7 +601,7 @@ class CachingFileStore(AbstractFileStore):
             emptyID = self.jobStore.getEmptyFileStoreID()
 
             # Read it out to a generated name.
-            destDir = tempfile.mkdtemp(dir=self.localCacheDir)
+            destDir = mkdtemp(dir=self.localCacheDir)
             cachedFile = os.path.join(destDir, 'sniffLinkCount')
             self.jobStore.read_file(emptyID, cachedFile, symlink=False)
 
@@ -644,7 +645,7 @@ class CachingFileStore(AbstractFileStore):
         # sure we can never collide even though we are going to remove the
         # file.
         # TODO: use a de-slashed version of the ID instead?
-        handle, path = tempfile.mkstemp(dir=self.localCacheDir, suffix=hasher.hexdigest())
+        handle, path = mkstemp(dir=self.localCacheDir, suffix=hasher.hexdigest())
         os.close(handle)
         os.unlink(path)
 

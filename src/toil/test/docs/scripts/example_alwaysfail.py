@@ -1,5 +1,6 @@
-from configargparse import ArgumentParser
 import sys
+
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
