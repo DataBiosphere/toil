@@ -1,8 +1,8 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 if __name__ == "__main__":
     # A is a job with children and follow-ons, for example:
@@ -18,7 +18,7 @@ if __name__ == "__main__":
     Ap.addChild(A)
     Ap.addFollowOn(B)
 
-    jobstore: str = tempfile.mkdtemp("tutorial_encapsulations")
+    jobstore: str = mkdtemp("tutorial_encapsulations")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

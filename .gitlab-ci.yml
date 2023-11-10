@@ -109,7 +109,9 @@ quick_test_offline:
 
 py38_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -120,7 +122,9 @@ py38_appliance_build:
 
 py39_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -131,7 +135,9 @@ py39_appliance_build:
 
 py310_appliance_build:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG || $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   stage: basic_tests
   script:
     - pwd
@@ -166,36 +172,11 @@ batch_systems:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
-    - wget https://github.com/ohsu-comp-bio/funnel/releases/download/0.10.1/funnel-linux-amd64-0.10.1.tar.gz
-    - tar -xvf funnel-linux-amd64-0.10.1.tar.gz funnel
-    - export FUNNEL_SERVER_USER=toil
-    - export FUNNEL_SERVER_PASSWORD=$(openssl rand -hex 256)
-    - |
-      cat >funnel.conf <<EOF
-      Server:
-        BasicAuth:
-          - User: ${FUNNEL_SERVER_USER}
-            Password: ${FUNNEL_SERVER_PASSWORD}
-      RPCClient:
-        User: ${FUNNEL_SERVER_USER}
-        Password: ${FUNNEL_SERVER_PASSWORD}
-      LocalStorage:
-        AllowedDirs:
-          - $HOME/.aws
-          - ./
-      Compute: manual
-      EOF
-    - ./funnel server run -c funnel.conf &
-    - ./funnel node run -c funnel.conf &
-    - export TOIL_TES_ENDPOINT="http://127.0.0.1:8000"
-    - export TOIL_TES_USER="${FUNNEL_SERVER_USER}"
-    - export TOIL_TES_PASSWORD="${FUNNEL_SERVER_PASSWORD}"
-#    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/batchSystems/batchSystemTest.py src/toil/test/mesos/MesosDataStructuresTest.py"
-    - kill $(jobs -p) || true
 
 slurm_test:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -205,17 +186,40 @@ slurm_test:
 
 cwl_v1.2:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
+          - 'src/toil/test/cwl/*'
   stage: integration
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    # Run CWL integration tests excluded from cwl_misc
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
+    # Run CWL conformance tests, with file store bypassed
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+    - "*.junit.xml"
+    when: always
+    expire_in: 14 day
 
 cwl_on_arm:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
   stage: integration
   script:
     - pwd
@@ -224,17 +228,26 @@ cwl_on_arm:
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
+    # Run CWL conformance tests, on an ARM cluster on AWS, using the file store
     - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+    - "*.junit.xml"
+    when: always
+    expire_in: 14 day
 
 cwl_misc:
   rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+    - if: $CI_COMMIT_TAG
   stage: main_tests
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test threads="${TEST_THREADS}" tests='src/toil/test/cwl/cwlTest.py -k "CWLWorkflowTest or cwl_small"'
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and not integrative'"
 
 #cwl_v1.2_kubernetes:
 #  stage: main_tests
@@ -292,7 +305,8 @@ provisioner:
 
 jobstore_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -307,7 +321,8 @@ jobstore_integration:
 
 server_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -323,7 +338,8 @@ server_integration:
 
 provisioner_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -340,7 +356,8 @@ provisioner_integration:
 
 google_jobstore:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd
@@ -356,7 +373,8 @@ google_jobstore:
 
 mesos:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
   stage: integration
   script:
     - pwd

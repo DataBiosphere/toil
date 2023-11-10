@@ -1,9 +1,9 @@
 import os
 import subprocess
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def initialize_jobs(job):
@@ -26,7 +26,7 @@ def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, outp
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_cwlexample")
+    jobstore: str = mkdtemp("tutorial_cwlexample")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

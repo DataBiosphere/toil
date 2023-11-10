@@ -1,9 +1,9 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.docker import apiDockerCall
+from toil.lib.io import mkdtemp
 
 align = Job.wrapJobFn(apiDockerCall,
                       image='ubuntu',
@@ -11,7 +11,7 @@ align = Job.wrapJobFn(apiDockerCall,
                       parameters=['ls', '-lha'])
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_docker")
+    jobstore: str = mkdtemp("tutorial_docker")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

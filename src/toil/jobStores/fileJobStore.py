@@ -20,7 +20,6 @@ import re
 import shutil
 import stat
 import sys
-import tempfile
 import time
 import uuid
 from contextlib import contextmanager
@@ -42,6 +41,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
 from toil.lib.io import (AtomicFileCreate,
                          atomic_copy,
                          atomic_copyobj,
+                         mkdtemp,
                          robust_rmtree)
 
 logger = logging.getLogger(__name__)
@@ -147,8 +147,8 @@ class FileJobStore(AbstractJobStore):
 
         # Make a unique temp directory under a directory for this job name,
         # possibly sprayed across multiple levels of subdirectories.
-        absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
-                                     dir=self._get_arbitrary_jobs_dir_for_name(usefulFilename))
+        absJobDir = mkdtemp(prefix=self.JOB_DIR_PREFIX,
+                            dir=self._get_arbitrary_jobs_dir_for_name(usefulFilename))
 
         job_description.jobStoreID = self._get_job_id_from_dir(absJobDir)
 

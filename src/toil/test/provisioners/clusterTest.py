@@ -144,6 +144,17 @@ class AbstractClusterTest(ToilTest):
             raise subprocess.CalledProcessError(p.returncode, ' '.join(cmd))
 
     @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
+    def rsync_util(self, from_file: str, to_file: str) -> None:
+        """
+        Transfer a file to/from the cluster.
+
+        The cluster-side path should have a ':' in front of it.
+        """
+        cmd = ['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName, from_file, to_file]
+        log.info("Running %s.", str(cmd))
+        subprocess.check_call(cmd)
+
+    @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
 

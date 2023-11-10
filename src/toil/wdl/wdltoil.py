@@ -28,11 +28,11 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import uuid
 
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
+from tempfile import mkstemp
 from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator, \
     Iterable, Generator
 from urllib.parse import urlsplit, urljoin, quote, unquote
@@ -51,6 +51,7 @@ from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promis
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
+from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
@@ -2550,12 +2551,12 @@ def main() -> None:
     # Make sure we have a jobStore
     if options.jobStore is None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
-        options.jobStore = os.path.join(tempfile.mkdtemp(), 'tree')
+        options.jobStore = os.path.join(mkdtemp(), 'tree')
 
     # Make sure we have an output directory (or URL prefix) and we don't need
     # to ever worry about a None, and MyPy knows it.
     # If we don't have a directory assigned, make one in the current directory.
-    output_directory: str = options.output_directory if options.output_directory else tempfile.mkdtemp(prefix='wdl-out-', dir=os.getcwd())
+    output_directory: str = options.output_directory if options.output_directory else mkdtemp(prefix='wdl-out-', dir=os.getcwd())
 
     with Toil(options) as toil:
         if options.restart:
@@ -2672,7 +2673,7 @@ def main() -> None:
         else:
             # Export output to path or URL.
             # So we need to import and then export.
-            fd, filename = tempfile.mkstemp()
+            fd, filename = mkstemp()
             with open(fd, 'w') as handle:
                 # Populate the file
                 handle.write(json.dumps(outputs))

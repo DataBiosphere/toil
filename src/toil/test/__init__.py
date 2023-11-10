@@ -21,7 +21,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -30,6 +29,7 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
+from tempfile import mkstemp
 from textwrap import dedent
 from typing import (Any,
                     Callable,
@@ -57,6 +57,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
                                    have_working_nvidia_smi)
 from toil.lib.aws import running_on_ec2
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -188,7 +189,7 @@ class ToilTest(unittest.TestCase):
         prefix.extend([_f for _f in names if _f])
         prefix.append('')
         temp_dir_path = os.path.realpath(
-            tempfile.mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
+            mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
         )
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
@@ -314,7 +315,7 @@ else:
 def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
     """Return a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
-        handle, tmp_file = tempfile.mkstemp(suffix)
+        handle, tmp_file = mkstemp(suffix)
         os.close(handle)
         return tmp_file
     else:
@@ -446,32 +447,6 @@ def needs_torque(test_item: MT) -> MT:
     if which('pbsnodes'):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
-
-
-def needs_tes(test_item: MT) -> MT:
-    """Use as a decorator before test classes or methods to run only if TES is available."""
-    test_item = _mark_test('tes', test_item)
-
-    try:
-        from toil.batchSystems.tes import TESBatchSystem
-    except ImportError:
-        return unittest.skip("Install py-tes to include this test")(test_item)
-
-    tes_url = os.environ.get('TOIL_TES_ENDPOINT', TESBatchSystem.get_default_tes_endpoint())
-    try:
-        urlopen(tes_url)
-    except HTTPError:
-        # Funnel happens to 404 if TES is working. But any HTTPError means we
-        # dialed somebody who picked up.
-        pass
-    except URLError:
-        # Will give connection refused if we can't connect because the server's
-        # not there. We can also get a "cannot assign requested address" if
-        # we're on Kubernetes dialing localhost and !!creative things!! have
-        # been done to the network stack.
-        return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
-    return test_item
-
 
 def needs_kubernetes_installed(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
