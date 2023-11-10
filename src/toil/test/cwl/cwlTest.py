@@ -585,10 +585,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_seqtk_output(outDir):
-        loc = "file://" + os.path.join(outDir, "out")
+        path = os.path.join(outDir, "out")
+        loc = "file://" + path
         return {
             "output1": {
                 "location": loc,
+                "path": path,
                 "checksum": "sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
                 "basename": "out",
                 "class": "File",
@@ -598,10 +600,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_revsort_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 1111,
                 "class": "File",
@@ -611,10 +615,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_revsort_nochecksum_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 1111,
                 "class": "File",
@@ -648,7 +654,8 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_colon_output(outDir):
-        loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
+        path = os.path.join(outDir, "A%3AGln2Cys_result")
+        loc = "file://" + path
         return {
             "result": {
                 "location": loc,
@@ -661,18 +668,19 @@ class CWLWorkflowTest(ToilTest):
                         "basename": "whale.txt",
                         "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
                         "size": 1111,
-                        "nameroot": "whale",
-                        "nameext": ".txt",
+                        "path": path
                     }
                 ],
             }
         }
 
     def _expected_streaming_output(self, outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 24,
                 "class": "File",
