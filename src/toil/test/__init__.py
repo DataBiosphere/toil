@@ -489,14 +489,6 @@ def needs_mesos(test_item: MT) -> MT:
     return test_item
 
 
-def needs_parasol(test_item: MT) -> MT:
-    """Use as decorator so tests are only run if Parasol is installed."""
-    test_item = _mark_test('parasol', test_item)
-    if which('parasol'):
-        return test_item
-    return unittest.skip("Install Parasol to include this test.")(test_item)
-
-
 def needs_slurm(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Slurm is installed."""
     test_item = _mark_test('slurm', test_item)

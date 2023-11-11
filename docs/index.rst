@@ -15,7 +15,6 @@ If using Toil for your research, please cite
 .. _website: http://toil.ucsc-cgl.org/
 .. _announce: https://groups.google.com/forum/#!forum/toil-announce
 .. _GridEngine: http://gridscheduler.sourceforge.net/
-.. _Parasol: http://genecats.soe.ucsc.edu/eng/parasol.html
 .. _Apache Mesos: http://mesos.apache.org/
 .. _spot market: https://aws.amazon.com/ec2/spot/
 .. _Amazon Web Services: https://aws.amazon.com/

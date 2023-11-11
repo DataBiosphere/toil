@@ -73,11 +73,6 @@ def gridengine_batch_system_factory():
     return GridEngineBatchSystem
 
 
-def parasol_batch_system_factory():
-    from toil.batchSystems.parasol import ParasolBatchSystem
-    return ParasolBatchSystem
-
-
 def lsf_batch_system_factory():
     from toil.batchSystems.lsf import LSFBatchSystem
     return LSFBatchSystem
@@ -117,7 +112,6 @@ def kubernetes_batch_system_factory():
 
 _registry: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
     'aws_batch'      : aws_batch_batch_system_factory,
-    'parasol'        : parasol_batch_system_factory,
     'single_machine' : single_machine_batch_system_factory,
     'grid_engine'    : gridengine_batch_system_factory,
     'lsf'            : lsf_batch_system_factory,
