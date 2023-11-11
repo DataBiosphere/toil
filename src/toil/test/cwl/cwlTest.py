@@ -659,11 +659,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_colon_output(outDir):
-        path = os.path.join(outDir, "A%3AGln2Cys_result")
-        loc = "file://" + path
+        path = os.path.join(outDir, "A:Gln2Cys_result")
+        loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
         return {
             "result": {
                 "location": loc,
+                "path": path,
                 "basename": "A:Gln2Cys_result",
                 "class": "Directory",
                 "listing": [
@@ -673,7 +674,7 @@ class CWLWorkflowTest(ToilTest):
                         "basename": "whale.txt",
                         "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
                         "size": 1111,
-                        "path": path
+                        "path": f"{path}/whale.txt"
                     }
                 ],
             }
