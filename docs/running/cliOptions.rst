@@ -34,7 +34,7 @@ To generate a configuration file, run::
 
     $ toil config [filename].yaml
 
-Then uncomment out options as necessary and change/provide new values. The file will also include
+Then uncomment options as necessary and change/provide new values. 
 
 After editing the config file, make Toil take in the new options::
 
