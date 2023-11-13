@@ -32,9 +32,9 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        addBatchSystemFactory,
+from toil.batchSystems.registry import (get_batch_system,
+                                        get_batch_systems,
+                                        add_batch_system_factory,
                                         restore_batch_system_plugin_state,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -54,7 +54,6 @@ from toil.test import (ToilTest,
                        needs_mesos,
                        needs_parasol,
                        needs_slurm,
-                       needs_tes,
                        needs_torque,
                        slow)
 from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
@@ -88,16 +87,16 @@ class BatchSystemPluginTest(ToilTest):
         restore_batch_system_plugin_state(self.__state)
         super().tearDown()
 
-    def testAddBatchSystemFactory(self):
+    def test_add_batch_system_factory(self):
         def test_batch_system_factory():
             # TODO: Adding the same batch system under multiple names means we
             # can't actually create Toil options, because each version tries to
             # add its arguments.
             return SingleMachineBatchSystem
 
-        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-        assert 'testBatchSystem' in BATCH_SYSTEMS
+        add_batch_system_factory('testBatchSystem', test_batch_system_factory)
+        assert 'testBatchSystem' in get_batch_systems()
+        assert get_batch_system('testBatchSystem') == SingleMachineBatchSystem
 
 class hidden:
     """
@@ -574,23 +573,6 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         """).strip(), str(spec.affinity),)
         self.assertEqual(str(spec.tolerations), "None")
 
-
-@needs_tes
-@needs_fetchable_appliance
-class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
-    """
-    Tests against the TES batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def createBatchSystem(self):
-        # Import the batch system when we know we have it.
-        # Doesn't really matter for TES right now, but someday it might.
-        from toil.batchSystems.tes import TESBatchSystem
-        return TESBatchSystem(config=self.config,
-                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
 @needs_aws_batch
 @needs_fetchable_appliance

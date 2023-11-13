@@ -14,7 +14,7 @@
 """
 Executor for running inside a container.
 
-Useful for Kubernetes and TES batch systems.
+Useful for Kubernetes batch system and TES batch system plugin.
 """
 import base64
 import logging

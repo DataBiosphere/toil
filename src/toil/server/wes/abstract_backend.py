@@ -3,13 +3,14 @@ import functools
 import json
 import logging
 import os
-import tempfile
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore
 from werkzeug.utils import secure_filename
+
+from toil.lib.io import mkdtemp
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class WESBackend:
                          If None, a temporary directory is created.
         """
         if not temp_dir:
-            temp_dir = tempfile.mkdtemp()
+            temp_dir = mkdtemp()
         body: Dict[str, Any] = {}
         has_attachments = False
         for key, ls in connexion.request.files.lists():

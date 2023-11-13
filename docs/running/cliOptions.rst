@@ -247,14 +247,6 @@ levels in toil are based on priority from the logging module:
   --kubernetesPodTimeout KUBERNETES_POD_TIMEOUT
                         Seconds to wait for a scheduled Kubernetes pod to
                         start running. (default: 120s)
-  --tesEndpoint TES_ENDPOINT
-                        The http(s) URL of the TES server.
-                        (default: http://<leader IP>:8000)
-  --tesUser TES_USER    User name to use for basic authentication to TES server.
-  --tesPassword TES_PASSWORD
-                        Password to use for basic authentication to TES server.
-  --tesBearerToken TES_BEARER_TOKEN
-                        Bearer token to use for authentication to TES server.
   --awsBatchRegion AWS_BATCH_REGION
                         The AWS region containing the AWS Batch queue to submit
                         to.

@@ -796,7 +796,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                     logger.warning(f'Length of workDir path "{workDir}" is {len(workDir)} characters.  '
                                    f'Consider setting a shorter path with --workPath or setting TMPDIR to something '
                                    f'like "/tmp" to avoid overly long paths.')
-            setattr(namespace, self.dest, values)
+            setattr(namespace, self.dest, workDir)
 
     class CoordinationDirAction(Action):
         """
@@ -810,7 +810,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                 if not os.path.exists(coordination_dir):
                     raise RuntimeError(
                         f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
-            setattr(namespace, self.dest, values)
+            setattr(namespace, self.dest, coordination_dir)
 
     def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[
         Action]:
@@ -1944,13 +1944,13 @@ class Toil(ContextManager["Toil"]):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import BATCH_SYSTEM_FACTORY_REGISTRY
+        from toil.batchSystems.registry import get_batch_system, get_batch_systems
 
         try:
-            batch_system = BATCH_SYSTEM_FACTORY_REGISTRY[config.batchSystem]()
+            batch_system = get_batch_system(config.batchSystem)
         except KeyError:
             raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
-                               f'(choose from: {BATCH_SYSTEM_FACTORY_REGISTRY.keys()})')
+                               f'(choose from: {", ".join(get_batch_systems())})')
 
         if config.caching and not batch_system.supportsWorkerCleanup():
             raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
