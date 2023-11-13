@@ -42,7 +42,7 @@ After editing the config file, make Toil take in the new options::
 
 Alternatively, you can edit the default config file, which is located at ``$HOME/.toil/default.yaml``
 
-If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
+If CLI options are used in addition to the configuration file, the CLI options will overwrite the configuration file
 options. For example::
 
     $ python example.py --config=[filename].yaml --maxNodes 20
