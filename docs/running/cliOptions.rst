@@ -16,7 +16,7 @@ The Config File
 Instead of changing the arguments on the CLI, Toil offers support for using a configuration file (Note: Support for the
 configuration file and environmental variables require the use of ``configargparse``).
 
-Options will be applied in priority:
+Options will be applied with priority:
 
   1. CLI
 
