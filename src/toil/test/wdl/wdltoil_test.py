@@ -13,7 +13,7 @@ from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
 
-class BaseToilWdlTest(ToilTest):
+class BaseWDLTest(ToilTest):
     """Base test class for WDL tests."""
     def setUp(self) -> None:
         """Runs anew before each test to create farm fresh temp dirs."""
@@ -25,7 +25,7 @@ class BaseToilWdlTest(ToilTest):
             shutil.rmtree(self.output_dir)
 
 
-class WDLConformanceTests(BaseToilWdlTest):
+class WDLConformanceTests(BaseWDLTest):
     """WDL conformance tests for Toil."""
     wdl_dir = "wdl-conformance-tests"
     @classmethod
@@ -77,7 +77,7 @@ class WDLConformanceTests(BaseToilWdlTest):
         shutil.rmtree("wdl-conformance-tests")
 
 
-class WdlToilTest(BaseToilWdlTest):
+class WDLTests(BaseWDLTest):
     """Tests for Toil's MiniWDL-based implementation."""
     @classmethod
     def setUpClass(cls) -> None:
@@ -87,7 +87,7 @@ class WdlToilTest(BaseToilWdlTest):
     # We inherit a testMD5sum but it is going to need Singularity or Docker
     # now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity_or_docker
-    def testMD5sum(self):
+    def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
