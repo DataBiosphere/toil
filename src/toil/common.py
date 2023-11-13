@@ -285,6 +285,7 @@ class Config:
         # as Config often expects defaults to already be instantiated
         parser = ArgParser()
         addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
+        # The parser already knows about the default config file
         ns = parser.parse_args("")
         self.setOptions(ns)
 
