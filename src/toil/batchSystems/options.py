@@ -80,7 +80,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    from toil.common import SYS_MAX_SIZE
+    from toil.options.common import SYS_MAX_SIZE
     # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",

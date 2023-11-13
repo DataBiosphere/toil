@@ -27,7 +27,8 @@ from typing import Dict, Optional, Union, Type, Any
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-from toil.common import SYS_MAX_SIZE, Toil, make_open_interval_action
+from toil.common import Toil
+from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
 from toil.lib.iterables import concat
 from toil.test import get_temp_file
 

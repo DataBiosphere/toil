@@ -45,7 +45,7 @@ from WDL.runtime.backend.docker_swarm import SwarmContainer
 import WDL.Error
 import WDL.runtime.config
 
-from toil.common import Toil, addOptions, check_and_create_default_config_file, add_cwl_options
+from toil.common import Toil, addOptions, check_and_create_default_config_file
 from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -2529,22 +2529,7 @@ def main() -> None:
     args = sys.argv[1:]
 
     parser = ArgParser(description='Runs WDL files with toil.')
-    addOptions(parser, jobstore_as_flag=True, cwl=False, wdl=True)
-
-    parser.add_argument("wdl_uri", type=str,
-                        help="WDL document URI")
-    parser.add_argument("inputs_uri", type=str, nargs='?',
-                        help="WDL input JSON URI")
-    parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
-                        help="WDL input JSON URI")
-
-    cwl_parser = ArgParser()
-    add_cwl_options(cwl_parser)
-    for action in cwl_parser._actions:
-        action.default = SUPPRESS
-    possible_cwl_options, _ = cwl_parser.parse_known_args(args)
-    if len(vars(possible_cwl_options)) != 0:
-        raise parser.error(f"CWL options are not allowed on the command line.")
+    addOptions(parser, jobstore_as_flag=True, wdl=True)
 
     options = parser.parse_args(args)
 

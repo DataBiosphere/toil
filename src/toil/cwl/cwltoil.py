@@ -103,7 +103,7 @@ from tempfile import NamedTemporaryFile, gettempdir
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, addOptions, add_base_toil_options, add_cwl_options, add_wdl_options
+from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -3292,20 +3292,6 @@ def get_options(args: List[str]) -> Namespace:
     """
     parser = ArgParser()
     addOptions(parser, jobstore_as_flag=True, cwl=True)
-    parser.add_argument("cwltool", type=str, help="CWL file to run.")
-    parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
-                                                  "the name of the input can be used as an option. "
-                                                  "For example: \"%(prog)s workflow.cwl --file1 file\". "
-                                                  "If an input has the same name as a Toil option, pass '--' before it.")
-
-    wdl_parser = ArgParser()
-    add_wdl_options(wdl_parser)
-    for action in wdl_parser._actions:
-        action.default = SUPPRESS
-    possible_wdl_options, _ = wdl_parser.parse_known_args(args)
-    if len(vars(possible_wdl_options)) != 0:
-        raise parser.error(f"WDL options are not allowed on the command line.")
-
     options: Namespace
     options, cwl_options = parser.parse_known_args(args)
     options.cwljob.extend(cwl_options)

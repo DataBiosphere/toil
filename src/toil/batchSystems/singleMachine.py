@@ -36,7 +36,8 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.bus import ExternalBatchIdMessage
 from toil.batchSystems.options import OptionSetter
 
-from toil.common import SYS_MAX_SIZE, Config, Toil, make_open_interval_action
+from toil.common import Config, Toil
+from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
 from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
 from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
 from toil.lib.threading import cpu_count
