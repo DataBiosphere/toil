@@ -26,11 +26,11 @@ import functools
 import json
 import logging
 import os
+import pprint
 import shutil
 import socket
 import stat
 import sys
-import tempfile
 import textwrap
 import uuid
 from threading import Thread
@@ -100,6 +100,7 @@ from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
+from tempfile import NamedTemporaryFile, gettempdir
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
@@ -119,6 +120,7 @@ from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
+from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 from toil.version import baseVersion
@@ -126,7 +128,7 @@ from toil.version import baseVersion
 logger = logging.getLogger(__name__)
 
 # Find the default temporary directory
-DEFAULT_TMPDIR = tempfile.gettempdir()
+DEFAULT_TMPDIR = gettempdir()
 # And compose a CWL-style default prefix inside it.
 # We used to not put this inside anything and we would drop loads of temp
 # directories in the current directory and leave them there.
@@ -351,16 +353,24 @@ class ResolveSource:
 
     def __repr__(self) -> str:
         """Allow for debug printing."""
-        try:
-            return "ResolveSource(" + repr(self.resolve()) + ")"
-        except Exception:
-            return (
-                f"ResolveSource({self.name}, {self.input}, {self.source_key}, "
-                f"{self.promise_tuples})"
-            )
+
+        parts = [f"source key {self.source_key}"]
+
+        if "pickValue" in self.input:
+            parts.append(f"pick value {self.input['pickValue']} from")
+
+        if isinstance(self.promise_tuples, list):
+            names = [n for n, _ in self.promise_tuples]
+            parts.append(f"names {names} in promises")
+        else:
+            name, _ = self.promise_tuples
+            parts.append(f"name {name} in promise")
+
+        return f"ResolveSource({', '.join(parts)})"
 
     def resolve(self) -> Any:
         """First apply linkMerge then pickValue if either present."""
+
         result: Optional[Any] = None
         if isinstance(self.promise_tuples, list):
             result = self.link_merge(
@@ -384,6 +394,7 @@ class ResolveSource:
 
         :param values: result of step
         """
+
         link_merge_type = self.input.get("linkMerge", "merge_nested")
 
         if link_merge_type == "merge_nested":
@@ -411,6 +422,7 @@ class ResolveSource:
                        without modification.
         :return:
         """
+
         pick_value_type = cast(str, self.input.get("pickValue"))
 
         if pick_value_type is None:
@@ -427,6 +439,7 @@ class ResolveSource:
 
         if pick_value_type == "first_non_null":
             if len(result) < 1:
+                logger.error("Could not find non-null entry for %s:\n%s", self.name, pprint.pformat(self.promise_tuples))
                 raise cwl_utils.errors.WorkflowException(
                     "%s: first_non_null operator found no non-null values" % self.name
                 )
@@ -480,6 +493,11 @@ class StepValueFrom:
         self.context = None
         self.req = req
         self.container_engine = container_engine
+
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        return f"StepValueFrom({self.expr}, {self.source}, {self.req}, {self.container_engine})"
 
     def eval_prep(
         self, step_inputs: CWLObjectType, file_store: AbstractFileStore
@@ -553,6 +571,11 @@ class DefaultWithSource:
         self.default = default
         self.source = source
 
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        return f"DefaultWithSource({self.default}, {self.source})"
+
     def resolve(self) -> Any:
         """
         Determine the final input value when the time is right.
@@ -574,6 +597,11 @@ class JustAValue:
     def __init__(self, val: Any):
         """Store the value."""
         self.val = val
+
+    def __repr__(self) -> str:
+        """Allow for debug printing."""
+
+        return f"JustAValue({self.val})"
 
     def resolve(self) -> Any:
         """Return the value."""
@@ -1204,7 +1232,8 @@ class ToilFsAccess(StdFsAccess):
 
                 logger.debug("ToilFsAccess downloading %s to %s", cache_key, temp_dir)
 
-                # Save it all into this new temp directory
+                # Save it all into this new temp directory.
+                # Guaranteed to fill it with real files and not symlinks.
                 download_structure(self.file_store, {}, {}, contents, temp_dir)
 
                 # Make sure we use the same temp directory if we go traversing
@@ -1234,7 +1263,7 @@ class ToilFsAccess(StdFsAccess):
                     logger.debug(
                         "ToilFsAccess fetching directory %s from a JobStore", path
                     )
-                    dest_dir = tempfile.mkdtemp()
+                    dest_dir = mkdtemp()
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
@@ -1257,7 +1286,7 @@ class ToilFsAccess(StdFsAccess):
                     logger.debug("ToilFsAccess fetching file %s from a JobStore", path)
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
-                    dest_file = tempfile.NamedTemporaryFile(delete=False)
+                    dest_file = NamedTemporaryFile(delete=False)
                     AbstractJobStore.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
@@ -2012,7 +2041,7 @@ def toilStageFiles(
                         "CreateFile",
                         "CreateWritableFile",
                     ]:  # TODO: CreateFile for buckets is not under testing
-                        with tempfile.NamedTemporaryFile() as f:
+                        with NamedTemporaryFile() as f:
                             # Make a file with the right contents
                             f.write(file_id_or_contents.encode("utf-8"))
                             f.close()
@@ -2306,7 +2335,7 @@ class CWLJob(CWLNamedJob):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        logger.debug("Loaded order: %s", self.cwljob)
+        logger.debug("Loaded order:\n%s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
@@ -2823,6 +2852,10 @@ class CWLWorkflow(CWLNamedJob):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
+        # Apply default values set in the workflow
+        fs_access = ToilFsAccess(self.runtime_context.basedir, file_store=file_store)
+        fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
+
         # `promises` dict
         # from: each parameter (workflow input or step output)
         #   that may be used as a "source" for a step input workflow output
@@ -2884,6 +2917,8 @@ class CWLWorkflow(CWLNamedJob):
                                     self.cwlwf.requirements,
                                     get_container_engine(self.runtime_context),
                                 )
+
+                            logger.debug("Value will come from %s", jobobj.get(key, None))
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
@@ -3599,7 +3634,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
     else:
         # Use a directory in the default tmpdir
-        workdir = tempfile.mkdtemp()
+        workdir = mkdtemp()
     # Make sure workdir doesn't exist so it can be a job store
     os.rmdir(workdir)
 
@@ -3803,10 +3838,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     )
                 raise
 
-            # We make a ToilFSAccess to access URLs with, but it has no
-            # FileStore so it can't do toildir: and toilfile:
-            fs_access = ToilFsAccess(options.basedir)
-            fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
+            # Leave the defaults un-filled in the top-level order. The tool or
+            # workflow will fill them when it runs
 
             for inp in tool.tool["inputs"]:
                 if (
@@ -3864,6 +3897,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Import all the input files, some of which may be missing optional
             # files.
+            fs_access = ToilFsAccess(options.basedir)
             import_files(
                 file_import_function,
                 fs_access,

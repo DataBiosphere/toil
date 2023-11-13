@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import stat
+import tempfile
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
@@ -9,6 +10,26 @@ from typing import IO, Any, Callable, Iterator, Optional, Union
 
 logger = logging.getLogger(__name__)
 
+def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None) -> str:
+    """
+    Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
+
+    The permissions on the directory will be 711 instead of 700, allowing the
+    group and all other users to traverse the directory. This is necessary if
+    the direcotry is on NFS and the Docker daemon would like to mount it or a
+    file inside it into a container, because on NFS even the Docker daemon
+    appears bound by the file permissions.
+
+    See <https://github.com/DataBiosphere/toil/issues/4644>, and
+    <https://stackoverflow.com/a/67928880> which talks about a similar problem
+    but in the context of user namespaces.
+    """
+    # Make the directory
+    result = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
+    # Grant all the permissions: full control for user, and execute for group and other
+    os.chmod(result, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Return the path created
+    return result
 
 def robust_rmtree(path: Union[str, bytes]) -> None:
     """

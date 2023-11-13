@@ -13,9 +13,9 @@
 # limitations under the License.
 import logging
 import os
-import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from tempfile import mkstemp
 from threading import Event, Semaphore
 from typing import (IO,
                     TYPE_CHECKING,
@@ -40,7 +40,7 @@ from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
-from toil.lib.io import WriteWatchingStream
+from toil.lib.io import WriteWatchingStream, mkdtemp
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ class AbstractFileStore(ABC):
                  to be deleted once the job terminates, removing all files it
                  contains recursively.
         """
-        return os.path.abspath(tempfile.mkdtemp(dir=self.localTempDir))
+        return os.path.abspath(mkdtemp(dir=self.localTempDir))
 
     def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
         """
@@ -223,7 +223,7 @@ class AbstractFileStore(ABC):
                  for the duration of the job only, and is guaranteed to be deleted
                  once the job terminates.
         """
-        handle, tmpFile = tempfile.mkstemp(
+        handle, tmpFile = mkstemp(
             suffix=".tmp" if suffix is None else suffix,
             prefix="tmp" if prefix is None else prefix,
             dir=self.localTempDir

@@ -140,6 +140,9 @@ def download_structure(
     """
     Download nested dictionary from the Toil file store to a local path.
 
+    Guaranteed to fill the structure with real files, and not symlinks out of
+    it to elsewhere.
+
     :param file_store: The Toil file store to download from.
 
     :param index: Maps from downloaded file path back to input Toil URI.
@@ -173,9 +176,11 @@ def download_structure(
                 raise RuntimeError(f"Did not find a filestore file at {value}")
             logger.debug("Downloading contained file '%s'", name)
             dest_path = os.path.join(into_dir, name)
-            # So download the file into place
+            # So download the file into place.
+            # Make sure to get a real copy of the file because we may need to
+            # mount the directory into a container as a whole.
             file_store.readGlobalFile(
-                FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=True
+                FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=False
             )
             # Update the index dicts
             # TODO: why?

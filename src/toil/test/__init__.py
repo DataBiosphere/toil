@@ -21,7 +21,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -30,6 +29,7 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
+from tempfile import mkstemp
 from textwrap import dedent
 from typing import (Any,
                     Callable,
@@ -57,6 +57,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
                                    have_working_nvidia_smi)
 from toil.lib.aws import running_on_ec2
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -188,7 +189,7 @@ class ToilTest(unittest.TestCase):
         prefix.extend([_f for _f in names if _f])
         prefix.append('')
         temp_dir_path = os.path.realpath(
-            tempfile.mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
+            mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
         )
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
@@ -314,7 +315,7 @@ else:
 def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
     """Return a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
-        handle, tmp_file = tempfile.mkstemp(suffix)
+        handle, tmp_file = mkstemp(suffix)
         os.close(handle)
         return tmp_file
     else:
