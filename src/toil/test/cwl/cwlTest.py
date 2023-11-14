@@ -139,9 +139,9 @@ def run_conformance_tests(
             "--logDebug",
             "--statusWait=10",
             "--retryCount=2",
+            "--relax-path-checks",
+            f"--caching={caching}"
         ]
-
-        args_passed_directly_to_runner.append(f"--caching={caching}")
 
         if extra_args:
             args_passed_directly_to_runner += extra_args
@@ -674,6 +674,8 @@ class CWLWorkflowTest(ToilTest):
                         "basename": "whale.txt",
                         "checksum": "sha1$327fc7aedf4f6b69a42a7c8b808dc5a7aff61376",
                         "size": 1111,
+                        "nameroot": "whale",
+                        "nameext": ".txt",
                         "path": f"{path}/whale.txt"
                     }
                 ],
