@@ -400,7 +400,13 @@ mesos:
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_COMMIT_TAG
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/test/batchSystems/test_cactus_integration.py'
   stage: integration
   script:
     - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
