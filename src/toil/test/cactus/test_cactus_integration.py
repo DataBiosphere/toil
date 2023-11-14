@@ -45,7 +45,7 @@ class CactusIntegrationTest(AbstractClusterTest):
                           "pip install --upgrade 'setuptools<66' pip && "
                           "pip install --upgrade . && "
                           "pip install --upgrade numpy psutil && "
-                          "time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --retryCount=3 "
+                          "time cactus --batchSystem kubernetes --retryCount=3 "
                           f"--consCores 2 --binariesMode singularity --clean always {self.jobStore} "
                           "examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk 8G --logDebug")
 
