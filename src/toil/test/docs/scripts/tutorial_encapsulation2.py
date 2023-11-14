@@ -1,8 +1,8 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 if __name__ == "__main__":
     # A
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # With encapsulation A and its successor subgraph appear to be a single job, hence:
     A.addChild(B)
 
-    jobstore: str = tempfile.mkdtemp("tutorial_encapsulations2")
+    jobstore: str = mkdtemp("tutorial_encapsulations2")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

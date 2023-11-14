@@ -23,7 +23,6 @@ from collections import namedtuple
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
-from tempfile import mkdtemp
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -37,6 +36,7 @@ from typing import (TYPE_CHECKING,
                     BinaryIO)
 
 from toil import inVirtualEnv
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
