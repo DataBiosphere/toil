@@ -361,4 +361,4 @@ cactus_integration:
   script:
     - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
     - set -e
-    - make test tests=src/toil/test/batchSystems/test_cactus_integration.py
+    - make test tests=src/toil/test/cactus/test_cactus_integration.py
