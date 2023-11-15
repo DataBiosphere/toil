@@ -34,7 +34,6 @@ from typing import (IO,
                     Tuple,
                     Union,
                     ValuesView,
-                    cast,
                     overload)
 
 if sys.version_info >= (3, 8):
@@ -42,8 +41,8 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 
-from urllib.parse import ParseResult, urlparse
 from urllib.error import HTTPError
+from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen
 from uuid import uuid4
 

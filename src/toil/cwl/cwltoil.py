@@ -35,23 +35,25 @@ import textwrap
 import uuid
 from tempfile import NamedTemporaryFile, gettempdir
 from threading import Thread
-from typing import (IO,
-                    Any,
-                    Callable,
-                    Dict,
-                    Iterator,
-                    List,
-                    Mapping,
-                    MutableMapping,
-                    MutableSequence,
-                    Optional,
-                    TextIO,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    cast)
-from urllib.parse import ParseResult, quote, unquote, urlparse, urlsplit
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    TextIO,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
+from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
 import cwl_utils.expression
@@ -70,24 +72,30 @@ from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper
-from cwltool.process import (Process,
-                             add_sizes,
-                             compute_checksums,
-                             fill_in_defaults,
-                             shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
-from cwltool.software_requirements import (DependenciesConfiguration,
-                                           get_container_from_software_requirements)
+from cwltool.software_requirements import (
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
 from cwltool.stdfsaccess import StdFsAccess, abspath
-from cwltool.utils import (CWLObjectType,
-                           CWLOutputType,
-                           DirectoryType,
-                           adjustDirObjs,
-                           aslist,
-                           downloadHttpFile,
-                           get_listing,
-                           normalizeFilesDirs,
-                           visit_class)
+from cwltool.utils import (
+    CWLObjectType,
+    CWLOutputType,
+    DirectoryType,
+    adjustDirObjs,
+    aslist,
+    downloadHttpFile,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
@@ -100,16 +108,17 @@ from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 
 check_cwltool_version()
-from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-                            download_structure,
-                            visit_cwl_class_and_reduce)
+from toil.cwl.utils import (
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+    download_structure,
+    visit_cwl_class_and_reduce,
+)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchFileException)
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
@@ -1052,8 +1061,6 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
 
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
-
-    pass
 
 
 def toil_make_tool(
@@ -3199,8 +3206,6 @@ def determine_load_listing(
 
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
-
-    pass
 
 
 def generate_default_job_store(

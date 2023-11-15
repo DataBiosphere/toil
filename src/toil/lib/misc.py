@@ -9,7 +9,7 @@ import sys
 import time
 import typing
 from contextlib import closing
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional
 
 import pytz
 

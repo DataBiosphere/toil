@@ -1,11 +1,11 @@
 import logging
 import os
-import sys
 import subprocess
+import sys
 
 from toil.common import Toil
-from toil.lib.io import mkdtemp
 from toil.job import Job
+from toil.lib.io import mkdtemp
 from toil.version import python
 
 logger = logging.getLogger(__name__)

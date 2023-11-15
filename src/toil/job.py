@@ -22,7 +22,6 @@ import os
 import pickle
 import sys
 import time
-import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -52,6 +51,7 @@ if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
+
 import dill
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
@@ -73,10 +73,11 @@ from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
 if TYPE_CHECKING:
+    from optparse import OptionParser
+
     from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
-    from optparse import OptionParser
 
 logger = logging.getLogger(__name__)
 
