@@ -19,8 +19,8 @@ import shutil
 import signal
 
 from toil.common import Toil
-from toil.job import Job
 from toil.exceptions import FailedJobsException
+from toil.job import Job
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)

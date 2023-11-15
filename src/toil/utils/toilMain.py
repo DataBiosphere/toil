@@ -47,6 +47,7 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
     from toil.utils import toilClean  # noqa
+    from toil.utils import toilConfig  # noqa
     from toil.utils import toilDebugFile  # noqa
     from toil.utils import toilDebugJob  # noqa
     from toil.utils import toilDestroyCluster  # noqa
@@ -57,7 +58,6 @@ def loadModules() -> Dict[str, types.ModuleType]:
     from toil.utils import toilSshCluster  # noqa
     from toil.utils import toilStats  # noqa
     from toil.utils import toilStatus  # noqa
-    from toil.utils import toilConfig  # noqa
 
     return {'-'.join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 

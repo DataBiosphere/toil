@@ -25,7 +25,7 @@ import zipfile
 from functools import partial
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, MutableMapping, Optional, Union
+from typing import Dict, List, MutableMapping, Optional
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -34,16 +34,16 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+from schema_salad.exceptions import ValidationException
+
 from toil.cwl.utils import (download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.aws import zone_to_region
 from toil.lib.threading import cpu_count
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_best_aws_zone
 from toil.test import (ToilTest,
                        needs_aws_ec2,
                        needs_aws_s3,
@@ -61,11 +61,7 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.test.provisioners.aws.awsProvisionerTest import \
-    AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
-
-from schema_salad.exceptions import ValidationException
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 5000

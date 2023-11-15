@@ -20,7 +20,10 @@ from uuid import uuid4
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
-from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file, mkdtemp
+from toil.lib.io import (AtomicFileCreate,
+                         atomic_install,
+                         atomic_tmp_file,
+                         mkdtemp)
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.test import ToilTest, slow
 
