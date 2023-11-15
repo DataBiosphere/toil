@@ -20,8 +20,8 @@ from uuid import uuid4
 
 import psutil
 
-from toil.job import Job
 from toil.exceptions import FailedJobsException
+from toil.job import Job
 from toil.lib.threading import cpu_count
 from toil.test import ToilTest, slow
 

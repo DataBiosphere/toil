@@ -16,9 +16,8 @@ import logging
 import os
 import shutil
 import uuid
-from collections import Counter, defaultdict
+from collections import Counter
 from contextlib import contextmanager
-from tempfile import NamedTemporaryFile
 from typing import (Any,
                     Callable,
                     Dict,
@@ -32,18 +31,11 @@ from typing import (Any,
                     overload)
 
 from flask import send_from_directory
-from flask.globals import request as flask_request
 from werkzeug.utils import redirect
 from werkzeug.wrappers.response import Response
 
 import toil.server.wes.amazon_wes_utils as amazon_wes_utils
-from toil.bus import (JobAnnotationMessage,
-                      JobCompletedMessage,
-                      JobFailedMessage,
-                      JobIssuedMessage,
-                      JobUpdatedMessage,
-                      MessageBus,
-                      replay_message_bus, JobStatus)
+from toil.bus import JobStatus, replay_message_bus
 from toil.lib.io import AtomicFileCreate
 from toil.lib.threading import global_mutex
 from toil.server.utils import (WorkflowStateMachine,

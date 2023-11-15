@@ -24,22 +24,22 @@ import datetime
 import logging
 import math
 import os
-from queue import Empty, Queue
 import string
 import sys
 import tempfile
-from threading import Event, Thread, Condition, RLock
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
+from queue import Empty, Queue
+from threading import Condition, Event, RLock, Thread
 from typing import (Any,
                     Callable,
                     Dict,
                     Iterator,
                     List,
-                    Set,
                     Literal,
                     Optional,
+                    Set,
                     Tuple,
                     Type,
                     TypeVar,

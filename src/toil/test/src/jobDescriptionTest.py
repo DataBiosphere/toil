@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+
 from configargparse import ArgumentParser
 
 from toil.common import Toil

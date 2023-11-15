@@ -3,13 +3,13 @@ import subprocess
 import time
 from contextlib import contextmanager
 
+from toil.exceptions import FailedJobsException
 from toil.lib.iterables import concat
 from toil.test import (ApplianceTestSupport,
                        needs_local_appliance,
                        needs_mesos,
                        slow)
 from toil.version import exactPython
-from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 

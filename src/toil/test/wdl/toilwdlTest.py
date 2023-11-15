@@ -1,8 +1,6 @@
 import os
 import shutil
 import subprocess
-import tempfile
-from typing import List
 import unittest
 import uuid
 import zipfile

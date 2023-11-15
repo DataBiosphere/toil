@@ -17,13 +17,13 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage
-from toil.job import JobDescription, AcceleratorRequirement
+from toil.job import AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
 
 logger = logging.getLogger(__name__)
