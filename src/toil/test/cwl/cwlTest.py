@@ -136,7 +136,8 @@ def run_conformance_tests(
             "--statusWait=10",
             "--retryCount=2",
             "--relax-path-checks",
-            f"--caching={caching}"
+            f"--caching={caching}",
+            "--bypass-file-store"
         ]
 
         if extra_args:
