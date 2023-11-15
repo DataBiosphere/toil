@@ -80,7 +80,7 @@ def iC(min_value: int, max_value: Optional[int] = None) -> Callable[[int], bool]
     if max_value is None:
         return lambda x: min_value <= x
     assert isinstance(max_value, int)
-    return lambda x: min_value <= x < max_value  # type: ignore
+    return lambda x: min_value <= x < max_value
 
 
 def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
@@ -89,7 +89,7 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
     if maxValue is None:
         return lambda x: minValue <= x
     assert isinstance(maxValue, float)
-    return lambda x: minValue <= x < maxValue  # type: ignore
+    return lambda x: minValue <= x < maxValue
 
 
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:

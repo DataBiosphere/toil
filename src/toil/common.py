@@ -1080,7 +1080,7 @@ class Toil(ContextManager["Toil"]):
             logger.debug('No user script to auto-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
-            userScriptResource = userScript.saveAsResourceTo(self._jobStore)  # type: ignore[misc]
+            userScriptResource = userScript.saveAsResourceTo(self._jobStore)
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
