@@ -24,7 +24,13 @@ import threading
 import time
 from contextlib import contextmanager
 from tempfile import mkstemp
-from typing import Any, Callable, Generator, Iterator, Optional, Sequence, Tuple 
+from typing import (Any,
+                    Callable,
+                    Generator,
+                    Iterator,
+                    Optional,
+                    Sequence,
+                    Tuple)
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID

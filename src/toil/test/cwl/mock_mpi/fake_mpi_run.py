@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import argparse
-from configargparse import ArgumentParser
 import subprocess
 import sys
 from typing import List
+
+from configargparse import ArgumentParser
 
 
 def make_parser():

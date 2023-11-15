@@ -453,6 +453,7 @@ def needs_kubernetes_installed(test_item: MT) -> MT:
     test_item = _mark_test('kubernetes', test_item)
     try:
         import kubernetes
+        str(kubernetes)  # to prevent removal of this import
     except ImportError:
         return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
     return test_item

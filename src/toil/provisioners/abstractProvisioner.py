@@ -15,7 +15,6 @@ import configparser
 import json
 import logging
 import os.path
-import platform
 import subprocess
 import tempfile
 import textwrap
