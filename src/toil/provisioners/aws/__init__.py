@@ -13,18 +13,15 @@
 # limitations under the License.
 import datetime
 import logging
-import os
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from toil.lib.aws import (get_aws_zone_from_boto,
                           get_aws_zone_from_environment,
                           get_aws_zone_from_environment_region,
-                          get_aws_zone_from_metadata,
-                          running_on_ec2,
-                          zone_to_region)
+                          get_aws_zone_from_metadata)
 
 logger = logging.getLogger(__name__)
 

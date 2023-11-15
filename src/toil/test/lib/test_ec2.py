@@ -13,13 +13,13 @@
 # limitations under the License.
 import logging
 import os
+
 import pytest
-import urllib
 
 from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
-                              get_flatcar_ami,
                               feed_flatcar_ami_release,
-                              flatcar_release_feed_amis)
+                              flatcar_release_feed_amis,
+                              get_flatcar_ami)
 from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2
 

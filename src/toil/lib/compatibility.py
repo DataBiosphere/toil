@@ -1,6 +1,6 @@
 import functools
 import warnings
-from typing import Any, Dict, Callable, Union, TypeVar, overload
+from typing import Any, Callable, Union
 
 
 def deprecated(new_function_name: str) -> Callable[..., Any]:

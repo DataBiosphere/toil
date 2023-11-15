@@ -33,6 +33,7 @@ import stat
 import sys
 import textwrap
 import uuid
+from tempfile import NamedTemporaryFile, gettempdir
 from threading import Thread
 from typing import (
     IO,
@@ -52,7 +53,7 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import ParseResult, quote, unquote, urlparse, urlsplit
+from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
 import cwl_utils.expression
@@ -100,12 +101,12 @@ from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
-from tempfile import NamedTemporaryFile, gettempdir
 from typing_extensions import Literal
 
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
+
 check_cwltool_version()
 from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
@@ -439,7 +440,11 @@ class ResolveSource:
 
         if pick_value_type == "first_non_null":
             if len(result) < 1:
-                logger.error("Could not find non-null entry for %s:\n%s", self.name, pprint.pformat(self.promise_tuples))
+                logger.error(
+                    "Could not find non-null entry for %s:\n%s",
+                    self.name,
+                    pprint.pformat(self.promise_tuples),
+                )
                 raise cwl_utils.errors.WorkflowException(
                     "%s: first_non_null operator found no non-null values" % self.name
                 )
@@ -1057,8 +1062,6 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):
     """Subclass the cwltool expression tool to provide the custom ToilPathMapper."""
 
-    pass
-
 
 def toil_make_tool(
     toolpath_object: CommentedMap,
@@ -1077,10 +1080,7 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-# This should really be Dict[str, Union[str, "DirectoryContents"]], but we
-# can't say that until https://github.com/python/mypy/issues/731 is fixed
-# because it's recursive.
-DirectoryContents = Dict[str, Union[str, Dict[str, Any]]]
+DirectoryContents = Dict[str, Union[str, "DirectoryContents"]]
 
 
 def check_directory_dict_invariants(contents: DirectoryContents) -> None:
@@ -2237,7 +2237,9 @@ class CWLJob(CWLNamedJob):
         #
         # By default we have default preemptibility.
         preemptible: Optional[bool] = None
-        preemptible_req, _ = tool.get_requirement("http://arvados.org/cwl#UsePreemptible")
+        preemptible_req, _ = tool.get_requirement(
+            "http://arvados.org/cwl#UsePreemptible"
+        )
         if preemptible_req:
             if "usePreemptible" not in preemptible_req:
                 # If we have a requirement it has to have the value
@@ -2246,9 +2248,11 @@ class CWLJob(CWLNamedJob):
                     f"expected key usePreemptible but got: {preemptible_req}"
                 )
             parsed_value = preemptible_req["usePreemptible"]
-            if isinstance(parsed_value, str) and ("$(" in parsed_value or "${" in parsed_value):
+            if isinstance(parsed_value, str) and (
+                "$(" in parsed_value or "${" in parsed_value
+            ):
                 # Looks like they tried to use an expression
-                 raise ValidationException(
+                raise ValidationException(
                     f"Unacceptable value for usePreemptible in http://arvados.org/cwl#UsePreemptible: "
                     f"expected true or false but got what appears to be an expression: {repr(parsed_value)}. "
                     f"Note that expressions are not allowed here by Arvados's schema."
@@ -2918,7 +2922,9 @@ class CWLWorkflow(CWLNamedJob):
                                     get_container_engine(self.runtime_context),
                                 )
 
-                            logger.debug("Value will come from %s", jobobj.get(key, None))
+                            logger.debug(
+                                "Value will come from %s", jobobj.get(key, None)
+                            )
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
@@ -3201,8 +3207,6 @@ def determine_load_listing(
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
-    pass
-
 
 def generate_default_job_store(
     batch_system_name: Optional[str],
@@ -3285,12 +3289,17 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
+
 def add_cwl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("cwltool", type=str, help="CWL file to run.")
-    parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
-                                                  "the name of the input can be used as an option. "
-                                                  "For example: \"%(prog)s workflow.cwl --file1 file\". "
-                                                  "If an input has the same name as a Toil option, pass '--' before it.")
+    parser.add_argument(
+        "cwljob",
+        nargs="*",
+        help="Input file or CWL options. If CWL workflow takes an input, "
+        "the name of the input can be used as an option. "
+        'For example: "%(prog)s workflow.cwl --file1 file". '
+        "If an input has the same name as a Toil option, pass '--' before it.",
+    )
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",
@@ -3597,6 +3606,7 @@ def add_cwl_options(parser: argparse.ArgumentParser) -> None:
         type=str,
     )
 
+
 def get_options(args: List[str]) -> argparse.Namespace:
     """
     Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
@@ -3674,7 +3684,11 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
-    outdir = os.path.abspath(os.getcwd()) if options.outdir is  None else os.path.abspath(options.outdir)
+    outdir = (
+        os.path.abspath(os.getcwd())
+        if options.outdir is None
+        else os.path.abspath(options.outdir)
+    )
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
     fileindex: Dict[str, str] = {}

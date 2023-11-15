@@ -23,10 +23,10 @@ from uuid import uuid4
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.exceptions import FailedJobsException
 from toil.lib.bioio import root_logger
 from toil.test import (ToilTest,
                        needs_aws_ec2,

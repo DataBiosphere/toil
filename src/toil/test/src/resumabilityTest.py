@@ -14,9 +14,9 @@
 
 import os
 
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, slow
 
 

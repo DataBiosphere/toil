@@ -327,7 +327,6 @@ class JobStoreUnavailableException(RuntimeError):
     """
     Raised when a particular type of job store is requested but can't be used.
     """
-    pass
 
 def generate_locator(
     job_store_type: str,

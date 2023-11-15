@@ -15,19 +15,19 @@ import enum
 import logging
 import os
 import shutil
+import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from threading import Condition
-import time
 from typing import (Any,
                     ContextManager,
                     Dict,
-                    List,
-                    Set,
                     Iterator,
+                    List,
                     NamedTuple,
                     Optional,
+                    Set,
                     Union,
                     cast)
 
@@ -135,7 +135,6 @@ class AbstractBatchSystem(ABC):
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
         """
-        pass
 
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
@@ -264,7 +263,6 @@ class AbstractBatchSystem(ABC):
             setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
-        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """

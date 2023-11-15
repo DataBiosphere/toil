@@ -98,6 +98,12 @@ _S3_BUCKET_MAX_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
 _S3_BUCKET_INTERNAL_SUFFIX = '--internal'
 
+# prevent removal of these imports
+str(boto.ec2)
+str(boto.iam)
+str(boto.vpc)
+
+
 
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
