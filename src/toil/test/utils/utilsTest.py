@@ -27,7 +27,7 @@ sys.path.insert(0, pkg_root)  # noqa
 
 import toil
 from toil import resolveEntryPoint
-from toil.common import Config, Toil, addOptions
+from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import (ToilTest,

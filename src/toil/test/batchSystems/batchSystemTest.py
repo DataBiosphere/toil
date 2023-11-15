@@ -32,9 +32,9 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (get_batch_system,
+from toil.batchSystems.registry import (add_batch_system_factory,
+                                        get_batch_system,
                                         get_batch_systems,
-                                        add_batch_system_factory,
                                         restore_batch_system_plugin_state,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem

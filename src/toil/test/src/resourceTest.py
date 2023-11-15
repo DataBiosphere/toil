@@ -27,8 +27,6 @@ from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest
 from toil.version import exactPython
-from configargparse import ArgumentParser
-
 
 
 @contextmanager

@@ -24,7 +24,6 @@ import htcondor
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
-
 from toil.job import AcceleratorRequirement
 from toil.lib.retry import retry
 

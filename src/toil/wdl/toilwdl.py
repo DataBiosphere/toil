@@ -11,11 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from configargparse import ArgumentParser
 import logging
 import os
 import subprocess
 import sys
+
+from configargparse import ArgumentParser
 
 from toil.wdl.utils import dict_from_JSON, get_analyzer, write_mappings
 from toil.wdl.wdl_synthesis import SynthesizeWDL
