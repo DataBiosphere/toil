@@ -411,4 +411,5 @@ cactus_integration:
   script:
     - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
     - set -e
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - make test tests=src/toil/test/cactus/test_cactus_integration.py
