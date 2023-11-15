@@ -1581,7 +1581,7 @@ class Toil(ContextManager["Toil"]):
             logger.debug('No user script to auto-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
-            userScriptResource = userScript.saveAsResourceTo(self._jobStore)  # type: ignore[misc]
+            userScriptResource = userScript.saveAsResourceTo(self._jobStore)
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
@@ -2154,20 +2154,24 @@ def parseSetEnv(l: List[str]) -> Dict[str, Optional[str]]:
 
 def iC(minValue: int, maxValue: Optional[int] = None) -> Callable[[int], bool]:
     """Returns a function that checks if a given int is in the given half-open interval."""
-    assert isinstance(minValue, int)
+    if not isinstance(minValue, int):
+        raise RuntimeError(f"minValue must be of type 'int', was type: {type(minValue)}: {minValue!r}.")
     if maxValue is None:
         return lambda x: minValue <= x
-    assert isinstance(maxValue, int)
-    return lambda x: minValue <= x < maxValue  # type: ignore
+    if not isinstance(maxValue, int):
+        raise RuntimeError(f"maxValue must be of type 'int' (or None), was type: {type(maxValue)}: {maxValue!r}.")
+    return lambda x: minValue <= x < maxValue
 
 
 def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], bool]:
     """Returns a function that checks if a given float is in the given half-open interval."""
-    assert isinstance(minValue, float)
+    if not isinstance(minValue, float):
+        raise RuntimeError(f"minValue must be of type 'float', was type: {type(minValue)}: {minValue!r}.")
     if maxValue is None:
         return lambda x: minValue <= x
-    assert isinstance(maxValue, float)
-    return lambda x: minValue <= x < maxValue  # type: ignore
+    if not isinstance(maxValue, float):
+        raise RuntimeError(f"maxValue must be of type 'float' (or None), was type: {type(maxValue)}: {maxValue!r}.")
+    return lambda x: minValue <= x < maxValue
 
 
 def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:

@@ -1077,10 +1077,7 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-# This should really be Dict[str, Union[str, "DirectoryContents"]], but we
-# can't say that until https://github.com/python/mypy/issues/731 is fixed
-# because it's recursive.
-DirectoryContents = Dict[str, Union[str, Dict[str, Any]]]
+DirectoryContents = Dict[str, Union[str, "DirectoryContents"]]
 
 
 def check_directory_dict_invariants(contents: DirectoryContents) -> None:

@@ -285,8 +285,7 @@ def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
         ):
         return sorted(
             jobTypes,
-            # due to https://github.com/python/mypy/issues/9656
-            key=lambda tag: getattr(tag, "%s_%s" # type: ignore
+            key=lambda tag: getattr(tag, "%s_%s"
                                     % (sortField, options.sortCategory)),
             reverse=options.sortReverse)
     elif options.sortCategory == "alpha":
