@@ -38,7 +38,7 @@ from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
-from toil.lib.throttle import LocalThrottle, throttle
+from toil.lib.throttle import throttle
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 
 if TYPE_CHECKING:

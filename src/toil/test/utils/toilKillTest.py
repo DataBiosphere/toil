@@ -21,7 +21,8 @@ import time
 import unittest
 
 from toil.common import Toil
-from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
+from toil.jobStores.abstractJobStore import (NoSuchFileException,
+                                             NoSuchJobStoreException)
 from toil.jobStores.utils import generate_locator
 from toil.test import ToilTest, needs_aws_s3, needs_cwl
 
@@ -77,7 +78,6 @@ class ToilKillTest(ToilTest):
                     logger.info('Waiting for kill flag...')
             except (NoSuchJobStoreException, NoSuchFileException):
                 logger.info('Waiting for job store to be openable...')
-                pass
             time.sleep(2)
 
         # run toil kill

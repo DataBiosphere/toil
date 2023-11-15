@@ -22,7 +22,7 @@ from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from shutil import which
 from threading import Thread
-from typing import Dict, Optional, Union, Type, Any
+from typing import Dict, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
                                                    UpdatedBatchJobInfo)

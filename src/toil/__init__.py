@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Tuple
+
 import requests
 from pytz import timezone
 
