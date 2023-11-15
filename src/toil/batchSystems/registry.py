@@ -13,8 +13,8 @@
 # limitations under the License.
 
 import importlib
-import pkgutil
 import logging
+import pkgutil
 import warnings
 from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Tuple, Type
 

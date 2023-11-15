@@ -26,7 +26,7 @@ import tempfile
 import threading
 import traceback
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional, Union, cast
+from typing import Dict, Iterator, Optional, Union, cast
 
 import psutil  # type: ignore
 

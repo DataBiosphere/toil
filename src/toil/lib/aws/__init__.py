@@ -11,27 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
-import inspect
 import json
 import logging
 import os
 import re
 import socket
-import threading
-from functools import lru_cache
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Iterable,
-                    List,
-                    MutableMapping,
-                    Optional,
-                    TypeVar,
-                    Union)
+from http.client import HTTPException
+from typing import Dict, MutableMapping, Optional
 from urllib.error import URLError
 from urllib.request import urlopen
-from http.client import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +68,7 @@ def get_aws_zone_from_metadata() -> Optional[str]:
         try:
             # Use the EC2 metadata service
             import boto
+            str(boto)  # to prevent removal of the import
             from boto.utils import get_instance_metadata
             logger.debug("Fetch AZ from EC2 metadata")
             return get_instance_metadata()['placement']['availability-zone']

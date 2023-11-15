@@ -1,4 +1,3 @@
-from configargparse import ArgumentParser
 import json
 import logging
 import os
@@ -13,6 +12,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import requests
 import ruamel.yaml
 import schema_salad
+from configargparse import ArgumentParser
 from wes_client.util import WESClient  # type: ignore
 from wes_client.util import wes_reponse as wes_response
 

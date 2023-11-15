@@ -8,7 +8,11 @@ import uuid
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
 
-from toil.test import ToilTest, needs_docker_cuda, needs_google_storage, needs_singularity_or_docker, slow
+from toil.test import (ToilTest,
+                       needs_docker_cuda,
+                       needs_google_storage,
+                       needs_singularity_or_docker,
+                       slow)
 from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
@@ -26,7 +30,9 @@ class BaseWDLTest(ToilTest):
 
 
 class WDLConformanceTests(BaseWDLTest):
-    """WDL conformance tests for Toil."""
+    """
+    WDL conformance tests for Toil.
+    """
     wdl_dir = "wdl-conformance-tests"
     @classmethod
     def setUpClass(cls) -> None:

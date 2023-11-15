@@ -12,24 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import collections
-import inspect
 import logging
 import os
-import re
-import socket
 import threading
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Iterable,
-                    List,
-                    Optional,
-                    Tuple,
-                    TypeVar,
-                    Union,
-                    cast)
-from urllib.error import URLError
-from urllib.request import urlopen
+from typing import Dict, Optional, Tuple, cast
 
 import boto3
 import boto3.resources.base
@@ -37,8 +23,8 @@ import boto.connection
 import botocore
 from boto3 import Session
 from botocore.client import Config
-from botocore.utils import JSONFileCache
 from botocore.session import get_session
+from botocore.utils import JSONFileCache
 
 logger = logging.getLogger(__name__)
 

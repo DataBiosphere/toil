@@ -14,16 +14,16 @@
 import logging
 import sys
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, TypeVar, Union, cast
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 if sys.version_info >= (3, 8):
     from typing import Protocol
 else:
     from typing_extensions import Protocol
 
-from toil.batchSystems.registry import (get_batch_system,
-                                        get_batch_systems,
-                                        DEFAULT_BATCH_SYSTEM)
+from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
+                                        get_batch_system,
+                                        get_batch_systems)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     from toil.common import SYS_MAX_SIZE
+
     # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",

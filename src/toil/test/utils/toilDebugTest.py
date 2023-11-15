@@ -16,10 +16,11 @@ import os
 import subprocess
 import tempfile
 
+import pytest
+
 from toil.lib.resources import glob
 from toil.test import slow
 from toil.version import python
-
 
 logger = logging.getLogger(__name__)
 

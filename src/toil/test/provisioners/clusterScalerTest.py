@@ -19,10 +19,9 @@ import time
 import uuid
 from argparse import Namespace
 from collections import defaultdict
-from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
