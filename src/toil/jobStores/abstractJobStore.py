@@ -628,7 +628,7 @@ class AbstractJobStore(ABC):
         """
         Return True if the item at the given URL exists, and Flase otherwise.
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -636,7 +636,7 @@ class AbstractJobStore(ABC):
         """
         Get the size of the object at the given URL, or None if it cannot be obtained.
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -650,7 +650,7 @@ class AbstractJobStore(ABC):
                in the storage mechanism of a supported URL scheme e.g. a blob
                in an AWS s3 bucket.
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -670,7 +670,7 @@ class AbstractJobStore(ABC):
 
         :return: The size of the file in bytes and whether the executable permission bit is set
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -689,7 +689,7 @@ class AbstractJobStore(ABC):
 
         :return: The children of the given URL, already URL-encoded.
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -701,7 +701,7 @@ class AbstractJobStore(ABC):
 
         Raises FileNotFoundError if the thing at the URL is not found.
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -719,7 +719,7 @@ class AbstractJobStore(ABC):
 
         :param bool executable: determines if the file has executable permissions
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -735,7 +735,7 @@ class AbstractJobStore(ABC):
 
         :return bool: returns true if the cls supports the URL
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @abstractmethod
     def destroy(self) -> None:
@@ -1740,6 +1740,16 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
+
+    @classmethod
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            # TODO: Figure out how to HEAD instead of this.
+            with cls._open_url(url):
+                return True
+        except:
+            pass
+        return False
 
     @classmethod
     @retry(

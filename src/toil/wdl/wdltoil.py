@@ -567,9 +567,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # in, not relative to the thing.
                 parent_url = urljoin(filename, ".")
                 # Turn it into a string we can make a directory for
-                dir_path = os.path.join(self._file_store.localTempDir, quote(parent_url))
+                dir_path = os.path.join(self._file_store.localTempDir, quote(parent_url, safe=''))
             
-            if not os.path.exists(parent_id):
+            if not os.path.exists(dir_path):
                 # Make sure the chosen directory exists
                 os.mkdir(dir_path)
             # And decide the file goes in it.
