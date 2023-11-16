@@ -2686,7 +2686,7 @@ def main() -> None:
                     inputs_search_path.append(match.group(0))
 
             # Import any files in the bindings
-            input_bindings = import_files(input_bindings, toil, inputs_search_path)
+            input_bindings = import_files(input_bindings, toil, inputs_search_path, skip_remote=options.reference_inputs)
 
             # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
 
