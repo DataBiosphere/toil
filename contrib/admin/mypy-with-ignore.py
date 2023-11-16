@@ -43,7 +43,6 @@ def main():
         'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/parasol.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
