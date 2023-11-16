@@ -150,8 +150,6 @@ class Config:
     manualMemArgs: bool
     run_local_jobs_on_workers: bool
     coalesceStatusCalls: bool
-    parasolCommand: str
-    parasolMaxBatches: int
     mesos_endpoint: Optional[str]
     mesos_framework_id: Optional[str]
     mesos_role: Optional[str]
