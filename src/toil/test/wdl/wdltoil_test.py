@@ -3,7 +3,7 @@ import os
 import shutil
 import subprocess
 import unittest
-from typing import Any, Dict, Set
+from typing import Any, Dict, List, Optional, Set
 from unittest.mock import patch
 
 # Don't import the test case directly or pytest will test it again.
@@ -98,12 +98,12 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self):
+    def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/self_test.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/inputs.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect', 'miniwdl'] + (extra_args or []))
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -126,6 +126,13 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
 
         assert 'hello_caller.messages' in outputs
         assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
+
+    @needs_singularity_or_docker
+    def test_miniwdl_self_test_by_reference(self) -> None:
+        """
+        Test if the MiniWDL self test works when passing input files by URL reference.
+        """
+        self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
 
     @slow
     @needs_docker_cuda

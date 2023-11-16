@@ -34,6 +34,7 @@ from typing import (IO,
                     Tuple,
                     Union,
                     ValuesView,
+                    cast,
                     overload)
 
 if sys.version_info >= (3, 8):

@@ -967,7 +967,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             try:
                 if skip_remote and is_url(candidate_uri):
                     # Use remote URIs in place. But we need to find the one that exists.
-                    if not AbstractJobStore.url_exists(candidate_uri)):
+                    if not AbstractJobStore.url_exists(candidate_uri):
                         # Wasn't found there
                         continue
                     # Now we know this exists, so pass it through
@@ -981,17 +981,6 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                         # Wasn't found there
                         continue
                     logger.info('Imported %s', candidate_uri)
-
-                # Work out what the basename for the file was
-                file_basename = os.path.basename(urlsplit(candidate_uri).path)
-
-                if file_basename == "":
-                    # We can't have files with no basename because we need to
-                    # download them at that basename later.
-                    raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
-
-                # Was actually found
-                return pack_toil_uri(imported, file_basename)
 
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
@@ -1016,10 +1005,25 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # We can't have files with no basename because we need to
                 # download them at that basename later.
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
-
+            
             # Was actually found
+            if is_url(candidate_uri):
+                # Might be a file URI or other URI.
+                # We need to make sure file URIs and local paths that point to
+                # the same place are treated the same.
+                parsed = urlparse(candidate_uri)
+                if parsed.scheme == "file:":
+                    # This is a local file URI. Convert to a path for source directory tracking.
+                    parent_dir = os.path.dirname(unquote(parsed.path))
+                else:
+                    # This is some other URL. Get the URL to the parent directory and use that.
+                    parent_dir = urljoin(candidate_uri, ".")
+            else:
+                # Must be a local path
+                parent_dir = os.path.dirname(candidate_uri)
+
             # Pack a UUID of the parent directory
-            dir_id = path_to_id.setdefault(os.path.dirname(candidate_uri), uuid.uuid4())
+            dir_id = path_to_id.setdefault(parent_dir, uuid.uuid4())
 
             return pack_toil_uri(imported, dir_id, file_basename)
 
@@ -2608,6 +2612,8 @@ def main() -> None:
                         help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
                         help="File or URI to save output JSON to.")
+    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", defalut=False,
+                        help="Pass input files by URL")
 
     options = parser.parse_args(sys.argv[1:])
 
