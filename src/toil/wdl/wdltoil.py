@@ -2617,7 +2617,7 @@ def main() -> None:
                         help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
                         help="File or URI to save output JSON to.")
-    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", defalut=False, #  type: ignore
+    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", default=False, #  type: ignore
                         help="Pass input files by URL")
 
     options = parser.parse_args(sys.argv[1:])
