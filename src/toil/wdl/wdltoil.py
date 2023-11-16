@@ -21,6 +21,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -457,7 +458,11 @@ class NonDownloadingSize(WDL.StdLib._Size):
                 total_size += file_id.size
             else:
                 # We need to get its size from the URI.
-                total_size += AbstractJobStore.get_size(uri)
+                item_size = AbstractJobStore.get_size(uri)
+                if item_size is None:
+                    # User asked for the size and we can't figure it out efficiently, so bail out.
+                    raise RuntimeError(f"Attempt to check the size of {uri} failed")
+                total_size += item_size
 
         if len(arguments) > 1:
             # Need to convert units. See
@@ -1011,7 +1016,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # Might be a file URI or other URI.
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
-                parsed = urlparse(candidate_uri)
+                parsed = urlsplit(candidate_uri)
                 if parsed.scheme == "file:":
                     # This is a local file URI. Convert to a path for source directory tracking.
                     parent_dir = os.path.dirname(unquote(parsed.path))
@@ -2612,7 +2617,7 @@ def main() -> None:
                         help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
                         help="File or URI to save output JSON to.")
-    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", defalut=False,
+    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", defalut=False, #  type: ignore
                         help="Pass input files by URL")
 
     options = parser.parse_args(sys.argv[1:])
@@ -2728,8 +2733,8 @@ def main() -> None:
                             # Set the execute bit in the file's permissions
                             os.chmod(dest_name, os.stat(dest_name).st_mode | stat.S_IXUSR)
 
-                    # And return where we put it
-                    return dest_name
+                # And return where we put it
+                return dest_name
             else:
                 # We already had a path
                 return filename
