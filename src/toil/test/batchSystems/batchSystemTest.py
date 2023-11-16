@@ -31,7 +31,6 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # in order to import properly. Import them later, in tests
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.registry import (add_batch_system_factory,
                                         get_batch_system,
                                         get_batch_systems,
@@ -52,11 +51,9 @@ from toil.test import (ToilTest,
                        needs_kubernetes_installed,
                        needs_lsf,
                        needs_mesos,
-                       needs_parasol,
                        needs_slurm,
                        needs_torque,
                        slow)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
 
@@ -247,10 +244,6 @@ class hidden:
             self.batchSystem.killBatchJobs([10])
 
         def test_set_env(self):
-            # Parasol disobeys shell rules and splits the command at the space
-            # character into arguments before exec'ing it, whether the space is
-            # quoted, escaped or not.
-
             # Start with a relatively safe script
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
@@ -946,82 +939,6 @@ class Service(Job.Service):
 
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
-
-
-@slow
-@needs_parasol
-class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
-    """
-    Tests the Parasol batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def _createConfig(self):
-        config = super()._createConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
-        return config
-
-    def createBatchSystem(self) -> AbstractBatchSystem:
-        memory = int(3e9)
-        self._startParasol(numCores=numCores, memory=memory)
-
-        return ParasolBatchSystem(config=self.config,
-                                  maxCores=numCores,
-                                  maxMemory=memory,
-                                  maxDisk=1001)
-
-    def tearDown(self):
-        super().tearDown()
-        self._stopParasol()
-
-    def testBatchResourceLimits(self):
-        jobDesc1 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=1 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job1 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job1)
-        jobDesc2 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=2 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job2 = self.batchSystem.issueBatchJob(jobDesc2)
-        self.assertIsNotNone(job2)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 2)
-        # It would be better to directly check that the batches have the correct memory and cpu
-        # values, but Parasol seems to slightly change the values sometimes.
-        self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
-        # Need to kill one of the jobs because there are only two cores available
-        self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job3)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 1)
-
-    def _parseBatchString(self, batchString):
-        import re
-        batchInfo = dict()
-        memPattern = re.compile(r"(\d+\.\d+)([kgmbt])")
-        items = batchString.split()
-        batchInfo["cores"] = int(items[7])
-        memMatch = memPattern.match(items[8])
-        ramValue = float(memMatch.group(1))
-        ramUnits = memMatch.group(2)
-        ramConversion = {'b': 1e0, 'k': 1e3, 'm': 1e6, 'g': 1e9, 't': 1e12}
-        batchInfo["ram"] = ramValue * ramConversion[ramUnits]
-        return batchInfo
-
-    def _getBatchList(self):
-        # noinspection PyUnresolvedReferences
-        exitStatus, batchLines = self.batchSystem._runParasol(['list', 'batches'])
-        self.assertEqual(exitStatus, 0)
-        return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
 @slow
