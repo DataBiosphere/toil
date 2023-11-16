@@ -180,7 +180,7 @@ levels in toil are based on priority from the logging module:
 
   --batchSystem BATCHSYSTEM
                         The type of batch system to run the job(s) with,
-                        currently can be one of aws_batch, parasol, single_machine,
+                        currently can be one of aws_batch, single_machine,
                         grid_engine, lsf, mesos, slurm, tes, torque,
                         htcondor, kubernetes. (default: single_machine)
   --disableAutoDeployment
@@ -220,14 +220,6 @@ levels in toil are based on priority from the logging module:
                         unset, the Toil work directory will be used. Only 
                         works for grid engine batch systems such as gridengine,
                         htcondor, torque, slurm, and lsf.
-  --parasolCommand PARASOLCOMMAND
-                        The name or path of the parasol program. Will be
-                        looked up on PATH unless it starts with a
-                        slash. (default: parasol)
-  --parasolMaxBatches PARASOLMAXBATCHES
-                        Maximum number of job batches the Parasol batch is
-                        allowed to create. One batch is created for jobs with
-                        a unique set of resource requirements. (default: 1000)
   --mesosEndpoint MESOSENDPOINT
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
@@ -280,7 +272,7 @@ Allows configuring Toil's data storage.
                         filesystem-based job stores only. (Default=False)
   --caching BOOL        Set caching options. This must be set to "false"
                         to use a batch system that does not support
-                        cleanup, such as Parasol. Set to "true" if caching
+                        cleanup. Set to "true" if caching
                         is desired.
 
 **Autoscaling Options**
