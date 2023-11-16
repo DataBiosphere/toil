@@ -20,8 +20,8 @@ from threading import Thread
 
 from docker.errors import ContainerError
 from toil.common import Toil
-from toil.job import Job
 from toil.exceptions import FailedJobsException
+from toil.job import Job
 from toil.lib.docker import (FORGO,
                              RM,
                              STOP,

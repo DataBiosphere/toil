@@ -12,14 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import asyncio
-import collections
-import copy
 import errno
-import glob
 import io
-import itertools
 import json
 import logging
 import os
@@ -29,31 +24,52 @@ import shutil
 import subprocess
 import sys
 import uuid
-
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from tempfile import mkstemp
-from typing import cast, Any, Callable, Union, Dict, List, Optional, Set, Sequence, Tuple, Type, TypeVar, Iterator, \
-    Iterable, Generator
-from urllib.parse import urlsplit, urljoin, quote, unquote
+from typing import (Any,
+                    Callable,
+                    Dict,
+                    Generator,
+                    Iterable,
+                    Iterator,
+                    List,
+                    Optional,
+                    Sequence,
+                    Set,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast)
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
+import WDL.Error
+import WDL.runtime.config
 from configargparse import ArgParser
 from WDL._util import byte_size_units
 from WDL.CLI import print_error
-from WDL.runtime.task_container import TaskContainer
-from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.backend.docker_swarm import SwarmContainer
-import WDL.Error
-import WDL.runtime.config
+from WDL.runtime.backend.singularity import SingularityContainer
+from WDL.runtime.task_container import TaskContainer
 
-from toil.common import Config, Toil, addOptions
-from toil.job import AcceleratorRequirement, Job, JobFunctionWrappingJob, Promise, Promised, TemporaryID, accelerators_fully_satisfy, parse_accelerator, unwrap, unwrap_all
+from toil.common import Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
+from toil.job import (AcceleratorRequirement,
+                      Job,
+                      Promise,
+                      Promised,
+                      TemporaryID,
+                      accelerators_fully_satisfy,
+                      parse_accelerator,
+                      unwrap,
+                      unwrap_all)
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             UnimplementedURLException)
+from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
-from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
 

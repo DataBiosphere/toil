@@ -29,14 +29,18 @@ from uuid import uuid4
 import pytest
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import ToilTest, needs_aws_ec2, needs_google_project, needs_google_storage, slow
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_google_project,
+                       needs_google_storage,
+                       slow)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.

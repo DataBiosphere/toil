@@ -24,22 +24,22 @@ import datetime
 import logging
 import math
 import os
-from queue import Empty, Queue
 import string
 import sys
 import tempfile
-from threading import Event, Thread, Condition, RLock
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
+from queue import Empty, Queue
+from threading import Condition, Event, RLock, Thread
 from typing import (Any,
                     Callable,
                     Dict,
                     Iterator,
                     List,
-                    Set,
                     Literal,
                     Optional,
+                    Set,
                     Tuple,
                     Type,
                     TypeVar,
@@ -104,7 +104,7 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
-from toil.common import Config, Toil, SYS_MAX_SIZE
+from toil.common import SYS_MAX_SIZE, Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now

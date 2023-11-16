@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tool for reporting on job status."""
-from collections import defaultdict
 import logging
 import os
 import sys
-from functools import reduce
-import json
 from typing import Any, Dict, List, Optional, Set
 
 from toil.bus import replay_message_bus

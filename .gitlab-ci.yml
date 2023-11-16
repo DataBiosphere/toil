@@ -406,11 +406,12 @@ cactus_integration:
       changes:
         compare_to: 'refs/heads/master'
         paths:
-          - 'src/toil/test/batchSystems/test_cactus_integration.py'
+          - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
   script:
     - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
     - set -e
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py

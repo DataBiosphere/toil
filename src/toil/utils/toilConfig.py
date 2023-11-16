@@ -18,7 +18,7 @@ import os
 from configargparse import ArgParser
 
 from toil.common import generate_config
-from toil.statsAndLogging import set_logging_from_options, add_logging_options
+from toil.statsAndLogging import add_logging_options, set_logging_from_options
 
 logger = logging.getLogger(__name__)
 

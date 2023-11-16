@@ -20,7 +20,7 @@ from ssl import SSLError
 from typing import Optional, cast
 
 from boto3.s3.transfer import TransferConfig
-from boto.exception import BotoServerError, S3ResponseError, SDBResponseError
+from boto.exception import SDBResponseError
 from botocore.client import Config
 from botocore.exceptions import ClientError
 from mypy_boto3_s3 import S3Client, S3ServiceResource
@@ -285,7 +285,6 @@ class ServerSideCopyProhibitedError(RuntimeError):
     Raised when AWS refuses to perform a server-side copy between S3 keys, and
     insists that you pay to download and upload the data yourself instead.
     """
-    pass
 
 @retry(errors=[ErrorCondition(
     error=ClientError,

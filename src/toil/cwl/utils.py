@@ -24,7 +24,6 @@ from typing import (
     List,
     MutableMapping,
     MutableSequence,
-    Tuple,
     Type,
     TypeVar,
     Union,

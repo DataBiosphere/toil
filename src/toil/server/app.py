@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import argparse
-from configargparse import ArgumentParser
 import logging
 import os
-from typing import Type
 
 import connexion  # type: ignore
+from configargparse import ArgumentParser
 
 from toil.lib.aws import get_current_aws_region, running_on_ec2, running_on_ecs
-from toil.lib.misc import get_public_ip
 from toil.server.wes.toil_backend import ToilBackend
 from toil.server.wsgi_app import run_app
 from toil.version import version

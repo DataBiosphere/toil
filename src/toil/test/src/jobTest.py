@@ -20,8 +20,8 @@ import unittest
 import pytest
 
 from toil.common import Toil
-from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.exceptions import FailedJobsException
+from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)

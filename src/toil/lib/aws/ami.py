@@ -1,10 +1,9 @@
 import json
 import logging
 import os
-import time
 import urllib.request
+from typing import Dict, Iterator, Optional, cast
 from urllib.error import HTTPError, URLError
-from typing import Dict, Optional, Iterator, cast
 
 from botocore.client import BaseClient
 

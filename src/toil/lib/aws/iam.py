@@ -3,16 +3,15 @@ import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, cast, Union, Sequence
+from typing import Dict, List, Optional, Union, cast
 
 import boto3
 from mypy_boto3_iam import IAMClient
-from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef, PolicyDocumentDictTypeDef
+from mypy_boto3_iam.type_defs import (AttachedPolicyTypeDef,
+                                      PolicyDocumentDictTypeDef)
 from mypy_boto3_sts import STSClient
 
-from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import client as get_client
-from toil.provisioners.aws import get_best_aws_zone
 
 logger = logging.getLogger(__name__)
 

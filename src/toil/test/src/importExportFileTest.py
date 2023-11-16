@@ -18,9 +18,9 @@ import stat
 import uuid
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, slow
 
 
