@@ -411,4 +411,8 @@ cactus_integration:
   script:
     - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
     - set -e
+    - - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+      # This reads GITLAB_SECRET_FILE_SSH_KEYS
+      - python setup_gitlab_ssh.py
+      - chmod 400 /root/.ssh/id_rsa
     - make test tests=src/toil/test/cactus/test_cactus_integration.py
