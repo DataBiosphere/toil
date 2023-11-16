@@ -52,10 +52,10 @@ depend on a currently installed *feature*, use
 This will run only the tests that don't depend on the ``aws`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
-not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the ``parasol`` feature and the ``aws`` extra, use the following::
+not extras, such as the ``gridengine`` feature.  To skip tests
+involving both the ``gridengine`` feature and the ``aws`` extra, use the following::
 
-    $ make test tests="-m 'not aws and not parasol' src"
+    $ make test tests="-m 'not aws and not gridengine' src"
 
 
 
