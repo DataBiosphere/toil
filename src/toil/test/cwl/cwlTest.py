@@ -57,7 +57,6 @@ from toil.test import (ToilTest,
                        needs_local_cuda,
                        needs_lsf,
                        needs_mesos,
-                       needs_parasol,
                        needs_slurm,
                        needs_torque,
                        needs_wes_server,
@@ -762,12 +761,6 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(batchSystem="mesos", **kwargs)
 
     @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance(self, **kwargs):
-        return self.test_run_conformance(batchSystem="parasol", **kwargs)
-
-    @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
@@ -809,12 +802,6 @@ class CWLv10Test(ToilTest):
     @unittest.skip
     def test_mesos_cwl_conformance_with_caching(self):
         return self.test_mesos_cwl_conformance(caching=True)
-
-    @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance_with_caching(self):
-        return self.test_parasol_cwl_conformance(caching=True)
 
     @slow
     @needs_kubernetes

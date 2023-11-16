@@ -1,5 +1,5 @@
 #Toil
-Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, parasol and on multi-core machines.
+Python based pipeline management software for clusters that makes running recursive and dynamically scheduled computations straightforward. So far works with gridEngine, lsf, and on multi-core machines.
 
 ##Authors
 [Benedict Paten](https://github.com/benedictpaten/), [Dent Earl](https://github.com/dentearl/), [Daniel Zerbino](https://github.com/dzserbino/), [Glenn Hickey](https://github.com/glennhickey/), other UCSC people.
@@ -28,9 +28,9 @@ The following walks through running a toil script and using the command-line too
 
 Once toil is installed, running a toil script is performed by executing the script from the command-line, e.g. (using the file sorting toy example in **tests/sort/scriptTreeTest_Sort.py**):
 
-<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --toil bar/toil --batchSystem parasol --logLevel INFO --stats</code>
+<code>[]$ scriptTreeTest_Sort.py --fileToSort foo --toil bar/toil --batchSystem slurm --logLevel INFO --stats</code>
 
-Which in this case uses the parasol batch system, and INFO level logging and where foo is the file to sort and bar/toil is the location of a directory (which should not already exist) from which the batch will be managed. Details of the toil options are described below; the stats option is used to gather statistics about the jobs in a run.
+Which in this case uses the slurm batch system, and INFO level logging and where foo is the file to sort and bar/toil is the location of a directory (which should not already exist) from which the batch will be managed. Details of the toil options are described below; the stats option is used to gather statistics about the jobs in a run.
 
 The script will return a zero exit value if the toil system is successfully able to run to completion, else it will create an exception. If the script fails because a job failed then the log file information of the job will be reported to std error.
 The toil directory (here 'bar/toil') is not automatically deleted regardless of success or failure, and contains a record of the jobs run, which can be enquired about using the **toilStatus** command. e.g.
@@ -150,8 +150,7 @@ The important arguments to **toilStats** are:
 
     --batchSystem=BATCHSYSTEM
                         The type of batch system to run the job(s) with,
-                        currently can be
-                        'singleMachine'/'parasol'/'acidTest'/'gridEngine'/'lsf'.
+                        currently can be 'singleMachine'/'gridEngine'/'lsf'.
                         default=singleMachine
     --maxThreads=MAXTHREADS
                         The maximum number of threads (technically processes
@@ -159,8 +158,6 @@ The important arguments to **toilStats** are:
                         mode. Increasing this will allow more jobs to run
                         concurrently when running on a single machine.
                         default=4
-    --parasolCommand=PARASOLCOMMAND
-                        The command to run the parasol program default=parasol
 
     Options to specify default cpu/memory requirements (if not
     specified by the jobs themselves), and to limit the total amount of
@@ -202,7 +199,7 @@ The important arguments to **toilStats** are:
     --bigBatchSystem=BIGBATCHSYSTEM
                         The batch system to run for jobs with larger
                         memory/cpus requests, currently can be
-                        'singleMachine'/'parasol'/'acidTest'/'gridEngine'.
+                        'singleMachine'/'gridEngine'.
                         default=none
     --bigMemoryThreshold=BIGMEMORYTHRESHOLD
                         The memory threshold above which to submit to the big
@@ -240,7 +237,7 @@ The important arguments to **toilStats** are:
 
 The following sections are for people creating toil scripts and as general information. The presentation **[docs/toilSlides.pdf](https://github.com/benedictpaten/toil/blob/master/doc/toilSlides.pdf)** is also a quite useful, albeit slightly out of date, guide to using toil. -
 
-Most batch systems (such as LSF, Parasol, etc.) do not allow jobs to spawn
+Most batch systems (such as LSF) do not allow jobs to spawn
 other jobs in a simple way.
 
 The basic pattern provided by toil is as follows:

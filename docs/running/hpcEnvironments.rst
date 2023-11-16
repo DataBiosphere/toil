@@ -51,7 +51,7 @@ Then make sure to log out and back in again for the setting to take effect.
 Standard Output/Error from Batch System Jobs
 --------------------------------------------
 
-Standard output and error from batch system jobs (except for the Parasol and Mesos batch systems) are redirected to files in the ``toil-<workflowID>`` directory created within the temporary directory specified by the ``--workDir`` option; see :ref:`optionsRef`.
+Standard output and error from batch system jobs (except for the Mesos batch system) are redirected to files in the ``toil-<workflowID>`` directory created within the temporary directory specified by the ``--workDir`` option; see :ref:`optionsRef`.
 Each file is named as follows: ``toil_job_<Toil job ID>_batch_<name of batch system>_<job ID from batch system>_<file description>.log``, where ``<file description>`` is ``std_output`` for standard output, and ``std_error`` for standard error.
 HTCondor will also write job event log files with ``<file description> = job_events``.
 
