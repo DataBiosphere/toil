@@ -51,7 +51,8 @@ from typing import (
     Type,
     TypeVar,
     Union,
-    cast, Sequence,
+    cast,
+    Sequence,
 )
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
@@ -1048,6 +1049,7 @@ class ToilTool:
 
 class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom ToilPathMapper."""
+
     def _initialworkdir(
         self, j: cwltool.job.JobBase, builder: cwltool.builder.Builder
     ) -> None:
@@ -3304,10 +3306,14 @@ usage_message = "\n\n" + textwrap.dedent(
 
 def add_cwl_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("cwltool", type=str, help="CWL file to run.")
-    parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
-                                                  "the name of the input can be used as an option. "
-                                                  "For example: \"%(prog)s workflow.cwl --file1 file\". "
-                                                  "If an input has the same name as a Toil option, pass '--' before it.")
+    parser.add_argument(
+        "cwljob",
+        nargs="*",
+        help="Input file or CWL options. If CWL workflow takes an input, "
+        "the name of the input can be used as an option. "
+        'For example: "%(prog)s workflow.cwl --file1 file". '
+        "If an input has the same name as a Toil option, pass '--' before it.",
+    )
 
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
