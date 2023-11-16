@@ -11,24 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
-import os
-import uuid
-from typing import Optional
-
-import pytest
-
-from toil.jobStores.aws.jobStore import AWSJobStore
-from toil.lib.aws import iam
-from toil.lib.aws.utils import create_s3_bucket
-from toil.lib.ec2 import establish_boto3_session
-from toil.test import ToilTest, needs_aws_s3
-
-import moto
-import boto3
 import json
+import logging
 
+import boto3
 from moto import mock_iam
+
+from toil.lib.aws import iam
+from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)

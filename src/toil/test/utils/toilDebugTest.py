@@ -17,11 +17,11 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from toil.lib.resources import glob
 from toil.test import slow
 from toil.version import python
-
-import pytest
 
 logger = logging.getLogger(__name__)
 

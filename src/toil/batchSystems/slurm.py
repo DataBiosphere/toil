@@ -16,13 +16,13 @@ import math
 import os
 from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
-from typing import Callable, Dict, List, Optional, TypeVar, Union
+from typing import Dict, List, Optional, TypeVar, Union
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
-from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.job import Requirer
+from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
 

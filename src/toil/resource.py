@@ -23,26 +23,24 @@ from collections import namedtuple
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
-from tempfile import mkdtemp
+from types import ModuleType
+from typing import (IO,
+                    TYPE_CHECKING,
+                    BinaryIO,
+                    Callable,
+                    Optional,
+                    Sequence,
+                    Type)
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-from typing import (TYPE_CHECKING,
-                    Optional,
-                    Callable,
-                    IO,
-                    Type,
-                    Sequence,
-                    BinaryIO)
-
 from toil import inVirtualEnv
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
-
-from types import ModuleType
 
 if TYPE_CHECKING:
     from toil.jobStores.abstractJobStore import AbstractJobStore

@@ -14,8 +14,8 @@
 import os
 import shutil
 
-from toil.job import Job
 from toil.exceptions import FailedJobsException
+from toil.job import Job
 from toil.test import ToilTest
 
 

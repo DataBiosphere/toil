@@ -3,20 +3,18 @@ import os
 import shutil
 import subprocess
 import unittest
+from typing import Any, Dict, Set
 from unittest.mock import patch
-import uuid
-import zipfile
-from typing import Any, Dict, List, Set
-from urllib.request import urlretrieve
 
-import pytest
-
-from toil.test import ToilTest, needs_docker_cuda, needs_google_storage, needs_java, needs_singularity_or_docker, slow
-from toil.version import exactPython
 # Don't import the test case directly or pytest will test it again.
 import toil.test.wdl.toilwdlTest
-
+from toil.test import (needs_docker_cuda,
+                       needs_google_storage,
+                       needs_singularity_or_docker,
+                       slow)
+from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
+
 
 class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     """

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
-import json
 import logging
 import os
 import socket
@@ -21,15 +20,13 @@ from typing import (Any,
                     Callable,
                     ContextManager,
                     Dict,
-                    Hashable,
                     Iterable,
                     Iterator,
                     List,
                     Optional,
                     Set,
                     Union,
-                    cast,
-                    MutableMapping)
+                    cast)
 from urllib.parse import ParseResult
 
 from toil.lib.aws import session

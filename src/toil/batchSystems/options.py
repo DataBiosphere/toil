@@ -14,16 +14,16 @@
 import logging
 import sys
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, TypeVar, Union, cast
+from typing import Any, Callable, List, Optional, TypeVar, Union
 
 if sys.version_info >= (3, 8):
     from typing import Protocol
 else:
     from typing_extensions import Protocol
 
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        DEFAULT_BATCH_SYSTEM)
+from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
+                                        get_batch_system,
+                                        get_batch_systems)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -55,14 +55,14 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     """
     if batch_system is not None:
         # Use this batch system
-        batch_system_type = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
+        batch_system_type = get_batch_system(batch_system)
         batch_system_type.setOptions(set_option)
     else:
-        for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
+        for name in get_batch_systems():
             # All the batch systems are responsible for setting their own options
             # with their setOptions() class methods.
             try:
-                batch_system_type = factory()
+                batch_system_type = get_batch_system(name)
             except ImportError:
                 # Skip anything we can't import
                 continue
@@ -81,14 +81,15 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     from toil.common import SYS_MAX_SIZE
+
     # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",
         dest="batchSystem",
         default=DEFAULT_BATCH_SYSTEM,
-        choices=BATCH_SYSTEMS,
+        choices=get_batch_systems(),
         help=f"The type of batch system to run the job(s) with, currently can be one "
-        f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}",
+        f"of {', '.join(get_batch_systems())}. default={DEFAULT_BATCH_SYSTEM}",
     )
     parser.add_argument(
         "--disableHotDeployment",
@@ -175,14 +176,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
              "systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
 
-    for factory in BATCH_SYSTEM_FACTORY_REGISTRY.values():
+    for name in get_batch_systems():
         # All the batch systems are responsible for adding their own options
         # with the add_options class method.
         try:
-            batch_system_type = factory()
+            batch_system_type = get_batch_system(name)
         except ImportError:
             # Skip anything we can't import
             continue
         # Ask the batch system to create its options in the parser
-        logger.debug('Add options for %s', batch_system_type)
+        logger.debug('Add options for %s batch system', name)
         batch_system_type.add_options(parser)

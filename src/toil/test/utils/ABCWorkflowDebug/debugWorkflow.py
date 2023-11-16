@@ -1,11 +1,11 @@
 import logging
 import os
-import sys
 import subprocess
-import tempfile
+import sys
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,7 @@ def broken_job(job, num):
     file = toil.importFile(None)
 
 if __name__=="__main__":
-    jobStorePath = sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp("debugWorkflow")
+    jobStorePath = sys.argv[1] if len(sys.argv) > 1 else mkdtemp("debugWorkflow")
     options = Job.Runner.getDefaultOptions(jobStorePath)
     options.clean = "never"
     options.stats = True

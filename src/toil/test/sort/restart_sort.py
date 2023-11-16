@@ -20,6 +20,7 @@ import codecs
 import os
 import random
 import shutil
+
 from configargparse import ArgumentParser
 
 from toil.common import Toil

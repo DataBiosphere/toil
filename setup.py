@@ -11,8 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import imp
+# import imp
 import os
+import types
+from importlib.machinery import SourceFileLoader
 from tempfile import NamedTemporaryFile
 
 from setuptools import find_packages, setup
@@ -47,13 +49,13 @@ def run_setup():
     # to how wheels work, so it is not included in all and
     # must be explicitly installed as an extra
     all_reqs = []
+
     non_htcondor_extras = [
         "aws",
         "cwl",
         "encryption",
         "google",
         "kubernetes",
-        "mesos",
         "wdl",
         "server"
     ]
@@ -62,8 +64,9 @@ def run_setup():
         all_reqs += extras_require[extra]
     # We exclude htcondor from "all" because it can't be on Mac
     extras_require['htcondor:sys_platform!="darwin"'] = get_requirements("htcondor")
+    extras_require['mesos'] = get_requirements("mesos")
+    all_reqs += get_requirements("mesos")
     extras_require["all"] = all_reqs
-
     setup(
         name='toil',
         version=version.distVersion,
@@ -82,10 +85,10 @@ def run_setup():
           'Operating System :: MacOS :: MacOS X',
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
-          'Programming Language :: Python :: 3.7',
           'Programming Language :: Python :: 3.8',
           'Programming Language :: Python :: 3.9',
           'Programming Language :: Python :: 3.10',
+          'Programming Language :: Python :: 3.11',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',
@@ -146,7 +149,10 @@ def import_version():
     #     return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
     #
     # Because SourceFileLoader will error and load "src/toil/__init__.py" .
-    return imp.load_source('toil.version', 'src/toil/version.py')
+    loader = SourceFileLoader('toil.version', 'src/toil/version.py')
+    mod = types.ModuleType(loader.name)
+    loader.exec_module(mod)
+    return mod
 
 
 version = import_version()

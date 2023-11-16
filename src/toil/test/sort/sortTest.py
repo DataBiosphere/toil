@@ -23,10 +23,10 @@ from uuid import uuid4
 from toil import resolveEntryPoint
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import (JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.exceptions import FailedJobsException
 from toil.lib.bioio import root_logger
 from toil.test import (ToilTest,
                        needs_aws_ec2,
@@ -34,10 +34,8 @@ from toil.test import (ToilTest,
                        needs_google_storage,
                        needs_gridengine,
                        needs_mesos,
-                       needs_parasol,
                        needs_torque,
                        slow)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.test.sort.sort import (copySubRangeOfFile,
                                  getMidPoint,
                                  main,
@@ -64,7 +62,7 @@ def runMain(options):
 
 
 @slow
-class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
+class SortTest(ToilTest, MesosTestSupport):
     """
     Tests Toil by sorting a file in parallel on various combinations of job stores and batch
     systems.
@@ -237,15 +235,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     @unittest.skip('PBS/Torque does not support shared caching')
     def testFileTorqueEngine(self):
         self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='torque')
-
-    @needs_parasol
-    @unittest.skip("skipping until parasol support is less flaky (see github issue #449")
-    def testFileParasol(self):
-        self._startParasol()
-        try:
-            self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='parasol')
-        finally:
-            self._stopParasol()
 
     testNo = 5
 

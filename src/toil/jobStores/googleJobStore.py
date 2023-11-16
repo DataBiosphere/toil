@@ -26,17 +26,14 @@ from urllib.parse import ParseResult
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
                                         ServiceUnavailable)
-from google.cloud import exceptions, storage
 from google.auth.exceptions import DefaultCredentialsError
+from google.cloud import exceptions, storage
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-
-from toil.fileStores import FileID
-
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
@@ -146,7 +143,6 @@ class GoogleJobStore(AbstractJobStore):
                 # Probably we don't have permission to use the file.
                 log.warning("File '%s' exists but didn't work to authenticate!",
                             cls.nodeServiceAccountJson)
-                pass
 
         # Either a filename is specified, or our fallback file isn't there.
         try:

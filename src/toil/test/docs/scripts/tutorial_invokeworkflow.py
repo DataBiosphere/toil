@@ -1,8 +1,8 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 class HelloWorld(Job):
@@ -15,7 +15,7 @@ class HelloWorld(Job):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_invokeworkflow")
+    jobstore: str = mkdtemp("tutorial_invokeworkflow")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "OFF"

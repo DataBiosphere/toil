@@ -20,11 +20,10 @@
 
 import json
 import logging
-import os
 import sys
 import zipfile
 from os import path
-from typing import IO, Any, Dict, List, Optional, Union, cast
+from typing import IO, List, Optional, cast
 
 if sys.version_info >= (3, 8):
     from typing import TypedDict

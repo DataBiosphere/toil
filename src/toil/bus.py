@@ -61,15 +61,13 @@ MessageBus.connect_output_file() and MessageBus.scan_bus_messages().
 """
 
 import collections
-from dataclasses import dataclass
-import inspect
+import json
 import logging
-
 import os
 import queue
-import json
 import tempfile
 import threading
+from dataclasses import dataclass
 from typing import (IO,
                     Any,
                     Callable,
@@ -80,7 +78,6 @@ from typing import (IO,
                     Optional,
                     Type,
                     TypeVar,
-                    Union,
                     cast)
 
 from pubsub.core import Publisher
