@@ -681,7 +681,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
             add_wdl_options(check_parser)
         for action in check_parser._actions:
             action.default = SUPPRESS
-        other_options, _ = check_parser.parse_known_args(sys.argv[1:])
+        other_options, _ = check_parser.parse_known_args(sys.argv[1:], ignore_help_args=True)
         if len(vars(other_options)) != 0:
             raise parser.error(f"{'WDL' if typ == 'cwl' else 'CWL'} options are not allowed on the command line.")
 
