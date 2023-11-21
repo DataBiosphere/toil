@@ -450,19 +450,25 @@ class NonDownloadingSize(WDL.StdLib._Size):
         total_size = 0.0
         for uri in file_uris:
             # Sum up the sizes of all the files, if any.
-            if uri.startswith(TOIL_URI_SCHEME):
-                # This is a Toil File ID we encoded; we have the size
-                # available.
-                file_id, _, _ = unpack_toil_uri(uri)
-                # Use the encoded size
-                total_size += file_id.size
+            if is_url(uri):
+                if uri.startswith(TOIL_URI_SCHEME):
+                    # This is a Toil File ID we encoded; we have the size
+                    # available.
+                    file_id, _, _ = unpack_toil_uri(uri)
+                    # Use the encoded size
+                    total_size += file_id.size
+                else:
+                    # This is some other kind of remote file.
+                    # We need to get its size from the URI.
+                    item_size = AbstractJobStore.get_size(uri)
+                    if item_size is None:
+                        # User asked for the size and we can't figure it out efficiently, so bail out.
+                        raise RuntimeError(f"Attempt to check the size of {uri} failed")
+                    total_size += item_size
             else:
-                # We need to get its size from the URI.
-                item_size = AbstractJobStore.get_size(uri)
-                if item_size is None:
-                    # User asked for the size and we can't figure it out efficiently, so bail out.
-                    raise RuntimeError(f"Attempt to check the size of {uri} failed")
-                total_size += item_size
+                # This is actually a file we can use locally.
+                local_path = self.stdlib._devirtualize_filename(uri)
+                total_size += os.path.getsize(local_path)
 
         if len(arguments) > 1:
             # Need to convert units. See
