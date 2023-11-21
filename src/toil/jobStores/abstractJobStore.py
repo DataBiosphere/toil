@@ -687,7 +687,8 @@ class AbstractJobStore(ABC):
         storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
         bucket.
 
-        :return: The children of the given URL, already URL-encoded.
+        :return: The children of the given URL, already URL-encoded if
+        appropriate. (If the URL is a bare path, no encoding is done.)
         """
         raise NotImplementedError(f"No implementation for {url}")
 

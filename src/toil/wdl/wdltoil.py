@@ -844,6 +844,7 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
 
             # Do the actual evaluation
             value = expression.eval(environment, stdlib)
+            logger.debug("Got value %s of type %s", value, value.type)
         except Exception:
             # If something goes wrong, dump.
             logger.exception("Expression evaluation failed for %s: %s", name, expression)
@@ -876,7 +877,11 @@ def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePo
         if not v.type.optional and inputs_dict is not None:
             # This is done to enable passing in a string into a task input of file type
             expected_type = inputs_dict.get(k, None)
-        new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
+        try:
+            new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
+        except FileNotFoundError as e:
+            # MiniWDL's type coercion will raise this when trying to make a File out of Null.
+            raise WDL.Error.EvalError(context, f"Cannot evaluate expression for {k} with value {v}")
     return new_bindings
 
 def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -1058,12 +1063,22 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
         """
         Return None if a file doesn't exist, or its path if it does.
         """
-        effective_path = os.path.abspath(os.path.join(work_dir, filename))
-        if os.path.exists(effective_path):
-            return filename
+        logger.debug("Consider file %s", filename)
+
+        if is_url(filename):
+            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
+                # We assume anything in the filestore actually exists.
+                return filename
+            else:
+                logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
+                return None
         else:
-            logger.debug('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
-            return None
+            effective_path = os.path.abspath(os.path.join(work_dir, filename))
+            if os.path.exists(effective_path):
+                return filename
+            else:
+                logger.warning('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
+                return None
 
     return map_over_typed_files_in_bindings(environment, drop_if_missing)
 
@@ -1137,6 +1152,7 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
         if new_path is None:
             # Assume the transform checked types if we actually care about the
             # result.
+            logger.warning("File %s became Null", value)
             return WDL.Value.Null()
         else:
             # Make whatever the value is around the new path.
