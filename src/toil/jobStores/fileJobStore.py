@@ -24,7 +24,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from typing import IO, Iterator, List, Optional, Union, overload
-from urllib.parse import ParseResult, quote, unquote
+from urllib.parse import ParseResult, quote, unquote 
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -412,8 +412,12 @@ class FileJobStore(AbstractJobStore):
         path = cls._extract_path_from_url(url)
         listing = []
         for p in os.listdir(path):
-            # We know there are no slashes in these
-            component = quote(p)
+            if url.scheme == '':
+                # We got a bare path, so produce an unencoded result.
+                component = p
+            else:
+                # We're really working on URLs, so encode whatever's on the filesystem.
+                component = quote(p)
             # Return directories with trailing slashes and files without
             listing.append((component + '/') if os.path.isdir(os.path.join(path, p)) else component)
         return listing
@@ -430,11 +434,17 @@ class FileJobStore(AbstractJobStore):
         """
         if url.netloc != '' and url.netloc != 'localhost':
             raise RuntimeError("The URL '%s' is invalid" % url.geturl())
-        return unquote(url.path)
+        if url.scheme == '':
+            # Not really a URL; this is a bare un-encoded path
+            return url.path
+        else:
+            # Is actually a URL and we expect an encoded path
+            return unquote(url.path)
 
     @classmethod
-    def _supports_url(cls, url, export=False):
-        return url.scheme.lower() == 'file'
+    def _supports_url(cls, url: ParseResult, export=False):
+        # We support all file: URLs and all things that aren't actually URLs.
+        return url.scheme.lower() in ['file', '']
 
     def _make_string_filename_safe(self, arbitraryString, maxLength=240):
         """
