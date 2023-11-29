@@ -14,7 +14,7 @@
 import sys
 from functools import lru_cache
 
-from pkg_resources import DistributionNotFound, get_distribution
+from importlib.metadata import version, PackageNotFoundError
 
 try:
     # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
@@ -39,7 +39,7 @@ def check_cwltool_version() -> None:
     warning will be printed.
     """
     try:
-        installed_version = get_distribution("cwltool").version
+        installed_version = version("cwltool")
 
         if installed_version != cwltool_version:
             sys.stderr.write(
@@ -47,11 +47,6 @@ def check_cwltool_version() -> None:
                 f"not the version Toil is tested against. To install the correct cwltool "
                 f"for Toil, do:\n\n\tpip install cwltool=={cwltool_version}\n\n"
             )
-    except DistributionNotFound:
+    except PackageNotFoundError:
         # cwltool is not installed
         pass
-    except InvalidVersion as e:
-        sys.stderr.write(
-            f"WARNING: Could not determine the installed version of cwltool because a package "
-            f"with an unacceptable version is installed: {e}\n"
-        )
