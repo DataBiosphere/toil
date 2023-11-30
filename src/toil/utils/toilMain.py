@@ -5,7 +5,7 @@ import textwrap
 import types
 from typing import Any, Dict
 
-import pkg_resources
+from importlib.metadata import version as metadata_version
 
 from toil.version import version
 
@@ -78,6 +78,6 @@ def printHelp(modules: Dict[str, types.ModuleType]) -> None:
 
 def printVersion() -> None:
     try:
-        print(pkg_resources.get_distribution('toil').version)
+        print(metadata_version('toil'))
     except:
         print(f'Version gathered from toil.version: {version}')
