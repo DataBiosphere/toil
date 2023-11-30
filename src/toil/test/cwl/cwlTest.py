@@ -226,15 +226,21 @@ class CWLWorkflowTest(ToilTest):
         # If the workflow runs, it must have had options
         cwltoil.main(args, stdout=st)
 
-    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
+    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output", output_here=False):
         from toil.cwl import cwltoil
 
         st = StringIO()
         main_args = main_args[:]
+        if not output_here:
+            # Don't just dump output in the working directory.
+            main_args.extend(
+                [
+                    "--outdir",
+                    self.outDir
+                ]
+            )
         main_args.extend(
             [
-                "--outdir",
-                self.outDir,
                 os.path.join(self.rootDir, cwlfile),
                 os.path.join(self.rootDir, jobfile),
             ]
@@ -377,6 +383,24 @@ class CWLWorkflowTest(ToilTest):
             self._expected_colon_output(self.outDir),
             out_name="result",
         )
+
+    def test_glob_dir_bypass_file_store(self):
+        try:
+            # We need to output to the current directory to make sure that
+            # works.
+            self._tester(
+                "src/toil/test/cwl/glob_dir.cwl",
+                "src/toil/test/cwl/empty.json",
+                self._expected_glob_dir_output(os.getcwd()),
+                main_args=["--bypass-file-store"],
+                output_here=True 
+            )
+        finally:
+            # Clean up anything we made in the current directory.
+            try:
+                shutil.rmtree(os.path.join(os.getcwd(), "shouldmake"))
+            except FileNotFoundError:
+                pass
 
     @needs_aws_s3
     def test_download_s3(self):
@@ -647,6 +671,31 @@ class CWLWorkflowTest(ToilTest):
                 "size": 0,
                 "class": "File",
                 "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            }
+        }
+
+    @staticmethod
+    def _expected_glob_dir_output(out_dir):
+        dir_loc = "file://" + os.path.join(out_dir, "shouldmake")
+        file_loc = os.path.join(dir_loc, "test.txt")
+        return {
+            "shouldmake": {
+                "location": dir_loc,
+                "basename": "shouldmake",
+                "nameroot": "shouldmake",
+                "nameext": "",
+                "class": "Directory",
+                "listing": [
+                    {
+                        "class": "File",
+                        "location": file_loc,
+                        "basename": "test.txt",
+                        "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+                        "size": 0,
+                        "nameroot": "test",
+                        "nameext": ".txt"
+                    }
+                ]
             }
         }
 
