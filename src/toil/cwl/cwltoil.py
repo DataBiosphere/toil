@@ -2277,13 +2277,20 @@ class CWLJob(CWLNamedJob):
                 )
             preemptible = parsed_value
 
+        # We always need space for the temporary files for the job
+        total_disk = cast(int, req["tmpdirSize"]) * (2**20)
+        if not getattr(runtime_context, "bypass_file_store", False):
+            # If using the Toil file store, we also need space for the output
+            # files, which may need to be stored locally and copied off the
+            # node.
+            total_disk += cast(int, req["outdirSize"]) * (2**20)
+        # If not using the Toil file store, output files just go directly to
+        # their final homes their space doesn't need to be accounted per-job.
+
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
-            disk=int(
-                (cast(int, req["tmpdirSize"]) * (2**20))
-                + (cast(int, req["outdirSize"]) * (2**20))
-            ),
+            disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
             tool_id=self.cwltool.tool["id"],
@@ -3722,6 +3729,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         find_default_container, options
     )
     runtime_context.workdir = workdir  # type: ignore[attr-defined]
+    runtime_context.outdir = outdir
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
