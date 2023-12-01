@@ -34,25 +34,25 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
 from boto.exception import BotoServerError
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
-from toil.batchSystems.options import OptionSetter
+                                                   InsufficientSystemResources,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.bus import ExternalBatchIdMessage, MessageBus, MessageOutbox
+from toil.batchSystems.options import OptionSetter
+from toil.bus import ExternalBatchIdMessage
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
-from toil.lib.aws import get_current_aws_region, zone_to_region
+from toil.lib.aws import get_current_aws_region
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.conversions import b_to_mib, mib_to_b
-from toil.lib.misc import slow_down, unix_now_ms, utc_now
+from toil.lib.conversions import b_to_mib
+from toil.lib.misc import slow_down, unix_now_ms
 from toil.lib.retry import retry
 from toil.resource import Resource
 
@@ -559,17 +559,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None,
+        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
                             help="The AWS region containing the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None,
+        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
                             help="The name or ARN of the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None,
+        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
                             help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
                                   "can e.g. access a job store. Must be assumable by "
                                   "ecs-tasks.amazonaws.com."))
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("aws_batch_region", default=None)
-        setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
-        setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])
+        setOption("aws_batch_region")
+        setOption("aws_batch_queue")
+        setOption("aws_batch_job_role_arn")

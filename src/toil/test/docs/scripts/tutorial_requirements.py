@@ -1,8 +1,8 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job, PromisedRequirement
+from toil.lib.io import mkdtemp
 
 
 def parentJob(job):
@@ -15,18 +15,18 @@ def parentJob(job):
     job.addFollowOn(analysis)
 
 
-def stageFn(job, url, cores=1):
+def stageFn(job, url):
     importedFile = job.fileStore.import_file(url)
     return importedFile, importedFile.size
 
 
-def analysisJob(job, fileStoreID, cores=2):
+def analysisJob(job, fileStoreID):
     # now do some analysis on the file
     pass
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_requirements")
+    jobstore: str = mkdtemp("tutorial_requirements")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

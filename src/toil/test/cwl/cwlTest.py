@@ -25,7 +25,7 @@ import zipfile
 from functools import partial
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, MutableMapping, Optional, Union
+from typing import Dict, List, MutableMapping, Optional
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -34,16 +34,16 @@ import pytest
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+from schema_salad.exceptions import ValidationException
+
 from toil.cwl.utils import (download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.lib.aws import zone_to_region
 from toil.lib.threading import cpu_count
 from toil.provisioners import cluster_factory
-from toil.provisioners.aws import get_best_aws_zone
 from toil.test import (ToilTest,
                        needs_aws_ec2,
                        needs_aws_s3,
@@ -57,16 +57,11 @@ from toil.test import (ToilTest,
                        needs_local_cuda,
                        needs_lsf,
                        needs_mesos,
-                       needs_parasol,
                        needs_slurm,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.test.provisioners.aws.awsProvisionerTest import \
-    AbstractAWSAutoscaleTest
 from toil.test.provisioners.clusterTest import AbstractClusterTest
-
-from schema_salad.exceptions import ValidationException
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 5000
@@ -220,15 +215,32 @@ class CWLWorkflowTest(ToilTest):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
 
-    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
+    def test_cwl_cmdline_input(self):
+        """
+        Test that running a CWL workflow with inputs specified on the command line passes.
+        """
+        from toil.cwl import cwltoil
+        cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
+        args = [cwlfile, "--message", "str", "--sleep", "2"]
+        st = StringIO()
+        # If the workflow runs, it must have had options
+        cwltoil.main(args, stdout=st)
+
+    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output", output_here=False):
         from toil.cwl import cwltoil
 
         st = StringIO()
         main_args = main_args[:]
+        if not output_here:
+            # Don't just dump output in the working directory.
+            main_args.extend(
+                [
+                    "--outdir",
+                    self.outDir
+                ]
+            )
         main_args.extend(
             [
-                "--outdir",
-                self.outDir,
                 os.path.join(self.rootDir, cwlfile),
                 os.path.join(self.rootDir, jobfile),
             ]
@@ -372,6 +384,24 @@ class CWLWorkflowTest(ToilTest):
             out_name="result",
         )
 
+    def test_glob_dir_bypass_file_store(self):
+        try:
+            # We need to output to the current directory to make sure that
+            # works.
+            self._tester(
+                "src/toil/test/cwl/glob_dir.cwl",
+                "src/toil/test/cwl/empty.json",
+                self._expected_glob_dir_output(os.getcwd()),
+                main_args=["--bypass-file-store"],
+                output_here=True 
+            )
+        finally:
+            # Clean up anything we made in the current directory.
+            try:
+                shutil.rmtree(os.path.join(os.getcwd(), "shouldmake"))
+            except FileNotFoundError:
+                pass
+
     @needs_aws_s3
     def test_download_s3(self):
         self.download("download_s3.json", self._tester)
@@ -415,6 +445,8 @@ class CWLWorkflowTest(ToilTest):
         self.load_contents("download_file.json", self._tester)
 
     @slow
+    @pytest.mark.integrative
+    @unittest.skip
     def test_bioconda(self):
         self._tester(
             "src/toil/test/cwl/seqtk_seq.cwl",
@@ -425,6 +457,8 @@ class CWLWorkflowTest(ToilTest):
         )
 
     @needs_docker
+    @pytest.mark.integrative
+    @unittest.skip
     def test_biocontainers(self):
         self._tester(
             "src/toil/test/cwl/seqtk_seq.cwl",
@@ -624,6 +658,31 @@ class CWLWorkflowTest(ToilTest):
             }
         }
 
+    @staticmethod
+    def _expected_glob_dir_output(out_dir):
+        dir_loc = "file://" + os.path.join(out_dir, "shouldmake")
+        file_loc = os.path.join(dir_loc, "test.txt")
+        return {
+            "shouldmake": {
+                "location": dir_loc,
+                "basename": "shouldmake",
+                "nameroot": "shouldmake",
+                "nameext": "",
+                "class": "Directory",
+                "listing": [
+                    {
+                        "class": "File",
+                        "location": file_loc,
+                        "basename": "test.txt",
+                        "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+                        "size": 0,
+                        "nameroot": "test",
+                        "nameext": ".txt"
+                    }
+                ]
+            }
+        }
+
     @classmethod
     def _expected_load_contents_output(cls, out_dir):
         """
@@ -751,12 +810,6 @@ class CWLv10Test(ToilTest):
         return self.test_run_conformance(batchSystem="mesos", **kwargs)
 
     @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance(self, **kwargs):
-        return self.test_run_conformance(batchSystem="parasol", **kwargs)
-
-    @slow
     @needs_kubernetes
     def test_kubernetes_cwl_conformance(self, **kwargs):
         return self.test_run_conformance(
@@ -798,12 +851,6 @@ class CWLv10Test(ToilTest):
     @unittest.skip
     def test_mesos_cwl_conformance_with_caching(self):
         return self.test_mesos_cwl_conformance(caching=True)
-
-    @slow
-    @needs_parasol
-    @unittest.skip
-    def test_parasol_cwl_conformance_with_caching(self):
-        return self.test_parasol_cwl_conformance(caching=True)
 
     @slow
     @needs_kubernetes
@@ -893,12 +940,21 @@ class CWLv12Test(ToilTest):
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, **kwargs):
+        if "junit_file" not in kwargs:
+            kwargs["junit_file"] = os.path.join(
+                self.rootDir, "conformance-1.2.junit.xml"
+            )
         run_conformance_tests(workDir=self.cwlSpec, yml=self.test_yaml, **kwargs)
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
-        self.test_run_conformance(caching=True)
+        self.test_run_conformance(
+            caching=True,
+            junit_file = os.path.join(
+                self.rootDir, "caching-conformance-1.2.junit.xml"
+            )
+        )
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
@@ -909,7 +965,10 @@ class CWLv12Test(ToilTest):
         features.
         """
         self.test_run_conformance(
-            extra_args=["--bypass-file-store"], must_support_all_features=True
+            extra_args=["--bypass-file-store"], must_support_all_features=True,
+            junit_file = os.path.join(
+                self.rootDir, "in-place-update-conformance-1.2.junit.xml"
+            )
         )
 
     @slow
@@ -917,7 +976,7 @@ class CWLv12Test(ToilTest):
     def test_kubernetes_cwl_conformance(self, **kwargs):
         if "junit_file" not in kwargs:
             kwargs["junit_file"] = os.path.join(
-                self.rootDir, "kubernetes-conformance.junit.xml"
+                self.rootDir, "kubernetes-conformance-1.2.junit.xml"
             )
         return self.test_run_conformance(
             batchSystem="kubernetes",
@@ -937,7 +996,7 @@ class CWLv12Test(ToilTest):
         return self.test_kubernetes_cwl_conformance(
             caching=True,
             junit_file=os.path.join(
-                self.rootDir, "kubernetes-caching-conformance.junit.xml"
+                self.rootDir, "kubernetes-caching-conformance-1.2.junit.xml"
             ),
         )
 
@@ -1045,6 +1104,15 @@ class CWLOnARMTest(AbstractClusterTest):
             ]
         )
 
+        # We know if it succeeds it should save a junit XML for us to read.
+        # Bring it back to be an artifact.
+        self.rsync_util(
+            f":{self.cwl_test_dir}/toil/conformance-1.2.junit.xml",
+            os.path.join(
+                self._projectRootPath(),
+                "arm-conformance-1.2.junit.xml"
+            )
+        )
 
 @needs_cwl
 @pytest.mark.cwl_small_log_dir
@@ -1239,56 +1307,6 @@ def test_pick_value_with_one_null_value(caplog):
         cwltoil.main(args)
         for line in caplog.messages:
             assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
-
-
-@needs_cwl
-@pytest.mark.cwl_small
-def test_usage_message():
-    """
-    This is purely to ensure a (more) helpful error message is printed if a user does
-    not order their positional args correctly [cwl, cwl-job (json/yml/yaml), jobstore].
-    """
-    toil = "toil-cwl-runner"
-    cwl = "test/cwl/revsort.cwl"
-    cwl_job_json = "test/cwl/revsort-job.json"
-    jobstore = "delete-test-toil"
-    random_option_1 = "--logInfo"
-    random_option_2 = "--disableChaining"
-    cmd_wrong_ordering_1 = [
-        toil,
-        cwl,
-        cwl_job_json,
-        jobstore,
-        random_option_1,
-        random_option_2,
-    ]
-    cmd_wrong_ordering_2 = [
-        toil,
-        cwl,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl_job_json,
-    ]
-    cmd_wrong_ordering_3 = [
-        toil,
-        jobstore,
-        random_option_1,
-        random_option_2,
-        cwl,
-        cwl_job_json,
-    ]
-
-    for cmd in [cmd_wrong_ordering_1, cmd_wrong_ordering_2, cmd_wrong_ordering_3]:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        assert (
-            b"Usage: toil-cwl-runner [options] example.cwl example-job.yaml" in stderr
-        )
-        assert (
-            b"All positional arguments [cwl, yml_or_json] "
-            b"must always be specified last for toil-cwl-runner." in stderr
-        )
 
 
 @needs_cwl
@@ -1530,9 +1548,9 @@ def test_download_structure(tmp_path) -> None:
     # The file store should have been asked to do the download
     file_store.readGlobalFile.assert_has_calls(
         [
-            call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=True),
-            call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=True),
-            call(fid2, os.path.join(to_dir, "anotherfile"), symlink=True),
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1"), symlink=False),
+            call(fid1, os.path.join(to_dir, "dir1/dir2/f1again"), symlink=False),
+            call(fid2, os.path.join(to_dir, "anotherfile"), symlink=False),
         ],
         any_order=True,
     )

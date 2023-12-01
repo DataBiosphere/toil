@@ -29,14 +29,18 @@ from uuid import uuid4
 import pytest
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import ToilTest, needs_aws_ec2, needs_google_project, needs_google_storage, slow
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_google_project,
+                       needs_google_storage,
+                       slow)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -473,7 +477,15 @@ class hidden:
             # the cache hence this test is redundant (caching will be free).
             if not self.options.jobStore.startswith(('aws', 'google')):
                 workDirDev = os.stat(self.options.workDir).st_dev
-                jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
+                if self.options.jobStore.startswith("file:"):
+                    # Before #4538, options.jobStore would have the raw path while the Config object would prepend the
+                    # filesystem to the path (/path/to/file vs file:/path/to/file)
+                    # The options namespace and the Config object now have the exact same behavior
+                    # which means parse_jobstore will be called with argparse rather than with the config object
+                    # so remove the prepended file: scheme
+                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore[5:])).st_dev
+                else:
+                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
                     self.skipTest('Job store and working directory are on the same filesystem.')
 

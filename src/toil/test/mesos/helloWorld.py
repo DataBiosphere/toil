@@ -15,7 +15,7 @@
 A simple user script for Toil
 """
 
-import argparse
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -31,7 +31,6 @@ def hello_world(job):
 
     # Assign FileStoreID to a given file
     foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
-
 
     # Spawn child
     job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk="3G")
@@ -56,7 +55,7 @@ def hello_world_child(job, hw):
 def main():
     # Boilerplate -- startToil requires options
 
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args()
 

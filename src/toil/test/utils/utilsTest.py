@@ -115,6 +115,26 @@ class UtilsTest(ToilTest):
             commandTokens.append('--failIfNotComplete')
         return commandTokens
 
+    def test_config_functionality(self):
+        """Ensure that creating and reading back the config file works"""
+        config_file = os.path.abspath("config.yaml")
+        config_command = [self.toilMain, 'config', config_file]
+        # make sure the command `toil config file_path` works
+        try:
+            subprocess.check_call(config_command)
+        except subprocess.CalledProcessError:
+            self.fail("The toil config utility failed!")
+
+        parser = Job.Runner.getDefaultArgumentParser()
+        # make sure that toil can read from the generated config file
+        try:
+            parser.parse_args(["random_jobstore", "--config", config_file])
+        except SystemExit:
+            self.fail("Failed to parse the default generated config file!")
+        finally:
+            os.remove(config_file)
+
+
     @needs_rsync3
     @pytest.mark.timeout(1200)
     @needs_aws_ec2

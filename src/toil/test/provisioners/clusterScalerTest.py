@@ -19,10 +19,9 @@ import time
 import uuid
 from argparse import Namespace
 from collections import defaultdict
-from contextlib import contextmanager
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
@@ -873,7 +872,9 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             return self.jobQueue.qsize()
 
     def getJobs(self):
-        return self.jobBatchSystemIDToIssuedJob.values()
+        # jobBatchSystemIDToIssuedJob may be modified while we are working.
+        # So copy it.
+        return dict(self.jobBatchSystemIDToIssuedJob).values()
 
     # AbstractScalableBatchSystem functionality
     def getNodes(self, preemptible: Optional[bool] = False, timeout: int = 600):

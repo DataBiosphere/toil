@@ -15,19 +15,19 @@ import enum
 import logging
 import os
 import shutil
+import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from threading import Condition
-import time
 from typing import (Any,
                     ContextManager,
                     Dict,
-                    List,
-                    Set,
                     Iterator,
+                    List,
                     NamedTuple,
                     Optional,
+                    Set,
                     Union,
                     cast)
 
@@ -37,6 +37,7 @@ from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription, ParsedRequirement, Requirer
+from toil.lib.memoize import memoize
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,6 @@ class AbstractBatchSystem(ABC):
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
         """
-        pass
 
     @abstractmethod
     def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
@@ -263,7 +263,6 @@ class AbstractBatchSystem(ABC):
             setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
-        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """
@@ -392,6 +391,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()
 
+    @memoize
     def get_batch_logs_dir(self) -> str:
         """
         Get the directory where the backing batch system should save its logs.
@@ -404,6 +404,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if self.config.batch_logs_dir:
             # Use what is specified
+            if not os.path.isdir(self.config.batch_logs_dir):
+                # But if it doesn't exist, make it exist
+                os.makedirs(self.config.batch_logs_dir, exist_ok=True)
             return self.config.batch_logs_dir
         # And if nothing is specified use the workDir.
         return Toil.getToilWorkDir(self.config.workDir)

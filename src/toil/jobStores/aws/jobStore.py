@@ -13,7 +13,6 @@
 # limitations under the License.
 import hashlib
 import itertools
-import json
 import logging
 import os
 import pickle
@@ -21,8 +20,6 @@ import re
 import reprlib
 import stat
 import time
-import urllib.error
-import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
@@ -35,7 +32,6 @@ from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
-from toil.lib.aws import build_tag_dict_from_env
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
@@ -56,6 +52,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
+from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import (create_s3_bucket,
                                 enable_public_objects,
@@ -450,7 +447,6 @@ class AWSJobStore(AbstractJobStore):
         except ServerSideCopyProhibitedError:
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
-            pass
 
         # copy if exception
         return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
@@ -465,7 +461,6 @@ class AWSJobStore(AbstractJobStore):
         except ServerSideCopyProhibitedError:
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
-            pass
         else:
             super()._default_export_file(otherCls, file_id, uri)
 

@@ -5,7 +5,7 @@ import textwrap
 import types
 from typing import Any, Dict
 
-import pkg_resources
+from importlib.metadata import version as metadata_version
 
 from toil.version import version
 
@@ -47,6 +47,7 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
 def loadModules() -> Dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
     from toil.utils import toilClean  # noqa
+    from toil.utils import toilConfig  # noqa
     from toil.utils import toilDebugFile  # noqa
     from toil.utils import toilDebugJob  # noqa
     from toil.utils import toilDestroyCluster  # noqa
@@ -77,6 +78,6 @@ def printHelp(modules: Dict[str, types.ModuleType]) -> None:
 
 def printVersion() -> None:
     try:
-        print(pkg_resources.get_distribution('toil').version)
+        print(metadata_version('toil'))
     except:
         print(f'Version gathered from toil.version: {version}')

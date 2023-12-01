@@ -16,7 +16,6 @@ import math
 import os
 import shlex
 import tempfile
-import time
 from queue import Empty
 from shlex import quote
 from typing import Dict, List, Optional

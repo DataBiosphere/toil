@@ -1,8 +1,8 @@
 import os
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def globalFileStoreJobFn(job):
@@ -44,7 +44,7 @@ def globalFileStoreJobFn(job):
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_managing2")
+    jobstore: str = mkdtemp("tutorial_managing2")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

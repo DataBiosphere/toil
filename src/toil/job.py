@@ -22,7 +22,6 @@ import os
 import pickle
 import sys
 import time
-import types
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
@@ -44,12 +43,15 @@ from typing import (TYPE_CHECKING,
                     cast,
                     overload)
 
+from configargparse import ArgParser
+
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
     from typing import TypedDict
 else:
     from typing_extensions import TypedDict
+
 import dill
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
@@ -71,10 +73,11 @@ from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
 if TYPE_CHECKING:
+    from optparse import OptionParser
+
     from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
-    from optparse import OptionParser
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +270,8 @@ def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> Acce
         elif possible_description in APIS:
             parsed['api'] = possible_description
         else:
-            parsed['model'] = possible_description
+            if possible_description is not None:
+                parsed['model'] = possible_description
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
         parsed.update(spec)
@@ -423,6 +427,7 @@ class Requirer:
         if self._config is not None:
             raise RuntimeError(f"Config assigned multiple times to {self}")
         self._config = config
+
 
     def __getstate__(self) -> Dict[str, Any]:
         """Return the dict to use as the instance's __dict__ when pickling."""
@@ -595,7 +600,8 @@ class Requirer:
                 )
             return value
         elif self._config is not None:
-            value = getattr(self._config, 'default' + requirement.capitalize())
+            values = [getattr(self._config, 'default_' + requirement, None), getattr(self._config, 'default' + requirement.capitalize(), None)]
+            value = values[0] if values[0] is not None else values[1]
             if value is None:
                 raise AttributeError(
                     f"Encountered None for default '{requirement}' requirement "
@@ -1074,7 +1080,8 @@ class JobDescription(Requirer):
         first, and must have already been added.
         """
         # Make sure we aren't clobbering something
-        assert serviceID not in self.serviceTree
+        if serviceID in self.serviceTree:
+            raise RuntimeError("Job is already in the service tree.")
         self.serviceTree[serviceID] = []
         if parentServiceID is not None:
             self.serviceTree[parentServiceID].append(serviceID)
@@ -1143,9 +1150,11 @@ class JobDescription(Requirer):
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 
         # Old version of this function used to take a config. Make sure that isn't happening.
-        assert not isinstance(exit_status, Config), "Passing a Config as an exit status"
+        if isinstance(exit_status, Config):
+            raise RuntimeError("Passing a Config as an exit status.")
         # Make sure we have an assigned config.
-        assert self._config is not None
+        if self._config is None:
+            raise RuntimeError("The job's config is not assigned.")
 
         if self._config.enableUnlimitedPreemptibleRetries and exit_reason == BatchJobExitReason.LOST:
             logger.info("*Not* reducing try count (%s) of job %s with ID %s",
@@ -1337,12 +1346,14 @@ class CheckpointJobDescription(JobDescription):
 
         Returns a list with the IDs of any successors deleted.
         """
-        assert self.checkpoint is not None
+        if self.checkpoint is None:
+            raise RuntimeError("Cannot restart a checkpoint job. The checkpoint was never set.")
         successorsDeleted = []
         all_successors = list(self.allSuccessors())
         if len(all_successors) > 0 or self.serviceTree or self.command is not None:
             if self.command is not None:
-                assert self.command == self.checkpoint
+                if self.command != self.checkpoint:
+                    raise RuntimeError("The command and checkpoint are not the same.")
                 logger.debug("Checkpoint job already has command set to run")
             else:
                 self.command = self.checkpoint
@@ -1628,8 +1639,8 @@ class Job:
 
         :return: childJob: for call chaining
         """
-        assert isinstance(childJob, Job)
-
+        if not isinstance(childJob, Job):
+            raise RuntimeError("The type of the child job is not a job.")
         # Join the job graphs
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
@@ -1655,8 +1666,8 @@ class Job:
 
         :return: followOnJob for call chaining
         """
-        assert isinstance(followOnJob, Job)
-
+        if not isinstance(followOnJob, Job):
+            raise RuntimeError("The type of the follow-on job is not a job.")
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
@@ -2019,7 +2030,8 @@ class Job:
             for successor in [self._registry[jID] for jID in self.description.allSuccessors() if jID in self._registry] + extraEdges[self]:
                 # Grab all the successors in the current registry (i.e. added form this node) and look at them.
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
-            assert stack.pop() == self
+            if stack.pop() != self:
+                raise RuntimeError("The stack ordering/elements was changed.")
         if self in stack:
             stack.append(self)
             raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
@@ -2137,37 +2149,49 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser() -> ArgumentParser:
+        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgumentParser:
             """
             Get argument parser with added toil workflow options.
 
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The argument parser used by a toil workflow with added Toil options.
             """
-            parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-            Job.Runner.addToilOptions(parser)
+            parser = ArgParser(formatter_class=ArgumentDefaultsHelpFormatter)
+            Job.Runner.addToilOptions(parser, jobstore_as_flag=jobstore_as_flag)
             return parser
 
         @staticmethod
-        def getDefaultOptions(jobStore: str) -> Namespace:
+        def getDefaultOptions(jobStore: Optional[str] = None, jobstore_as_flag: bool = False) -> Namespace:
             """
             Get default options for a toil workflow.
 
             :param jobStore: A string describing the jobStore \
             for the workflow.
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The options used by a toil workflow.
             """
-            parser = Job.Runner.getDefaultArgumentParser()
-            return parser.parse_args(args=[jobStore])
+            # setting jobstore_as_flag to True allows the user to declare the jobstore in the config file instead
+            if not jobstore_as_flag and jobStore is None:
+                raise RuntimeError("The jobstore argument cannot be missing if the jobstore_as_flag argument is set "
+                                   "to False!")
+            parser = Job.Runner.getDefaultArgumentParser(jobstore_as_flag=jobstore_as_flag)
+            arguments = []
+            if jobstore_as_flag and jobStore is not None:
+                arguments = ["--jobstore", jobStore]
+            if not jobstore_as_flag and jobStore is not None:
+                arguments = [jobStore]
+            return parser.parse_args(args=arguments)
 
         @staticmethod
-        def addToilOptions(parser: Union["OptionParser", ArgumentParser]) -> None:
+        def addToilOptions(parser: Union["OptionParser", ArgumentParser], jobstore_as_flag: bool = False) -> None:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
             parser object.
 
             :param parser: Options object to add toil options to.
+            :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             """
-            addOptions(parser)
+            addOptions(parser, jobstore_as_flag=jobstore_as_flag)
 
         @staticmethod
         def startToil(job: "Job", options) -> Any:
@@ -2307,8 +2331,8 @@ class Job:
         unpickler = FilteredUnpickler(fileHandle)
 
         runnable = unpickler.load()
-        if requireInstanceOf is not None:
-            assert isinstance(runnable, requireInstanceOf), f"Did not find a {requireInstanceOf} when expected"
+        if requireInstanceOf is not None and not isinstance(runnable, requireInstanceOf):
+            raise RuntimeError(f"Did not find a {requireInstanceOf} when expected")
 
         return runnable
 
@@ -2478,7 +2502,8 @@ class Job:
 
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, TemporaryID), f"Tried to save job {self} without ID assigned!"
+        if isinstance(self.jobStoreID, TemporaryID):
+            raise RuntimeError(f"Tried to save job {self} without ID assigned!")
 
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
@@ -2584,7 +2609,8 @@ class Job:
         logger.info("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
 
         # Make sure we're the root
-        assert ordering[-1] == self
+        if ordering[-1] != self:
+            raise RuntimeError("The current job is not the root.")
 
         # Don't verify the ordering length: it excludes service host jobs.
         ordered_ids = {o.jobStoreID for o in ordering}
@@ -2669,7 +2695,8 @@ class Job:
         command = jobDescription.command
 
         commandTokens = command.split()
-        assert "_toil" == commandTokens[0]
+        if "_toil" != commandTokens[0]:
+            raise RuntimeError("An invalid command was passed into the job.")
         userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
@@ -3053,22 +3080,23 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn = None
 
     def addChild(self, childJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Children cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Children cannot be added to EncapsulatedJob while it is running")
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
     def addService(self, service, parentService=None):
-        assert self.encapsulatedFollowOn is not None, \
-            "Services cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Services cannot be added to EncapsulatedJob while it is running")
         return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
 
     def addFollowOn(self, followOnJob):
-        assert self.encapsulatedFollowOn is not None, \
-            "Follow-ons cannot be added to EncapsulatedJob while it is running"
+        if self.encapsulatedFollowOn is None:
+            raise RuntimeError("Follow-ons cannot be added to EncapsulatedJob while it is running")
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
     def rv(self, *path) -> "Promise":
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.rv(*path)
 
     def prepareForPromiseRegistration(self, jobStore):
@@ -3080,7 +3108,8 @@ class EncapsulatedJob(Job):
             self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
 
     def _disablePromiseRegistration(self):
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         super()._disablePromiseRegistration()
         self.encapsulatedJob._disablePromiseRegistration()
 
@@ -3096,7 +3125,8 @@ class EncapsulatedJob(Job):
         return self.__class__, (None,)
 
     def getUserScript(self):
-        assert self.encapsulatedJob is not None
+        if self.encapsulatedJob is None:
+            raise RuntimeError("The encapsulated job was not set.")
         return self.encapsulatedJob.getUserScript()
 
 
@@ -3113,7 +3143,8 @@ class ServiceHostJob(Job):
         """
 
         # Make sure the service hasn't been given a host already.
-        assert service.hostID is None
+        if service.hostID is not None:
+            raise RuntimeError("Cannot set the host. The service has already been given a host.")
 
         # Make ourselves with name info from the Service and a
         # ServiceJobDescription that has the service control flags.
@@ -3200,14 +3231,17 @@ class ServiceHostJob(Job):
 
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
-            assert self.description.startJobStoreID != None
+            if self.description.startJobStoreID is None:
+                raise RuntimeError("No start jobStoreID to remove.")
             if fileStore.jobStore.file_exists(self.description.startJobStoreID):
                 fileStore.jobStore.delete_file(self.description.startJobStoreID)
-            assert not fileStore.jobStore.file_exists(self.description.startJobStoreID)
+            if fileStore.jobStore.file_exists(self.description.startJobStoreID):
+                raise RuntimeError("The start jobStoreID is not a file.")
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
-            assert self.description.terminateJobStoreID != None
+            if self.description.terminateJobStoreID is None:
+                raise RuntimeError("No terminate jobStoreID to use.")
             while True:
                 # Check for the terminate signal
                 if not fileStore.jobStore.file_exists(self.description.terminateJobStoreID):
@@ -3301,7 +3335,8 @@ class Promise:
     @staticmethod
     def __new__(cls, *args) -> "Promise":
         """Instantiate this Promise."""
-        assert len(args) == 2
+        if len(args) != 2:
+            raise RuntimeError("Cannot instantiate promise. Invalid number of arguments given (Expected 2).")
         if isinstance(args[0], Job):
             # Regular instantiation when promise is created, before it is being pickled
             return super().__new__(cls)
@@ -3385,10 +3420,12 @@ class PromisedRequirement:
         :type args: int or .Promise
         """
         if hasattr(valueOrCallable, '__call__'):
-            assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
+            if len(args) == 0:
+                raise RuntimeError('Need parameters for PromisedRequirement function.')
             func = valueOrCallable
         else:
-            assert len(args) == 0, 'Define a PromisedRequirement function to handle multiple arguments.'
+            if len(args) != 0:
+                raise RuntimeError('Define a PromisedRequirement function to handle multiple arguments.')
             func = lambda x: x
             args = [valueOrCallable]
 

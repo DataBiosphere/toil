@@ -40,7 +40,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
-from toil.lib.retry import retry, ErrorCondition
+from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -306,6 +306,10 @@ class NonCachingFileStore(AbstractFileStore):
                 if e.errno == errno.ENOENT:
                     # This is a FileNotFoundError.
                     # job finished & deleted its jobState file since the jobState files were discovered
+                    continue
+                elif e.errno == 5:
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # on network file system sometimes)
                     continue
                 else:
                     raise

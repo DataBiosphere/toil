@@ -17,7 +17,7 @@ import os
 import re
 import struct
 from shlex import quote
-from typing import Optional, List
+from typing import List, Optional
 
 import requests
 
@@ -27,7 +27,6 @@ from docker.errors import (ContainerError,
                            NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
-
 from toil.lib.accelerators import get_host_accelerator_numbers
 
 logger = logging.getLogger(__name__)
@@ -225,8 +224,8 @@ def apiDockerCall(job,
     working_dir = os.path.abspath(working_dir)
 
     # Ensure the user has passed a valid value for deferParam
-    assert deferParam in (None, FORGO, STOP, RM), \
-        'Please provide a valid value for deferParam.'
+    if deferParam not in (None, FORGO, STOP, RM):
+        raise RuntimeError('Please provide a valid value for deferParam.')
 
     client = docker.from_env(version='auto', timeout=timeout)
 

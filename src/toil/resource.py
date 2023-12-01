@@ -23,26 +23,24 @@ from collections import namedtuple
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
-from tempfile import mkdtemp
+from types import ModuleType
+from typing import (IO,
+                    TYPE_CHECKING,
+                    BinaryIO,
+                    Callable,
+                    Optional,
+                    Sequence,
+                    Type)
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-from typing import (TYPE_CHECKING,
-                    Optional,
-                    Callable,
-                    IO,
-                    Type,
-                    Sequence,
-                    BinaryIO)
-
 from toil import inVirtualEnv
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import strict_bool
 from toil.lib.retry import ErrorCondition, retry
 from toil.version import exactPython
-
-from types import ModuleType
 
 if TYPE_CHECKING:
     from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -117,7 +115,8 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             # .. and register its location in an environment variable such that child processes
             # can find it.
             os.environ[cls.rootDirPathEnvName] = resourceRootDirPath
-        assert os.path.isdir(resourceRootDirPath)
+        if not os.path.isdir(resourceRootDirPath):
+            raise RuntimeError("Resource root path is not a directory.")
 
     @classmethod
     def cleanSystem(cls) -> None:
@@ -152,7 +151,9 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             return None
         else:
             self = cls.unpickle(s)
-            assert self.pathHash == pathHash
+            if self.pathHash != pathHash:
+                raise RuntimeError("The Resource's path is incorrect.")
+
             return self
 
     def download(self, callback: Optional[Callable[[str], None]] = None) -> None:
@@ -243,7 +244,8 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         with closing(urlopen(self.url)) as content:
             buf = content.read()
         contentHash = hashlib.md5(buf)
-        assert contentHash.hexdigest() == self.contentHash
+        if contentHash.hexdigest() != self.contentHash:
+            raise RuntimeError("The Resource's contents is incorrect.")
         dstFile.write(buf)
 
 
@@ -323,7 +325,8 @@ class VirtualEnvResource(DirectoryResource):
 
     @classmethod
     def _load(cls, path: str) -> BytesIO:
-        assert os.path.basename(path) == 'site-packages'
+        if os.path.basename(path) != 'site-packages':
+            raise RuntimeError("An incorrect path was passed through.")
         bytesIO = BytesIO()
         with ZipFile(file=bytesIO, mode='w') as zipFile:
             for dirName, _, fileList in os.walk(path):
@@ -404,7 +407,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 nameList = [filePath.pop()]
                 for package in reversed(module.__package__.split('.')):
                     dirPathTail = filePath.pop()
-                    assert dirPathTail == package
+                    if dirPathTail != package:
+                        raise RuntimeError("Incorrect path to package.")
                     nameList.append(dirPathTail)
                 name = '.'.join(reversed(nameList))
                 dirPath = os.path.sep.join(filePath)
@@ -421,7 +425,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
 
             for package in reversed(name.split('.')):
                 dirPathTail = filePath.pop()
-                assert dirPathTail == package
+                if dirPathTail != package:
+                    raise RuntimeError("Incorrect path to package.")
             dirPath = os.path.abspath(os.path.sep.join(filePath))
         absPrefix = os.path.abspath(sys.prefix)
         inVenv = inVirtualEnv()
@@ -591,7 +596,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
 
     @classmethod
     def fromCommand(cls, command: Sequence[str]) -> "ModuleDescriptor":
-        assert len(command) == 3
+        if len(command) != 3:
+            raise RuntimeError("Incorrect number of arguments (Expected 3).")
         return cls(dirPath=command[0], name=command[1], fromVirtualEnv=strict_bool(command[2]))
 
     def makeLoadable(self) -> "ModuleDescriptor":

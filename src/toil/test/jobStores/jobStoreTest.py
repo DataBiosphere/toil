@@ -18,7 +18,6 @@ import logging
 import os
 import shutil
 import socketserver
-import tempfile
 import threading
 import time
 import urllib.parse as urlparse
@@ -27,6 +26,7 @@ from abc import ABCMeta, abstractmethod
 from io import BytesIO
 from itertools import chain, islice
 from queue import Queue
+from tempfile import mkstemp
 from threading import Thread
 from typing import Any, Tuple
 from urllib.request import Request, urlopen
@@ -41,6 +41,7 @@ from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
+from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.statsAndLogging import StatsAndLogging
@@ -101,7 +102,8 @@ class AbstractJobStoreTest:
             return super().__new__(cls)
 
         def _createConfig(self):
-            return Config()
+            config = Config()
+            return config
 
         @abstractmethod
         def _createJobStore(self):
@@ -442,7 +444,7 @@ class AbstractJobStoreTest:
                 self.assertEqual(f.read(), one)
 
             # ... and copy it to a temporary physical file on the jobstore1.
-            fh, path = tempfile.mkstemp()
+            fh, path = mkstemp()
             try:
                 os.close(fh)
                 tmpPath = path + '.read-only'
@@ -857,7 +859,7 @@ class AbstractJobStoreTest:
 
                 # Multi-part upload from file
                 checksum = hashlib.md5()
-                fh, path = tempfile.mkstemp()
+                fh, path = mkstemp()
                 try:
                     with os.fdopen(fh, 'wb+') as writable:
                         with open('/dev/urandom', 'rb') as readable:
@@ -1045,7 +1047,7 @@ class AbstractJobStoreTest:
         def testEmptyFileStoreIDIsReadable(self):
             """Simply creates an empty fileStoreID and attempts to read from it."""
             id = self.jobstore_initialized.get_empty_file_store_id()
-            fh, path = tempfile.mkstemp()
+            fh, path = mkstemp()
             try:
                 self.jobstore_initialized.read_file(id, path)
                 self.assertTrue(os.path.isfile(path))
@@ -1074,7 +1076,7 @@ class AbstractEncryptedJobStoreTest:
 
         def setUp(self):
             # noinspection PyAttributeOutsideInit
-            self.sseKeyDir = tempfile.mkdtemp()
+            self.sseKeyDir = mkdtemp()
             super().setUp()
 
         def tearDown(self):
@@ -1142,14 +1144,14 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             return hashlib.md5(f.read()).hexdigest()
 
     def _createExternalStore(self):
-        return tempfile.mkdtemp()
+        return mkdtemp()
 
     def _cleanUpExternalStore(self, dirPath):
-        shutil.rmtree(dirPath)
+        shutil.rmtree(dirPath, ignore_errors=True)
 
     def testPreserveFileName(self):
         """Check that the fileID ends with the given file name."""
-        fh, path = tempfile.mkstemp()
+        fh, path = mkstemp()
         try:
             os.close(fh)
             job = self.arbitraryJob()
@@ -1461,6 +1463,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
+        str(AWSJobStore)  # to prevent removal of that import
         key = get_object_for_url(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
         return hashlib.md5(contents).hexdigest()
@@ -1483,8 +1486,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 return bucket
 
     def _cleanUpExternalStore(self, bucket):
-        bucket.objects.all().delete()
-        bucket.delete()
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        from toil.lib.aws.utils import delete_s3_bucket
+
+        resource = establish_boto3_session().resource(
+            "s3", region_name=self.awsRegion()
+        )
+        delete_s3_bucket(resource, bucket.name)
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

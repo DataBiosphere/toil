@@ -412,8 +412,9 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def restartScript():
-            import argparse
             import os
+
+            from configargparse import ArgumentParser
 
             from toil.job import Job
 
@@ -422,7 +423,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                     raise RuntimeError('failed on purpose')
 
             if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
+                parser = ArgumentParser()
                 Job.Runner.addToilOptions(parser)
                 options = parser.parse_args()
                 rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')

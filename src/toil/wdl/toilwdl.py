@@ -11,11 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import argparse
 import logging
 import os
 import subprocess
 import sys
+
+from configargparse import ArgumentParser
 
 from toil.wdl.utils import dict_from_JSON, get_analyzer, write_mappings
 from toil.wdl.wdl_synthesis import SynthesizeWDL
@@ -57,7 +58,7 @@ def main():
 
     Additional support to be broadened to include more features soon.
     """
-    parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
+    parser = ArgumentParser(description='Runs WDL files with toil.')
     parser.add_argument('wdl_file', help='A WDL workflow file.')
     parser.add_argument('secondary_file', help='A secondary data file (json).')
     parser.add_argument("--jobStore", type=str, required=False, default=None)
