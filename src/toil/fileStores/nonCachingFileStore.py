@@ -129,7 +129,11 @@ class NonCachingFileStore(AbstractFileStore):
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()
-            os.remove(self.jobStateFile)
+            try:
+                os.remove(self.jobStateFile)
+            except FileNotFoundError:
+                logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
+                pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
