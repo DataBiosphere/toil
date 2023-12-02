@@ -552,6 +552,7 @@ class CWLWorkflowTest(ToilTest):
 
         st = StringIO()
         args = [
+            "--logDebug",
             "--outdir",
             self.outDir,
             jobstore,
@@ -560,6 +561,7 @@ class CWLWorkflowTest(ToilTest):
         ]
         if extra_args:
             args = extra_args + args
+        log.info("Run CWL run: %s", " ".join(args))
         cwltoil.main(args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
