@@ -135,6 +135,10 @@ test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
 	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
+test_debug: check_venv check_build_reqs
+	TOIL_OWNER_TAG="shared" \
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native
+
 
 # This target will skip building docker and all docker based tests
 # these are our travis tests; rename?
