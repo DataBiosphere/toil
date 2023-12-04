@@ -1147,7 +1147,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         return mkdtemp()
 
     def _cleanUpExternalStore(self, dirPath):
-        shutil.rmtree(dirPath)
+        shutil.rmtree(dirPath, ignore_errors=True)
 
     def testPreserveFileName(self):
         """Check that the fileID ends with the given file name."""
@@ -1486,8 +1486,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 return bucket
 
     def _cleanUpExternalStore(self, bucket):
-        bucket.objects.all().delete()
-        bucket.delete()
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        from toil.lib.aws.utils import delete_s3_bucket
+
+        resource = establish_boto3_session().resource(
+            "s3", region_name=self.awsRegion()
+        )
+        delete_s3_bucket(resource, bucket.name)
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
