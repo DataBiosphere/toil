@@ -385,6 +385,7 @@ class CWLWorkflowTest(ToilTest):
         )
 
     def test_glob_dir_bypass_file_store(self):
+        self.maxDiff = 1000
         try:
             # We need to output to the current directory to make sure that
             # works.
@@ -668,11 +669,14 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_glob_dir_output(out_dir):
-        dir_loc = "file://" + os.path.join(out_dir, "shouldmake")
+        dir_path = os.path.join(out_dir, "shouldmake")
+        dir_loc = "file://" + dir_path
+        file_path = os.path.join(dir_path, "test.txt")
         file_loc = os.path.join(dir_loc, "test.txt")
         return {
             "shouldmake": {
                 "location": dir_loc,
+                "path": dir_path,
                 "basename": "shouldmake",
                 "nameroot": "shouldmake",
                 "nameext": "",
@@ -681,6 +685,7 @@ class CWLWorkflowTest(ToilTest):
                     {
                         "class": "File",
                         "location": file_loc,
+                        "path": file_path,
                         "basename": "test.txt",
                         "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
                         "size": 0,
