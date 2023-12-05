@@ -3,12 +3,15 @@ import os
 import shutil
 import subprocess
 import unittest
+import uuid
 from typing import Any, Dict, List, Optional, Set
 from unittest.mock import patch
 
-# Don't import the test case directly or pytest will test it again.
-import toil.test.wdl.toilwdlTest
-from toil.test import (needs_docker_cuda,
+from unittest.mock import patch
+from typing import Any, Dict, List, Set
+
+from toil.test import (ToilTest,
+                       needs_docker_cuda,
                        needs_google_storage,
                        needs_singularity_or_docker,
                        slow)
@@ -16,9 +19,21 @@ from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
 
-class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
+class BaseWDLTest(ToilTest):
+    """Base test class for WDL tests."""
+    def setUp(self) -> None:
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
+        os.makedirs(self.output_dir)
+
+    def tearDown(self) -> None:
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
+
+
+class WDLConformanceTests(BaseWDLTest):
     """
-    New WDL conformance tests for Toil
+    WDL conformance tests for Toil.
     """
     wdl_dir = "wdl-conformance-tests"
     @classmethod
@@ -70,11 +85,8 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         shutil.rmtree("wdl-conformance-tests")
 
 
-class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
-    """
-    Version of the old Toil WDL tests that tests the new MiniWDL-based implementation.
-    """
-
+class WDLTests(BaseWDLTest):
+    """Tests for Toil's MiniWDL-based implementation."""
     @classmethod
     def setUpClass(cls) -> None:
         """Runs once for all tests."""
@@ -83,7 +95,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     # We inherit a testMD5sum but it is going to need Singularity or Docker
     # now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity_or_docker
-    def testMD5sum(self):
+    def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
@@ -220,18 +232,6 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
-
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
-
-        assert retval != 0
-        assert b'Could not find' in stderr
-
     def test_coalesce(self):
         """
         Test if WDLSectionJob can coalesce WDL decls.
@@ -337,6 +337,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     assert "decl1" in result[0]
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

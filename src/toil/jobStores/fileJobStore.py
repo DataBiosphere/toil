@@ -317,13 +317,14 @@ class FileJobStore(AbstractJobStore):
         # symlink argument says whether the caller can take symlinks or not
         # ex: if false, it implies the workflow cannot work with symlinks and thus will hardlink imports
         # default is true since symlinking everything is ideal
+        uri_path = unquote(uri.path)
         if issubclass(otherCls, FileJobStore):
-            if os.path.isdir(uri.path):
+            if os.path.isdir(uri_path):
                 # Don't allow directories (unless someone is racing us)
                 raise IsADirectoryError(f"URI {uri} points to a directory but a file was expected")
             if shared_file_name is None:
-                executable = os.stat(uri.path).st_mode & stat.S_IXUSR != 0
-                absPath = self._get_unique_file_path(uri.path)  # use this to get a valid path to write to in job store
+                executable = os.stat(uri_path).st_mode & stat.S_IXUSR != 0
+                absPath = self._get_unique_file_path(uri_path)  # use this to get a valid path to write to in job store
                 with self.optional_hard_copy(hardlink):
                     self._copy_or_link(uri, absPath, symlink=symlink)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
@@ -829,7 +830,7 @@ class FileJobStore(AbstractJobStore):
         """
 
         # We just make the file IDs paths under the job store overall.
-        absPath = os.path.join(self.jobStoreDir, jobStoreFileID)
+        absPath = os.path.join(self.jobStoreDir, unquote(jobStoreFileID))
 
         # Don't validate here, we are called by the validation logic
 
@@ -842,14 +843,14 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, string is the file ID.
         """
 
-        return absPath[len(self.jobStoreDir)+1:]
+        return quote(absPath[len(self.jobStoreDir)+1:])
 
     def _check_job_store_file_id(self, jobStoreFileID):
         """
         :raise NoSuchFileException: if the file with ID jobStoreFileID does
                                     not exist or is not a file
         """
-        if not self.file_exists(jobStoreFileID):
+        if not self.file_exists(unquote(jobStoreFileID)):
             raise NoSuchFileException(jobStoreFileID)
 
     def _get_arbitrary_jobs_dir_for_name(self, jobNameSlug):

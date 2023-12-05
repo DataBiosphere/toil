@@ -54,6 +54,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    Sequence,
 )
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
@@ -692,6 +693,8 @@ class ToilPathMapper(PathMapper):
                streaming on, and returns a file: URI to where the file or
                directory has been downloaded to. Meant to be a partially-bound
                version of toil_get_file().
+        :param referenced_files: List of CWL File and Directory objects, which can have their locations set as both
+               virtualized and absolute local paths
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -713,8 +716,9 @@ class ToilPathMapper(PathMapper):
         This is called on each File or Directory CWL object. The Files and
         Directories all have "location" fields. For the Files, these are from
         upload_file(), and for the Directories, these are from
-        upload_directory(), with their children being assigned
-        locations based on listing the Directories using ToilFsAccess.
+        upload_directory() or cwltool internally. With upload_directory(), they and their children will be assigned
+        locations based on listing the Directories using ToilFsAccess. With cwltool, locations will be set as absolute
+        paths.
 
         :param obj: The CWL File or Directory to process
 
@@ -845,6 +849,14 @@ class ToilPathMapper(PathMapper):
                     # We can't really make the directory. Maybe we are
                     # exporting from the leader and it doesn't matter.
                     resolved = location
+            elif location.startswith("/"):
+                # Test if path is an absolute local path
+                # Does not check if the path is relative
+                # While Toil encodes paths into a URL with ToilPathMapper,
+                # something called internally in cwltool may return an absolute path
+                # ex: if cwltool calls itself internally in command_line_tool.py,
+                # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
+                resolved = location
             else:
                 raise RuntimeError("Unsupported location: " + location)
 
@@ -921,7 +933,6 @@ class ToilPathMapper(PathMapper):
                         )
                     else:
                         deref = ab
-
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urlsplit(deref).scheme in ["http", "https"]:
@@ -2215,7 +2226,7 @@ def toilStageFiles(
                     "WritableDirectory",
                 ]:
                     os.makedirs(p.target)
-                if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
+                if p.type in ["File", "WritableFile"]:
                     if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
@@ -2235,7 +2246,7 @@ def toilStageFiles(
                             FileID.unpack(uri[len("toilfile:") :]),
                             "file://" + p.target,
                         )
-                if not os.path.exists(p.target) and p.type in [
+                if p.type in [
                     "CreateFile",
                     "CreateWritableFile",
                 ]:
@@ -2258,6 +2269,7 @@ def toilStageFiles(
             # Make the location point to the place we put this thing on the
             # local filesystem.
             f["location"] = schema_salad.ref_resolver.file_uri(mapped_location.target)
+            f["path"] = mapped_location.target
 
         if "contents" in f:
             del f["contents"]
@@ -3361,6 +3373,8 @@ def determine_load_listing(
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
+    pass
+
 
 def generate_default_job_store(
     batch_system_name: Optional[str],
@@ -3454,6 +3468,7 @@ def add_cwl_options(parser: argparse.ArgumentParser) -> None:
         'For example: "%(prog)s workflow.cwl --file1 file". '
         "If an input has the same name as a Toil option, pass '--' before it.",
     )
+
     parser.add_argument("--not-strict", action="store_true")
     parser.add_argument(
         "--enable-dev",

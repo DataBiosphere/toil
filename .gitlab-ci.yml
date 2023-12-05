@@ -61,7 +61,6 @@ stages:
   - main_tests
   - integration
 
-
 lint:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
@@ -75,7 +74,6 @@ lint:
     - make docs
     # - make diff_pydocstyle_report
 
-
 cwl_dependency_is_stand_alone:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
@@ -85,7 +83,6 @@ cwl_dependency_is_stand_alone:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
-
 wdl_dependency_is_stand_alone:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
@@ -93,7 +90,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlTest::testMD5sum
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
 
 quick_test_offline:
   rules:
@@ -279,8 +276,6 @@ wdl:
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py
-    - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/wdl/toilwdlTest.py src/toil/test/wdl/builtinTest.py"  # needs java (default-jre) to run "GATK.jar"
 
 jobstore:
   rules:

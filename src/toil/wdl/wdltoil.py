@@ -76,6 +76,7 @@ from toil.lib.threading import global_mutex
 
 logger = logging.getLogger(__name__)
 
+
 @contextmanager
 def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None, None, None]:
     """

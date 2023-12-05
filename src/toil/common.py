@@ -50,7 +50,7 @@ from typing import (IO,
                     Union,
                     cast,
                     overload)
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote, quote
 
 import requests
 from configargparse import ArgParser, YAMLConfigFileParser
@@ -2167,10 +2167,8 @@ class Toil(ContextManager["Toil"]):
         :param check_existence: If set, raise FileNotFoundError if a URI points to
                a local file that does not exist.
         """
-        if urlparse(uri).scheme == "file":
-            uri = urlparse(
-                uri
-            ).path  # this should strip off the local file scheme; it will be added back
+        if urlparse(uri).scheme == 'file':
+            uri = unquote(urlparse(uri).path)  # this should strip off the local file scheme; it will be added back
 
         # account for the scheme-less case, which should be coerced to a local absolute path
         if urlparse(uri).scheme == "":
@@ -2179,9 +2177,8 @@ class Toil(ContextManager["Toil"]):
                 raise FileNotFoundError(
                     f'Could not find local file "{abs_path}" when importing "{uri}".\n'
                     f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
-                    f"If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.)."
-                )
-            return f"file://{abs_path}"
+                    f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
+            return f'file://{quote(abs_path)}'
         return uri
 
     def _setBatchSystemEnvVars(self) -> None:
