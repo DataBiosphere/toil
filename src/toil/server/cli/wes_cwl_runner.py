@@ -147,7 +147,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         :param workflow_params_file: The URL or path to the CWL input file.
         """
-        loader = schema_salad.ref_resolver.Loader(
+        loader = schema_salad.ref_resolver.Loader(  # type:ignore
             {"location": {"@type": "@id"}, "path": {"@type": "@id"}}
         )
 
