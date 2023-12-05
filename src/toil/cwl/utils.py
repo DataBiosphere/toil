@@ -18,6 +18,7 @@ import logging
 import os
 from pathlib import PurePosixPath
 import posixpath
+import stat
 from typing import (
     Any,
     Callable,
