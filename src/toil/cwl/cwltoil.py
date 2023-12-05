@@ -1430,13 +1430,11 @@ class ToilFsAccess(StdFsAccess):
             return size
 
     def isfile(self, fn: str) -> bool:
-        if not self.exists(fn):
-            # Nonexistent things aren't files
-            return False
         parse = urlparse(fn)
         if parse.scheme in ["file", ""]:
             return os.path.isfile(self._abs(fn))
         elif parse.scheme == "toilfile":
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return True
         elif parse.scheme == "toildir":
             contents, subpath, cache_key = decode_directory(fn)
@@ -1445,14 +1443,13 @@ class ToilFsAccess(StdFsAccess):
                 return False
             found = get_from_structure(contents, subpath)
             # If we find a string, that's a file
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return isinstance(found, str)
         else:
-            return not AbstractJobStore.get_is_directory(fn)
+            return self.exists(fn) and not AbstractJobStore.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
-        if not self.exists(fn):
-            # Nonexistent things aren't directories
-            return False
+        logger.debug("ToilFsAccess checking type of %s", fn)
         parse = urlparse(fn)
         if parse.scheme in ["file", ""]:
             return os.path.isdir(self._abs(fn))
@@ -1461,13 +1458,17 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "toildir":
             contents, subpath, cache_key = decode_directory(fn)
             if subpath is None:
-                # This is the toildir directory itself
+                # This is the toildir directory itself.
+                # TODO: We assume directories can't be deleted.
                 return True
             found = get_from_structure(contents, subpath)
-            # If we find a dict, that's a directory
+            # If we find a dict, that's a directory.
+            # TODO: We assume directories can't be deleted.
             return isinstance(found, dict)
         else:
-            return AbstractJobStore.get_is_directory(fn)
+            status = AbstractJobStore.get_is_directory(fn)
+            logger.debug("AbstractJobStore said: %s", status)
+            return status
 
     def listdir(self, fn: str) -> List[str]:
         # This needs to return full URLs for everything in the directory.
@@ -1766,6 +1767,7 @@ def import_files(
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
+    logger.debug("Importing files in %s", cwl_object)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter

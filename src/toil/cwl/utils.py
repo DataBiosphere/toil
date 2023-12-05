@@ -33,6 +33,7 @@ from typing import (
 
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 
@@ -168,11 +169,12 @@ def download_structure(
     Download nested dictionary from the Toil file store to a local path.
 
     Guaranteed to fill the structure with real files, and not symlinks out of
-    it to elsewhere.
+    it to elsewhere. File URIs may be toilfile: URIs or any other URI that
+    Toil's job store system can read.
 
     :param file_store: The Toil file store to download from.
 
-    :param index: Maps from downloaded file path back to input Toil URI.
+    :param index: Maps from downloaded file path back to input URI.
 
     :param existing: Maps from file_store_id URI to downloaded file path.
 
@@ -199,16 +201,24 @@ def download_structure(
             # This must be a file path uploaded to Toil.
             if not isinstance(value, str):
                 raise RuntimeError(f"Did not find a file at {value}.")
-            if not value.startswith("toilfile:"):
-                raise RuntimeError(f"Did not find a filestore file at {value}")
+
             logger.debug("Downloading contained file '%s'", name)
             dest_path = os.path.join(into_dir, name)
-            # So download the file into place.
-            # Make sure to get a real copy of the file because we may need to
-            # mount the directory into a container as a whole.
-            file_store.readGlobalFile(
-                FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=False
-            )
+
+            if value.startswith("toilfile:"):
+                # So download the file into place.
+                # Make sure to get a real copy of the file because we may need to
+                # mount the directory into a container as a whole.
+                file_store.readGlobalFile(
+                    FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=False
+                )
+            else:
+                # We need to download from some other kind of URL.
+                size, executable = AbstractJobStore.read_from_url(value, open(dest_path, 'wb'))
+                if executable:
+                    # Make the written file executable
+                    os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
+
             # Update the index dicts
             # TODO: why?
             index[dest_path] = value

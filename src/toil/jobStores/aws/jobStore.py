@@ -470,7 +470,9 @@ class AWSJobStore(AbstractJobStore):
             get_object_for_url(url, existing=True)
             return True
         except FileNotFoundError:
-            return False
+            # Not a file
+            # Might be a directory.
+            return cls._get_is_directory(url)
 
     @classmethod
     def _get_size(cls, url):

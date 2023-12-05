@@ -235,6 +235,7 @@ class CWLWorkflowTest(ToilTest):
             # Don't just dump output in the working directory.
             main_args.extend(
                 [
+                    "--logDebug",
                     "--outdir",
                     self.outDir
                 ]
