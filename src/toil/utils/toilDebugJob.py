@@ -15,6 +15,7 @@
 import logging
 
 import pprint
+import sys
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore

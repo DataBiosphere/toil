@@ -499,7 +499,7 @@ class FileJobStore(AbstractJobStore):
 
         atomic_copy(local_path, jobStoreFilePath)
 
-    def read_file(self, file_id, local_path, symlink=False):
+    def read_file(self, file_id: str, local_path: str, symlink: bool = False) -> None:
         self._check_job_store_file_id(file_id)
         jobStoreFilePath = self._get_file_path_from_id(file_id)
         localDirPath = os.path.dirname(local_path)

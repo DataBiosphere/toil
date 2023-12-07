@@ -15,6 +15,7 @@
 import argparse
 import logging
 import os.path
+import sys
 from typing import Optional
 
 from toil.common import Config, Toil, parser_with_common_options
@@ -116,32 +117,32 @@ def main() -> None:
     if options.fetch:
         # Copy only the listed files locally
 
-        if not isinstance(jobStore, FileJobStore):
+        if isinstance(jobStore, FileJobStore):
+            logger.debug("Fetching local files: %s", options.fetch)
+            fetchJobStoreFiles(jobStore=jobStore, options=options)
+        else:
             logger.critical("Can only fetch by name or glob from file-based job stores")
             sys.exit(1)
-
-        logger.debug("Fetching local files: %s", options.fetch)
-        fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     elif options.fetchEntireJobStore:
         # Copy all jobStore files locally
 
-        if not isinstance(jobStore, FileJobStore):
+        if isinstance(jobStore, FileJobStore):
+            logger.debug("Fetching all local files.")
+            options.fetch = "*"
+            fetchJobStoreFiles(jobStore=jobStore, options=options)
+        else:
             logger.critical("Can only fetch by name or glob from file-based job stores")
             sys.exit(1)
-
-        logger.debug("Fetching all local files.")
-        options.fetch = "*"
-        fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     if options.listFilesInJobStore:
         # Log filenames and create a file containing these names in cwd
 
-        if not isinstance(jobStore, FileJobStore):
+        if isinstance(jobStore, FileJobStore):
+            printContentsOfJobStore(job_store=jobStore)
+        else:
             logger.critical("Can only list files from file-based job stores")
             sys.exit(1)
-
-        printContentsOfJobStore(job_store=jobStore)
 
     # TODO: We can't actually do *anything* for non-file job stores.
 
