@@ -11,7 +11,7 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     :return: None
     """
     suppress_help = SUPPRESS if suppress else None
-    # include arg names without a wdl specifier if suppress is False, whi
+    # include arg names without a wdl specifier if suppress is False, this is to avoid duplicate options
     output_dialect_arguments = ["--wdlOutputDialect"] + (["--outputDialect"] if not suppress else [])
     parser.add_argument(*output_dialect_arguments, dest="output_dialect", type=str, default='cromwell',
                         choices=['cromwell', 'miniwdl'],

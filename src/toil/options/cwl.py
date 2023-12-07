@@ -30,7 +30,8 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     parser.add_argument("--quiet", dest="quiet", action="store_true", default=False, help=suppress_help)
     parser.add_argument("--basedir", type=str, help=suppress_help)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=None, help=suppress_help)
-    parser.add_argument("--version", action="version", version=baseVersion, help=suppress_help)
+    parser.add_argument("--version", action="version", version=baseVersion,
+                        help=suppress_help or "show program's version number and exit")
     parser.add_argument(
         "--log-dir",
         type=str,
@@ -71,7 +72,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    extra_dockergroup = parser.add_argument_group("extra_dockergroup")
+    extra_dockergroup = parser.add_argument_group()
     extra_dockergroup.add_argument(
         "--custom-net",
         help=suppress_help or "Specify docker network name to pass to docker run command",
