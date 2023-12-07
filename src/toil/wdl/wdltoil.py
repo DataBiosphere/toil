@@ -21,6 +21,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -450,15 +451,25 @@ class NonDownloadingSize(WDL.StdLib._Size):
         total_size = 0.0
         for uri in file_uris:
             # Sum up the sizes of all the files, if any.
-            if uri.startswith(TOIL_URI_SCHEME):
-                # This is a Toil File ID we encoded; we have the size
-                # available.
-                file_id, _, _ = unpack_toil_uri(uri)
-                # Use the encoded size
-                total_size += file_id.size
+            if is_url(uri):
+                if uri.startswith(TOIL_URI_SCHEME):
+                    # This is a Toil File ID we encoded; we have the size
+                    # available.
+                    file_id, _, _ = unpack_toil_uri(uri)
+                    # Use the encoded size
+                    total_size += file_id.size
+                else:
+                    # This is some other kind of remote file.
+                    # We need to get its size from the URI.
+                    item_size = AbstractJobStore.get_size(uri)
+                    if item_size is None:
+                        # User asked for the size and we can't figure it out efficiently, so bail out.
+                        raise RuntimeError(f"Attempt to check the size of {uri} failed")
+                    total_size += item_size
             else:
-                # We need to fetch it and get its size.
-                total_size += os.path.getsize(self.stdlib._devirtualize_filename(uri))
+                # This is actually a file we can use locally.
+                local_path = self.stdlib._devirtualize_filename(uri)
+                total_size += os.path.getsize(local_path)
 
         if len(arguments) > 1:
             # Need to convert units. See
@@ -472,6 +483,14 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
+def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
+        """
+        Decide if a filename is a known kind of URL
+        """
+        for scheme in schemes:
+            if filename.startswith(scheme):
+                return True
+        return False
 
 # Both the WDL code itself **and** the commands that it runs will deal in
 # "virtualized" filenames.
@@ -525,15 +544,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         self._execution_dir = execution_dir
 
-    def _is_url(self, filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
-        """
-        Decide if a filename is a known kind of URL
-        """
-        for scheme in schemes:
-            if filename.startswith(scheme):
-                return True
-        return False
-
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
         """
@@ -543,31 +553,49 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
-        if filename.startswith(TOIL_URI_SCHEME):
-            # This is a reference to the Toil filestore.
-            # Deserialize the FileID
-            file_id, parent_id, file_basename = unpack_toil_uri(filename)
+        if is_url(filename):
+            if filename.startswith(TOIL_URI_SCHEME):
+                # This is a reference to the Toil filestore.
+                # Deserialize the FileID
+                file_id, parent_id, file_basename = unpack_toil_uri(filename)
 
-            # Decide where it should be put
-            # This is a URI with the "parent" UUID attached to the filename
-            # Use UUID as folder name rather than a new temp folder to reduce internal clutter
-            dir_path = os.path.join(self._file_store.localTempDir, parent_id)
-            if not os.path.exists(parent_id):
+                # Decide where it should be put.
+                # This is a URI with the "parent" UUID attached to the filename.
+                # Use UUID as folder name rather than a new temp folder to reduce internal clutter.
+                # Put the UUID in the destination path in order for tasks to
+                # see where to put files depending on their parents.
+                dir_path = os.path.join(self._file_store.localTempDir, parent_id)
+                
+            else:
+                # Parse the URL and extract the basename
+                file_basename = os.path.basename(urlsplit(filename).path)
+                # Get the URL to the directory this thing came from. Remember
+                # URLs are interpreted relative to the directory the thing is
+                # in, not relative to the thing.
+                parent_url = urljoin(filename, ".")
+                # Turn it into a string we can make a directory for
+                dir_path = os.path.join(self._file_store.localTempDir, quote(parent_url, safe=''))
+            
+            if not os.path.exists(dir_path):
+                # Make sure the chosen directory exists
                 os.mkdir(dir_path)
-            # Put the UUID in the destination path in order for tasks to see where to put files depending on their parents
+            # And decide the file goes in it.
             dest_path = os.path.join(dir_path, file_basename)
 
-            # And get a local path to the file
-            result = self._file_store.readGlobalFile(file_id, dest_path)
-        elif self._is_url(filename):
-            # This is some other URL that we think Toil knows how to read.
-            # Import into the job store from here and then download to the node.
-            # TODO: Can we predict all the URLs that can be used up front and do them all on the leader, where imports are meant to happen?
-            imported = self._file_store.import_file(filename)
-            if imported is None:
-                raise FileNotFoundError(f"Could not import URL {filename}")
-            # And get a local path to the file
-            result = self._file_store.readGlobalFile(imported)
+            if filename.startswith(TOIL_URI_SCHEME):
+                # Get a local path to the file
+                result = self._file_store.readGlobalFile(file_id, dest_path)
+            else:
+                # Download to a local file with the right name and execute bit.
+                # Open it exclusively
+                with open(dest_path, 'xb') as dest_file:
+                    # And save to it
+                    size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                    if executable:
+                        # Set the execute bit in the file's permissions
+                        os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
+
+                result = dest_path
         else:
             # This is a local file
             # To support relative paths, join the execution dir and filename
@@ -587,7 +615,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         from a local path in write_dir, 'virtualize' into the filename as it should present in a
         File value
         """
-        if self._is_url(filename):
+
+        if is_url(filename):
             # Already virtual
             logger.debug('Already virtualized %s as WDL file %s', filename, filename)
             return filename
@@ -631,7 +660,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
 
         Any WDL-side filenames which are paths will be paths in the container.
         """
-        if self._is_url(filename):
+        if is_url(filename):
             # We shouldn't have to deal with URLs here; we want to have exactly
             # two nicely stacked/back-to-back layers of virtualization, joined
             # on the out-of-container paths.
@@ -771,7 +800,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         Any WDL-side filenames which are relative will be relative to the
         current directory override, if set.
         """
-        if not self._is_url(filename) and not filename.startswith('/'):
+        if not is_url(filename) and not filename.startswith('/'):
             # We are getting a bare relative path from the WDL side.
             # Find a real path to it relative to the current directory override.
             work_dir = '.' if not self._current_directory_override else self._current_directory_override
@@ -788,7 +817,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         filenames.
         """
 
-        if not self._is_url(filename) and not filename.startswith('/'):
+        if not is_url(filename) and not filename.startswith('/'):
             # We are getting a bare relative path the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
             work_dir = '.' if not self._current_directory_override else self._current_directory_override
@@ -816,6 +845,7 @@ def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.Sou
 
             # Do the actual evaluation
             value = expression.eval(environment, stdlib)
+            logger.debug("Got value %s of type %s", value, value.type)
         except Exception:
             # If something goes wrong, dump.
             logger.exception("Expression evaluation failed for %s: %s", name, expression)
@@ -848,7 +878,11 @@ def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePo
         if not v.type.optional and inputs_dict is not None:
             # This is done to enable passing in a string into a task input of file type
             expected_type = inputs_dict.get(k, None)
-        new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
+        try:
+            new_bindings = new_bindings.bind(k, evaluate_named_expression(context, k, expected_type, v, environment, stdlib))
+        except FileNotFoundError as e:
+            # MiniWDL's type coercion will raise this when trying to make a File out of Null.
+            raise WDL.Error.EvalError(context, f"Cannot evaluate expression for {k} with value {v}")
     return new_bindings
 
 def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
@@ -925,13 +959,16 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
-def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]] = None) -> WDLBindings:
+def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]] = None, skip_remote: bool = False) -> WDLBindings:
     """
     Make sure all File values embedded in the given bindings are imported,
     using the given Toil object.
 
     :param path: If set, try resolving input location relative to the URLs or
-                 directories in this list.
+           directories in this list.
+
+    :param skip_remote: If set, don't try to import files from remote
+           locations. Leave them as URIs.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
     @memoize
@@ -945,9 +982,23 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
             # Try each place it could be according to WDL finding logic.
             tried.append(candidate_uri)
             try:
-                # Try to import the file. Don't raise if we can't find it, just
-                # return None!
-                imported = toil.import_file(candidate_uri, check_existence=False)
+                if skip_remote and is_url(candidate_uri):
+                    # Use remote URIs in place. But we need to find the one that exists.
+                    if not AbstractJobStore.url_exists(candidate_uri):
+                        # Wasn't found there
+                        continue
+                    # Now we know this exists, so pass it through
+                    return candidate_uri
+                else:
+                    # Actually import
+                    # Try to import the file. Don't raise if we can't find it, just
+                    # return None!
+                    imported = toil.import_file(candidate_uri, check_existence=False)
+                    if imported is None:
+                        # Wasn't found there
+                        continue
+                    logger.info('Imported %s', candidate_uri)
+
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -958,6 +1009,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # we have no auth.
                 logger.error("Something went wrong importing %s", candidate_uri)
                 raise
+            
             if imported is None:
                 # Wasn't found there
                 continue
@@ -970,10 +1022,25 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # We can't have files with no basename because we need to
                 # download them at that basename later.
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
-
+            
             # Was actually found
+            if is_url(candidate_uri):
+                # Might be a file URI or other URI.
+                # We need to make sure file URIs and local paths that point to
+                # the same place are treated the same.
+                parsed = urlsplit(candidate_uri)
+                if parsed.scheme == "file:":
+                    # This is a local file URI. Convert to a path for source directory tracking.
+                    parent_dir = os.path.dirname(unquote(parsed.path))
+                else:
+                    # This is some other URL. Get the URL to the parent directory and use that.
+                    parent_dir = urljoin(candidate_uri, ".")
+            else:
+                # Must be a local path
+                parent_dir = os.path.dirname(candidate_uri)
+
             # Pack a UUID of the parent directory
-            dir_id = path_to_id.setdefault(os.path.dirname(candidate_uri), uuid.uuid4())
+            dir_id = path_to_id.setdefault(parent_dir, uuid.uuid4())
 
             return pack_toil_uri(imported, dir_id, file_basename)
 
@@ -997,12 +1064,22 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
         """
         Return None if a file doesn't exist, or its path if it does.
         """
-        effective_path = os.path.abspath(os.path.join(work_dir, filename))
-        if os.path.exists(effective_path):
-            return filename
+        logger.debug("Consider file %s", filename)
+
+        if is_url(filename):
+            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
+                # We assume anything in the filestore actually exists.
+                return filename
+            else:
+                logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
+                return None
         else:
-            logger.debug('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
-            return None
+            effective_path = os.path.abspath(os.path.join(work_dir, filename))
+            if os.path.exists(effective_path):
+                return filename
+            else:
+                logger.warning('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
+                return None
 
     return map_over_typed_files_in_bindings(environment, drop_if_missing)
 
@@ -1076,6 +1153,7 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
         if new_path is None:
             # Assume the transform checked types if we actually care about the
             # result.
+            logger.warning("File %s became Null", value)
             return WDL.Value.Null()
         else:
             # Make whatever the value is around the new path.
@@ -2562,6 +2640,8 @@ def main() -> None:
                         help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
     parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
                         help="File or URI to save output JSON to.")
+    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", default=False, #  type: ignore
+                        help="Pass input files by URL")
 
     options = parser.parse_args(sys.argv[1:])
 
@@ -2629,7 +2709,7 @@ def main() -> None:
                     inputs_search_path.append(match.group(0))
 
             # Import any files in the bindings
-            input_bindings = import_files(input_bindings, toil, inputs_search_path)
+            input_bindings = import_files(input_bindings, toil, inputs_search_path, skip_remote=options.reference_inputs)
 
             # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
 
@@ -2649,32 +2729,37 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
-            if filename.startswith(TOIL_URI_SCHEME):
-                # This is a reference to the Toil filestore.
-                # Deserialize the FileID and required basename
-                file_id, parent_id, file_basename = unpack_toil_uri(filename)
+            if is_url(filename):
+                if filename.startswith(TOIL_URI_SCHEME):
+                    # This is a reference to the Toil filestore.
+                    # Deserialize the FileID and required basename
+                    file_id, parent_id, file_basename = unpack_toil_uri(filename)
+                else:
+                    # Parse the URL and extract the basename
+                    file_basename = os.path.basename(urlsplit(filename).path)
+
                 # Figure out where it should go.
                 # If a UUID is included, it will be omitted
+                # TODO: Deal with name collisions in the export directory
                 dest_name = os.path.join(output_directory, file_basename)
-                # TODO: Deal with name collisions
-                # Export the file
-                toil.export_file(file_id, dest_name)
+                    
+                if filename.startswith(TOIL_URI_SCHEME):
+                    # Export the file
+                    toil.export_file(file_id, dest_name)
+                else:
+                    # Download to a local file with the right name and execute bit.
+                    # Open it exclusively
+                    with open(dest_name, 'xb') as dest_file:
+                        # And save to it
+                        size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                        if executable:
+                            # Set the execute bit in the file's permissions
+                            os.chmod(dest_name, os.stat(dest_name).st_mode | stat.S_IXUSR)
+
                 # And return where we put it
                 return dest_name
-            elif filename.startswith('http:') or filename.startswith('https:') or filename.startswith('s3:') or filename.startswith('gs:'):
-                # This is a URL that we think Toil knows how to read.
-                imported = toil.import_file(filename)
-                if imported is None:
-                    raise FileNotFoundError(f"Could not import URL {filename}")
-                # Get a basename from the URL.
-                # TODO: Deal with name collisions
-                file_basename = os.path.basename(urlsplit(filename).path)
-                # Do the same as we do for files we actually made.
-                dest_name = os.path.join(output_directory, file_basename)
-                toil.export_file(imported, dest_name)
-                return dest_name
             else:
-                # Not a fancy file
+                # We already had a path
                 return filename
 
         # Make all the files local files

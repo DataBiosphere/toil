@@ -23,7 +23,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import List, Optional
+from typing import List, Optional, IO
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 import boto.s3.connection
@@ -465,7 +465,17 @@ class AWSJobStore(AbstractJobStore):
             super()._default_export_file(otherCls, file_id, uri)
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            get_object_for_url(url, existing=True)
+            return True
+        except FileNotFoundError:
+            # Not a file
+            # Might be a directory.
+            return cls._get_is_directory(url)
+
+    @classmethod
+    def _get_size(cls, url):
         return get_object_for_url(url, existing=True).content_length
 
     @classmethod
@@ -476,6 +486,15 @@ class AWSJobStore(AbstractJobStore):
             srcObj.content_length,
             False  # executable bit is always False
         )
+
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        src_obj = get_object_for_url(url, existing=True)
+        response = src_obj.get()
+        # We should get back a response with a stream in 'Body'
+        if 'Body' not in response:
+            raise RuntimeError(f"Could not fetch body stream for {url}")
+        return response['Body']
 
     @classmethod
     def _write_to_url(cls, readable, url, executable=False):

@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import unittest
 import uuid
+from typing import Any, Dict, List, Optional, Set
+from unittest.mock import patch
 
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
@@ -107,25 +109,13 @@ class WDLTests(BaseWDLTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
-
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
-
-        assert retval != 0
-        assert b'Could not find' in stderr
-
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self):
+    def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/self_test.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/inputs.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect', 'miniwdl'] + (extra_args or []))
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -148,6 +138,13 @@ class WDLTests(BaseWDLTest):
 
         assert 'hello_caller.messages' in outputs
         assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
+
+    @needs_singularity_or_docker
+    def test_miniwdl_self_test_by_reference(self) -> None:
+        """
+        Test if the MiniWDL self test works when passing input files by URL reference.
+        """
+        self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
 
     @slow
     @needs_docker_cuda

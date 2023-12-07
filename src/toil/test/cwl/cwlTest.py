@@ -235,6 +235,7 @@ class CWLWorkflowTest(ToilTest):
             # Don't just dump output in the working directory.
             main_args.extend(
                 [
+                    "--logDebug",
                     "--outdir",
                     self.outDir
                 ]
@@ -413,12 +414,19 @@ class CWLWorkflowTest(ToilTest):
     def test_download_https(self):
         self.download("download_https.json", self._tester)
 
+    def test_download_https_reference(self):
+        self.download("download_https.json", partial(self._tester, main_args=["--reference-inputs"]))
+
     def test_download_file(self):
         self.download("download_file.json", self._tester)
 
     @needs_aws_s3
     def test_download_directory_s3(self):
         self.download_directory("download_directory_s3.json", self._tester)
+
+    @needs_aws_s3
+    def test_download_directory_s3_reference(self):
+        self.download_directory("download_directory_s3.json", partial(self._tester, main_args=["--reference-inputs"]))
 
     def test_download_directory_file(self):
         self.download_directory("download_directory_file.json", self._tester)
@@ -533,7 +541,7 @@ class CWLWorkflowTest(ToilTest):
             pass
 
     @needs_aws_s3
-    def test_streamable(self):
+    def test_streamable(self, extra_args: List[str] = None):
         """
         Test that a file with 'streamable'=True is a named pipe.
         This is a CWL1.2 feature.
@@ -546,12 +554,16 @@ class CWLWorkflowTest(ToilTest):
 
         st = StringIO()
         args = [
+            "--logDebug",
             "--outdir",
             self.outDir,
             jobstore,
             os.path.join(self.rootDir, cwlfile),
             os.path.join(self.rootDir, jobfile),
         ]
+        if extra_args:
+            args = extra_args + args
+        log.info("Run CWL run: %s", " ".join(args))
         cwltoil.main(args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
@@ -560,6 +572,13 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+    @needs_aws_s3
+    def test_streamable_reference(self):
+        """
+        Test that a streamable file is a stream even when passed around by URI.
+        """
+        self.test_streamable(extra_args=["--reference-inputs"])
 
     def test_preemptible(self):
         """
