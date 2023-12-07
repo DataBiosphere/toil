@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
-    options = parser.parse_args()
+    options = parser.parse_args(prog="toil destroy-cluster")
     set_logging_from_options(options)
 
     logger.info('Destroying cluster %s', options.clusterName)

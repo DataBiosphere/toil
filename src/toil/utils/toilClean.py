@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = parser_with_common_options(jobstore_option=True)
 
-    options = parser.parse_args()
+    options = parser.parse_args(prog="toil clean")
     set_logging_from_options(options)
     try:
         jobstore = Toil.getJobStore(options.jobStore)

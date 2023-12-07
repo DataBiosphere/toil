@@ -640,9 +640,9 @@ JOBSTORE_HELP = (
 
 
 def parser_with_common_options(
-    provisioner_options: bool = False, jobstore_option: bool = True
+    provisioner_options: bool = False, jobstore_option: bool = True, prog: Optional[str] = None
 ) -> ArgParser:
-    parser = ArgParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
+    parser = ArgParser(prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)

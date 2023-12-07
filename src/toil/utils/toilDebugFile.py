@@ -87,7 +87,7 @@ def printContentsOfJobStore(job_store: FileJobStore, job_id: Optional[str] = Non
 
 
 def main() -> None:
-    parser = parser_with_common_options(jobstore_option=True)
+    parser = parser_with_common_options(jobstore_option=True, prog="toil debug-file")
     parser.add_argument("--localFilePath",
                         nargs=1,
                         help="Location to which to copy job store files.")
