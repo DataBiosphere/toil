@@ -552,8 +552,9 @@ def generate_config(filepath: str) -> None:
     toil_base_data = create_config_dict_from_parser(parser)
 
     toil_base_data.yaml_set_start_comment("This is the configuration file for Toil. To set an option, uncomment an "
-                                          "existing option and set its value. The current values are the "
-                                          "defaults.\n\nBASE TOIL OPTIONS\n")
+                                          "existing option and set its value. The current values are the defaults. "
+                                          "If the default configuration file is outdated, it can be refreshed with "
+                                          "`toil config ~/.toil/default.yaml`.\n\nBASE TOIL OPTIONS\n")
     all_data.append(toil_base_data)
 
     parser = ArgParser(YAMLConfigFileParser())
