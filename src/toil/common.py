@@ -49,7 +49,7 @@ from typing import (IO,
                     Union,
                     cast,
                     overload)
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote, quote
 
 import requests
 
@@ -1186,7 +1186,7 @@ class Toil(ContextManager["Toil"]):
                a local file that does not exist.
         """
         if urlparse(uri).scheme == 'file':
-            uri = urlparse(uri).path  # this should strip off the local file scheme; it will be added back
+            uri = unquote(urlparse(uri).path)  # this should strip off the local file scheme; it will be added back
 
         # account for the scheme-less case, which should be coerced to a local absolute path
         if urlparse(uri).scheme == '':
@@ -1196,7 +1196,7 @@ class Toil(ContextManager["Toil"]):
                     f'Could not find local file "{abs_path}" when importing "{uri}".\n'
                     f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
                     f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
-            return f'file://{abs_path}'
+            return f'file://{quote(abs_path)}'
         return uri
 
     def _setBatchSystemEnvVars(self) -> None:

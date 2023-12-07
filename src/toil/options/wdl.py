@@ -11,7 +11,8 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     :return: None
     """
     suppress_help = SUPPRESS if suppress else None
-    # include arg names without a wdl specifier if suppress is False, this is to avoid duplicate options
+    # include arg names without a wdl specifier if suppress is False
+    # this is to avoid possible duplicate options in custom toil scripts, ex outputFile can be a common argument name
     output_dialect_arguments = ["--wdlOutputDialect"] + (["--outputDialect"] if not suppress else [])
     parser.add_argument(*output_dialect_arguments, dest="output_dialect", type=str, default='cromwell',
                         choices=['cromwell', 'miniwdl'],
@@ -26,3 +27,6 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     output_file_arguments = ["--wdlOutputFile"] + (["--outputFile", "-m"] if not suppress else [])
     parser.add_argument(*output_file_arguments, dest="output_file", type=str, default=None,
                         help=suppress_help or "File or URI to save output JSON to.")
+    reference_inputs_arguments = ["--wdlReferenceInputs"] + (["--referenceInputs"] if not suppress else [])
+    parser.add_argument(reference_inputs_arguments, dest="reference_inputs", type="bool", default=False,  # type: ignore
+                        help="Pass input files by URL")

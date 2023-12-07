@@ -34,6 +34,7 @@ from typing import (IO,
                     Tuple,
                     Union,
                     ValuesView,
+                    cast,
                     overload)
 
 if sys.version_info >= (3, 8):
@@ -536,6 +537,40 @@ class AbstractJobStore(ABC):
             otherCls._write_to_url(readable, url, executable)
 
     @classmethod
+    def url_exists(cls, src_uri: str) -> bool:
+        """
+        Return True if the file at the given URI exists, and False otherwise.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._url_exists(parseResult)
+
+    @classmethod
+    def get_size(cls, src_uri: str) -> Optional[int]:
+        """
+        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_size(parseResult)
+
+    @classmethod
+    def get_is_directory(cls, src_uri: str) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file. The URL may or may not end in '/'.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_is_directory(parseResult)
+
+    @classmethod
     def list_url(cls, src_uri: str) -> List[str]:
         """
         List the directory at the given URL. Returned path components can be
@@ -561,14 +596,47 @@ class AbstractJobStore(ABC):
         return otherCls._list_url(parseResult)
 
     @classmethod
-    def get_is_directory(cls, src_uri: str) -> bool:
+    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
         """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file. The URL may or may not end in '/'.
+        Read the given URL and write its content into the given writable stream.
+
+        Raises FileNotFoundError if the URL doesn't exist.
+
+        :return: The size of the file in bytes and whether the executable permission bit is set
         """
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._get_is_directory(parseResult)
+        return otherCls._read_from_url(parseResult, writable)
+    
+    @classmethod
+    def open_url(cls, src_uri: str) -> IO[bytes]:
+        """
+        Read from the given URI.
+
+        Raises FileNotFoundError if the URL doesn't exist.
+
+        Has a readable stream interface, unlike :meth:`read_from_url` which
+        takes a writable stream.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._open_url(parseResult)
+    
+    @classmethod
+    @abstractmethod
+    def _url_exists(cls, url: ParseResult) -> bool:
+        """
+        Return True if the item at the given URL exists, and Flase otherwise.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
+        """
+        Get the size of the object at the given URL, or None if it cannot be obtained.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -582,38 +650,7 @@ class AbstractJobStore(ABC):
                in the storage mechanism of a supported URL scheme e.g. a blob
                in an AWS s3 bucket.
         """
-        raise NotImplementedError
-
-    @classmethod
-    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
-        """
-        Read the given URL and write its content into the given writable stream.
-
-        Raises FileNotFoundError if the URL doesn't exist.
-
-        :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._read_from_url(parseResult, writable)
-
-    @classmethod
-    @deprecated(new_function_name='get_size')
-    def getSize(cls, url: ParseResult) -> None:
-        return cls.get_size(url)
-
-    @classmethod
-    @abstractmethod
-    def get_size(cls, src_uri: ParseResult) -> None:
-        """
-        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
-
-        :param src_uri: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-        """
-        raise NotImplementedError
-
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -621,8 +658,6 @@ class AbstractJobStore(ABC):
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
-
-        Raises FileNotFoundError if the URL doesn't exist.
 
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
@@ -634,9 +669,40 @@ class AbstractJobStore(ABC):
         :param IO[bytes] writable: a writable stream
 
         :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        """
+        List the contents of the given URL, which may or may not end in '/'
+
+        Returns a list of URL components. Those that end in '/' are meant to be
+        directories, while those that do not are meant to be files.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        :param ParseResult url: URL that points to a directory or prefix in the
+        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
+        bucket.
+
+        :return: The children of the given URL, already URL-encoded if
+        appropriate. (If the URL is a bare path, no encoding is done.)
+        """
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        """
+        Get a stream of the object at the specified location.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        Raises FileNotFoundError if the thing at the URL is not found.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -654,26 +720,7 @@ class AbstractJobStore(ABC):
 
         :param bool executable: determines if the file has executable permissions
         """
-        raise NotImplementedError()
-
-    @classmethod
-    @abstractmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
-        """
-        List the contents of the given URL, which may or may not end in '/'
-
-        Returns a list of URL components. Those that end in '/' are meant to be
-        directories, while those that do not are meant to be files.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        :param ParseResult url: URL that points to a directory or prefix in the
-        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
-        bucket.
-
-        :return: The children of the given URL, already URL-encoded.
-        """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -689,7 +736,7 @@ class AbstractJobStore(ABC):
 
         :return bool: returns true if the cls supports the URL
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @abstractmethod
     def destroy(self) -> None:
@@ -1696,19 +1743,14 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry(
-        errors=[
-            BadStatusLine,
-            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
-        ]
-    )
-    def get_size(cls, url: ParseResult) -> Optional[int]:
-        if url.scheme.lower() == 'ftp':
-            return None
-        with closing(urlopen(url.geturl())) as readable:
-            # just read the header for content length
-            size = readable.info().get('content-length')
-            return int(size) if size is not None else None
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            # TODO: Figure out how to HEAD instead of this.
+            with cls._open_url(url):
+                return True
+        except:
+            pass
+        return False
 
     @classmethod
     @retry(
@@ -1717,27 +1759,45 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
         ]
     )
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
+        if url.scheme.lower() == 'ftp':
+            return None
+        with closing(urlopen(url.geturl())) as readable:
+            # just read the header for content length
+            size = readable.info().get('content-length')
+            return int(size) if size is not None else None
+
+    @classmethod
     def _read_from_url(
         cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
     ) -> Tuple[int, bool]:
-        # We can only retry on errors that happen as responses to the request.
-        # If we start getting file data, and the connection drops, we fail.
-        # So we don't have to worry about writing the start of the file twice.
-        try:
-            with closing(urlopen(url.geturl())) as readable:
-                # Make something to count the bytes we get
-                # We need to put the actual count in a container so our
-                # nested function can modify it without creating its own
-                # local with the same name.
-                size = [0]
-                def count(l: int) -> None:
-                    size[0] += l
-                counter = WriteWatchingStream(writable)
-                counter.onWrite(count)
+        # We can't actually retry after we start writing.
+        # TODO: Implement retry with byte range requests
+        with cls._open_url(url) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l: int) -> None:
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
 
-                # Do the download
-                shutil.copyfileobj(readable, counter)
-                return size[0], False
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0], False
+
+    @classmethod
+    @retry(
+        errors=[
+            BadStatusLine,
+            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
+        ]
+    )
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        try:
+            return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
             if e.code == 404:
                 # Translate into a FileNotFoundError for detecting

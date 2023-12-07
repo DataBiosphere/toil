@@ -20,7 +20,7 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import List, Optional
+from typing import IO, List, Optional
 from urllib.parse import ParseResult
 
 from google.api_core.exceptions import (GoogleAPICallError,
@@ -390,7 +390,15 @@ class GoogleJobStore(AbstractJobStore):
         return blob
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            cls._get_blob_from_url(url, exists=True)
+            return True
+        except NoSuchFileException:
+            return False
+
+    @classmethod
+    def _get_size(cls, url):
         return cls._get_blob_from_url(url, exists=True).size
 
     @classmethod
@@ -398,6 +406,11 @@ class GoogleJobStore(AbstractJobStore):
         blob = cls._get_blob_from_url(url, exists=True)
         blob.download_to_file(writable)
         return blob.size, False
+
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        blob = cls._get_blob_from_url(url, exists=True)
+        return blob.open("rb")
 
     @classmethod
     def _supports_url(cls, url, export=False):

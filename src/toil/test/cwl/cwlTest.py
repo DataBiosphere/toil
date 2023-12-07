@@ -64,7 +64,7 @@ from toil.test import (ToilTest,
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 
 log = logging.getLogger(__name__)
-CONFORMANCE_TEST_TIMEOUT = 5000
+CONFORMANCE_TEST_TIMEOUT = 10000
 
 
 def run_conformance_tests(
@@ -134,9 +134,9 @@ def run_conformance_tests(
             "--logDebug",
             "--statusWait=10",
             "--retryCount=2",
+            "--relax-path-checks",
+            f"--caching={caching}"
         ]
-
-        args_passed_directly_to_runner.append(f"--caching={caching}")
 
         if extra_args:
             args_passed_directly_to_runner += extra_args
@@ -226,15 +226,22 @@ class CWLWorkflowTest(ToilTest):
         # If the workflow runs, it must have had options
         cwltoil.main(args, stdout=st)
 
-    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
+    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output", output_here=False):
         from toil.cwl import cwltoil
 
         st = StringIO()
         main_args = main_args[:]
+        if not output_here:
+            # Don't just dump output in the working directory.
+            main_args.extend(
+                [
+                    "--logDebug",
+                    "--outdir",
+                    self.outDir
+                ]
+            )
         main_args.extend(
             [
-                "--outdir",
-                self.outDir,
                 os.path.join(self.rootDir, cwlfile),
                 os.path.join(self.rootDir, jobfile),
             ]
@@ -378,6 +385,25 @@ class CWLWorkflowTest(ToilTest):
             out_name="result",
         )
 
+    def test_glob_dir_bypass_file_store(self):
+        self.maxDiff = 1000
+        try:
+            # We need to output to the current directory to make sure that
+            # works.
+            self._tester(
+                "src/toil/test/cwl/glob_dir.cwl",
+                "src/toil/test/cwl/empty.json",
+                self._expected_glob_dir_output(os.getcwd()),
+                main_args=["--bypass-file-store"],
+                output_here=True 
+            )
+        finally:
+            # Clean up anything we made in the current directory.
+            try:
+                shutil.rmtree(os.path.join(os.getcwd(), "shouldmake"))
+            except FileNotFoundError:
+                pass
+
     @needs_aws_s3
     def test_download_s3(self):
         self.download("download_s3.json", self._tester)
@@ -388,12 +414,19 @@ class CWLWorkflowTest(ToilTest):
     def test_download_https(self):
         self.download("download_https.json", self._tester)
 
+    def test_download_https_reference(self):
+        self.download("download_https.json", partial(self._tester, main_args=["--reference-inputs"]))
+
     def test_download_file(self):
         self.download("download_file.json", self._tester)
 
     @needs_aws_s3
     def test_download_directory_s3(self):
         self.download_directory("download_directory_s3.json", self._tester)
+
+    @needs_aws_s3
+    def test_download_directory_s3_reference(self):
+        self.download_directory("download_directory_s3.json", partial(self._tester, main_args=["--reference-inputs"]))
 
     def test_download_directory_file(self):
         self.download_directory("download_directory_file.json", self._tester)
@@ -508,7 +541,7 @@ class CWLWorkflowTest(ToilTest):
             pass
 
     @needs_aws_s3
-    def test_streamable(self):
+    def test_streamable(self, extra_args: List[str] = None):
         """
         Test that a file with 'streamable'=True is a named pipe.
         This is a CWL1.2 feature.
@@ -521,12 +554,16 @@ class CWLWorkflowTest(ToilTest):
 
         st = StringIO()
         args = [
+            "--logDebug",
             "--outdir",
             self.outDir,
             jobstore,
             os.path.join(self.rootDir, cwlfile),
             os.path.join(self.rootDir, jobfile),
         ]
+        if extra_args:
+            args = extra_args + args
+        log.info("Run CWL run: %s", " ".join(args))
         cwltoil.main(args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
@@ -535,6 +572,13 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, self._expected_streaming_output(self.outDir))
         with open(out[out_name]["location"][len("file://") :]) as f:
             self.assertEqual(f.read().strip(), "When is s4 coming out?")
+
+    @needs_aws_s3
+    def test_streamable_reference(self):
+        """
+        Test that a streamable file is a stream even when passed around by URI.
+        """
+        self.test_streamable(extra_args=["--reference-inputs"])
 
     def test_preemptible(self):
         """
@@ -585,10 +629,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_seqtk_output(outDir):
-        loc = "file://" + os.path.join(outDir, "out")
+        path = os.path.join(outDir, "out")
+        loc = "file://" + path
         return {
             "output1": {
                 "location": loc,
+                "path": path,
                 "checksum": "sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
                 "basename": "out",
                 "class": "File",
@@ -598,10 +644,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_revsort_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 1111,
                 "class": "File",
@@ -611,10 +659,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_revsort_nochecksum_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 1111,
                 "class": "File",
@@ -623,7 +673,8 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_download_output(outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
@@ -631,6 +682,36 @@ class CWLWorkflowTest(ToilTest):
                 "size": 0,
                 "class": "File",
                 "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+                "path": path
+            }
+        }
+
+    @staticmethod
+    def _expected_glob_dir_output(out_dir):
+        dir_path = os.path.join(out_dir, "shouldmake")
+        dir_loc = "file://" + dir_path
+        file_path = os.path.join(dir_path, "test.txt")
+        file_loc = os.path.join(dir_loc, "test.txt")
+        return {
+            "shouldmake": {
+                "location": dir_loc,
+                "path": dir_path,
+                "basename": "shouldmake",
+                "nameroot": "shouldmake",
+                "nameext": "",
+                "class": "Directory",
+                "listing": [
+                    {
+                        "class": "File",
+                        "location": file_loc,
+                        "path": file_path,
+                        "basename": "test.txt",
+                        "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
+                        "size": 0,
+                        "nameroot": "test",
+                        "nameext": ".txt"
+                    }
+                ]
             }
         }
 
@@ -646,10 +727,12 @@ class CWLWorkflowTest(ToilTest):
 
     @staticmethod
     def _expected_colon_output(outDir):
+        path = os.path.join(outDir, "A:Gln2Cys_result")
         loc = "file://" + os.path.join(outDir, "A%3AGln2Cys_result")
         return {
             "result": {
                 "location": loc,
+                "path": path,
                 "basename": "A:Gln2Cys_result",
                 "class": "Directory",
                 "listing": [
@@ -661,16 +744,19 @@ class CWLWorkflowTest(ToilTest):
                         "size": 1111,
                         "nameroot": "whale",
                         "nameext": ".txt",
+                        "path": f"{path}/whale.txt"
                     }
                 ],
             }
         }
 
     def _expected_streaming_output(self, outDir):
-        loc = "file://" + os.path.join(outDir, "output.txt")
+        path = os.path.join(outDir, "output.txt")
+        loc = "file://" + path
         return {
             "output": {
                 "location": loc,
+                "path": path,
                 "basename": "output.txt",
                 "size": 24,
                 "class": "File",
@@ -877,7 +963,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.2.git"
-        commit = "8c3fd9d9f0209a51c5efacb1c7bc02a1164688d6"
+        commit = "0d538a0dbc5518f3c6083ce4571926f65cb84f76"
         p = subprocess.Popen(
             f"git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}",
             shell=True,

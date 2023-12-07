@@ -64,10 +64,6 @@ def mainCacheTag():
 
 def distVersion():
     """The distribution version identifying a published release on PyPI."""
-    from pkg_resources import parse_version
-    if isinstance(parse_version(baseVersion), tuple):
-        raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
-                           "'pip install setuptools --upgrade'")
     return baseVersion
 
 

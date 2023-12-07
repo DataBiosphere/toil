@@ -1,4 +1,3 @@
-"""A set of test cases for toilwdl.py"""
 # Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +14,7 @@
 import logging
 import os
 import subprocess
-from pathlib import Path
+import tempfile
 
 import pytest
 
@@ -26,21 +25,20 @@ from toil.version import python
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def workflow_debug_jobstore(tmp_path: Path) -> str:
-    jobStorePath = str(tmp_path / "toilWorkflowRun")
+def workflow_debug_jobstore() -> str:
+    job_store_path = os.path.join(tempfile.mkdtemp(), "toilWorkflowRun")
     subprocess.check_call(
         [
             python,
             os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py"),
-            jobStorePath,
+            job_store_path,
         ]
     )
-    return jobStorePath
+    return job_store_path
 
 
 @slow
-def testJobStoreContents(workflow_debug_jobstore: str):
+def testJobStoreContents():
     """
     Test toilDebugFile.printContentsOfJobStore().
 
@@ -48,14 +46,13 @@ def testJobStoreContents(workflow_debug_jobstore: str):
     jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This checks to
     make sure these contents are found in the jobStore and printed.
     """
-    jobStoreDir = workflow_debug_jobstore
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
 
     subprocess.check_call(
         [
             python,
             os.path.abspath("src/toil/utils/toilDebugFile.py"),
-            jobStoreDir,
+            workflow_debug_jobstore(),
             "--logDebug",
             "--listFilesInJobStore=True",
         ]
@@ -78,7 +75,7 @@ def testJobStoreContents(workflow_debug_jobstore: str):
     os.remove(jobstoreFileContents)
 
 
-def fetchFiles(symLink, jobStoreDir: str, outputDir):
+def fetchFiles(symLink: bool, jobStoreDir: str, outputDir: str):
     """
     Fn for testFetchJobStoreFiles() and testFetchJobStoreFilesWSymlinks().
 
@@ -99,8 +96,8 @@ def fetchFiles(symLink, jobStoreDir: str, outputDir):
         "*C.txt",
         "*ABC.txt",
         "*mkFile.py",
-        "--localFilePath=" + outputDir,
-        "--useSymlinks=" + str(symLink),
+        f"--localFilePath={outputDir}",
+        f"--useSymlinks={symLink}",
     ]
     print(cmd)
     subprocess.check_call(cmd)
@@ -114,22 +111,10 @@ def fetchFiles(symLink, jobStoreDir: str, outputDir):
 
 
 # expected run time = 4s
-def testFetchJobStoreFiles(tmp_path: Path, workflow_debug_jobstore: str) -> None:
-    """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
-    outputDir = tmp_path / "testoutput"
-    outputDir.mkdir()
-    fetchFiles(
-        symLink=False, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
-    )
-
-
-# expected run time = 4s
-def testFetchJobStoreFilesWSymlinks(
-    tmp_path: Path, workflow_debug_jobstore: str
-) -> None:
-    """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
-    outputDir = tmp_path / "testoutput"
-    outputDir.mkdir()
-    fetchFiles(
-        symLink=True, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
-    )
+def testFetchJobStoreFiles() -> None:
+    """Test toilDebugFile.fetchJobStoreFiles() symlinks."""
+    job_store_dir = workflow_debug_jobstore()
+    output_dir = os.path.join(os.path.dirname(job_store_dir), "testoutput")
+    os.makedirs(output_dir, exist_ok=True)
+    for symlink in (True, False):
+        fetchFiles(symLink=symlink, jobStoreDir=job_store_dir, outputDir=output_dir)

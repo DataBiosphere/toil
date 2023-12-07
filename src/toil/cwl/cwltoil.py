@@ -22,6 +22,8 @@ import copy
 import datetime
 import errno
 import functools
+import glob
+import io
 import json
 import logging
 import os
@@ -51,6 +53,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    Sequence,
 )
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
@@ -111,6 +114,7 @@ from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
+    get_from_structure,
     visit_cwl_class_and_reduce,
 )
 from toil.exceptions import FailedJobsException
@@ -687,6 +691,8 @@ class ToilPathMapper(PathMapper):
                streaming on, and returns a file: URI to where the file or
                directory has been downloaded to. Meant to be a partially-bound
                version of toil_get_file().
+        :param referenced_files: List of CWL File and Directory objects, which can have their locations set as both
+               virtualized and absolute local paths
         """
         self.get_file = get_file
         self.stage_listing = stage_listing
@@ -708,8 +714,9 @@ class ToilPathMapper(PathMapper):
         This is called on each File or Directory CWL object. The Files and
         Directories all have "location" fields. For the Files, these are from
         upload_file(), and for the Directories, these are from
-        upload_directory(), with their children being assigned
-        locations based on listing the Directories using ToilFsAccess.
+        upload_directory() or cwltool internally. With upload_directory(), they and their children will be assigned
+        locations based on listing the Directories using ToilFsAccess. With cwltool, locations will be set as absolute
+        paths.
 
         :param obj: The CWL File or Directory to process
 
@@ -840,6 +847,14 @@ class ToilPathMapper(PathMapper):
                     # We can't really make the directory. Maybe we are
                     # exporting from the leader and it doesn't matter.
                     resolved = location
+            elif location.startswith("/"):
+                # Test if path is an absolute local path
+                # Does not check if the path is relative
+                # While Toil encodes paths into a URL with ToilPathMapper,
+                # something called internally in cwltool may return an absolute path
+                # ex: if cwltool calls itself internally in command_line_tool.py,
+                # it collects outputs with collect_output, and revmap_file will use its own internal pathmapper
+                resolved = location
             else:
                 raise RuntimeError("Unsupported location: " + location)
 
@@ -916,7 +931,6 @@ class ToilPathMapper(PathMapper):
                         )
                     else:
                         deref = ab
-
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urlsplit(deref).scheme in ["http", "https"]:
@@ -1299,73 +1313,160 @@ class ToilFsAccess(StdFsAccess):
         return destination
 
     def glob(self, pattern: str) -> List[str]:
-        # We know this falls back on _abs
-        return super().glob(pattern)
+        parse = urlparse(pattern)
+        if parse.scheme == "file":
+            pattern = os.path.abspath(unquote(parse.path))
+        elif parse.scheme == "":
+            pattern = os.path.abspath(pattern)
+        else:
+            raise RuntimeError(f"Cannot efficiently support globbing on {parse.scheme} URIs")
+
+        # Actually do the glob
+        return [schema_salad.ref_resolver.file_uri(f) for f in glob.glob(pattern)]
 
     def open(self, fn: str, mode: str) -> IO[Any]:
-        # TODO: Also implement JobStore-supported URLs through JobStore methods.
-        # We know this falls back on _abs
-        return super().open(fn, mode)
+        if "w" in mode or "x" in mode or "+" in mode or "a" in mode:
+            raise RuntimeError(f"Mode {mode} for opening {fn} involves writing")
+
+        parse = urlparse(fn)
+        if parse.scheme in ["", "file"]:
+            # Handle local files
+            return open(self._abs(fn), mode)
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(fn)
+            if cache_key in self.dir_to_download:
+                # This is already available locally, so fall back on the local copy
+                return open(self._abs(fn), mode)
+            else:
+                # We need to get the URI out of the virtual directory
+                if subpath is None:
+                    raise RuntimeError(f"{fn} is a toildir directory")
+                uri = get_from_structure(contents, subpath)
+                if not isinstance(uri, str):
+                    raise RuntimeError(f"{fn} does not point to a file")
+                # Recurse on that URI
+                return self.open(uri, mode)
+        elif parse.scheme == "toilfile":
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store: " + fn)
+            # Streaming access to Toil file store files requires being inside a
+            # context manager, which we can't require. So we need to download
+            # the file.
+            return open(self._abs(fn), mode)
+        else:
+            # This should be supported by a job store.
+            byte_stream = AbstractJobStore.open_url(fn)
+            if 'b' in mode:
+                # Pass stream along in binary
+                return byte_stream
+            else:
+                # Wrap it in a text decoder
+                return io.TextIOWrapper(byte_stream, encoding='utf-8')
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""
-        # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
-        try:
-            # TODO: Also implement JobStore-supported URLs through JobStore methods.
-            return os.path.exists(self._abs(path))
-        except NoSuchFileException:
-            return False
+        parse = urlparse(path)
+        if parse.scheme in ["", "file"]:
+            # Handle local files
+            # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+            try:
+                return os.path.exists(self._abs(path))
+            except NoSuchFileException:
+                return False
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(path)
+            if subpath is None:
+                # The toildir directory itself exists
+                return True
+            uri = get_from_structure(contents, subpath)
+            if uri is None:
+                # It's not in the virtual directory, so it doesn't exist
+                return False
+            if isinstance(uri, dict):
+                # Actually it's a subdirectory, so it exists.
+                return True
+            # We recurse and poll the URI directly to make sure it really exists
+            return self.exists(uri)
+        elif parse.scheme == "toilfile":
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+            return True
+        else:
+            # This should be supported by a job store.
+            return AbstractJobStore.url_exists(path)
 
     def size(self, path: str) -> int:
-        # This should avoid _abs for things actually in the file store, to
-        # prevent multiple downloads as in
-        # https://github.com/DataBiosphere/toil/issues/3665
-        if path.startswith("toilfile:"):
-            if self.file_store is None:
-                raise RuntimeError("URL requires a file store: " + path)
-            return self.file_store.getGlobalFileSize(
-                FileID.unpack(path[len("toilfile:") :])
-            )
-        elif path.startswith("toildir:"):
+        parse = urlparse(path)
+        if parse.scheme in ["", "file"]:
+            return os.stat(self._abs(path)).st_size
+        elif parse.scheme == "toildir":
             # Decode its contents, the path inside it to the file (if any), and
             # the key to use for caching the directory.
-            here, subpath, cache_key = decode_directory(path)
+            contents, subpath, cache_key = decode_directory(path)
 
             # We can't get the size of just a directory.
             if subpath is None:
                 raise RuntimeError(f"Attempted to check size of directory {path}")
 
-            for part in subpath.split("/"):
-                # Follow the path inside the directory contents.
-                here = cast(DirectoryContents, here[part])
+            uri = get_from_structure(contents, subpath)
 
-            # We ought to end up with a toilfile: URI.
-            if not isinstance(here, str):
+            # We ought to end up with a URI.
+            if not isinstance(uri, str):
                 raise RuntimeError(f"Did not find a file at {path}")
-            if not here.startswith("toilfile:"):
-                raise RuntimeError(f"Did not find a filestore file at {path}")
-
-            return self.size(here)
+            return self.size(uri)
+        elif parse.scheme == "toilfile":
+            if self.file_store is None:
+                raise RuntimeError("URL requires a file store: " + path)
+            return self.file_store.getGlobalFileSize(
+                FileID.unpack(path[len("toilfile:") :])
+            )
         else:
-            # TODO: Also implement JobStore-supported URLs through JobStore methods.
-            # We know this falls back on _abs
-            return super().size(path)
+            # This should be supported by a job store.
+            size = AbstractJobStore.get_size(path)
+            if size is None:
+                # get_size can be unimplemented or unavailable
+                raise RuntimeError(f"Could not get size of {path}")
+            return size
 
     def isfile(self, fn: str) -> bool:
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # We know this falls back on _abs
-            return super().isfile(fn)
+        if parse.scheme in ["file", ""]:
+            return os.path.isfile(self._abs(fn))
+        elif parse.scheme == "toilfile":
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+            return True
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(fn)
+            if subpath is None:
+                # This is the toildir directory itself
+                return False
+            found = get_from_structure(contents, subpath)
+            # If we find a string, that's a file
+            # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
+            return isinstance(found, str)
         else:
-            return not AbstractJobStore.get_is_directory(fn)
+            return self.exists(fn) and not AbstractJobStore.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
+        logger.debug("ToilFsAccess checking type of %s", fn)
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # We know this falls back on _abs
-            return super().isdir(fn)
+        if parse.scheme in ["file", ""]:
+            return os.path.isdir(self._abs(fn))
+        elif parse.scheme == "toilfile":
+            return False
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(fn)
+            if subpath is None:
+                # This is the toildir directory itself.
+                # TODO: We assume directories can't be deleted.
+                return True
+            found = get_from_structure(contents, subpath)
+            # If we find a dict, that's a directory.
+            # TODO: We assume directories can't be deleted.
+            return isinstance(found, dict)
         else:
-            return AbstractJobStore.get_is_directory(fn)
+            status = AbstractJobStore.get_is_directory(fn)
+            logger.debug("AbstractJobStore said: %s", status)
+            return status
 
     def listdir(self, fn: str) -> List[str]:
         # This needs to return full URLs for everything in the directory.
@@ -1373,12 +1474,25 @@ class ToilFsAccess(StdFsAccess):
         logger.debug("ToilFsAccess listing %s", fn)
 
         parse = urlparse(fn)
-        if parse.scheme in ["toilfile", "toildir", "file", ""]:
-            # Download the file or directory to a local path
+        if parse.scheme in ["file", ""]:
+            # Find the local path
             directory = self._abs(fn)
-
             # Now list it (it is probably a directory)
             return [abspath(quote(entry), fn) for entry in os.listdir(directory)]
+        elif parse.scheme == "toilfile":
+            raise RuntimeError(f"Cannot list a file: {fn}")
+        elif parse.scheme == "toildir":
+            contents, subpath, cache_key = decode_directory(fn)
+            here = contents
+            if subpath is not None:
+                got = get_from_structure(contents, subpath)
+                if got is None:
+                    raise RuntimeError(f"Cannot list nonexistent directory: {fn}")
+                if isinstance(got, str):
+                    raise RuntimeError(f"Cannot list file or dubdirectory of a file: {fn}")
+                here = got
+            # List all the things in here and make full URIs to them
+            return [os.path.join(fn, k) for k in here.keys()]
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
@@ -1400,7 +1514,7 @@ def toil_get_file(
     file_store: AbstractFileStore,
     index: Dict[str, str],
     existing: Dict[str, str],
-    file_store_id: str,
+    uri: str,
     streamable: bool = False,
     streaming_allowed: bool = True,
     pipe_threads: Optional[List[Tuple[Thread, int]]] = None,
@@ -1417,9 +1531,9 @@ def toil_get_file(
 
     :param index: Maps from downloaded file path back to input Toil URI.
 
-    :param existing: Maps from file_store_id URI to downloaded file path.
+    :param existing: Maps from URI to downloaded file path.
 
-    :param file_store_id: The URI for the file to download.
+    :param uri: The URI for the file to download.
 
     :param streamable: If the file is has 'streamable' flag set
 
@@ -1432,13 +1546,13 @@ def toil_get_file(
     pipe_threads_real = pipe_threads or []
     # We can't use urlparse here because we need to handle the '_:' scheme and
     # urlparse sees that as a path and not a URI scheme.
-    if file_store_id.startswith("toildir:"):
+    if uri.startswith("toildir:"):
         # This is a file in a directory, or maybe a directory itself.
         # See ToilFsAccess and upload_directory.
         # We will go look for the actual file in the encoded directory
         # structure which will tell us where the toilfile: name for the file is.
 
-        parts = file_store_id[len("toildir:") :].split("/")
+        parts = uri[len("toildir:") :].split("/")
         contents = json.loads(
             base64.urlsafe_b64decode(parts[0].encode("utf-8")).decode("utf-8")
         )
@@ -1458,21 +1572,41 @@ def toil_get_file(
             download_structure(file_store, index, existing, contents, dest_path)
             # Return where we put it, but as a file:// URI
             return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("toilfile:"):
-        # This is a plain file with no context.
+    elif uri.startswith("_:"):
+        # Someone is asking us for an empty temp directory.
+        # We need to check this before the file path case because urlsplit()
+        # will call this a path with no scheme.
+        dest_path = file_store.getLocalTempDir()
+        return schema_salad.ref_resolver.file_uri(dest_path)
+    elif uri.startswith("file:") or urlsplit(uri).scheme == "":
+        # There's a file: scheme or no scheme, and we know this isn't a _: URL.
+
+        # We need to support file: URIs and local paths, because we might be
+        # involved in moving files around on the local disk when uploading
+        # things after a job. We might want to catch cases where a leader
+        # filesystem file URI leaks in here, but we can't, so we just rely on
+        # the rest of the code to be correct.
+        return uri
+    else:
+        # This is a toilfile: uri or other remote URI
         def write_to_pipe(
-            file_store: AbstractFileStore, pipe_name: str, file_store_id: FileID
+            file_store: AbstractFileStore, pipe_name: str, uri: str
         ) -> None:
             try:
                 with open(pipe_name, "wb") as pipe:
-                    with file_store.jobStore.read_file_stream(file_store_id) as fi:
-                        file_store.logAccess(file_store_id)
-                        chunk_sz = 1024
-                        while True:
-                            data = fi.read(chunk_sz)
-                            if not data:
-                                break
-                            pipe.write(data)
+                    if uri.startswith("toilfile:"):
+                        # Stream from the file store
+                        file_store_id = FileID.unpack(uri[len("toilfile:") :])
+                        with file_store.readGlobalFileStream(file_store_id) as fi:
+                            chunk_sz = 1024
+                            while True:
+                                data = fi.read(chunk_sz)
+                                if not data:
+                                    break
+                                pipe.write(data)
+                    else:
+                        # Stream from some other URI
+                        AbstractJobStore.read_from_url(uri, pipe)
             except OSError as e:
                 # The other side of the pipe may have been closed by the
                 # reading thread, which is OK.
@@ -1485,7 +1619,7 @@ def toil_get_file(
             and not isinstance(file_store.jobStore, FileJobStore)
         ):
             logger.debug(
-                "Streaming file %s", FileID.unpack(file_store_id[len("toilfile:") :])
+                "Streaming file %s", uri
             )
             src_path = file_store.getLocalTempFileName()
             os.mkfifo(src_path)
@@ -1494,42 +1628,39 @@ def toil_get_file(
                 args=(
                     file_store,
                     src_path,
-                    FileID.unpack(file_store_id[len("toilfile:") :]),
+                    uri,
                 ),
             )
             th.start()
             pipe_threads_real.append((th, os.open(src_path, os.O_RDONLY)))
         else:
-            src_path = file_store.readGlobalFile(
-                FileID.unpack(file_store_id[len("toilfile:") :]), symlink=True
-            )
+            # We need to do a real file
+            if uri in existing:
+                # Already did it
+                src_path = existing[uri]
+            else:
+                if uri.startswith("toilfile:"):
+                    # Download from the file store
+                    file_store_id = FileID.unpack(uri[len("toilfile:") :])
+                    src_path = file_store.readGlobalFile(
+                        file_store_id, symlink=True
+                    )
+                else:
+                    # Download from the URI via the job store.
 
-        # TODO: shouldn't we be using these as a cache?
-        index[src_path] = file_store_id
-        existing[file_store_id] = src_path
+                    # Figure out where it goes.
+                    src_path = file_store.getLocalTempFileName()
+                    # Open that path exclusively to make sure we created it
+                    with open(src_path, 'xb') as fh:
+                        # Download into the file
+                       size, executable = AbstractJobStore.read_from_url(uri, fh)
+                       if executable:
+                           # Set the execute bit in the file's permissions
+                           os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
+
+        index[src_path] = uri
+        existing[uri] = src_path
         return schema_salad.ref_resolver.file_uri(src_path)
-    elif file_store_id.startswith("_:"):
-        # Someone is asking us for an empty temp directory.
-        # We need to check this before the file path case because urlsplit()
-        # will call this a path with no scheme.
-        dest_path = file_store.getLocalTempDir()
-        return schema_salad.ref_resolver.file_uri(dest_path)
-    elif file_store_id.startswith("file:") or urlsplit(file_store_id).scheme == "":
-        # There's a file: scheme or no scheme, and we know this isn't a _: URL.
-
-        # We need to support file: URIs and local paths, because we might be
-        # involved in moving files around on the local disk when uploading
-        # things after a job. We might want to catch cases where a leader
-        # filesystem file URI leaks in here, but we can't, so we just rely on
-        # the rest of the code to be correct.
-        return file_store_id
-    else:
-        raise RuntimeError(
-            f"Cannot obtain file {file_store_id} while on host "
-            f"{socket.gethostname()}; all imports must happen on the "
-            f"leader!"
-        )
-
 
 def write_file(
     writeFunc: Callable[[str], FileID],
@@ -1586,6 +1717,7 @@ def import_files(
     existing: Dict[str, str],
     cwl_object: Optional[CWLObjectType],
     skip_broken: bool = False,
+    skip_remote: bool = False,
     bypass_file_store: bool = False,
 ) -> None:
     """
@@ -1624,12 +1756,16 @@ def import_files(
     :param skip_broken: If True, when files can't be imported because they e.g.
     don't exist, leave their locations alone rather than failing with an error.
 
+    :param skp_remote: If True, leave remote URIs in place instead of importing
+    files.
+
     :param bypass_file_store: If True, leave file:// URIs in place instead of
     importing files and directories.
     """
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
+    logger.debug("Importing files in %s", cwl_object)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
@@ -1729,7 +1865,7 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_function, fileindex, existing, rec, skip_broken=skip_broken
+                import_function, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
             )
 
             # Make a record for this file under its name
@@ -1834,11 +1970,16 @@ def upload_file(
     existing: Dict[str, str],
     file_metadata: CWLObjectType,
     skip_broken: bool = False,
+    skip_remote: bool = False
 ) -> None:
     """
-    Update a file object so that the location is a reference to the toil file store.
+    Update a file object so that the file will be accessible from another machine.
 
-    Write the file object to the file store if necessary.
+    Uploads local files to the Toil file store, and sets their location to a
+    reference to the toil file store.
+    
+    Unless skip_remote is set, downloads remote files into the file store and
+    sets their locations to references into the file store as well.
     """
     location = cast(str, file_metadata["location"])
     if (
@@ -1861,7 +2002,10 @@ def upload_file(
             return
         else:
             raise cwl_utils.errors.WorkflowException("File is missing: %s" % location)
-    file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
+
+    if location.startswith("file://") or not skip_remote:
+        # This is a local file, or we also need to download and re-upload remote files
+        file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
 
     logger.debug("Sending file at: %s", file_metadata["location"])
 
@@ -2058,35 +2202,51 @@ def toilStageFiles(
                         # At the end we should get a direct toilfile: URI
                         file_id_or_contents = cast(str, here)
 
+                    # This might be an e.g. S3 URI now
+                    if not file_id_or_contents.startswith("toilfile:"):
+                        # We need to import it so we can export it.
+                        # TODO: Use direct S3 to S3 copy on exports as well
+                        file_id_or_contents = (
+                            "toilfile:"
+                            + toil.import_file(file_id_or_contents, symlink=False).pack()
+                        )
+
                     if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
                         destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
-                        toil.exportFile(
+                        toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
                             destUrl,
                         )
                     # TODO: can a toildir: "file" get here?
             else:
-                # We are saving to the filesystem so we only really need exportFile for actual files.
+                # We are saving to the filesystem so we only really need export_file for actual files.
                 if not os.path.exists(p.target) and p.type in [
                     "Directory",
                     "WritableDirectory",
                 ]:
                     os.makedirs(p.target)
-                if not os.path.exists(p.target) and p.type in ["File", "WritableFile"]:
-                    if p.resolved.startswith("toilfile:"):
-                        # We can actually export this
-                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
-                        toil.exportFile(
-                            FileID.unpack(p.resolved[len("toilfile:") :]),
-                            "file://" + p.target,
-                        )
-                    elif p.resolved.startswith("/"):
+                if p.type in ["File", "WritableFile"]:
+                    if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
-                    # TODO: can a toildir: "file" get here?
-                if not os.path.exists(p.target) and p.type in [
+                    else:
+                        uri = p.resolved
+                        if not uri.startswith("toilfile:"):
+                            # We need to import so we can export
+                            uri = (
+                                "toilfile:"
+                                + toil.import_file(uri, symlink=False).pack()
+                            )
+
+                        # Actually export from the file store
+                        os.makedirs(os.path.dirname(p.target), exist_ok=True)
+                        toil.export_file(
+                            FileID.unpack(uri[len("toilfile:") :]),
+                            "file://" + p.target,
+                        )
+                if p.type in [
                     "CreateFile",
                     "CreateWritableFile",
                 ]:
@@ -2109,6 +2269,7 @@ def toilStageFiles(
             # Make the location point to the place we put this thing on the
             # local filesystem.
             f["location"] = schema_salad.ref_resolver.file_uri(mapped_location.target)
+            f["path"] = mapped_location.target
 
         if "contents" in f:
             del f["contents"]
@@ -2263,13 +2424,20 @@ class CWLJob(CWLNamedJob):
                 )
             preemptible = parsed_value
 
+        # We always need space for the temporary files for the job
+        total_disk = cast(int, req["tmpdirSize"]) * (2**20)
+        if not getattr(runtime_context, "bypass_file_store", False):
+            # If using the Toil file store, we also need space for the output
+            # files, which may need to be stored locally and copied off the
+            # node.
+            total_disk += cast(int, req["outdirSize"]) * (2**20)
+        # If not using the Toil file store, output files just go directly to
+        # their final homes their space doesn't need to be accounted per-job.
+
         super().__init__(
             cores=req["cores"],
             memory=int(req["ram"] * (2**20)),
-            disk=int(
-                (cast(int, req["tmpdirSize"]) * (2**20))
-                + (cast(int, req["outdirSize"]) * (2**20))
-            ),
+            disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
             tool_id=self.cwltool.tool["id"],
@@ -3205,6 +3373,8 @@ def determine_load_listing(
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
+    pass
+
 
 def generate_default_job_store(
     batch_system_name: Optional[str],
@@ -3384,6 +3554,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         find_default_container, options
     )
     runtime_context.workdir = workdir  # type: ignore[attr-defined]
+    runtime_context.outdir = outdir
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
@@ -3401,6 +3572,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # Otherwise, if it takes a File with loadContents from a URL, we won't
         # be able to load the contents when we need to.
         runtime_context.make_fs_access = ToilFsAccess
+    if options.reference_inputs and options.bypass_file_store:
+        # We can't do both of these at the same time.
+        logger.error("Cannot reference inputs when bypassing the file store")
+        return 1
 
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
@@ -3596,6 +3771,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 existing,
                 initialized_job_order,
                 skip_broken=True,
+                skip_remote=options.reference_inputs,
                 bypass_file_store=options.bypass_file_store,
             )
             # Import all the files associated with tools (binaries, etc.).
@@ -3610,6 +3786,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     fileindex,
                     existing,
                     skip_broken=True,
+                    skip_remote=options.reference_inputs,
                     bypass_file_store=options.bypass_file_store,
                 ),
             )
