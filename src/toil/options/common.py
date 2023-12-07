@@ -683,7 +683,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                    "some variables known to vary across systems.  Using this option, a variable can "
                                    "be injected into the worker process itself before it is started.")
     misc_options.add_argument("--servicePollingInterval", dest="servicePollingInterval", default=60.0, type=float,
-                              action=make_open_interval_action(0.0), meteavar="FLOAT",
+                              action=make_open_interval_action(0.0), metavar="FLOAT",
                               help=f"Interval of time service jobs wait between polling for the existence of the "
                                    f"keep-alive flag.  Default: {60.0}")
     misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', type=convert_bool, default=False,
