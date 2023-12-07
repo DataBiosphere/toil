@@ -17,6 +17,7 @@ import logging
 import os.path
 import sys
 from typing import Optional
+from distutils.util import strtobool
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
@@ -97,11 +98,11 @@ def main() -> None:
                         help="List of job-store files to be copied locally."
                              "Use either explicit names (i.e. 'data.txt'), or "
                              "specify glob patterns (i.e. '*.txt')")
-    parser.add_argument("--listFilesInJobStore", action="store_true", default=False,
+    parser.add_argument("--listFilesInJobStore", type=strtobool,
                         help="Prints a list of the current files in the jobStore.")
-    parser.add_argument("--fetchEntireJobStore", action="store_true", default=False,
+    parser.add_argument("--fetchEntireJobStore", type=strtobool,
                         help="Copy all job store files into a local directory.")
-    parser.add_argument("--useSymlinks", action="store_true", default=False,
+    parser.add_argument("--useSymlinks", type=strtobool,
                         help="Creates symlink 'shortcuts' of files in the localFilePath"
                              " instead of hardlinking or copying, where possible.  If this is"
                              " not possible, it will copy the files (shutil.copyfile()).")

@@ -733,11 +733,27 @@ class FileJobStore(AbstractJobStore):
             jobs = [for_job]
         else:
             # Run on all the jobs
-            jobs = [j.jobStoreID for j in self.jobs()]
+            jobs = []
+            # But not all the jobs that exist, we want all the jobs that have
+            # files. So look at the file directories which mirror the job
+            # directories' structure.
+            for job_kind_dir in self._list_dynamic_spray_dir(self.jobFilesDir):
+                # First we sprayed all the job kinds over a tree
+                for job_instance_dir in self._list_dynamic_spray_dir(job_kind_dir):
+                    # Then we sprayed the job instances over a tree
+                    # And based on those we get the job name
+                    job_id = self._get_job_id_from_files_dir(job_instance_dir)
+                    jobs.append(job_id)
 
             for name in os.listdir(self.sharedFilesDir):
                 # Announce all the shared files
                 yield name
+
+            for file_dir_path in self._list_dynamic_spray_dir(self.filesDir):
+                # Run on all the no-job files
+                for dir_file in os.listdir(file_dir_path):
+                    # There ought to be just one file in here.
+                    yield dir_file
 
         for job_store_id in jobs:
             # Files from _get_job_files_dir
@@ -809,6 +825,13 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, string is the job ID, which is a path relative to self.jobsDir
         """
         return absPath[len(self.jobsDir)+1:]
+
+    def _get_job_id_from_files_dir(self, absPath):
+        """
+        :param str absPath: The absolute path to a job directory under self.jobFilesDir which holds a job's files.
+        :rtype : string, string is the job ID
+        """
+        return absPath[len(self.jobFilesDir)+1:]
 
     def _get_job_file_name(self, jobStoreID):
         """
@@ -1027,6 +1050,19 @@ class FileJobStore(AbstractJobStore):
 
             # Recurse
             yield from self._walk_dynamic_spray_dir(childPath)
+
+    def _list_dynamic_spray_dir(self, root):
+        """
+        For a directory tree filled in by _getDynamicSprayDir, yields each
+        highest-level file or or directory *not* created by _getDynamicSprayDir
+        (i.e. the actual contents).
+        """
+
+        for spray_dir in self._walk_dynamic_spray_dir(root):
+            for child in os.listdir(spray_dir):
+                if child not in self.validDirsSet:
+                    # This is a real contant item
+                    yield os.path.join(spray_dir, child)
 
     def _job_directories(self):
         """
