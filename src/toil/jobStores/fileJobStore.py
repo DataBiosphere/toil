@@ -23,7 +23,7 @@ import sys
 import time
 import uuid
 from contextlib import contextmanager
-from typing import IO, Iterator, List, Optional, Union, overload
+from typing import IO, Iterable, Iterator, List, Optional, Union, overload
 from urllib.parse import ParseResult, quote, unquote
 
 if sys.version_info >= (3, 8):
@@ -715,6 +715,53 @@ class FileJobStore(AbstractJobStore):
                 raise NoSuchFileException(shared_file_name)
             else:
                 raise
+
+    def list_all_file_names(self, for_job: Optional[str] = None) -> Iterable[str]:
+        """
+        Get all the file names (not file IDs) of files stored in the job store.
+
+        Used for debugging.
+
+        :param for_job: If set, restrict the list to files for a particular job.
+        """
+
+        # TODO: Promote to AbstractJobStore.
+        # TODO: Include stats-and-logging files?
+
+        if for_job is not None:
+            # Run on one job
+            jobs = [for_job]
+        else:
+            # Run on all the jobs
+            jobs = [j.jobStoreID for j in self.jobs()]
+
+            for name in os.listdir(self.sharedFilesDir):
+                # Announce all the shared files
+                yield name
+
+        for job_store_id in jobs:
+            # Files from _get_job_files_dir
+            job_files_dir = os.path.join(self.jobFilesDir, job_store_id)
+            if os.path.exists(job_files_dir):
+                for file_dir in os.listdir(job_files_dir):
+                    # Each file is in its own directory
+                    if file_dir == "cleanup":
+                        # Except the cleanup directory which we do later.
+                        continue
+                    file_dir_path = os.path.join(job_files_dir, file_dir)
+                    for dir_file in os.listdir(file_dir_path):
+                        # There ought to be just one file in here.
+                        yield dir_file
+
+                # Files from _get_job_files_cleanup_dir
+                job_cleanup_files_dir = os.path.join(job_files_dir, "cleanup")
+                if os.path.exists(job_cleanup_files_dir):
+                    for file_dir in os.listdir(job_cleanup_files_dir):
+                        # Each file is in its own directory
+                        file_dir_path = os.path.join(job_cleanup_files_dir, file_dir)
+                        for dir_file in os.listdir(file_dir_path):
+                            # There ought to be just one file in here.
+                            yield dir_file
 
     def write_logs(self, msg):
         # Temporary files are placed in the stats directory tree

@@ -158,6 +158,13 @@ class DebugJobTest(ToilTest):
         logger.info("Trying to print job info for job %s", job_id)
 
         # Print the job info and make sure that doesn't crash.
-        subprocess.check_call(["toil", "debug-job", job_store, job_id, "--printJobInfo", job_id])
+        subprocess.check_call([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            "--printJobInfo",
+            job_id
+        ])
 
 
