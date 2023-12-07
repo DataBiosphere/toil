@@ -575,7 +575,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                              type=convert_bool, default=False, metavar="BOOL",
                              help="If set, preemptible failures (or any failure due to an instance getting "
                                   "unexpectedly terminated) will not count towards job failures and --retryCount.")
-    job_options.add_argument("--doubleMem", dest="doubleMem", type=convert_bool, default=False, metavar="bool",
+    job_options.add_argument("--doubleMem", dest="doubleMem", type=convert_bool, default=False, metavar="BOOL",
                              help="If set, batch jobs which die to reaching memory limit on batch schedulers "
                                   "will have their memory doubled and they will be retried. The remaining "
                                   "retry count will be reduced by 1. Currently supported by LSF.")
