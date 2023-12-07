@@ -28,5 +28,5 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     parser.add_argument(*output_file_arguments, dest="output_file", type=str, default=None,
                         help=suppress_help or "File or URI to save output JSON to.")
     reference_inputs_arguments = ["--wdlReferenceInputs"] + (["--referenceInputs"] if not suppress else [])
-    parser.add_argument(reference_inputs_arguments, dest="reference_inputs", type="bool", default=False,  # type: ignore
-                        help="Pass input files by URL")
+    parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type="bool", default=False,  # type: ignore
+                        help=suppress_help or "Pass input files by URL")
