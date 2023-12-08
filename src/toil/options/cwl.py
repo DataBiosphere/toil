@@ -255,6 +255,15 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         dest="bypass_file_store",
     )
     parser.add_argument(
+        "--reference-inputs",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not copy remote inputs into Toil's file "
+        "store and assume they are accessible in place from "
+        "all nodes.",
+        dest="reference_inputs",
+    )
+    parser.add_argument(
         "--disable-streaming",
         action="store_true",
         default=False,
