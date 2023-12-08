@@ -1,7 +1,8 @@
 .. _tutorial-ref:
+.. _devPython:
 
-Developing a Workflow
-=====================
+Developing a Python Workflow
+============================
 
 This tutorial walks through the features of Toil necessary for developing a
 workflow using the Toil Python API.

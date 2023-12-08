@@ -40,12 +40,20 @@ If using Toil for your research, please cite
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments
-   running/cwl
-   running/wdl
    running/server/wes
 
 .. toctree::
-   :caption: Developing Toil Workflows
+   :caption: Common Workflow Language (CWL)
+
+   running/cwl
+
+.. toctree::
+   :caption: Workflow Description Language (WDL)
+
+   running/wdl
+   
+.. toctree::
+   :caption: Developing Toil Python Workflows
 
    developingWorkflows/developing
    developingWorkflows/toilAPI
