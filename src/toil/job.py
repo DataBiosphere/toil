@@ -1690,7 +1690,7 @@ class Job:
         return self._description.hasChild(followOnJob.jobStoreID)
 
     def addService(
-        self, service: "Service", parentService: Optional["Service"] = None
+        self, service: "Job.Service", parentService: Optional["Job.Service"] = None
     ) -> "Promise":
         """
         Add a service.
@@ -1737,7 +1737,7 @@ class Job:
         # Return the promise for the service's startup result
         return hostingJob.rv()
 
-    def hasService(self, service: "Service") -> bool:
+    def hasService(self, service: "Job.Service") -> bool:
         """Return True if the given Service is a service of this job, and False otherwise."""
         return service.hostID is None or self._description.hasServiceHostJob(service.hostID)
 

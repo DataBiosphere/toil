@@ -57,8 +57,8 @@ def printContentsOfJobStore(jobStorePath: str, nameOfJob: Optional[str] = None) 
 
     :param jobStorePath: Directory path to recursively look for files.
     :param nameOfJob: Default is None, which prints out all files in the jobStore.
-    If specified, it will print all jobStore files that have been written to the
-    jobStore by that job.
+        If specified, it will print all jobStore files that have been written to the
+        jobStore by that job.
     """
 
     if nameOfJob:

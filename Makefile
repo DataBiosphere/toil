@@ -249,7 +249,6 @@ endif
 
 
 docs: check_venv check_build_reqs
-	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && ${MAKE} html
 
 clean_docs: check_venv

@@ -476,15 +476,13 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, instance_type: str, preemptible=False):
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         """
         The shape of a preemptible or non-preemptible node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
         :param str instance_type: Instance type name to return the shape of.
-
-        :rtype: Shape
         """
         raise NotImplementedError
 

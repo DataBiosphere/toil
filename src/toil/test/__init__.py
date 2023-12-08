@@ -765,11 +765,13 @@ methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 @contextmanager
 def timeLimit(seconds: int) -> Generator[None, None, None]:
     """
-    http://stackoverflow.com/a/601168
-    Use to limit the execution time of a function. Raises an exception if the execution of the
-    function takes more than the specified amount of time.
+    Use to limit the execution time of a function.
+
+    Raises an exception if the execution of the function takes more than the
+    specified amount of time. See <http://stackoverflow.com/a/601168>.
 
     :param seconds: maximum allowable time, in seconds
+    
     >>> import time
     >>> with timeLimit(2):
     ...    time.sleep(1)

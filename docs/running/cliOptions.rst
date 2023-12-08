@@ -16,7 +16,7 @@ Or a Toil Python workflow::
 For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
 
 The Config File
--------------
+---------------
 Instead of changing the arguments on the CLI, Toil offers support for using a configuration file. By default, Toil will put a configuration file in your home directory at ``~/.toil/default.yaml``. You can also manually generate a default config file to a path you select::
 
     $ toil config [file].yaml
@@ -230,20 +230,23 @@ levels in toil are based on priority from the logging module:
 **Data Storage Options**
 Allows configuring Toil's data storage.
 
-  --symlinkImports BOOL When using a filesystem based job store, CWL input files
+  --symlinkImports BOOL 
+                        When using a filesystem based job store, CWL input files
                         are by default symlinked in. Setting this option to True
                         instead copies the files into the job store, which may
                         protect them from being modified externally. When set
                         to False and as long as caching is enabled, Toil will
                         protect the file automatically by changing the permissions
                         to read-only. (Default=True)
-  --moveOutputs BOOL    When using a filesystem based job store, output files
+  --moveOutputs BOOL    
+                        When using a filesystem based job store, output files
                         are by default moved to the output directory, and a
                         symlink to the moved exported file is created at the
                         initial location. Setting this option to True instead
                         copies the files into the output directory. Applies to
                         filesystem-based job stores only. (Default=False)
-  --caching BOOL        Set caching options. This must be set to "false"
+  --caching BOOL        
+                        Set caching options. This must be set to "false"
                         to use a batch system that does not support
                         cleanup. Set to "true" if caching
                         is desired.

@@ -31,9 +31,10 @@ Slurm Tips
 
 #. If using Toil workflows that run containers with Singularity on Slurm (such as WDL workflows), you will want to make sure that Singularity caching, and Toil's MiniWDL caching, use a shared directory across your cluster nodes. By default, Toil will configure Singularity to cache per-workflow and per-node, but in Slurm a shared filesystem is almost always available. Assuming your home directory is shared, to set this up, you can::
 
-   $ echo 'export SINGULARITY_CACHEDIR="${HOME}/.singularity/cache"' >>~/.bashrc
-   $ echo 'export MINIWDL__SINGULARITY__IMAGE_CACHE="${HOME}/.cache/miniwdl"' >>~/.bashrc
-Then make sure to log out and back in again for the setting to take effect.
+      $ echo 'export SINGULARITY_CACHEDIR="${HOME}/.singularity/cache"' >>~/.bashrc
+      $ echo 'export MINIWDL__SINGULARITY__IMAGE_CACHE="${HOME}/.cache/miniwdl"' >>~/.bashrc
+   
+   Then make sure to log out and back in again for the setting to take effect.
 
 #. If your home directory is *not* shared across the cluster nodes, make sure that you have installed Toil in such a way that it is in your ``PATH`` on the cluster nodes.
 

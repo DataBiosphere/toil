@@ -421,8 +421,8 @@ For example, this cluster will have both preemptible and non-preemptible nodes: 
             --logDebug
 
 Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
-resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`__ ``UsePreemptible`` in the
-``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`___
+resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`_ ``UsePreemptible`` in the
+``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`_
 ``preemptible`` as recognized by Cromwell. Toil's Kubernetes batch system will prefer to schedule preemptible jobs
 on preemptible nodes.
 
@@ -444,9 +444,9 @@ jobs without an explicit ``preemptible`` requirement to run on preemptible machi
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
 
-.. __exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
+.. _exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
 
-.. ___exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
+.. _exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
 
 Using MinIO and S3-Compatible object stores
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
