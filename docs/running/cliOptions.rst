@@ -5,7 +5,11 @@
 Commandline Options
 ===================
 
-A quick way to see all of Toil's commandline options is by executing the following on a toil script::
+A quick way to see all of Toil's commandline options is by executing the following on a workflow language front-end::
+
+    $ toil-wdl-runner --help
+
+Or a Toil Python script::
 
     $ python example.py --help
 
@@ -13,10 +17,7 @@ For a basic toil workflow, Toil has one mandatory argument, the job store.  All 
 
 The Config File
 -------------
-Instead of changing the arguments on the CLI, Toil offers support for using a configuration file (Note: Support for the
-configuration file and environmental variables require the use of ``configargparse``).
-
-To generate a default configuration file::
+Instead of changing the arguments on the CLI, Toil offers support for using a configuration file. By default, Toil will put a configuration file in your home directory at ``~/.toil/default.yaml``. You can also manually generate a default config file to a path you select::
 
     $ toil config [file].yaml
 
@@ -27,14 +28,14 @@ After editing the config file, make Toil take in the new options::
 If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
 options::
 
-    $ python example.py --config=[file].yaml --maxNodes 20
-    # maxNodes=[20] even though default maxNodes=[10]
+    $ python example.py --config=[file].yaml --defaultMemory 80Gi
+    # Default memory per job is 80GiB no matter what the config file says
 
 The Job Store
 -------------
 
 Running toil scripts requires a filepath or url to a centralizing location for all of the files of the workflow.
-This is Toil's one required positional argument: the job store.  To use the :ref:`quickstart <quickstart>` example,
+This is Toil's one required positional argument: the job store.  To use the :ref:`Python quickstart <pyquickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.
@@ -280,7 +281,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
                         node types. default=0
-  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,                        Maximum number of nodes of each type in the cluster,
+  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,
                         if using autoscaling, provided as a comma-separated
                         list. The first value is used as a default if the list
                         length is less than the number of nodeTypes.
@@ -541,13 +542,12 @@ Toil will detect this situation if it occurs and throw a
 :class:`toil.DeadlockException` exception. Increasing the cluster size
 and these limits will resolve the issue.
 
-Setting Options directly with the Toil Script
+Setting Options directly in a Python Workflow
 ---------------------------------------------
 
-It's good to remember that commandline options can be overridden in the Toil script itself.  For example,
-:func:`toil.job.Job.Runner.getDefaultOptions` can be used to run toil with all default options, and in this example,
-it will override commandline args to run the default options and always run with the "./toilWorkflow" directory
-specified as the jobstore:
+It's good to remember that commandline options can be overridden in the code of a Python workflow.  For example,
+:func:`toil.job.Job.Runner.getDefaultOptions` can be used to get the default Toil options, ignoring what was passed on the command line. In this example,
+this is used to ignore command-line options and always run with the "./toilWorkflow" directory as the jobstore:
 
 .. code-block:: python
 
