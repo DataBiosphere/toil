@@ -1,17 +1,13 @@
-.. _cwl:
+.. _runCwl:
 
-CWL in Toil
-===========
+Running CWL Workflows
+=====================
 
-The Common Workflow Language (CWL) is an emerging standard for writing workflows
-that are portable across multiple workflow engines and platforms.
-Toil has full support for the CWL v1.0, v1.1, and v1.2 standards.
+The `toil-cwl-runner` command provides CWL parsing functionality using cwltool, and leverages the job-scheduling and
+batch system support of Toil. You can use it to run CWL workflows locally or in the cloud.
 
 Running CWL Locally
 -------------------
-
-The `toil-cwl-runner` command provides cwl-parsing functionality using cwltool, and leverages the job-scheduling and
-batch system support of Toil.
 
 To run in local batch mode, provide the CWL file and the input object file::
 

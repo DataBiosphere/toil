@@ -33,7 +33,20 @@ If using Toil for your research, please cite
    gettingStarted/quickStart
 
 .. toctree::
-   :caption: Running Toil
+   :caption: Common Workflow Language (CWL)
+
+   cwl/introduction
+   cwl/running
+
+.. toctree::
+   :caption: Workflow Description Language (WDL)
+   
+   wdl/introduction
+   wdl/running
+   wdl/developing
+
+.. toctree::
+   :caption: Advanced Toil Usage
 
    running/introduction
    running/cliOptions
@@ -41,30 +54,20 @@ If using Toil for your research, please cite
    running/cloud/cloud
    running/hpcEnvironments
    running/server/wes
-
-.. toctree::
-   :caption: Common Workflow Language (CWL)
-
-   running/cwl
-
-.. toctree::
-   :caption: Workflow Description Language (WDL)
-
-   running/wdl
    
 .. toctree::
-   :caption: Developing Toil Python Workflows
+   :caption: Toil Python API
 
-   developingWorkflows/developing
-   developingWorkflows/toilAPI
-   developingWorkflows/toilAPIJobstore
-   developingWorkflows/toilAPIJobFunctions
-   developingWorkflows/toilAPIMethods
-   developingWorkflows/toilAPIRunner
-   developingWorkflows/toilAPIFilestore
-   developingWorkflows/toilAPIBatchsystem
-   developingWorkflows/toilAPIService
-   developingWorkflows/toilAPIExceptions
+   python/developing
+   python/toilAPI
+   python/toilAPIJobstore
+   python/toilAPIJobFunctions
+   python/toilAPIMethods
+   python/toilAPIRunner
+   python/toilAPIFilestore
+   python/toilAPIBatchsystem
+   python/toilAPIService
+   python/toilAPIExceptions
 
 .. toctree::
    :caption: Contributing to Toil

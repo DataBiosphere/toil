@@ -509,7 +509,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 .. _awscactus:
 
 Running a Workflow with Autoscaling - Cactus
----------------------------------------------------
+--------------------------------------------
 
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free, whole-genome multiple alignment
 program that can be run on any of the cloud platforms Toil supports.
