@@ -122,7 +122,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
           output { File test = "wdl-helloworld-output.txt" }
         }
 
-    and this code into ``wdl-helloworld.json``::
+   and this code into ``wdl-helloworld.json``::
 
         {
           "write_simple_file.write_file.message": "Hello world!"
