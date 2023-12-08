@@ -126,9 +126,9 @@ class DebugJobTest(ToilTest):
     Test the toil debug-job command.
     """
 
-    def test_print_job_info(self):
+    def _get_job_store_and_job_id(self):
         """
-        Make sure that we can use --printJobInfo to get information on a job from a job store.
+        Get a job stroe and the ID of a failing job within it.
         """
 
         # First make a job store.
@@ -154,6 +154,40 @@ class DebugJobTest(ToilTest):
         # Get the job ID.
         # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
         job_id = "kind-explode/" + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
+
+        return job_store, job_id
+
+    def test_run_job(self):
+        """
+        Make sure that we can use toil debug-job to try and run a job in-process.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
+
+        logger.info("Trying to rerun job %s", job_id)
+
+        try:
+            # Rerun the job, which should fail again
+            subprocess.check_output([
+                "toil",
+                "debug-job",
+                "--logDebug",
+                job_store,
+                job_id
+            ], stderr=subprocess.STDOUT)
+            raise RuntimeError("Failing job succeeded!")
+        except subprocess.CalledProcessError as e:
+            logger.info("Task failed successfully")
+            log = e.output.decode('utf-8')
+            assert "Boom" in log, f"Did not find the expected exception message in: {log}"
+
+
+    def test_print_job_info(self):
+        """
+        Make sure that we can use --printJobInfo to get information on a job from a job store.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
 
         logger.info("Trying to print job info for job %s", job_id)
 
