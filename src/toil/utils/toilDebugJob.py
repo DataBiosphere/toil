@@ -35,10 +35,12 @@ def main() -> None:
 
     options = parser.parse_args()
     set_logging_from_options(options)
-    config = Config()
-    config.setOptions(options)
 
-    jobStore = Toil.resumeJobStore(config.jobStore)
+    jobStore = Toil.resumeJobStore(options.jobStore)
+    # Get the config with the workflow ID from the job store
+    config = jobStore.config
+    # But override its options
+    config.setOptions(options)
 
     did_something = False
 
@@ -64,6 +66,7 @@ def main() -> None:
         logger.debug(f"Running the following job locally: {jobID}")
         workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
         logger.debug(f"Finished running: {jobID}")
+        # Even if the job fails, the worker script succeeds unless something goes wrong with it internally.
 
         did_something = True
 

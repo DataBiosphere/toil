@@ -166,20 +166,17 @@ class DebugJobTest(ToilTest):
 
         logger.info("Trying to rerun job %s", job_id)
 
-        try:
-            # Rerun the job, which should fail again
-            subprocess.check_output([
-                "toil",
-                "debug-job",
-                "--logDebug",
-                job_store,
-                job_id
-            ], stderr=subprocess.STDOUT)
-            raise RuntimeError("Failing job succeeded!")
-        except subprocess.CalledProcessError as e:
-            logger.info("Task failed successfully")
-            log = e.output.decode('utf-8')
-            assert "Boom" in log, f"Did not find the expected exception message in: {log}"
+        # Rerun the job, which should fail again
+        output = subprocess.check_output([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            job_id
+        ], stderr=subprocess.STDOUT)
+        # Even if the job fails, the attempt to run it will succeed.
+        log = output.decode('utf-8')
+        assert "Boom!" in log, f"Did not find the expected exception message in: {log}"
 
 
     def test_print_job_info(self):
