@@ -9,7 +9,7 @@ A quick way to see all of Toil's commandline options is by executing the followi
 
     $ toil-wdl-runner --help
 
-Or a Toil Python script::
+Or a Toil Python workflow::
 
     $ python example.py --help
 
@@ -34,8 +34,9 @@ options::
 The Job Store
 -------------
 
-Running toil scripts requires a filepath or url to a centralizing location for all of the files of the workflow.
-This is Toil's one required positional argument: the job store.  To use the :ref:`Python quickstart <pyquickstart>` example,
+Running Toil workflows requires a file path or URL to a central location for all of the intermediate files for the workflow: the job store.
+For ``toil-cwl-runner`` and ``toil-wdl-runner`` a job store can often be selected automatically or can be specified with the ``--jobStore`` option; Toil Python workflows generally require the job store as a positional command line argument.
+To use the :ref:`Python quickstart <pyquickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.
@@ -154,14 +155,11 @@ levels in toil are based on priority from the logging module:
 **Batch System Options**
 
   --batchSystem BATCHSYSTEM
-                        The type of batch system to run the job(s) with,
-                        currently can be one of aws_batch, single_machine,
-                        grid_engine, lsf, mesos, slurm, tes, torque,
-                        htcondor, kubernetes. (default: single_machine)
+                        The type of batch system to run the job(s) with. Default = single_machine.
   --disableAutoDeployment
-                        Should auto-deployment of the user script be deactivated?
-                        If True, the user script/package should be present at
-                        the same location on all workers.  Default = False.
+                        Should auto-deployment of Toil Python workflows be
+                        deactivated? If True, the workflow's Python code should
+                        be present at the same location on all workers. Default = False.
   --maxJobs MAXJOBS
                         Specifies the maximum number of jobs to submit to the
                         backing scheduler at once. Not supported on Mesos or
@@ -369,7 +367,7 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Fractions of a
                         core (for example 0.1) are supported on some batch
-                        systems, namely Mesos and singleMachine. Default is
+                        systems, namely Mesos and single_machine. Default is
                         1.0
   --defaultDisk INT     The default amount of disk space to dedicate a job.
                         Only applicable to jobs that do not specify an
@@ -511,8 +509,8 @@ Debug options for finding problems or helping with testing.
 Restart Option
 --------------
 In the event of failure, Toil can resume the pipeline by adding the argument
-``--restart`` and rerunning the python script. Toil pipelines (but not CWL
-pipelines) can even be edited and resumed which is useful for development or
+``--restart`` and rerunning the workflow. Toil Python workflows (but not CWL or WDL
+workflows) can even be edited and resumed, which is useful for development or
 troubleshooting.
 
 Running Workflows with Services
@@ -554,9 +552,9 @@ this is used to ignore command-line options and always run with the "./toilWorkf
     options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
-However, each option can be explicitly set within the script by supplying arguments (in this example, we are setting
+However, each option can be explicitly set within the workflow by modifying the options object. In this example, we are setting
 ``logLevel = "DEBUG"`` (all log statements are shown) and ``clean="ALWAYS"`` (always delete the jobstore) like so:
 
 .. code-block:: python
@@ -566,7 +564,7 @@ However, each option can be explicitly set within the script by supplying argume
     options.clean = "ALWAYS" # Always delete the jobStore after a run
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
 However, the usual incantation is to accept commandline args from the user with the following:
 
@@ -576,9 +574,9 @@ However, the usual incantation is to accept commandline args from the user with 
     options = parser.parse_args() # Parse user args to create the options object
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
-Which can also, of course, then accept script supplied arguments as before (which will overwrite any user supplied args):
+We can also have code in the workflow to overwrite user supplied arguments:
 
 .. code-block:: python
 
@@ -588,4 +586,4 @@ Which can also, of course, then accept script supplied arguments as before (whic
     options.clean = "ALWAYS" # Always delete the jobStore after a run
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job

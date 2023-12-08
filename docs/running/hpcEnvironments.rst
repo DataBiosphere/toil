@@ -6,7 +6,7 @@ HPC Environments
 Toil is a flexible framework that can be leveraged in a variety of environments, including high-performance computing (HPC) environments.
 Toil provides support for a number of batch systems, including `Grid Engine`_, `Slurm`_, `Torque`_ and `LSF`_, which are popular schedulers used in these environments.
 Toil also supports `HTCondor`_, which is a popular scheduler for high-throughput computing (HTC).
-To use one of these batch systems specify the ``--batchSystem`` argument to the Toil script.
+To use one of these batch systems specify the ``--batchSystem`` argument to the workflow.
 
 Due to the cost and complexity of maintaining support for these schedulers we currently consider all but Slurm to be "community supported", that is the core development team does not regularly test or develop support for these systems. However, there are members of the Toil community currently deploying Toil in a wide variety of HPC environments and we welcome external contributions.
 
@@ -17,7 +17,7 @@ Developing the support of a new or existing batch system involves extending the 
 Running on Slurm
 ----------------
 
-When running Toil workflows on Slurm, you usually want to run the workflow script itself from the head node; you probably **do not** want to submit the Toil workflow as a Slurm job with ``sbatch`` or manually allocate resources with ``sallocate``. Toil will take care of running all the required ``sbatch`` commands for you.
+When running Toil workflows on Slurm, you usually want to run the workflow itself from the head node. Toil will take care of running all the required ``sbatch`` commands for you. You probably do not want to submit the Toil workflow as a Slurm job with ``sbatch`` (although you can if you have a large number of workflows to run). You also probably do not want to manually allocate resources with ``sallocate``.
 
 To run a Toil workflow on Slurm, include ``--batchSystem slurm`` in your command line arguments. Generally Slurm clusters have shared filesystems, meaning the file job store would be appropriate. You want to make sure to use a job store location that is shared across your Slurm cluster. Additionally, you will likely want to provide *another* shared directory with the ``--batchLogsDir`` option, to allow the Slurm job logs to be retrieved by Toil in case something goes wrong with a job.
 

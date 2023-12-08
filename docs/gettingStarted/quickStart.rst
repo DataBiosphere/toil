@@ -58,12 +58,12 @@ Running CWL workflows using Toil is easy.
         Hello world!
 
 
-Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``,
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``single_machine``,
 and the default ``file`` job store (which was placed in a temporary directory for you by ``toil-cwl-runner``).
 
 Toil uses batch systems to manage the jobs it creates.
 
-The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
+The ``single_machine`` batch system is primarily used to prepare and debug workflows on a
 local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
 Toil supports many different batch systems such as `Kubernetes`_ and Grid Engine; its versatility makes it
 easy to run your workflow in all kinds of places.
@@ -117,7 +117,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
         (venv) $ cat wdl-helloworld-output.txt
         Hello world!
 
-This will, like the CWL example above, use the ``singleMachine`` batch system
+This will, like the CWL example above, use the ``single_machine`` batch system
 and an automatically-located ``file`` job store by default. You can customize
 Toil's execution of the workflow with command-line options; run
 ``toil-wdl-runner --help`` to learn about them.
@@ -192,7 +192,7 @@ Running the example
                    --overwriteOutput=True \
                    --workDir=/tmp/
 
-   Here we see that we can add our own options to a Toil script. As noted above, the first two
+   Here we see that we can add our own options to a Toil Python workflow. As noted above, the first two
    options, ``--numLines`` and ``--lineLength``, determine the number of lines and how many characters are in each line.
    ``--overwriteOutput`` causes the current contents of ``sortedFile.txt`` to be overwritten, if it already exists.
    The last option, ``--workDir``, is an option built into Toil to specify where temporary files unique to a job are kept.
@@ -422,7 +422,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
    Note that this command will log you in as the ``root`` user.
 
-#. Run the Toil script in the cluster::
+#. Run the workflow on the cluster::
 
         $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 

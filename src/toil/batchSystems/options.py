@@ -89,7 +89,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=DEFAULT_BATCH_SYSTEM,
         choices=get_batch_systems(),
         help=f"The type of batch system to run the job(s) with, currently can be one "
-        f"of {', '.join(get_batch_systems())}. default={DEFAULT_BATCH_SYSTEM}",
+        f"of {', '.join(get_batch_systems())}. Default = {DEFAULT_BATCH_SYSTEM}",
     )
     parser.add_argument(
         "--disableHotDeployment",
@@ -97,14 +97,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=False,
         action="store_true",
         help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
-        "--disableAutoDeployment.  Left in for backwards compatibility.",
+        "--disableAutoDeployment. Left in for backwards compatibility.",
     )
     parser.add_argument(
         "--disableAutoDeployment",
         dest="disableAutoDeployment",
         default=False,
-        help="Should auto-deployment of the user script be deactivated? If True, the user "
-        "script/package should be present at the same location on all workers.  Default = False.",
+        help="Should auto-deployment of Toil Python workflows be deactivated? If True, the workflow's "
+        "Python code should be present at the same location on all workers. Default = False.",
     )
     parser.add_argument(
         "--maxJobs",
