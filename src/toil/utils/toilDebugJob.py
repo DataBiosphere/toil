@@ -72,5 +72,6 @@ def main() -> None:
 
     if not did_something:
         # Somebody forgot to tell us to do anything.
-        logger.error("Not doing anything. Provide a job ID to run, or an option.")
+        # Show the usage instructions.
+        parser.print_help()
         sys.exit(1)

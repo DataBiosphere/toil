@@ -128,7 +128,7 @@ class DebugJobTest(ToilTest):
 
     def _get_job_store_and_job_id(self):
         """
-        Get a job stroe and the ID of a failing job within it.
+        Get a job store and the ID of a failing job within it.
         """
 
         # First make a job store.

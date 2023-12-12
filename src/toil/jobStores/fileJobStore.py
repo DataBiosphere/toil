@@ -826,7 +826,7 @@ class FileJobStore(AbstractJobStore):
         """
         return absPath[len(self.jobsDir)+1:]
 
-    def _get_job_id_from_files_dir(self, absPath):
+    def _get_job_id_from_files_dir(self, absPath: str) -> str:
         """
         :param str absPath: The absolute path to a job directory under self.jobFilesDir which holds a job's files.
         :rtype : string, string is the job ID
@@ -1061,7 +1061,7 @@ class FileJobStore(AbstractJobStore):
         for spray_dir in self._walk_dynamic_spray_dir(root):
             for child in os.listdir(spray_dir):
                 if child not in self.validDirsSet:
-                    # This is a real contant item
+                    # This is a real content item we are storing
                     yield os.path.join(spray_dir, child)
 
     def _job_directories(self):

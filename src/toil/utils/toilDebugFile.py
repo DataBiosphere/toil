@@ -122,6 +122,8 @@ def main() -> None:
             logger.debug("Fetching local files: %s", options.fetch)
             fetchJobStoreFiles(jobStore=jobStore, options=options)
         else:
+            # The user asked for something we can't do yet.
+            # Tell them no but don't stack trace.
             logger.critical("Can only fetch by name or glob from file-based job stores")
             sys.exit(1)
 
