@@ -16,19 +16,45 @@ The Config File
 Instead of changing the arguments on the CLI, Toil offers support for using a configuration file (Note: Support for the
 configuration file and environmental variables require the use of ``configargparse``).
 
-To generate a default configuration file::
+Options will be applied with priority:
 
-    $ toil config [file].yaml
+  1. CLI
+
+  2. Environmental Variables
+
+  3. Config file values
+
+     a. Provided config file through CLI
+
+     b. Default config value in ``$HOME/.toil/default.yaml``
+
+  4. Defaults
+
+To generate a configuration file, run::
+
+    $ toil config [filename].yaml
+
+Then uncomment options as necessary and change/provide new values. 
 
 After editing the config file, make Toil take in the new options::
 
-    $ python example.py --config=[file].yaml
+    $ python example.py --config=[filename].yaml
 
-If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
-options::
+Alternatively, you can edit the default config file, which is located at ``$HOME/.toil/default.yaml``
 
-    $ python example.py --config=[file].yaml --maxNodes 20
-    # maxNodes=[20] even though default maxNodes=[10]
+If CLI options are used in addition to the configuration file, the CLI options will overwrite the configuration file
+options. For example::
+
+    $ python example.py --config=[filename].yaml --maxNodes 20
+
+With configuration file::
+
+    ...
+    maxNodes=[10]
+    ...
+
+Will result in maxNodes=[20].
+
 
 The Job Store
 -------------

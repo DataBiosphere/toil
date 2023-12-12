@@ -27,7 +27,8 @@ from unittest.mock import MagicMock
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
                                                    NodeInfo)
-from toil.common import Config, defaultTargetTime
+from toil.common import Config
+from toil.options.common import defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes as h2b
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
