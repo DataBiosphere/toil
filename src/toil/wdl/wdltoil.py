@@ -48,7 +48,7 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
-from WDL._util import byte_size_units
+from WDL._util import byte_size_units, strip_leading_whitespace
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
@@ -1640,7 +1640,7 @@ class WDLTaskJob(WDLBaseJob):
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
 
             # Work out the command string, and unwrap it
-            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
+            command_string: str = strip_leading_whitespace(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)[1]
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
