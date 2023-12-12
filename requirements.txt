@@ -1,6 +1,6 @@
 dill>=0.3.2, <0.4
 requests>=2, <3
-docker>=3.7.2, <7
+docker>=3.7.2, <8
 # Work around https://github.com/docker/docker-py/issues/3113
 urllib3>=1.26.0,<3
 python-dateutil
