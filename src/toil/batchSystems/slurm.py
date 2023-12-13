@@ -461,6 +461,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # responded to this signal and use the right exit reason for it.
             sbatch_line.append("--signal=B:INT@30")
 
+            if gpus:
+                gres_line = [f'--gres=gpu:{gpus}'] if os.getenv('GRES_GPU') == 'True' else []
+                sbatch_line = sbatch_line[:1] + gres_line + sbatch_line[1:]
             environment = {}
             environment.update(self.boss.environment)
             if job_environment:
