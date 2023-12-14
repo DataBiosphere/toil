@@ -38,7 +38,10 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         default="",
         help=suppress_help or "Log your tools stdout/stderr to this location outside of container",
     )
-    dockergroup = parser.add_mutually_exclusive_group()
+    # this is as a result of suppressed help statements not working well with mutually_exclusive_groups, which will
+    # cause an assertion error
+    # https://github.com/python/cpython/issues/62090
+    dockergroup = parser.add_mutually_exclusive_group() if not suppress_help else parser.add_argument_group()
     dockergroup.add_argument(
         "--user-space-docker-cmd",
         help=suppress_help or "(Linux/OS X only) Specify a user space docker command (like "
@@ -208,7 +211,8 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         default=False,
         help=suppress_help or SUPPRESS,
     )
-    checkgroup = parser.add_mutually_exclusive_group()
+    # same workaround as dockergroup
+    checkgroup = parser.add_mutually_exclusive_group() if not suppress_help else parser.add_argument_group()
     checkgroup.add_argument(
         "--compute-checksum",
         action="store_true",
