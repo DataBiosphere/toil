@@ -1638,9 +1638,12 @@ class WDLTaskJob(WDLBaseJob):
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+            
+            # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
+            dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
 
             # Work out the command string, and unwrap it
-            command_string: str = strip_leading_whitespace(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)[1]
+            command_string: str = dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)[1]
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
