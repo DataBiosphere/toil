@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import unittest
@@ -252,6 +253,13 @@ class CWLWorkflowTest(ToilTest):
         out.get(out_name, {}).pop("nameext", None)
         out.get(out_name, {}).pop("nameroot", None)
         self.assertEqual(out, expect)
+
+        for k, v in expect.items():
+            if isinstance(v, dict) and "class" in v and v["class"] == "File" and "path" in v:
+                # This is a top-level output file.
+                # None of our output files should be executable.
+                self.assertTrue(os.path.exists(v["path"]))
+                self.assertFalse(os.stat(v["path"]).st_mode & stat.S_IXUSR)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
         from toil.cwl import cwltoil
