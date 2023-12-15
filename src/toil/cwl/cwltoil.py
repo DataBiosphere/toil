@@ -17,7 +17,6 @@
 
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
-import argparse
 import base64
 import copy
 import datetime
@@ -69,7 +68,7 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
-from configargparse import ArgParser
+from configargparse import ArgParser, SUPPRESS, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
@@ -128,7 +127,6 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
-from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
 
@@ -1329,7 +1327,7 @@ class ToilFsAccess(StdFsAccess):
     def open(self, fn: str, mode: str) -> IO[Any]:
         if "w" in mode or "x" in mode or "+" in mode or "a" in mode:
             raise RuntimeError(f"Mode {mode} for opening {fn} involves writing")
-        
+
         parse = urlparse(fn)
         if parse.scheme in ["", "file"]:
             # Handle local files
@@ -1663,7 +1661,7 @@ def toil_get_file(
         index[src_path] = uri
         existing[uri] = src_path
         return schema_salad.ref_resolver.file_uri(src_path)
-    
+
 def write_file(
     writeFunc: Callable[[str], FileID],
     index: Dict[str, str],
@@ -3466,335 +3464,7 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
-
-def add_cwl_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("cwltool", type=str, help="CWL file to run.")
-    parser.add_argument(
-        "cwljob",
-        nargs="*",
-        help="Input file or CWL options. If CWL workflow takes an input, "
-        "the name of the input can be used as an option. "
-        'For example: "%(prog)s workflow.cwl --file1 file". '
-        "If an input has the same name as a Toil option, pass '--' before it.",
-    )
-
-    parser.add_argument("--not-strict", action="store_true")
-    parser.add_argument(
-        "--enable-dev",
-        action="store_true",
-        help="Enable loading and running development versions of CWL",
-    )
-    parser.add_argument(
-        "--enable-ext",
-        action="store_true",
-        help="Enable loading and running 'cwltool:' extensions to the CWL standards.",
-        default=False,
-    )
-    parser.add_argument("--quiet", dest="quiet", action="store_true", default=False)
-    parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
-    parser.add_argument("--outdir", type=str, default=None)
-    parser.add_argument("--version", action="version", version=baseVersion)
-    parser.add_argument(
-        "--log-dir",
-        type=str,
-        default="",
-        help="Log your tools stdout/stderr to this location outside of container",
-    )
-    dockergroup = parser.add_mutually_exclusive_group()
-    dockergroup.add_argument(
-        "--user-space-docker-cmd",
-        help="(Linux/OS X only) Specify a user space docker command (like "
-        "udocker or dx-docker) that will be used to call 'pull' and 'run'",
-    )
-    dockergroup.add_argument(
-        "--singularity",
-        action="store_true",
-        default=False,
-        help="Use Singularity runtime for running containers. "
-        "Requires Singularity v2.6.1+ and Linux with kernel version v3.18+ or "
-        "with overlayfs support backported.",
-    )
-    dockergroup.add_argument(
-        "--podman",
-        action="store_true",
-        default=False,
-        help="Use Podman runtime for running containers. ",
-    )
-    dockergroup.add_argument(
-        "--no-container",
-        action="store_true",
-        help="Do not execute jobs in a "
-        "Docker container, even when `DockerRequirement` "
-        "is specified under `hints`.",
-    )
-    dockergroup.add_argument(
-        "--leave-container",
-        action="store_false",
-        default=True,
-        help="Do not delete Docker container used by jobs after they exit",
-        dest="rm_container",
-    )
-    extra_dockergroup = parser.add_argument_group()
-    extra_dockergroup.add_argument(
-        "--custom-net",
-        help="Specify docker network name to pass to docker run command",
-    )
-    cidgroup = parser.add_argument_group(
-        "Options for recording the Docker container identifier into a file."
-    )
-    cidgroup.add_argument(
-        # Disabled as containerid is now saved by default
-        "--record-container-id",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-        dest="record_container_id",
-    )
-
-    cidgroup.add_argument(
-        "--cidfile-dir",
-        type=str,
-        help="Store the Docker container ID into a file in the specified directory.",
-        default=None,
-        dest="cidfile_dir",
-    )
-
-    cidgroup.add_argument(
-        "--cidfile-prefix",
-        type=str,
-        help="Specify a prefix to the container ID filename. "
-        "Final file name will be followed by a timestamp. "
-        "The default is no prefix.",
-        default=None,
-        dest="cidfile_prefix",
-    )
-
-    parser.add_argument(
-        "--preserve-environment",
-        type=str,
-        nargs="+",
-        help="Preserve specified environment variables when running"
-        " CommandLineTools",
-        metavar=("VAR1 VAR2"),
-        default=("PATH",),
-        dest="preserve_environment",
-    )
-    parser.add_argument(
-        "--preserve-entire-environment",
-        action="store_true",
-        help="Preserve all environment variable when running CommandLineTools.",
-        default=False,
-        dest="preserve_entire_environment",
-    )
-    parser.add_argument(
-        "--destBucket",
-        type=str,
-        help="Specify a cloud bucket endpoint for output files.",
-    )
-    parser.add_argument("--beta-dependency-resolvers-configuration", default=None)
-    parser.add_argument("--beta-dependencies-directory", default=None)
-    parser.add_argument("--beta-use-biocontainers", default=None, action="store_true")
-    parser.add_argument("--beta-conda-dependencies", default=None, action="store_true")
-    parser.add_argument(
-        "--tmpdir-prefix",
-        type=str,
-        help="Path prefix for temporary directories",
-        default=DEFAULT_TMPDIR_PREFIX,
-    )
-    parser.add_argument(
-        "--tmp-outdir-prefix",
-        type=str,
-        help="Path prefix for intermediate output directories",
-        default=DEFAULT_TMPDIR_PREFIX,
-    )
-    parser.add_argument(
-        "--force-docker-pull",
-        action="store_true",
-        default=False,
-        dest="force_docker_pull",
-        help="Pull latest docker image even if it is locally present",
-    )
-    parser.add_argument(
-        "--no-match-user",
-        action="store_true",
-        default=False,
-        help="Disable passing the current uid to `docker run --user`",
-    )
-    parser.add_argument(
-        "--no-read-only",
-        action="store_true",
-        default=False,
-        help="Do not set root directory in the container as read-only",
-    )
-    parser.add_argument(
-        "--strict-memory-limit",
-        action="store_true",
-        help="When running with "
-        "software containers and the Docker engine, pass either the "
-        "calculated memory allocation from ResourceRequirements or the "
-        "default of 1 gigabyte to Docker's --memory option.",
-    )
-    parser.add_argument(
-        "--strict-cpu-limit",
-        action="store_true",
-        help="When running with "
-        "software containers and the Docker engine, pass either the "
-        "calculated cpu allocation from ResourceRequirements or the "
-        "default of 1 core to Docker's --cpu option. "
-        "Requires docker version >= v1.13.",
-    )
-    parser.add_argument(
-        "--relax-path-checks",
-        action="store_true",
-        default=False,
-        help="Relax requirements on path names to permit "
-        "spaces and hash characters.",
-        dest="relax_path_checks",
-    )
-    parser.add_argument(
-        "--default-container",
-        help="Specify a default docker container that will be "
-        "used if the workflow fails to specify one.",
-    )
-    parser.add_argument(
-        "--disable-validate",
-        dest="do_validate",
-        action="store_false",
-        default=True,
-        help=argparse.SUPPRESS,
-    )
-    parser.add_argument(
-        "--fast-parser",
-        dest="fast_parser",
-        action="store_true",
-        default=False,
-        help=argparse.SUPPRESS,
-    )
-    checkgroup = parser.add_mutually_exclusive_group()
-    checkgroup.add_argument(
-        "--compute-checksum",
-        action="store_true",
-        default=True,
-        help="Compute checksum of contents while collecting outputs",
-        dest="compute_checksum",
-    )
-    checkgroup.add_argument(
-        "--no-compute-checksum",
-        action="store_false",
-        help="Do not compute checksum of contents while collecting outputs",
-        dest="compute_checksum",
-    )
-
-    parser.add_argument(
-        "--eval-timeout",
-        help="Time to wait for a Javascript expression to evaluate before giving "
-        "an error, default 20s.",
-        type=float,
-        default=20,
-    )
-    parser.add_argument(
-        "--overrides",
-        type=str,
-        default=None,
-        help="Read process requirement overrides from file.",
-    )
-
-    parser.add_argument(
-        "--mpi-config-file",
-        type=str,
-        default=None,
-        help="Platform specific configuration for MPI (parallel "
-        "launcher, its flag etc). See the cwltool README "
-        "section 'Running MPI-based tools' for details of the format: "
-        "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
-    )
-    parser.add_argument(
-        "--bypass-file-store",
-        action="store_true",
-        default=False,
-        help="Do not use Toil's file store and assume all "
-        "paths are accessible in place from all nodes.",
-        dest="bypass_file_store",
-    )
-    parser.add_argument(
-        "--reference-inputs",
-        action="store_true",
-        default=False,
-        help="Do not copy remote inputs into Toil's file "
-        "store and assume they are accessible in place from "
-        "all nodes.",
-        dest="reference_inputs",
-    )
-    parser.add_argument(
-        "--disable-streaming",
-        action="store_true",
-        default=False,
-        help="Disable file streaming for files that have 'streamable' flag True",
-        dest="disable_streaming",
-    )
-
-    provgroup = parser.add_argument_group(
-        "Options for recording provenance information of the execution"
-    )
-    provgroup.add_argument(
-        "--provenance",
-        help="Save provenance to specified folder as a "
-        "Research Object that captures and aggregates "
-        "workflow execution and data products.",
-        type=str,
-    )
-
-    provgroup.add_argument(
-        "--enable-user-provenance",
-        default=False,
-        action="store_true",
-        help="Record user account info as part of provenance.",
-        dest="user_provenance",
-    )
-    provgroup.add_argument(
-        "--disable-user-provenance",
-        default=False,
-        action="store_false",
-        help="Do not record user account info in provenance.",
-        dest="user_provenance",
-    )
-    provgroup.add_argument(
-        "--enable-host-provenance",
-        default=False,
-        action="store_true",
-        help="Record host info as part of provenance.",
-        dest="host_provenance",
-    )
-    provgroup.add_argument(
-        "--disable-host-provenance",
-        default=False,
-        action="store_false",
-        help="Do not record host info in provenance.",
-        dest="host_provenance",
-    )
-    provgroup.add_argument(
-        "--orcid",
-        help="Record user ORCID identifier as part of "
-        "provenance, e.g. https://orcid.org/0000-0002-1825-0097 "
-        "or 0000-0002-1825-0097. Alternatively the environment variable "
-        "ORCID may be set.",
-        dest="orcid",
-        default=os.environ.get("ORCID", ""),
-        type=str,
-    )
-    provgroup.add_argument(
-        "--full-name",
-        help="Record full name of user as part of provenance, "
-        "e.g. Josiah Carberry. You may need to use shell quotes to preserve "
-        "spaces. Alternatively the environment variable CWL_FULL_NAME may "
-        "be set.",
-        dest="cwl_full_name",
-        default=os.environ.get("CWL_FULL_NAME", ""),
-        type=str,
-    )
-
-
-def get_options(args: List[str]) -> argparse.Namespace:
+def get_options(args: List[str]) -> Namespace:
     """
     Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
     :param args: List of args from command line
@@ -3802,9 +3472,7 @@ def get_options(args: List[str]) -> argparse.Namespace:
     """
     parser = ArgParser()
     addOptions(parser, jobstore_as_flag=True, cwl=True)
-    add_cwl_options(parser)
-
-    options: argparse.Namespace
+    options: Namespace
     options, cwl_options = parser.parse_known_args(args)
     options.cwljob.extend(cwl_options)
 
@@ -3823,12 +3491,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
+    tmpdir_prefix = options.tmpdir_prefix = options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
 
     # We need a workdir for the CWL runtime contexts.
-    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
+    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
         # if tmpdir_prefix is not the default value, move
         # workdir and the default job store under it
-        workdir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
+        workdir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
     else:
         # Use a directory in the default tmpdir
         workdir = mkdtemp()
@@ -3848,13 +3517,13 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     options.do_validate = True
     options.pack = False
     options.print_subgraph = False
-    if options.tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.workDir is None:
+    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.workDir is None:
         # We need to override workDir because by default Toil will pick
         # somewhere under the system temp directory if unset, ignoring
         # --tmpdir-prefix.
         #
         # If set, workDir needs to exist, so we directly use the prefix
-        options.workDir = cwltool.utils.create_tmp_dir(options.tmpdir_prefix)
+        options.workDir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
 
     if options.batchSystem == "kubernetes":
         # Containers under Kubernetes can only run in Singularity
@@ -3871,12 +3540,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
-    outdir = (
-        os.path.abspath(os.getcwd())
-        if options.outdir is None
-        else os.path.abspath(options.outdir)
+    outdir = os.path.abspath(options.outdir or os.getcwd())
+    tmp_outdir_prefix = os.path.abspath(
+        options.tmp_outdir_prefix or DEFAULT_TMPDIR_PREFIX
     )
-    tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
 
     fileindex: Dict[str, str] = {}
     existing: Dict[str, str] = {}
@@ -3921,7 +3588,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     if options.provenance:
         research_obj = cwltool.cwlprov.ro.ResearchObject(
-            temp_prefix_ro=options.tmp_outdir_prefix,
+            temp_prefix_ro=tmp_outdir_prefix,
             orcid=options.orcid,
             full_name=options.cwl_full_name,
             fsaccess=runtime_context.make_fs_access(""),
@@ -4225,7 +3892,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
 
 def find_default_container(
-    args: argparse.Namespace, builder: cwltool.builder.Builder
+    args: Namespace, builder: cwltool.builder.Builder
 ) -> Optional[str]:
     """Find the default constructor by consulting a Toil.options object."""
     if args.default_container:

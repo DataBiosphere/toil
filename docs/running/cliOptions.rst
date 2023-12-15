@@ -17,19 +17,40 @@ For a basic toil workflow, Toil has one mandatory argument, the job store.  All 
 
 The Config File
 ---------------
-Instead of changing the arguments on the CLI, Toil offers support for using a configuration file. By default, Toil will put a configuration file in your home directory at ``~/.toil/default.yaml``. You can also manually generate a default config file to a path you select::
+Instead of changing the arguments on the command line, Toil offers support for using a configuration file.
 
-    $ toil config [file].yaml
+Options will be applied with priority:
 
-After editing the config file, make Toil take in the new options::
+  1. Command line options
 
-    $ python example.py --config=[file].yaml
+  2. Environmental Variables
 
-If CLI options are used in addition with the configuration file, the CLI options will overwrite the configuration file
-options::
+  3. Config file values
 
-    $ python example.py --config=[file].yaml --defaultMemory 80Gi
-    # Default memory per job is 80GiB no matter what the config file says
+     a. Provided config file through ``--config``
+
+     b. Default config value in ``$HOME/.toil/default.yaml``
+
+  4. Defaults
+
+You can manually generate an example configuration file to a path you select. To generate a configuration file, run::
+
+    $ toil config [filename].yaml
+
+Then uncomment options as necessary and change/provide new values. 
+
+After editing the config file, you can run Toil with its settings by passing it on the command line::
+
+    $ python example.py --config=[filename].yaml
+
+Alternatively, you can edit the default config file, which is located at ``$HOME/.toil/default.yaml``
+
+If CLI options are used in addition to the configuration file, the CLI options will overwrite the configuration file
+options. For example::
+
+    $ python example.py --config=[filename].yaml --defaultMemory 80Gi
+
+This will result in a default memory per job of 80GiB no matter what is in the configuration file provided.
 
 The Job Store
 -------------

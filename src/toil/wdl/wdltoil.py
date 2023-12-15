@@ -47,14 +47,14 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
 import WDL.runtime.config
-from configargparse import ArgParser
-from WDL._util import byte_size_units
+from configargparse import ArgParser, SUPPRESS
+from WDL._util import byte_size_units, strip_leading_whitespace
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
 
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, check_and_create_default_config_file
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
@@ -1638,9 +1638,12 @@ class WDLTaskJob(WDLBaseJob):
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+            
+            # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
+            dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
 
             # Work out the command string, and unwrap it
-            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value
+            command_string: str = dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)[1]
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
@@ -2622,28 +2625,12 @@ def main() -> None:
     """
     A Toil workflow to interpret WDL input files.
     """
+    args = sys.argv[1:]
 
     parser = ArgParser(description='Runs WDL files with toil.')
-    addOptions(parser, jobstore_as_flag=True)
+    addOptions(parser, jobstore_as_flag=True, wdl=True)
 
-    parser.add_argument("wdl_uri", type=str,
-                        help="WDL document URI")
-    parser.add_argument("inputs_uri", type=str, nargs='?',
-                        help="WDL input JSON URI")
-    parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
-                        help="WDL input JSON URI")
-    parser.add_argument("--outputDialect", dest="output_dialect", type=str, default='cromwell', choices=['cromwell', 'miniwdl'],
-                        help=("JSON output format dialect. 'cromwell' just returns the workflow's output"
-                              "values as JSON, while 'miniwdl' nests that under an 'outputs' key, and "
-                              "includes a 'dir' key where files are written."))
-    parser.add_argument("--outputDirectory", "-o", dest="output_directory", type=str, default=None,
-                        help=("Directory or URI prefix to save output files at. By default a new directory is created in the current directory."))
-    parser.add_argument("--outputFile", "-m", dest="output_file", type=str, default=None,
-                        help="File or URI to save output JSON to.")
-    parser.add_argument("--referenceInputs", dest="reference_inputs", type="bool", default=False, #  type: ignore
-                        help="Pass input files by URL")
-
-    options = parser.parse_args(sys.argv[1:])
+    options = parser.parse_args(args)
 
     # Make sure we have a jobStore
     if options.jobStore is None:
