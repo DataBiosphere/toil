@@ -44,6 +44,7 @@ If using Toil for your research, please cite
    wdl/introduction
    wdl/running
    wdl/developing
+   wdl/conformance
 
 .. toctree::
    :caption: Advanced Toil Usage

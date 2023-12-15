@@ -1,10 +1,11 @@
 .. _runWdl:
-   
+
 Running WDL with Toil
 =====================
 
 Toil has beta support for running WDL workflows, using the ``toil-wdl-runner``
-command.
+command. This command comes with the ``[wdl]`` extra; see :ref:`extras` for how
+to install it if you do not have it.
 
 You can run WDL workflows with ``toil-wdl-runner``. Currently,
 ``toil-wdl-runner`` works by using MiniWDL_ to parse and interpret the WDL
