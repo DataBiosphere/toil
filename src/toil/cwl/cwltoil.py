@@ -3576,7 +3576,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         dependencies_configuration = DependenciesConfiguration(options)
         job_script_provider = dependencies_configuration
 
-    options.default_container = None
     runtime_context = cwltool.context.RuntimeContext(vars(options))
     runtime_context.toplevel = True  # enable discovery of secondaryFiles
     runtime_context.find_default_container = functools.partial(

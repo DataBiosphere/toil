@@ -477,6 +477,16 @@ class CWLWorkflowTest(ToilTest):
         )
 
     @needs_docker
+    def test_default_args(self) -> None:
+        self._tester(
+            "src/toil/test/cwl/seqtk_seq.cwl",
+            "src/toil/test/cwl/seqtk_seq_job.json",
+            self._expected_seqtk_output(self.outDir),
+            main_args=["--default-container", "quay.io/biocontainers/seqtk:r93--0"],
+            out_name="output1",
+        )
+
+    @needs_docker
     @pytest.mark.integrative
     @unittest.skip
     def test_biocontainers(self):
