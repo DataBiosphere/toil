@@ -104,7 +104,8 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
-from toil.common import SYS_MAX_SIZE, Config, Toil
+from toil.common import Config, Toil
+from toil.options.common import SYS_MAX_SIZE
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now

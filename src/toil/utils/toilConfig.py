@@ -26,7 +26,8 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = ArgParser()
 
-    parser.add_argument("output", default="config.yaml")
+    parser.add_argument("output", default="config.yaml", help="Filepath to write the config file too. Default=%("
+                                                              "default)s")
     add_logging_options(parser)
     options = parser.parse_args()
     set_logging_from_options(options)
