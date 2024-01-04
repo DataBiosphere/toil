@@ -1719,6 +1719,7 @@ def import_files(
     skip_broken: bool = False,
     skip_remote: bool = False,
     bypass_file_store: bool = False,
+    log_level: int = logging.DEBUG
 ) -> None:
     """
     Prepare all files and directories.
@@ -1761,11 +1762,20 @@ def import_files(
 
     :param bypass_file_store: If True, leave file:// URIs in place instead of
     importing files and directories.
+
+    :param log_level: Log imported files at the given level.
     """
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
     logger.debug("Importing files in %s", cwl_object)
+
+    def import_and_log(url: str) -> FileID:
+        """
+        Upload a file and log that we are doing so.
+        """
+        logging.log(log_level, "Load %s...", url)
+        return import_function(url)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
@@ -1865,7 +1875,7 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_function, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
+                import_and_log, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
             )
 
             # Make a record for this file under its name
@@ -2116,12 +2126,15 @@ def toilStageFiles(
     cwljob: Union[CWLObjectType, List[CWLObjectType]],
     outdir: str,
     destBucket: Union[str, None] = None,
+    log_level: int = logging.DEBUG
 ) -> None:
     """
     Copy input files out of the global file store and update location and path.
 
     :param destBucket: If set, export to this base URL instead of to the local
            filesystem.
+
+    :param log_level: Log each file transfered at the given level.
     """
 
     def _collectDirEntries(
@@ -2161,7 +2174,6 @@ def toilStageFiles(
         stage_listing=True,
     )
     for _, p in pm.items():
-        logger.debug("Staging output: %s", p)
         if p.staged:
             # We're supposed to copy/expose something.
             # Note that we have to handle writable versions of everything
@@ -2213,14 +2225,19 @@ def toilStageFiles(
 
                     if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
-                        destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        # TODO: Do we need to urlencode the parts before sending them to S3?
+                        dest_url = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        logging.log(log_level, "Saving %s...", dest_url)
                         toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
-                            destUrl,
+                            dest_url,
                         )
                     # TODO: can a toildir: "file" get here?
             else:
-                # We are saving to the filesystem so we only really need export_file for actual files.
+                # We are saving to the filesystem.
+                dest_url = "file://" + quote(p.target)
+
+                # We only really need export_file for actual files.
                 if not os.path.exists(p.target) and p.type in [
                     "Directory",
                     "WritableDirectory",
@@ -2229,6 +2246,7 @@ def toilStageFiles(
                 if p.type in ["File", "WritableFile"]:
                     if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
+                        logging.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
                     else:
@@ -2241,16 +2259,18 @@ def toilStageFiles(
                             )
 
                         # Actually export from the file store
+                        logging.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         toil.export_file(
                             FileID.unpack(uri[len("toilfile:") :]),
-                            "file://" + p.target,
+                            dest_url,
                         )
                 if p.type in [
                     "CreateFile",
                     "CreateWritableFile",
                 ]:
                     # We just need to make a file with particular contents
+                    logging.log(log_level, "Saving %s...", dest_url)
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
@@ -3760,9 +3780,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 Callable[[str], FileID],
                 functools.partial(toil.import_file, symlink=True),
             )
-
+            
             # Import all the input files, some of which may be missing optional
             # files.
+            logger.info("Importing input files...")
             fs_access = ToilFsAccess(options.basedir)
             import_files(
                 file_import_function,
@@ -3773,10 +3794,12 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 skip_broken=True,
                 skip_remote=options.reference_inputs,
                 bypass_file_store=options.bypass_file_store,
+                log_level=logging.INFO,
             )
             # Import all the files associated with tools (binaries, etc.).
             # Not sure why you would have an optional secondary file here, but
             # the spec probably needs us to support them.
+            logger.info("Importing tool-associated files...")
             visitSteps(
                 tool,
                 functools.partial(
@@ -3788,6 +3811,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     skip_broken=True,
                     skip_remote=options.reference_inputs,
                     bypass_file_store=options.bypass_file_store,
+                    log_level=logging.INFO,
                 ),
             )
 
@@ -3800,7 +3824,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # were required.
                 rm_unprocessed_secondary_files(param_value)
 
-            logger.debug("tool %s", tool)
+            logger.info("Creating root job")
+            logger.debug("Root tool: %s", tool)
             try:
                 wf1, _ = makeJob(
                     tool=tool,
@@ -3813,6 +3838,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             wf1.cwljob = initialized_job_order
+            logger.info("Starting workflow")
             try:
                 outobj = toil.start(wf1)
             except FailedJobsException as err:
@@ -3828,13 +3854,20 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         # Now the workflow has completed. We need to make sure the outputs (and
         # inputs) end up where the user wants them to be.
-
+        logger.info("Collecting workflow outputs...")
         outobj = resolve_dict_w_promises(outobj)
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
         # options.destBucket's value will be None.
-        toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+        toilStageFiles(
+            toil,
+            outobj,
+            outdir,
+            destBucket=options.destBucket,
+            log_level=logging.INFO
+        )
+        logger.info("Stored workflow outputs")
 
         if runtime_context.research_obj is not None:
             cwltool.cwlprov.writablebagfile.create_job(
@@ -3872,6 +3905,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             )
 
         if not options.destBucket and options.compute_checksum:
+            logger.info("Computing output file checksums...")
             visit_class(
                 outobj,
                 ("File",),
@@ -3880,6 +3914,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         visit_class(outobj, ("File",), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4, default=str))
+        logger.info("CWL run complete!")
 
     return 0
 
