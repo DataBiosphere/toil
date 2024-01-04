@@ -685,6 +685,7 @@ class JobStatus:
 
     def __repr__(self) -> str:
         return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+
 def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.

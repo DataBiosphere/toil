@@ -1158,7 +1158,7 @@ class Leader:
             self.progress_overall.update(incr=-1)
             self.progress_failed.update(incr=1)
 
-        # Delegate to the vers
+        # Delegate to the version that uses a JobDescription
         return self.process_finished_job_description(issued_job, result_status, wall_time, exit_reason, batch_system_id)
 
     def process_finished_job_description(self, finished_job: JobDescription, result_status: int,
