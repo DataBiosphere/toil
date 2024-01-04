@@ -1774,7 +1774,7 @@ def import_files(
         """
         Upload a file and log that we are doing so.
         """
-        logging.log(log_level, "Load %s...", url)
+        logger.log(log_level, "Loading %s...", url)
         return import_function(url)
 
     # We need to upload all files to the Toil filestore, and encode structure
@@ -2227,7 +2227,7 @@ def toilStageFiles(
                         # This is something we can export
                         # TODO: Do we need to urlencode the parts before sending them to S3?
                         dest_url = "/".join(s.strip("/") for s in [destBucket, baseName])
-                        logging.log(log_level, "Saving %s...", dest_url)
+                        logger.log(log_level, "Saving %s...", dest_url)
                         toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
                             dest_url,
@@ -2246,7 +2246,7 @@ def toilStageFiles(
                 if p.type in ["File", "WritableFile"]:
                     if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
-                        logging.log(log_level, "Saving %s...", dest_url)
+                        logger.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
                     else:
@@ -2259,7 +2259,7 @@ def toilStageFiles(
                             )
 
                         # Actually export from the file store
-                        logging.log(log_level, "Saving %s...", dest_url)
+                        logger.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         toil.export_file(
                             FileID.unpack(uri[len("toilfile:") :]),
@@ -2270,7 +2270,7 @@ def toilStageFiles(
                     "CreateWritableFile",
                 ]:
                     # We just need to make a file with particular contents
-                    logging.log(log_level, "Saving %s...", dest_url)
+                    logger.log(log_level, "Saving %s...", dest_url)
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
@@ -3916,6 +3916,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         visit_class(outobj, ("File",), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4, default=str))
+        stdout.write("\n")
         logger.info("CWL run complete!")
 
     return 0
