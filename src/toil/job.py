@@ -45,7 +45,7 @@ from typing import (TYPE_CHECKING,
 
 from configargparse import ArgParser
 
-from toil.bus import JobNames
+from toil.bus import Names
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
