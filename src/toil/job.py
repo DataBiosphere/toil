@@ -45,6 +45,7 @@ from typing import (TYPE_CHECKING,
 
 from configargparse import ArgParser
 
+from toil.bus import JobNames
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
@@ -62,6 +63,7 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 
+from toil.bus import Names
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
@@ -710,7 +712,6 @@ class Requirer:
             parts = ['no requirements']
         return ', '.join(parts)
 
-
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a Job.
@@ -814,11 +815,13 @@ class JobDescription(Requirer):
         # in the process of being committed. 
         self.filesToDelete = []
 
-        # Holds JobStore Job IDs of the jobs that have been chained into this
+        # Holds job names and IDs of the jobs that have been chained into this
         # job, and which should be deleted when this job finally is deleted
         # (but not before). The successor relationships with them will have
-        # been cut, so we need to hold onto them somehow.
-        self.merged_jobs = []
+        # been cut, so we need to hold onto them somehow. Includes each
+        # chained-in job with its original ID, and also this job's ID with its
+        # original names, or is empty if no chaining has happened.
+        self.merged_jobs: Set[Names] = set()
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -870,6 +873,12 @@ class JobDescription(Requirer):
         # Human-readable names of jobs that were run as part of this job's
         # invocation, starting with this job
         self.chainedJobs = []
+
+    def get_names(self) -> Names:
+        """
+        Get the names and ID of this job as a named tuple.
+        """
+        return Names(self.jobName, self.unitName, self.displayName, str(self.jobStoreID))
 
     def serviceHostIDsInBatches(self) -> Iterator[List[str]]:
         """
@@ -1045,8 +1054,15 @@ class JobDescription(Requirer):
         self.successor_phases = old_phases + self.successor_phases
 
         # When deleting, we need to delete the files for our old ID, and also
-        # anything that needed to be deleted for the job we are replacing.
-        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
+        # anything that needed to be deleted for the job we are replacing. And we need to keep track of all the names of jobs involved for logging.
+        # Us under our original ID goes in the set.
+        self.merged_jobs.add(self.get_names())
+        # And anything that was already merged into what we are replacing
+        self.merged_jobs |= other.merged_jobs
+        if len(other.merged_jobs) == 0:
+            # If we are the first thing to replace other, make sure to retain its original names.
+            self.merged_jobs.add(other.get_names())
+        # And steal its ID.
         self.jobStoreID = other.jobStoreID
 
         if len(other.filesToDelete) > 0:
@@ -1262,26 +1278,6 @@ class JobDescription(Requirer):
         self._job_version += 1
         self._job_version_writer = os.getpid()
         logger.debug("New job version: %s", self)
-
-    def get_job_kind(self) -> str:
-        """
-        Return an identifying string for the job.
-
-        The result may contain spaces.
-
-        Returns: Either the unit name, job name, or display name, which identifies
-                 the kind of job it is to toil.
-                 Otherwise "Unknown Job" in case no identifier is available
-        """
-        if self.unitName:
-            return self.unitName
-        elif self.jobName:
-            return self.jobName
-        elif self.displayName:
-            return self.displayName
-        else:
-            return "Unknown Job"
-
 
 class ServiceJobDescription(JobDescription):
     """A description of a job that hosts a service."""

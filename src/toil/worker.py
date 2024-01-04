@@ -632,9 +632,14 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     # This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.is_subtree_done():
         # We can now safely get rid of the JobDescription, and all jobs it chained up
-        for otherID in jobDesc.merged_jobs:
-            jobStore.delete_job(otherID)
         jobStore.delete_job(str(jobDesc.jobStoreID))
+        removed_ids = {str(jobDesc.jobStoreID)}
+        for merged_in in jobDesc.merged_jobs:
+            if merged_in.job_store_id not in removed_ids:
+                # Delete each unique job store ID among the chained-together jobs
+                jobStore.delete_job(merged_in.job_store_id)
+                removed_ids.add(merged_in.job_store_id)
+        
 
     if jobAttemptFailed:
         return failure_exit_code

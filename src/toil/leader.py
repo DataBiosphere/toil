@@ -35,7 +35,8 @@ from toil.bus import (JobCompletedMessage,
                       JobMissingMessage,
                       JobUpdatedMessage,
                       QueueSizeMessage,
-                      gen_message_bus_path)
+                      gen_message_bus_path,
+                      get_job_kind)
 from toil.common import Config, ToilMetrics
 from toil.cwl.utils import CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
 from toil.exceptions import FailedJobsException
@@ -715,7 +716,7 @@ class Leader:
                     logger.warning("This indicates an unsupported CWL requirement!")
                     self.recommended_fail_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             # Tell everyone it stopped running.
-            self._messages.publish(JobCompletedMessage(updatedJob.get_job_kind(), updatedJob.jobStoreID, exitStatus))
+            self._messages.publish(JobCompletedMessage(get_job_kind(updatedJob.get_names()), updatedJob.jobStoreID, exitStatus))
             self.process_finished_job(bsID, exitStatus, wall_time=wallTime, exit_reason=exitReason)
 
     def _processLostJobs(self):
@@ -921,7 +922,7 @@ class Leader:
                    "%s and %s",
                    jobNode, str(jobBatchSystemID), jobNode.requirements_string())
         # Tell everyone it is issued and the queue size changed
-        self._messages.publish(JobIssuedMessage(jobNode.get_job_kind(), jobNode.jobStoreID, jobBatchSystemID))
+        self._messages.publish(JobIssuedMessage(get_job_kind(jobNode.get_names()), jobNode.jobStoreID, jobBatchSystemID))
         self._messages.publish(QueueSizeMessage(self.getNumberOfJobsIssued()))
         # Tell the user there's another job to do
         self.progress_overall.total += 1
@@ -1309,7 +1310,7 @@ class Leader:
 
         # Tell everyone it failed
 
-        self._messages.publish(JobFailedMessage(job_desc.get_job_kind(), job_id))
+        self._messages.publish(JobFailedMessage(get_job_kind(job_desc.get_names()), job_id))
 
         if job_id in self.toilState.service_to_client:
             # Is a service job
