@@ -293,7 +293,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
     def blockFn() -> bool:
         return True
-    listOfJobs = [jobName]
+    # Kep a list of all the job names run, in order, to put in the stats
+    # output. Start with whatever name info we got.
+    stats_job_name_list = [jobName]
     job = None
     try:
 
@@ -313,7 +315,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         ##########################################
 
         jobDesc = jobStore.load_job(jobStoreID)
-        listOfJobs[0] = str(jobDesc)
+        # Now that we have the real job description, update the name we report
+        # stats under with something more useful.
+        stats_job_name_list[0] = str(jobDesc)
         logger.debug("Parsed job description")
 
         ##########################################
@@ -458,7 +462,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             successorID = successor.jobStoreID
 
             # add the successor to the list of jobs run
-            listOfJobs.append(str(successor))
+            stats_job_name_list.append(str(successor))
 
             # Now we need to become that successor, under the original ID.
             successor.replace(jobDesc)
@@ -581,7 +585,6 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         jobDesc.logJobStoreFileID = logJobStoreFileID = jobStore.getEmptyFileStoreID(
             jobDesc.jobStoreID, cleanup=True
         )
-        jobDesc.chainedJobs = listOfJobs
         with jobStore.update_file_stream(logJobStoreFileID) as w:
             with open(tempWorkerLogPath, 'rb') as f:
                 if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
@@ -605,7 +608,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # Make sure lines are Unicode so they can be JSON serialized as part of the dict.
             # We may have damaged the Unicode text by cutting it at an arbitrary byte so we drop bad characters.
             logMessages = [line.decode('utf-8', 'skip') for line in logFile.read().splitlines()]
-        statsDict.logs.names = listOfJobs
+        statsDict.logs.names = stats_job_name_list
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back

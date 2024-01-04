@@ -821,7 +821,8 @@ class JobDescription(Requirer):
         # been cut, so we need to hold onto them somehow. Includes each
         # chained-in job with its original ID, and also this job's ID with its
         # original names, or is empty if no chaining has happened.
-        self.merged_jobs: Set[Names] = set()
+        # The first job in the chain comes first in the list.
+        self.merged_jobs: List[Names] = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -870,15 +871,11 @@ class JobDescription(Requirer):
         # And we log who made the version (by PID)
         self._job_version_writer = 0
 
-        # Human-readable names of jobs that were run as part of this job's
-        # invocation, starting with this job
-        self.chainedJobs = []
-
     def get_names(self) -> Names:
         """
         Get the names and ID of this job as a named tuple.
         """
-        return Names(self.jobName, self.unitName, self.displayName, str(self.jobStoreID))
+        return Names(self.jobName, self.unitName, self.displayName, str(self), str(self.jobStoreID))
 
     def serviceHostIDsInBatches(self) -> Iterator[List[str]]:
         """
@@ -1054,15 +1051,23 @@ class JobDescription(Requirer):
         self.successor_phases = old_phases + self.successor_phases
 
         # When deleting, we need to delete the files for our old ID, and also
-        # anything that needed to be deleted for the job we are replacing. And we need to keep track of all the names of jobs involved for logging.
-        # Us under our original ID goes in the set.
-        self.merged_jobs.add(self.get_names())
-        # And anything that was already merged into what we are replacing
-        self.merged_jobs |= other.merged_jobs
+        # anything that needed to be deleted for the job we are replacing. And
+        # we need to keep track of all the names of jobs involved for logging.
+        
+        # We need first the job we are merging into if nothing has merged into
+        # it yet, then anything that already merged into it (including it),
+        # then us if nothing has yet merged into us, then anything that merged
+        # into us (inclusing us)
+        merged_jobs = []
         if len(other.merged_jobs) == 0:
-            # If we are the first thing to replace other, make sure to retain its original names.
-            self.merged_jobs.add(other.get_names())
-        # And steal its ID.
+            merged_jobs.append(other.get_names())
+        merged_jobs += other.merged_jobs
+        if len(self.merged_jobs) == 0:
+            merged_jobs.append(self.get_names())
+        merged_jobs += self.merged_jobs
+        self.merged_jobs = merged_jobs
+        
+        # Now steal its ID.
         self.jobStoreID = other.jobStoreID
 
         if len(other.filesToDelete) > 0:

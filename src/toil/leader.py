@@ -1213,7 +1213,8 @@ class Leader:
                                                       message='The job seems to have left a log file, indicating failure: %s' % replacement_job)
                 if self.config.writeLogs or self.config.writeLogsGzip:
                     with replacement_job.getLogFileHandle(self.jobStore) as log_stream:
-                        StatsAndLogging.writeLogFiles(replacement_job.chainedJobs, log_stream, self.config, failed=True)
+                        # Send log data from the job store to each per-job log file involved.
+                        StatsAndLogging.writeLogFiles([names.stats_name for names in replacement_job.merged_jobs], log_stream, self.config, failed=True)
             if result_status != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
@@ -1241,9 +1242,10 @@ class Leader:
                                                                       message='The batch system left a non-empty file %s:' % log_file)
                                     if self.config.writeLogs or self.config.writeLogsGzip:
                                         file_root, _ = os.path.splitext(os.path.basename(log_file))
-                                        job_names = replacement_job.chainedJobs
-                                        if job_names is None:   # For jobs that fail this way, replacement_job.chainedJobs is not guaranteed to be set
-                                            job_names = [str(replacement_job)]
+                                        # For jobs that fail this way, replacement_job.merged_jobs is not guaranteed to be set.
+                                        # So if there's nothing, use just the names we see for the job description right now.
+                                        job_names = [names.stats_name for names in (replacement_job.merged_jobs or [replacement_job.get_names()])]
+                                        # Tack the batch system log file name onto each job's name
                                         job_names = [j + '_' + file_root for j in job_names]
                                         log_stream.seek(0)
                                         StatsAndLogging.writeLogFiles(job_names, log_stream, self.config, failed=True)

@@ -99,6 +99,8 @@ class Names(NamedTuple):
     unit_name: str
     # Human-readable name for the job
     display_name: str
+    # What the job prints as, used for stats-and-logging log management
+    stats_name: str
     # Job store ID of the job for the work unit
     job_store_id: str
 
