@@ -599,7 +599,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             # Make sure lines are Unicode so they can be JSON serialized as part of the dict.
             # We may have damaged the Unicode text by cutting it at an arbitrary byte so we drop bad characters.
             logMessages = [line.decode('utf-8', 'skip') for line in logFile.read().splitlines()]
-        statsDict.logs.names = [name.stats_name for name in (jobDesc.merged_jobs or [jobDesc.get_names()])]
+        statsDict.logs.names = [names.stats_name for names in jobDesc.get_chain()]
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
@@ -625,14 +625,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
     # This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.is_subtree_done():
-        # We can now safely get rid of the JobDescription, and all jobs it chained up
-        jobStore.delete_job(str(jobDesc.jobStoreID))
-        removed_ids = {str(jobDesc.jobStoreID)}
-        for merged_in in jobDesc.merged_jobs:
-            if merged_in.job_store_id not in removed_ids:
-                # Delete each unique job store ID among the chained-together jobs
-                jobStore.delete_job(merged_in.job_store_id)
-                removed_ids.add(merged_in.job_store_id)
+        for merged_in in jobDesc.get_chain():
+            # We can now safely get rid of the JobDescription, and all jobs it chained up
+            jobStore.delete_job(merged_in.job_store_id)
         
 
     if jobAttemptFailed:

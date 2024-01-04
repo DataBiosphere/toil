@@ -822,7 +822,7 @@ class JobDescription(Requirer):
         # chained-in job with its original ID, and also this job's ID with its
         # original names, or is empty if no chaining has happened.
         # The first job in the chain comes first in the list.
-        self.merged_jobs: List[Names] = []
+        self._merged_job_names: List[Names] = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -876,6 +876,21 @@ class JobDescription(Requirer):
         Get the names and ID of this job as a named tuple.
         """
         return Names(self.jobName, self.unitName, self.displayName, str(self), str(self.jobStoreID))
+
+    def get_chain(self) -> List[Names]:
+        """
+        Get all the jobs that executed in this job's chain, in order.
+
+        For each job, produces a named tuple with its various names and its
+        original job store ID. The jobs in the chain are in execution order.
+        
+        If the job hasn't run yet or it didn't chain, produces a one-item list.
+        """
+        if len(self._merged_job_names) == 0:
+            # We haven't merged so we're just ourselves.
+            return [self.get_names()]
+        else:
+            return list(self._merged_job_names)
 
     def serviceHostIDsInBatches(self) -> Iterator[List[str]]:
         """
@@ -1058,14 +1073,14 @@ class JobDescription(Requirer):
         # it yet, then anything that already merged into it (including it),
         # then us if nothing has yet merged into us, then anything that merged
         # into us (inclusing us)
-        merged_jobs = []
-        if len(other.merged_jobs) == 0:
-            merged_jobs.append(other.get_names())
-        merged_jobs += other.merged_jobs
-        if len(self.merged_jobs) == 0:
-            merged_jobs.append(self.get_names())
-        merged_jobs += self.merged_jobs
-        self.merged_jobs = merged_jobs
+        _merged_job_names = []
+        if len(other._merged_job_names) == 0:
+            _merged_job_names.append(other.get_names())
+        _merged_job_names += other._merged_job_names
+        if len(self._merged_job_names) == 0:
+            _merged_job_names.append(self.get_names())
+        _merged_job_names += self._merged_job_names
+        self._merged_job_names = _merged_job_names
         
         # Now steal its ID.
         self.jobStoreID = other.jobStoreID
