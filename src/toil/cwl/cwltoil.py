@@ -2655,7 +2655,7 @@ class CWLJob(CWLNamedJob):
 
         logger.debug("Emitting output: %s", output)
 
-        file_store.log_to_leader(f"CWL step complete: {self.unitName}")
+        file_store.log_to_leader(f"CWL step complete: {runtime_context.name}")
 
         # metadata[process_uuid] = {
         #     'started_at': started_at,
