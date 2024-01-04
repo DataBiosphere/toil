@@ -1820,8 +1820,8 @@ class Job:
         return self._tempDir
 
     def log(self, text: str, level=logging.INFO) -> None:
-        """Log using :func:`fileStore.logToMaster`."""
-        self._fileStore.logToMaster(text, level)
+        """Log using :func:`fileStore.log_to_leader`."""
+        self._fileStore.log_to_leader(text, level)
 
     @staticmethod
     def wrapFn(fn, *args, **kwargs) -> "FunctionWrappingJob":

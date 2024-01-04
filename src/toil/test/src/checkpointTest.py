@@ -82,7 +82,7 @@ class CheckRetryCount(Job):
 
     def run(self, fileStore):
         retryCount = self.getNumRetries(fileStore)
-        fileStore.logToMaster(str(retryCount))
+        fileStore.log_to_leader(str(retryCount))
         if retryCount < self.numFailuresBeforeSuccess:
             self.addChild(AlwaysFail())
 
