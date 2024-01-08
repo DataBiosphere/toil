@@ -57,6 +57,7 @@ from toil.test import (ToilTest,
                        needs_local_cuda,
                        needs_lsf,
                        needs_mesos,
+                       needs_online,
                        needs_slurm,
                        needs_torque,
                        needs_wes_server,
@@ -766,6 +767,7 @@ class CWLWorkflowTest(ToilTest):
 
 
 @needs_cwl
+@needs_online
 class CWLv10Test(ToilTest):
     """
     Run the CWL 1.0 conformance tests in various environments.
@@ -896,6 +898,7 @@ class CWLv10Test(ToilTest):
 
 
 @needs_cwl
+@needs_online
 class CWLv11Test(ToilTest):
     """
     Run the CWL 1.1 conformance tests in various environments.
@@ -950,6 +953,7 @@ class CWLv11Test(ToilTest):
 
 
 @needs_cwl
+@needs_online
 class CWLv12Test(ToilTest):
     """
     Run the CWL 1.2 conformance tests in various environments.
