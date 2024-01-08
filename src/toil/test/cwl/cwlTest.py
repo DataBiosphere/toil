@@ -136,6 +136,8 @@ def run_conformance_tests(
             "--statusWait=10",
             "--retryCount=2",
             "--relax-path-checks",
+            # Defaults to 20s but we can't start hundreds of nodejs processes that fast on our CI potatoes
+            "--eval-timeout=600",
             f"--caching={caching}"
         ]
 
