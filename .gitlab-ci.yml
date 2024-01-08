@@ -109,6 +109,7 @@ py38_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -122,6 +123,7 @@ py39_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -135,6 +137,7 @@ py310_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -174,6 +177,7 @@ slurm_test:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -185,6 +189,7 @@ cwl_v1.2:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -212,6 +217,7 @@ cwl_on_arm:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -239,6 +245,7 @@ cwl_misc:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: main_tests
   script:
     - pwd
@@ -302,6 +309,7 @@ jobstore_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -318,6 +326,7 @@ server_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -335,6 +344,7 @@ provisioner_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -353,6 +363,7 @@ google_jobstore:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -370,6 +381,7 @@ mesos:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -403,6 +415,7 @@ cactus_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
