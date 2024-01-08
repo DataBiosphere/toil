@@ -171,9 +171,6 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
 
-        upgrade_command = [self.pip(), 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
-        self.sshUtil(upgrade_command)
-
         log.info('Set up script...')
         self._getScript()
 
