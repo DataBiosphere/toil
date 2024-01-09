@@ -23,7 +23,7 @@ import sys
 import time
 import uuid
 from contextlib import contextmanager
-from typing import IO, Iterator, List, Optional, Union, overload
+from typing import IO, Iterable, Iterator, List, Optional, Union, overload
 from urllib.parse import ParseResult, quote, unquote
 
 if sys.version_info >= (3, 8):
@@ -499,7 +499,7 @@ class FileJobStore(AbstractJobStore):
 
         atomic_copy(local_path, jobStoreFilePath)
 
-    def read_file(self, file_id, local_path, symlink=False):
+    def read_file(self, file_id: str, local_path: str, symlink: bool = False) -> None:
         self._check_job_store_file_id(file_id)
         jobStoreFilePath = self._get_file_path_from_id(file_id)
         localDirPath = os.path.dirname(local_path)
@@ -716,6 +716,69 @@ class FileJobStore(AbstractJobStore):
             else:
                 raise
 
+    def list_all_file_names(self, for_job: Optional[str] = None) -> Iterable[str]:
+        """
+        Get all the file names (not file IDs) of files stored in the job store.
+
+        Used for debugging.
+
+        :param for_job: If set, restrict the list to files for a particular job.
+        """
+
+        # TODO: Promote to AbstractJobStore.
+        # TODO: Include stats-and-logging files?
+
+        if for_job is not None:
+            # Run on one job
+            jobs = [for_job]
+        else:
+            # Run on all the jobs
+            jobs = []
+            # But not all the jobs that exist, we want all the jobs that have
+            # files. So look at the file directories which mirror the job
+            # directories' structure.
+            for job_kind_dir in self._list_dynamic_spray_dir(self.jobFilesDir):
+                # First we sprayed all the job kinds over a tree
+                for job_instance_dir in self._list_dynamic_spray_dir(job_kind_dir):
+                    # Then we sprayed the job instances over a tree
+                    # And based on those we get the job name
+                    job_id = self._get_job_id_from_files_dir(job_instance_dir)
+                    jobs.append(job_id)
+
+            for name in os.listdir(self.sharedFilesDir):
+                # Announce all the shared files
+                yield name
+
+            for file_dir_path in self._list_dynamic_spray_dir(self.filesDir):
+                # Run on all the no-job files
+                for dir_file in os.listdir(file_dir_path):
+                    # There ought to be just one file in here.
+                    yield dir_file
+
+        for job_store_id in jobs:
+            # Files from _get_job_files_dir
+            job_files_dir = os.path.join(self.jobFilesDir, job_store_id)
+            if os.path.exists(job_files_dir):
+                for file_dir in os.listdir(job_files_dir):
+                    # Each file is in its own directory
+                    if file_dir == "cleanup":
+                        # Except the cleanup directory which we do later.
+                        continue
+                    file_dir_path = os.path.join(job_files_dir, file_dir)
+                    for dir_file in os.listdir(file_dir_path):
+                        # There ought to be just one file in here.
+                        yield dir_file
+
+                # Files from _get_job_files_cleanup_dir
+                job_cleanup_files_dir = os.path.join(job_files_dir, "cleanup")
+                if os.path.exists(job_cleanup_files_dir):
+                    for file_dir in os.listdir(job_cleanup_files_dir):
+                        # Each file is in its own directory
+                        file_dir_path = os.path.join(job_cleanup_files_dir, file_dir)
+                        for dir_file in os.listdir(file_dir_path):
+                            # There ought to be just one file in here.
+                            yield dir_file
+
     def write_logs(self, msg):
         # Temporary files are placed in the stats directory tree
         tempStatsFileName = "stats" + str(uuid.uuid4().hex) + ".new"
@@ -762,6 +825,13 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, string is the job ID, which is a path relative to self.jobsDir
         """
         return absPath[len(self.jobsDir)+1:]
+
+    def _get_job_id_from_files_dir(self, absPath: str) -> str:
+        """
+        :param str absPath: The absolute path to a job directory under self.jobFilesDir which holds a job's files.
+        :rtype : string, string is the job ID
+        """
+        return absPath[len(self.jobFilesDir)+1:]
 
     def _get_job_file_name(self, jobStoreID):
         """
@@ -980,6 +1050,19 @@ class FileJobStore(AbstractJobStore):
 
             # Recurse
             yield from self._walk_dynamic_spray_dir(childPath)
+
+    def _list_dynamic_spray_dir(self, root):
+        """
+        For a directory tree filled in by _getDynamicSprayDir, yields each
+        highest-level file or or directory *not* created by _getDynamicSprayDir
+        (i.e. the actual contents).
+        """
+
+        for spray_dir in self._walk_dynamic_spray_dir(root):
+            for child in os.listdir(spray_dir):
+                if child not in self.validDirsSet:
+                    # This is a real content item we are storing
+                    yield os.path.join(spray_dir, child)
 
     def _job_directories(self):
         """
