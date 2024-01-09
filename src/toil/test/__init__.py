@@ -360,10 +360,17 @@ def needs_rsync3(test_item: MT) -> MT:
     return test_item
 
 
+def needs_online(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if we are meant to talk to the Internet."""
+    test_item = _mark_test('online', test_item)
+    if os.getenv('TOIL_SKIP_ONLINE', '').lower() == 'true':
+        return unittest.skip('Skipping online test.')(test_item)
+    return test_item
+
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
-    test_item = _mark_test('aws-s3', test_item)
+    test_item = _mark_test('aws-s3', needs_online(test_item))
     try:
         from boto import config
         boto_credentials = config.get('Credentials', 'aws_access_key_id')
@@ -416,7 +423,7 @@ def needs_google_storage(test_item: MT) -> MT:
     Cloud is installed and we ought to be able to access public Google Storage
     URIs.
     """
-    test_item = _mark_test('google-storage', test_item)
+    test_item = _mark_test('google-storage', needs_online(test_item))
     try:
         from google.cloud import storage  # noqa
     except ImportError:
@@ -428,7 +435,7 @@ def needs_google_project(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
     """
-    test_item = _mark_test('google-project', test_item)
+    test_item = _mark_test('google-project', needs_online(test_item))
     test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
     return test_item
 
@@ -460,7 +467,7 @@ def needs_kubernetes_installed(test_item: MT) -> MT:
 
 def needs_kubernetes(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
-    test_item = needs_kubernetes_installed(test_item)
+    test_item = needs_kubernetes_installed(needs_online(test_item))
     try:
         import kubernetes
         try:
@@ -539,7 +546,7 @@ def needs_docker(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     docker is installed and docker-based tests are enabled.
     """
-    test_item = _mark_test('docker', test_item)
+    test_item = _mark_test('docker', needs_online(test_item))
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
@@ -552,7 +559,7 @@ def needs_singularity(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     singularity is installed.
     """
-    test_item = _mark_test('singularity', test_item)
+    test_item = _mark_test('singularity', needs_online(test_item))
     if which('singularity'):
         return test_item
     else:
@@ -589,7 +596,7 @@ def needs_docker_cuda(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     a CUDA setup is available through Docker.
     """
-    test_item = _mark_test('docker_cuda', test_item)
+    test_item = _mark_test('docker_cuda', needs_online(test_item))
     if have_working_nvidia_docker_runtime():
         return test_item
     else:
@@ -645,7 +652,7 @@ def needs_celery_broker(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
     """
-    test_item = _mark_test('celery', test_item)
+    test_item = _mark_test('celery', needs_online(test_item))
     test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
     return test_item
 
@@ -654,7 +661,7 @@ def needs_wes_server(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to run only if a WES
     server is available to run against.
     """
-    test_item = _mark_test('wes_server', test_item)
+    test_item = _mark_test('wes_server', needs_online(test_item))
 
     wes_url = os.environ.get('TOIL_WES_ENDPOINT')
     if not wes_url:
@@ -712,7 +719,7 @@ def needs_fetchable_appliance(test_item: MT) -> MT:
     the Toil appliance Docker image is able to be downloaded from the Internet.
     """
 
-    test_item = _mark_test('fetchable_appliance', test_item)
+    test_item = _mark_test('fetchable_appliance', needs_online(test_item))
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     try:
@@ -733,9 +740,7 @@ def integrative(test_item: MT) -> MT:
     Use this to decorate integration tests so as to skip them during regular builds.
 
     We define integration tests as A) involving other, non-Toil software components
-    that we develop and/or B) having a higher cost (time or money). Note that brittleness
-    does not qualify a test for being integrative. Neither does involvement of external
-    services such as AWS, since that would cover most of Toil's test.
+    that we develop and/or B) having a higher cost (time or money).
     """
     test_item = _mark_test('integrative', test_item)
     if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':

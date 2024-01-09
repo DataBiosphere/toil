@@ -145,6 +145,7 @@ test_debug: check_venv check_build_reqs
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
+	TOIL_SKIP_ONLINE=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
