@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil kill")
     parser.add_argument('--force', action='store_true',
                         help="Send SIGKILL to the leader process if local.")
     options = parser.parse_args()

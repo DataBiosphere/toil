@@ -5,8 +5,8 @@
 Auto-Deployment
 ===============
 
-If you want to run your workflow in a distributed environment, on multiple worker machines, either in the cloud or on a
-bare-metal cluster, your script needs to be made available to those other machines. If your script imports other
+If you want to run a Toil Python workflow in a distributed environment, on multiple worker machines, either in the cloud or on a
+bare-metal cluster, the Python code needs to be made available to those other machines. If the workflow's main module imports other
 modules, those modules also need to be made available on the workers. Toil can automatically do that for you, with a
 little help on your part. We call this feature *auto-deployment* of a workflow.
 
@@ -93,10 +93,10 @@ We can now run our workflow::
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Auto Deployment with Sibling Modules
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto Deployment with Sibling Python Files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This scenario applies if the user script imports modules that are its siblings::
+This scenario applies if a Python workflow imports files that are its siblings::
 
    $ cd my_project
    $ ls
@@ -104,26 +104,26 @@ This scenario applies if the user script imports modules that are its siblings::
    $ ./userScript.py --batchSystem=kubernetes …
 
 Here ``userScript.py`` imports additional functionality from ``utilities.py``.
-Toil detects that ``userScript.py`` has sibling modules and copies them to the
-workers, alongside the user script. Note that sibling modules will be
-auto-deployed regardless of whether they are actually imported by the user
-script: all .py files residing in the same directory as the user script will
+Toil detects that ``userScript.py`` has sibling Python files and copies them to the
+workers, alongside the main Python file. Note that sibling Python files will be
+auto-deployed regardless of whether they are actually imported by the workflow:
+all ``.py`` files residing in the same directory as the main workflow Python file will
 automatically be auto-deployed.
 
-Sibling modules are a suitable method of organizing the source code of
+This structure is a suitable method of organizing the source code of
 reasonably complicated workflows.
 
 
 Auto-Deploying a Package Hierarchy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
-``.py`` files—one of which must be called ``__init__.py``—and optionally other
+``.py`` files, one of which must be called ``__init__.py``, and optionally other
 packages. For more involved workflows that contain a significant amount of
 code, this is the recommended way of organizing the source code. Because we use
-a package hierarchy, we can't really refer to the user script as such, we call
-it the user *module* instead. It is merely one of the modules in the package
+a package hierarchy, the main workflow file is actually a Python module.
+It is merely one of the modules in the package
 hierarchy. We need to inform Toil that we want to use a package hierarchy by
-invoking Python's ``-m`` option. That enables Toil to identify the entire set
+invoking Python's ``-m`` option. This enables Toil to identify the entire set
 of modules belonging to the workflow and copy all of them to each worker. Note
 that while using the ``-m`` option is optional in the scenarios above, it is
 mandatory in this one.
@@ -147,11 +147,11 @@ The following shell session illustrates this::
 
 .. _package: https://docs.python.org/2/tutorial/modules.html#packages
 
-Here the user module ``main.py`` does not reside in the current directory, but
+Here the workflow entry point module ``main.py`` does not reside in the current directory, but
 is part of a package called ``util``, in a subdirectory of the current
 directory. Additional functionality is in a separate module called
 ``util.sort.quick`` which corresponds to ``util/sort/quick.py``. Because we
-invoke the user module via ``python -m workflow.main``, Toil can determine the
+invoke the workflow via ``python -m workflow.main``, Toil can determine the
 root directory of the hierarchy–``my_project`` in this case–and copy all Python
 modules underneath it to each worker. The ``-m`` option is documented `here`_
 
@@ -161,7 +161,7 @@ When ``-m`` is passed, Python adds the current working directory to
 ``sys.path``, the list of root directories to be considered when resolving a
 module name like ``workflow.main``. Without that added convenience we'd have to
 run the workflow as ``PYTHONPATH="$PWD" python -m workflow.main``. This also
-means that Toil can detect the root directory of the user module's package
+means that Toil can detect the root directory of the invoked module's package
 hierarchy even if it isn't the current working directory. In other words we
 could do this::
 
@@ -178,7 +178,7 @@ Relying on Shared Filesystems
 
 Bare-metal clusters typically mount a shared file system like NFS on each node.
 If every node has that file system mounted at the same path, you can place your
-project on that shared filesystem and run your user script from there.
+project on that shared filesystem and run your Python workflow from there.
 Additionally, you can clone the Toil source tree into a directory on that
 shared file system and you won't even need to install Toil on every worker. Be
 sure to add both your project directory and the Toil clone to ``PYTHONPATH``. Toil
@@ -194,7 +194,8 @@ Toil Appliance
 --------------
 
 The term Toil Appliance refers to the Ubuntu-based Docker image that Toil uses
-for the machines in the cluster. It's easily deployed, only needs Docker, and
+for the machines in Toil-manages clusters, and for executing jobs on Kubernetes.
+It's easily deployed, only needs Docker, and
 allows a consistent environment on all Toil clusters. To specify a different
 image, see the Toil :ref:`envars` section.  For more information on the Toil
 Appliance, see the :ref:`runningAWS` section.

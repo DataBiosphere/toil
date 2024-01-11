@@ -721,22 +721,22 @@ class ToilPathMapper(PathMapper):
         :param obj: The CWL File or Directory to process
 
         :param stagedir: The base path for target paths to be generated under,
-        except when a File or Directory has an overriding parent directory in
-        dirname
+            except when a File or Directory has an overriding parent directory in
+            dirname
 
         :param basedir: The directory from which relative paths should be
-        resolved; used as the base directory for the StdFsAccess that generated
-        the listing being processed.
+            resolved; used as the base directory for the StdFsAccess that generated
+            the listing being processed.
 
         :param copy: If set, use writable types for Files and Directories.
 
         :param staged: Starts as True at the top of the recursion. Set to False
-        when entering a directory that we can actually download, so we don't
-        stage files and subdirectories separately from the directory as a
-        whole. Controls the staged flag on generated mappings, and therefore
-        whether files and directories are actually placed at their mapped-to
-        target locations. If stage_listing is True, we will leave this True
-        throughout and stage everything.
+            when entering a directory that we can actually download, so we don't
+            stage files and subdirectories separately from the directory as a
+            whole. Controls the staged flag on generated mappings, and therefore
+            whether files and directories are actually placed at their mapped-to
+            target locations. If stage_listing is True, we will leave this True
+            throughout and stage everything.
 
         Produces one MapperEnt for every unique location for a File or
         Directory. These MapperEnt objects are instructions to cwltool's
@@ -1540,8 +1540,8 @@ def toil_get_file(
     :param streaming_allowed: If streaming is allowed
 
     :param pipe_threads: List of threads responsible for streaming the data
-    and open file descriptors corresponding to those files. Caller is responsible
-    to close the file descriptors (to break the pipes) and join the threads
+        and open file descriptors corresponding to those files. Caller is responsible
+        to close the file descriptors (to break the pipes) and join the threads
     """
     pipe_threads_real = pipe_threads or []
     # We can't use urlparse here because we need to handle the '_:' scheme and
@@ -1741,27 +1741,27 @@ def import_files(
     Also does some miscelaneous normalization.
 
     :param import_function: The function used to upload a URI and get a
-    Toil FileID for it.
+        Toil FileID for it.
 
     :param fs_access: the CWL FS access object we use to access the filesystem
-    to find files to import. Needs to support the URI schemes used.
+        to find files to import. Needs to support the URI schemes used.
 
     :param fileindex: Forward map to fill in from file URI to Toil storage
-    location, used by write_file to deduplicate writes.
+        location, used by write_file to deduplicate writes.
 
     :param existing: Reverse map to fill in from Toil storage location to file
-    URI. Not read from.
+        URI. Not read from.
 
     :param cwl_object: CWL tool (or workflow order) we are importing files for
 
     :param skip_broken: If True, when files can't be imported because they e.g.
-    don't exist, leave their locations alone rather than failing with an error.
+        don't exist, leave their locations alone rather than failing with an error.
 
     :param skp_remote: If True, leave remote URIs in place instead of importing
-    files.
+        files.
 
     :param bypass_file_store: If True, leave file:// URIs in place instead of
-    importing files and directories.
+        importing files and directories.
 
     :param log_level: Log imported files at the given level.
     """
@@ -3312,8 +3312,8 @@ def scan_for_unsupported_requirements(
     :param tool: The CWL tool to check for unsupported requirements.
 
     :param bypass_file_store: True if the Toil file store is not being used to
-    transport files between nodes, and raw origin node file:// URIs are exposed
-    to tools instead.
+        transport files between nodes, and raw origin node file:// URIs are exposed
+        to tools instead.
 
     """
 
@@ -3350,24 +3350,31 @@ def determine_load_listing(
     DIRECTORY_NAME is any variable name) set to one of the following three
     options:
 
-        no_listing: DIRECTORY_NAME.listing will be undefined.
-            e.g. inputs.DIRECTORY_NAME.listing == unspecified
+    1. no_listing: DIRECTORY_NAME.listing will be undefined.
+        e.g.
+            
+            inputs.DIRECTORY_NAME.listing == unspecified
 
-        shallow_listing: DIRECTORY_NAME.listing will return a list one level
-                         deep of DIRECTORY_NAME's contents.
-            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
-                 inputs.DIRECTORY_NAME.listing[0].listing == undefined
-                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+    2. shallow_listing: DIRECTORY_NAME.listing will return a list one level
+        deep of DIRECTORY_NAME's contents.
+        e.g. 
 
-        deep_listing: DIRECTORY_NAME.listing will return a list of the entire
-                      contents of DIRECTORY_NAME.
-            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
-                 inputs.DIRECTORY_NAME.listing[0].listing == [items
-                      in subdirectory if it exists and is the first item listed]
-                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+            inputs.DIRECTORY_NAME.listing == [items in directory]
+             inputs.DIRECTORY_NAME.listing[0].listing == undefined
+             inputs.DIRECTORY_NAME.listing.length == # of items in directory
 
-    See: https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
-         https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
+    3. deep_listing: DIRECTORY_NAME.listing will return a list of the entire
+        contents of DIRECTORY_NAME.
+        e.g.
+
+            inputs.DIRECTORY_NAME.listing == [items in directory]
+            inputs.DIRECTORY_NAME.listing[0].listing == [items in subdirectory
+            if it exists and is the first item listed]
+            inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+    See
+    https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
+    and https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
 
     DIRECTORY_NAME.listing should be determined first from loadListing.
     If that's not specified, from LoadListingRequirement.

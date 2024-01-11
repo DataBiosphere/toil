@@ -145,6 +145,7 @@ test_debug: check_venv check_build_reqs
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
+	TOIL_SKIP_ONLINE=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
@@ -249,7 +250,6 @@ endif
 
 
 docs: check_venv check_build_reqs
-	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && ${MAKE} html
 
 clean_docs: check_venv
@@ -258,7 +258,7 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv

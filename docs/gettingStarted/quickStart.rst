@@ -4,43 +4,6 @@ Quickstart Examples
 ===================
 
 .. _quickstart:
-
-Running a basic workflow
-------------------------
-
-A Toil workflow can be run with just three steps:
-
-1. Install Toil (see :ref:`installation-ref`)
-
-2. Copy and paste the following code block into a new file called ``helloWorld.py``:
-
-.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_helloworld.py
-
-3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
-
-       (venv) $ python helloWorld.py file:my-job-store
-
-.. note::
-
-   Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
-   they should have their :ref:`virtual environment <venvPrep>` running.
-
-Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``,
-using the ``file`` job store.
-
-Toil uses batch systems to manage the jobs it creates.
-
-The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
-local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
-Toil supports many different batch systems such as `Kubernetes`_ and Grid Engine; its versatility makes it
-easy to run your workflow in all kinds of places.
-
-Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
-
-For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
-
-.. _Kubernetes: https://kubernetes.io/
-
 .. _cwlquickstart:
 
 Running a basic CWL workflow
@@ -56,6 +19,11 @@ Running CWL workflows using Toil is easy.
        (venv) $ pip install 'toil[cwl]'
 
    This installs the ``toil-cwl-runner`` executable.
+
+   .. note::
+
+      Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
+      they should have their :ref:`virtual environment <venvPrep>` running.
 
 #. Copy and paste the following code block into ``example.cwl``:
 
@@ -89,12 +57,24 @@ Running CWL workflows using Toil is easy.
         (venv) $ cat output.txt
         Hello world!
 
+
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``single_machine``,
+and the default ``file`` job store (which was placed in a temporary directory for you by ``toil-cwl-runner``).
+
+Toil uses batch systems to manage the jobs it creates.
+
+The ``single_machine`` batch system is primarily used to prepare and debug workflows on a
+local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
+Toil supports many different batch systems such as `Kubernetes`_ and Grid Engine; its versatility makes it
+easy to run your workflow in all kinds of places.
+
+.. _Kubernetes: https://kubernetes.io/
+
+Toil's CWL runner is totally customizable! Run ``toil-cwl-runner --help`` to see a complete list of available options.
+
 To learn more about CWL, see the `CWL User Guide`_ (from where this example was
-shamelessly borrowed).
-
-To run this workflow on an AWS cluster have a look at :ref:`awscwl`.
-
-For information on using CWL with Toil see the section :ref:`cwl`
+shamelessly borrowed). For information on using CWL with Toil see the section :ref:`cwl`.
+And for an example of CWL on an AWS cluster, have a look at :ref:`awscwl`.
 
 .. _CWL User Guide: https://www.commonwl.org/user_guide/
 
@@ -122,7 +102,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
           output { File test = "wdl-helloworld-output.txt" }
         }
 
-    and this code into ``wdl-helloworld.json``::
+   and this code into ``wdl-helloworld.json``::
 
         {
           "write_simple_file.write_file.message": "Hello world!"
@@ -137,10 +117,38 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
         (venv) $ cat wdl-helloworld-output.txt
         Hello world!
 
+This will, like the CWL example above, use the ``single_machine`` batch system
+and an automatically-located ``file`` job store by default. You can customize
+Toil's execution of the workflow with command-line options; run
+``toil-wdl-runner --help`` to learn about them.
+
 To learn more about WDL in general, see the `Terra WDL documentation`_ . For more on using WDL in Toil, see :ref:`wdl`.
 
 .. _Terra WDL documentation: https://support.terra.bio/hc/en-us/sections/360007274612-WDL-Documentation
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
+
+.. _pyquickstart:
+
+Running a basic Python workflow
+-------------------------------
+
+In addition to workflow languages like CWL and WDL, Toil supports running workflows written against its Python API.
+
+An example Toil Python workflow can be run with just three steps:
+
+1. Install Toil (see :ref:`installation-ref`)
+
+2. Copy and paste the following code block into a new file called ``helloWorld.py``:
+
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_helloworld.py
+
+3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
+
+       (venv) $ python helloWorld.py file:my-job-store
+
+For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
+
+Toil's customization options are available in Python workflows. Run ``python helloWorld.py --help`` to see a complete list of available options.
 
 .. _runningDetail:
 
@@ -184,7 +192,7 @@ Running the example
                    --overwriteOutput=True \
                    --workDir=/tmp/
 
-   Here we see that we can add our own options to a Toil script. As noted above, the first two
+   Here we see that we can add our own options to a Toil Python workflow. As noted above, the first two
    options, ``--numLines`` and ``--lineLength``, determine the number of lines and how many characters are in each line.
    ``--overwriteOutput`` causes the current contents of ``sortedFile.txt`` to be overwritten, if it already exists.
    The last option, ``--workDir``, is an option built into Toil to specify where temporary files unique to a job are kept.
@@ -382,7 +390,7 @@ Please see the :ref:`cli_status` section for more on gathering runtime and resou
 Launching a Toil Workflow in AWS
 --------------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepareAWS`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
+(see :ref:`prepareAWS`), the user can run the basic ``helloWorld.py`` script (:ref:`pyquickstart`)
 on a VM in AWS just by modifying the run command.
 
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a
@@ -414,7 +422,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
    Note that this command will log you in as the ``root`` user.
 
-#. Run the Toil script in the cluster::
+#. Run the workflow on the cluster::
 
         $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 
@@ -501,7 +509,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 .. _awscactus:
 
 Running a Workflow with Autoscaling - Cactus
----------------------------------------------------
+--------------------------------------------
 
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free, whole-genome multiple alignment
 program that can be run on any of the cloud platforms Toil supports.
