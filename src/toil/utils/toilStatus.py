@@ -317,7 +317,7 @@ class ToilStatus:
 
 def main() -> None:
     """Reports the state of a Toil workflow."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil status")
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                         default=False)
