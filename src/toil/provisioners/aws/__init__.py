@@ -143,7 +143,7 @@ def optimize_spot_bid(boto2_ec2, instance_type, spot_bid, zone_options: List[str
     the instance in a sensible zone.
 
     :param zone_options: The collection of allowed zones to consider, within
-    the region associated with the Boto2 connection.
+        the region associated with the Boto2 connection.
     """
     spot_history = _get_spot_history(boto2_ec2, instance_type)
     if spot_history:
