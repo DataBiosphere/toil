@@ -17,7 +17,7 @@
 from toil.lib.ec2nodes import InstanceType
 
 
-# 772 Instance Types.  Generated 2024-01-10 15:51:35.169697.
+# 772 Instance Types.  Generated 2024-01-10 16:04:52.984718.
 E2Instances = {
     'a1.2xlarge': InstanceType(name='a1.2xlarge', cores=8, memory=16.0, disks=0, disk_capacity=0, architecture='amd64'),
     'a1.4xlarge': InstanceType(name='a1.4xlarge', cores=16, memory=32.0, disks=0, disk_capacity=0, architecture='amd64'),

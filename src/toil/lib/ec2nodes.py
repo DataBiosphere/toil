@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2021 Regents of the University of California
+# Copyright (C) 2015-2024 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -319,11 +319,10 @@ def updateStaticEC2Instances() -> None:
 
     with open(updated_aws_instance_list, 'a+') as f:
         f.write(regionKey)
-    # # delete the original file
-    # if os.path.exists(original_aws_instance_list):
-    #     os.remove(original_aws_instance_list)
-    # # replace the instance list with a current list
+
+    # replace the instance list with a current list
     os.rename(updated_aws_instance_list, original_aws_instance_list)
+
     # delete the aws region json file directory
     if os.path.exists(region_json_dirname):
         print(f'Update Successful!  Removing AWS Region JSON Files @: {region_json_dirname}')
