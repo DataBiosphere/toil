@@ -202,8 +202,6 @@ def reduce_region_json_size(filename:str):
         del aws_products[k]
     del aws_products
     with open(filename, 'w') as f:
-        # we only save the "products" key in order to wittle down this massive json as much
-        # as possible at every stage or we will easily eat 30Gb+ of RAM and crash
         f.write(json.dumps(dict(aws=aws_product_list), indent=2))
     return aws_product_list
 
@@ -289,15 +287,13 @@ def updateStaticEC2Instances() -> None:
         from toil.lib.ec2nodes import InstanceType\n\n\n''').format(year=datetime.date.today().strftime("%Y"))[1:])
 
     # write header of total EC2 instance type list
-    genString = "# {num} Instance Types.  Generated {date}.\n".format(num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
+    genString = f'# {len(currentEC2List)} Instance Types.  Generated {datetime.datetime.now()}.\n'
     genString = genString + "E2Instances = {\n"
     sortedCurrentEC2List = sorted(currentEC2List, key=lambda x: x.name)
 
     # write the list of all instances types
     for i in sortedCurrentEC2List:
-        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, architecture='{architecture}')," \
-            "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, architecture=i.architecture)
-        genString = genString + z
+        genString = genString + f"    '{i.name}': InstanceType(name='{i.name}', cores={i.cores}, memory={i.memory}, disks={i.disks}, disk_capacity={i.disk_capacity}, architecture='{i.architecture}'),\n"
     genString = genString + '}\n\n'
 
     genString = genString + 'regionDict = {\n'
