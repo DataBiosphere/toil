@@ -107,6 +107,8 @@ class AbstractBatchSystem(ABC):
     @abstractmethod
     def supportsWorkerCleanup(cls) -> bool:
         """
+        Whether this batch system supports worker cleanup.
+
         Indicates whether this batch system invokes
         :meth:`BatchSystemSupport.workerCleanup` after the last job for a
         particular workflow invocation finishes. Note that the term *worker*
@@ -120,7 +122,9 @@ class AbstractBatchSystem(ABC):
 
     def setUserScript(self, userScript: Resource) -> None:
         """
-        Set the user script for this workflow. This method must be called before the first job is
+        Set the user script for this workflow.
+
+        This method must be called before the first job is
         issued to this batch system, and only if :meth:`.supportsAutoDeployment` returns True,
         otherwise it will raise an exception.
 
@@ -371,7 +375,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param name: the environment variable to be set on the worker.
 
         :param value: if given, the environment variable given by name will be set to this value.
-        if None, the variable's current value will be used as the value on the worker
+            If None, the variable's current value will be used as the value on the worker
 
         :raise RuntimeError: if value is None and the name cannot be found in the environment
         """
@@ -445,7 +449,9 @@ class BatchSystemSupport(AbstractBatchSystem):
     @staticmethod
     def workerCleanup(info: WorkerCleanupInfo) -> None:
         """
-        Cleans up the worker node on batch system shutdown. Also see :meth:`supportsWorkerCleanup`.
+        Cleans up the worker node on batch system shutdown.
+
+        Also see :meth:`supportsWorkerCleanup`.
 
         :param WorkerCleanupInfo info: A named tuple consisting of all the relevant information
                for cleaning up the worker.
@@ -501,8 +507,10 @@ class NodeInfo:
 
 class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
-    A batch system that supports a variable number of worker nodes. Used by :class:`toil.
-    provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in the cluster
+    A batch system that supports a variable number of worker nodes.
+
+    Used by :class:`toil.provisioners.clusterScaler.ClusterScaler` 
+    to scale the number of worker nodes in the cluster
     up or down depending on overall load.
     """
 

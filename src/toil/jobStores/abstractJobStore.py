@@ -27,6 +27,7 @@ from typing import (IO,
                     Callable,
                     ContextManager,
                     Dict,
+                    Iterable,
                     Iterator,
                     List,
                     Optional,
@@ -607,7 +608,7 @@ class AbstractJobStore(ABC):
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._read_from_url(parseResult, writable)
-    
+
     @classmethod
     def open_url(cls, src_uri: str) -> IO[bytes]:
         """
@@ -621,7 +622,7 @@ class AbstractJobStore(ABC):
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
         return otherCls._open_url(parseResult)
-    
+
     @classmethod
     @abstractmethod
     def _url_exists(cls, url: ParseResult) -> bool:

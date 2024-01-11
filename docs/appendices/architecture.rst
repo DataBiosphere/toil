@@ -56,7 +56,7 @@ Jobs and JobDescriptions
 ------------------------
 
 As noted in :ref:`jobBasics`, a job is the atomic unit of work in a Toil workflow.
-User scripts inherit from the :class:`~toil.job.Job` class to define units of work.
+Workflows extend the :class:`~toil.job.Job` class to define units of work.
 These jobs are pickled and stored in the job-store by the leader, and are retrieved
 and un-pickled by the worker when they are scheduled to run.
 
@@ -160,7 +160,7 @@ To optimize time taken, The pipeline is written such that mutations are called o
 basis from the whole-exome bams and are merged into a complete vcf. Running mutect in parallel on
 whole exome bams requires each mutect job to download the complete Tumor and Normal Bams to their
 working directories -- An operation that quickly fills the disk and limits the parallelizability of
-jobs. The script was run in Toil, with and without caching, and Figure 2 shows that the workflow
+jobs. The workflow was run in Toil, with and without caching, and Figure 2 shows that the workflow
 finishes faster in the cached case while using less disk on average than the uncached run. We
 believe that benefits of caching arising from file transfers will be much higher on magnetic
 disk-based storage systems as compared to the SSD systems we tested this on.

@@ -374,11 +374,10 @@ def requestCheckRegularDocker(origAppliance: str, registryName: str, imageName: 
     separate check is done for docker.io images.
 
     :param origAppliance: The full url of the docker image originally
-                          specified by the user (or the default).
-                           e.g. ``quay.io/ucsc_cgl/toil:latest``
-    :param registryName: The url of a docker image's registry.  e.g. ``quay.io``
-    :param imageName: The image, including path and excluding the tag. e.g. ``ucsc_cgl/toil``
-    :param tag: The tag used at that docker image's registry.  e.g. ``latest``
+        specified by the user (or the default). For example, ``quay.io/ucsc_cgl/toil:latest``.
+    :param registryName: The url of a docker image's registry. For example, ``quay.io``.
+    :param imageName: The image, including path and excluding the tag. For example, ``ucsc_cgl/toil``.
+    :param tag: The tag used at that docker image's registry. For example, ``latest``.
     :raises: ApplianceImageNotFound if no match is found.
     :return: Return True if match found.
     """
@@ -403,9 +402,9 @@ def requestCheckDockerIo(origAppliance: str, imageName: str, tag: str) -> bool:
     URL is based on the docker v2 schema.  Requires that an access token be fetched first.
 
     :param origAppliance: The full url of the docker image originally
-                          specified by the user (or the default).  e.g. "ubuntu:latest"
-    :param imageName: The image, including path and excluding the tag. e.g. "ubuntu"
-    :param tag: The tag used at that docker image's registry.  e.g. "latest"
+        specified by the user (or the default). For example, ``ubuntu:latest``.
+    :param imageName: The image, including path and excluding the tag. For example, ``ubuntu``.
+    :param tag: The tag used at that docker image's registry. For example, ``latest``.
     :raises: ApplianceImageNotFound if no match is found.
     :return: Return True if match found.
     """

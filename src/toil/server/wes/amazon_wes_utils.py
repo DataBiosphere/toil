@@ -163,15 +163,17 @@ def parse_workflow_manifest_file(manifest_file: str) -> WorkflowPlan:
     :rtype: dict of `data` and `files`
 
     MANIFEST.json is expected to be formatted like:
+    
     .. code-block:: json
+        
        {
            "mainWorkflowURL": "relpath/to/workflow",
            "inputFileURLs": [
                "relpath/to/input-file-1",
                "relpath/to/input-file-2",
-               ...
+               "relpath/to/input-file-3"
            ],
-           "optionsFileURL" "relpath/to/option-file
+           "optionsFileURL": "relpath/to/option-file"
        }
 
     The `mainWorkflowURL` property that provides a relative file path in the zip to a workflow file, which will be set as `workflowSource`

@@ -13,7 +13,7 @@ the workflow, and worker nodes to execute the various tasks within the workflow.
 spun up clusters with `Apache Mesos`_, but it is no longer recommended.
 
 Once a user is familiar with the basics of running Toil locally (specifying a :ref:`jobStore <jobStoreOverview>`, and
-how to write a toil script), they can move on to the guides below to learn how to translate these workflows into cloud
+how to write a workflow), they can move on to the guides below to learn how to translate these workflows into cloud
 ready workflows.
 
 .. _cloudProvisioning:

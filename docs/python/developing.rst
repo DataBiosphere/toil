@@ -1,26 +1,23 @@
 .. _tutorial-ref:
+.. _devPython:
 
-Developing a Workflow
-=====================
+Developing a Python Workflow
+============================
 
 This tutorial walks through the features of Toil necessary for developing a
 workflow using the Toil Python API.
 
-.. note::
-
-    "script" and "workflow" will be used interchangeably
-
 Scripting Quick Start
 ---------------------
 
-To begin, consider this short toil script which illustrates defining a
+To begin, consider this short Toil Python workflow which illustrates defining a
 workflow:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_quickstart.py
 
 The workflow consists of a single job. The resource requirements for that job
 are (optionally) specified by keyword arguments (memory, cores, disk). The
-script is run using :func:`toil.job.Job.Runner.getDefaultOptions`. Below we
+workflow is run using :func:`toil.job.Job.Runner.getDefaultOptions`. Below we
 explain the components of this code in detail.
 
 
@@ -30,7 +27,7 @@ Job Basics
 ----------
 
 The atomic unit of work in a Toil workflow is a :class:`~toil.job.Job`.
-User scripts inherit from this base class to define units of work. For example,
+User code extends this base class, or uses helper methods like :func:`toil.job.Job.addChildJobFn`, to define units of work. For example,
 here is a more long-winded class-based version of the job in the quick start
 example::
 
@@ -108,16 +105,16 @@ Specifying Commandline Arguments
 To allow command line control of the options we can use the
 :func:`toil.job.Job.Runner.getDefaultArgumentParser`
 method to create a :class:`argparse.ArgumentParser` object which can be used to
-parse command line options for a Toil script. For example:
+parse command line options for a Toil Python workflow. For example:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_arguments.py
 
-Creates a fully fledged script with all the options Toil exposed as command
-line arguments. Running this script with "--help" will print the full list of
+This creates a fully fledged Toil Python workflow with all the options Toil exposes as command
+line arguments. Running this program with ``--help`` will print the full list of
 options.
 
-Alternatively an existing :class:`argparse.ArgumentParser` or
-:class:`optparse.OptionParser` object can have Toil script command line options
+Alternatively an existing :class:`argparse.ArgumentParser`
+object can have Toil command line options
 added to it with the :func:`toil.job.Job.Runner.addToilOptions` method.
 
 

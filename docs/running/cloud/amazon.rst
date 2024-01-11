@@ -421,8 +421,8 @@ For example, this cluster will have both preemptible and non-preemptible nodes: 
             --logDebug
 
 Individual jobs can explicitly specify whether they should be run on preemptible nodes via the boolean ``preemptible``
-resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`__ ``UsePreemptible`` in the
-``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`___
+resource requirement in Toil's Python API. In CWL, this is `exposed as a hint`_ ``UsePreemptible`` in the
+``http://arvados.org/cwl#`` namespace (usually imported as ``arv``). In WDL, this is `exposed as a runtime attribute`_
 ``preemptible`` as recognized by Cromwell. Toil's Kubernetes batch system will prefer to schedule preemptible jobs
 on preemptible nodes.
 
@@ -444,9 +444,9 @@ jobs without an explicit ``preemptible`` requirement to run on preemptible machi
 
 .. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
 
-.. __exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
+.. _exposed as a hint: https://doc.arvados.org/user/cwl/cwl-extensions.html
 
-.. ___exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
+.. _exposed as a runtime attribute: https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#preemptible
 
 Using MinIO and S3-Compatible object stores
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -496,7 +496,7 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
                  --leaderNodeType t2.medium \
                  --zone us-west-2a
 
-#. Copy the ``sort.py`` script up to the leader node: ::
+#. Copy the ``sort.py`` workflow up to the leader node: ::
 
     (venv) $ toil rsync-cluster -z us-west-2a <cluster-name> sort.py :/root
 
@@ -504,7 +504,7 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
     (venv) $ toil ssh-cluster -z us-west-2a <cluster-name>
 
-#. Run the script as an autoscaling workflow, specifying a provisioner and node types and counts as workflow arguments: ::
+#. Run the workflow with in-workflow autoscaling, specifying a provisioner and node types and counts as workflow arguments: ::
 
     $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
           --provisioner aws \
@@ -514,11 +514,11 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
 .. note::
 
-    In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
-    agent containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
-    Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job
+    In this example, the autoscaling Toil code creates up to two instances of type ``c3.large`` and launches Mesos
+    agent containers inside them. The containers are then available to run jobs defined by the ``sort.py`` workflow.
+    Toil also creates a bucket in S3 called ``aws:us-west-2:autoscaling-sort-jobstore`` to store intermediate job
     results. The Toil autoscaler can also provision multiple different node types, which is useful for workflows
-    that have jobs with varying resource requirements. For example, one could execute the script with
+    that have jobs with varying resource requirements. For example, one could execute the workflow with
     ``--nodeTypes c3.large,r3.xlarge --maxNodes 5,1``, which would allow the provisioner to create up to five
     c3.large nodes and one r3.xlarge node for memory-intensive jobs. In this situation, the autoscaler would avoid
     creating the more expensive r3.xlarge node until needed, running most jobs on the c3.large nodes.
@@ -536,7 +536,7 @@ Dashboard
 
 Toil provides a dashboard for viewing the RAM and CPU usage of each node, the number of
 issued jobs of each type, the number of failed jobs, and the size of the jobs queue. To launch this dashboard
-for a toil workflow, include the ``--metrics`` flag in the toil script command. The dashboard can then be viewed
+for a Toil workflow, pass the ``--metrics`` flag on the workflow's command line. The dashboard can then be viewed
 in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``:
 
 To change the default port number, you can use the ``--grafana_port`` argument: ::
