@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(jobstore_option=True)
+    parser = parser_with_common_options(jobstore_option=True, prog="toil clean")
 
     options = parser.parse_args()
     set_logging_from_options(options)

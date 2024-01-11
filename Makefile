@@ -258,7 +258,7 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
