@@ -21,7 +21,7 @@ import requests
 import shutil
 import enlighten
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Any
 
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ def download_region_json(filename: str, region: str = 'us-east-1') -> None:
                 file.write(data)
 
 
-def reduce_region_json_size(filename:str):
+def reduce_region_json_size(filename:str) -> List[Dict[str, Any]]:
     """
     Deletes information in the json file that we don't need, and rewrites it.  This makes the file smaller.
 
