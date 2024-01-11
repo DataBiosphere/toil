@@ -21,6 +21,8 @@ class GunicornApplication(BaseApplication):  # type: ignore
     An entry point to integrate a Gunicorn WSGI server in Python. To start a
     WSGI application with callable `app`, run the following code:
 
+    .. code-block:: python
+
         WSGIApplication(app, options={
             ...
         }).run()

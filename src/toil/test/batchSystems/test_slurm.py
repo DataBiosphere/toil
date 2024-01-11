@@ -16,7 +16,8 @@ def call_sacct(args, **_) -> str:
     The arguments passed to `call_command` when executing `sacct` are:
     ['sacct', '-n', '-j', '<comma-separated list of job-ids>', '--format',
     'JobIDRaw,State,ExitCode', '-P', '-S', '1970-01-01']
-    The multi-line output is something like:
+    The multi-line output is something like::
+
         1234|COMPLETED|0:0
         1234.batch|COMPLETED|0:0
         1235|PENDING|0:0
@@ -46,7 +47,7 @@ def call_sacct(args, **_) -> str:
 def call_scontrol(args, **_) -> str:
     """
     The arguments passed to `call_command` when executing `scontrol` are:
-    ['scontrol', 'show', 'job'] or ['scontrol', 'show', 'job', '<job-id>']
+    ``['scontrol', 'show', 'job']`` or ``['scontrol', 'show', 'job', '<job-id>']``
     """
     job_id = int(args[3]) if len(args) > 3 else None
     # Fake output per fake job-id.

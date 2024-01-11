@@ -175,7 +175,7 @@ def feed_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'amd64'
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient, architecture: str = 'amd64') -> Optional[str]:
-    """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
+    """Query AWS for all AMI names matching ``Flatcar-stable-*`` and return the most recent one."""
 
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
     # Possible arch choices on AWS: 'i386'|'x86_64'|'arm64'|'x86_64_mac'

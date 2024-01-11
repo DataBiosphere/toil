@@ -809,8 +809,7 @@ class hidden:
             """
             Write a local file to the job store (hence adding a copy to cache), then have 10 jobs
             read it. Assert cached file size never goes up, assert unused job
-            required disk space is always:
-                   (a multiple of job reqs) - (number of current file readers * filesize).
+            required disk space is always ``(a multiple of job reqs) - (number of current file readers * filesize)``.
             At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=True)
@@ -820,8 +819,7 @@ class hidden:
             """
             Write a non-local file to the job store(hence no cached copy), then have 10 jobs read
             it. Assert cached file size never goes up, assert unused job
-            required disk space is always:
-                   (a multiple of job reqs) - (number of current file readers * filesize).
+            required disk space is always ``(a multiple of job reqs) - (number of current file readers * filesize)``.
             At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=False)

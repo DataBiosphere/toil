@@ -640,7 +640,7 @@ def add_stats_options(parser: ArgumentParser) -> None:
 
 def main() -> None:
     """Reports stats on the workflow, use with --stats option to toil."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil stats")
     add_stats_options(parser)
     options = parser.parse_args()
 

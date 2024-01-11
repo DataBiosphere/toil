@@ -18,6 +18,8 @@ import tempfile
 
 import pytest
 
+from toil.test import ToilTest
+
 from toil.lib.resources import glob
 from toil.test import slow
 from toil.version import python
@@ -118,3 +120,82 @@ def testFetchJobStoreFiles() -> None:
     os.makedirs(output_dir, exist_ok=True)
     for symlink in (True, False):
         fetchFiles(symLink=symlink, jobStoreDir=job_store_dir, outputDir=output_dir)
+
+class DebugJobTest(ToilTest):
+    """
+    Test the toil debug-job command.
+    """
+
+    def _get_job_store_and_job_id(self):
+        """
+        Get a job store and the ID of a failing job within it.
+        """
+
+        # First make a job store.
+        job_store = os.path.join(self._createTempDir(), "tree")
+
+        logger.info("Running workflow that always fails")
+        try:
+            # Run an always-failign workflow
+            subprocess.check_call([
+                python,
+                os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
+                "--retryCount=0",
+                "--logCritical",
+                "--disableProgress=True",
+                job_store
+            ], stderr=subprocess.DEVNULL)
+            raise RuntimeError("Failing workflow succeeded!")
+        except subprocess.CalledProcessError:
+            # Should fail to run
+            logger.info("Task failed successfully")
+            pass
+
+        # Get the job ID.
+        # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
+        job_id = "kind-explode/" + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
+
+        return job_store, job_id
+
+    def test_run_job(self):
+        """
+        Make sure that we can use toil debug-job to try and run a job in-process.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
+
+        logger.info("Trying to rerun job %s", job_id)
+
+        # Rerun the job, which should fail again
+        output = subprocess.check_output([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            job_id
+        ], stderr=subprocess.STDOUT)
+        # Even if the job fails, the attempt to run it will succeed.
+        log = output.decode('utf-8')
+        assert "Boom!" in log, f"Did not find the expected exception message in: {log}"
+
+
+    def test_print_job_info(self):
+        """
+        Make sure that we can use --printJobInfo to get information on a job from a job store.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
+
+        logger.info("Trying to print job info for job %s", job_id)
+
+        # Print the job info and make sure that doesn't crash.
+        subprocess.check_call([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            "--printJobInfo",
+            job_id
+        ])
+
+
