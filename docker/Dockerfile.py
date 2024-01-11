@@ -61,7 +61,9 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libcurl4-nss-dev',
                          'libapr1',
                          # Dependencies for singularity
-                         'containernetworking-plugins'])
+                         'containernetworking-plugins',
+                         # Dependencies for singularity on kubernetes
+                         'tzdata'])
 
 
 def heredoc(s):
@@ -213,4 +215,6 @@ print(heredoc('''
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
+    
+    RUN ln -s /usr/share/zoneinfo/UTC /etc/localtime
 '''))
