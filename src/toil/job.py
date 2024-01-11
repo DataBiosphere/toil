@@ -811,7 +811,7 @@ class JobDescription(Requirer):
         # them behind if we die right after saving the JobDescription.
         #
         # This will be empty at all times except when a new version of a job is
-        # in the process of being committed. 
+        # in the process of being committed.
         self.filesToDelete = []
 
         # Holds JobStore Job IDs of the jobs that have been chained into this

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil rsync-cluster")
     parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to"
