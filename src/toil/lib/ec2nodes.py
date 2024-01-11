@@ -19,7 +19,7 @@ import re
 import textwrap
 import requests
 import shutil
-import enlighten
+import enlighten  # type: ignore
 
 from typing import Dict, List, Tuple, Union, Any
 
