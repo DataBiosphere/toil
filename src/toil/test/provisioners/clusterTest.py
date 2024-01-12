@@ -18,8 +18,6 @@ import subprocess
 import time
 from uuid import uuid4
 
-import boto.ec2
-
 from toil.lib.aws import zone_to_region
 from toil.lib.retry import retry
 from toil.provisioners.aws import get_best_aws_zone
@@ -38,7 +36,9 @@ class AbstractClusterTest(ToilTest):
         self.clusterType = 'mesos'
         self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
-        # We need a boto2 connection to EC2 to check on the cluster
+        # We need a boto2 connection to EC2 to check on the cluster.
+        # Since we are protected by needs_aws_ec2 we can import from boto.
+        import boto.ec2
         self.boto2_ec2 = boto.ec2.connect_to_region(zone_to_region(self.zone))
         # Where should we put our virtualenv?
         self.venvDir = '/tmp/venv'
