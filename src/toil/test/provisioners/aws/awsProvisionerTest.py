@@ -29,6 +29,7 @@ from toil.test import (ToilTest,
                        integrative,
                        needs_aws_ec2,
                        needs_fetchable_appliance,
+                       needs_mesos,
                        slow,
                        timeLimit)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
@@ -171,9 +172,6 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
 
-        upgrade_command = [self.pip(), 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
-        self.sshUtil(upgrade_command)
-
         log.info('Set up script...')
         self._getScript()
 
@@ -214,6 +212,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -282,6 +281,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(2400)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
@@ -357,6 +357,7 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -396,6 +397,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """This test insures autoscaling works on a restarted Toil run."""
@@ -459,6 +461,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class PreemptibleDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):

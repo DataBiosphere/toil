@@ -63,8 +63,8 @@ def printContentsOfJobStore(job_store: FileJobStore, job_id: Optional[str] = Non
 
     :param job_store: Job store to ask for files from.
     :param job_id: Default is None, which prints out all files in the jobStore.
-    If specified, it will print all jobStore files that have been written to the
-    jobStore by that job.
+        If specified, it will print all jobStore files that have been written
+        to the jobStore by that job.
     """
 
     # TODO: Implement the necessary methods for job stores other than
