@@ -213,7 +213,7 @@ def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
     # Is the filesystem big enough?
     # We need to look at the FS size and not the free space so we don't change
     # over to a different filesystem when this one fills up.
-    fs_size = statvfs.f_frsize * statvfs.f_blocks
+    fs_size = stats.f_frsize * stats.f_blocks
     if fs_size < min_size:
         # Too small
         return None
