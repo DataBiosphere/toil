@@ -1308,7 +1308,7 @@ class Toil(ContextManager["Toil"]):
 
         :param workflow_id: The ID of the current Toil workflow.
         """
-        return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
+        return "toilwf-" + str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
     @classmethod
     def getLocalWorkflowDir(
