@@ -180,10 +180,10 @@ def download_structure(
     :param existing: Maps from file_store_id URI to downloaded file path.
 
     :param dir_dict: a dict from string to string (for files) or dict (for
-    subdirectories) describing a directory structure.
+        subdirectories) describing a directory structure.
 
     :param into_dir: The directory to download the top-level dict's files
-    into.
+        into.
     """
     logger.debug("Downloading directory with %s items", len(dir_dict))
 

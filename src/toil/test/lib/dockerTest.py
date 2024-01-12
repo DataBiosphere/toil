@@ -248,12 +248,12 @@ class DockerTest(ToilTest):
                              deferParam=None)
 
     def testDockerPipeChain(self, caching=False):
-        """
+        r"""
         Test for piping API for dockerCall().  Using this API (activated when
         list of argument lists is given as parameters), commands a piped
         together into a chain.
-        ex:  parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ] should execute:
-        printf 'x\n y\n' | wc -l
+        ex:  ``parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ]`` should execute:
+        ``printf 'x\n y\n' | wc -l``
         """
         options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = self.dockerTestLogLevel

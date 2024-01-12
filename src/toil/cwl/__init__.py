@@ -15,17 +15,6 @@ import sys
 from functools import lru_cache
 
 from importlib.metadata import version, PackageNotFoundError
-
-try:
-    # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
-    # See https://github.com/pypa/setuptools/issues/3772
-    from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
-except ImportError:
-    # It's not clear that this exception is really part fo the public API, so fake it.
-    class InvalidVersion(Exception):  # type: ignore
-        pass
-
-
 from toil.version import cwltool_version
 
 
@@ -38,6 +27,16 @@ def check_cwltool_version() -> None:
     assume that logging is set up already. Safe to call repeatedly; only one
     warning will be printed.
     """
+
+    try:
+        # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
+        # See https://github.com/pypa/setuptools/issues/3772
+        from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
+    except ImportError:
+        # It's not clear that this exception is really part fo the public API, so fake it.
+        class InvalidVersion(Exception):  # type: ignore
+            pass
+
     try:
         installed_version = version("cwltool")
 
@@ -47,6 +46,9 @@ def check_cwltool_version() -> None:
                 f"not the version Toil is tested against. To install the correct cwltool "
                 f"for Toil, do:\n\n\tpip install cwltool=={cwltool_version}\n\n"
             )
+    except InvalidVersion:
+        # cwltool installation can't be inspected
+        pass
     except PackageNotFoundError:
         # cwltool is not installed
         pass
