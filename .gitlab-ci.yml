@@ -109,6 +109,7 @@ py38_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -122,6 +123,7 @@ py39_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -135,6 +137,7 @@ py310_appliance_build:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
@@ -174,6 +177,7 @@ slurm_test:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -185,6 +189,7 @@ cwl_v1.2:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -212,6 +217,7 @@ cwl_on_arm:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
@@ -239,6 +245,7 @@ cwl_misc:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: main_tests
   script:
     - pwd
@@ -302,6 +309,7 @@ jobstore_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -318,6 +326,7 @@ server_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -335,6 +344,7 @@ provisioner_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -346,13 +356,14 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
@@ -370,10 +381,17 @@ mesos:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/test/mesos/*'
+          - 'src/toil/batchSystems/mesos/*'
   stage: integration
   script:
     - pwd
-    - python3.10 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[mesos]
+    - python3.10 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[mesos,aws]
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -383,20 +401,22 @@ mesos:
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
     - export TOIL_GOOGLE_PROJECTID=toil-dev
-    - make test threads="${TEST_THREADS}" src/toil/test/mesos/MesosDataStructuresTest.py::DataStructuresTest
-    - make test threads="${TEST_THREADS}" src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest
-    - make test threads="${TEST_THREADS}" src/toil/test/sort/sortTest.py::SortTest::testAwsMesos
-    - make test threads="${TEST_THREADS}" src/toil/test/sort/sortTest.py::SortTest::testFileMesos
-    - make test threads="${TEST_THREADS}" src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos
-    - make test threads="${TEST_THREADS}" src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance
-    - make test threads="${TEST_THREADS}" src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance_with_caching
-    - make test threads="${TEST_THREADS}" src/toil/test/src/promisedRequirementTest.py::MesosPromisedRequirementsTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/mesos/MesosDataStructuresTest.py::DataStructuresTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testAwsMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testFileMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance_with_caching
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/src/promisedRequirementTest.py::MesosPromisedRequirementsTest
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
         compare_to: 'refs/heads/master'
