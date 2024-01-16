@@ -1626,10 +1626,7 @@ def getDirSizeRecursively(dirPath: str) -> int:
     internally, and a (possibly 0) lower bound on the size of the directory
     will be returned.
 
-    The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
-    --block-size=1 because Apple can't handle it.
-
-    :param str dirPath: A valid path to a directory or file.
+    :param dirPath: A valid path to a directory or file.
     :return: Total size, in bytes, of the file or directory at dirPath.
     """
 
@@ -1639,12 +1636,22 @@ def getDirSizeRecursively(dirPath: str) -> int:
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
 
+    dirPath = os.path.abspath(dirPath)
     try:
         return int(subprocess.check_output(['du', '-s', dirPath],
                                            env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
-    except subprocess.CalledProcessError:
-        # Something was inaccessible or went away
-        return 0
+        # The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
+        # --block-size=1 because Apple can't handle it.
+    except (OSError, subprocess.CalledProcessError):
+        # Fallback to pure Python implementation, useful for when kernal limits
+        # to argument list size are hit, etc..
+        total_size: int = 0
+        if os.path.isfile(dirPath):
+            return os.lstat(dirPath).st_blocks * 512
+        for dir_path, dir_names, filenames in os.walk(dirPath):
+            for name in filenames:
+                total_size += os.lstat(os.path.join(dir_path, name)).st_blocks * 512
+        return total_size
 
 
 def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
