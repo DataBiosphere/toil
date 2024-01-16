@@ -95,6 +95,46 @@ several human-readable names that are useful for logging and identification:
 |                  | For a CWL workflow, the displayName is the absolute workflow URI.  |
 +------------------+--------------------------------------------------------------------+
 
+Statistics and Logging
+----------------------
+
+Toil's statistics and logging system is implemented in a joint class
+:class:`~toil.statsAndLogging.StatsAndLogging`. The class can be instantiated
+and run as a thread on the leader, where it polls for new log files in the job
+store with the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.read_logs` method.
+These are JSON files, which contain strucutred data. Structured log messages
+from user Python code, stored under ``workers.logs_to_leader``, from the file
+store's
+:meth:`~toil.fileStores.abstractFileStore.AbstractFileStore.log_to_leader`
+method, will be logged at the appropriate level. The text output that the
+worker captured for all its chained jobs, in ``logs.messages``, will be logged
+at debug level in the worker's output. If ``--writeLogs`` or
+``--writeLogsGzip`` is provided, the received worker logs will also be stored
+by the StatsAndLogging thread into per-job files inside the job store, using
+:meth:`~toil.statsAndLogging.StatsAndLogging.writeLogFiles`.
+
+Note that the worker only fills this in if running with debug logging on, or if
+``--writeLogsFromAllJobs`` is set. Otherwise, logs from successful jobs are not
+persisted. Logs from failed jobs are persisted differently; they are written
+to the file store, and the log file is made available through
+:meth:`toil.job.JobDescription.getLogFileHandle`. The leader thread retrieves
+these logs and calls back into :class:`~toil.statsAndLogging.StatsAndLogging`
+to print or locally save them as appropriate.
+
+To ship the statistics and the non-failed-job logs around, the job store has a
+logs mailbox system: the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.write_logs` method
+deposits a string, and the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.read_logs` method on
+the leader passes the strings to a callback. It tracks a concept of new and
+old, based on whether the string has been read already by anyone, and one can
+read only the new values, or all values observed. The stats and logging system
+uses this to pass around structured JSON holding both log data and
+worker-measured stats, and expects the
+:class:`~toil.statsAndLogging.StatsAndLogging` thread to be the only live
+reader.
+
 
 Optimizations
 -------------

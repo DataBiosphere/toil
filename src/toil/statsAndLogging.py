@@ -151,7 +151,7 @@ class StatsAndLogging:
             if not stats:
                 return
             try:
-                logs = stats.workers.logsToMaster
+                logs = stats.workers.logs_to_leader
             except AttributeError:
                 # To be expected if there were no calls to log_to_leader()
                 pass
