@@ -623,7 +623,7 @@ class JobTest(ToilTest):
         return True
 
 def simpleJobFn(job, value):
-    job.fileStore.logToMaster(value)
+    job.fileStore.log_to_leader(value)
 
 def fn1Test(string, outputFile):
     """

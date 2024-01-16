@@ -1362,7 +1362,7 @@ def test_workflow_echo_string():
     cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
-    assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
+    assert stdout.decode("utf-8").strip() == "{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
 
