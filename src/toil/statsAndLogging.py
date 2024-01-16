@@ -153,7 +153,7 @@ class StatsAndLogging:
             try:
                 logs = stats.workers.logsToMaster
             except AttributeError:
-                # To be expected if there were no calls to logToMaster()
+                # To be expected if there were no calls to log_to_leader()
                 pass
             else:
                 for message in logs:

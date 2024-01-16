@@ -136,12 +136,6 @@ class AbstractGCEAutoscaleTest(ToilTest):
                         '--python', exactPython, '/home/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
-        self.sshUtil(upgrade_command)
-
-        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
-        self.sshUtil(yaml_command)
-
         self._getScript()
 
         toilOptions = [self.jobStore,
