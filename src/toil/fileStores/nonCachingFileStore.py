@@ -364,7 +364,7 @@ class NonCachingFileStore(AbstractFileStore):
                     'jobDir': self.localTempDir}
         try:
             (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
-        except e:
+        except Exception as e:
             raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
         with open(fd, 'wb') as fH:
             # Write data
