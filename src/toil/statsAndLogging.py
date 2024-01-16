@@ -154,7 +154,7 @@ class StatsAndLogging:
             stats = json.loads(statsStr, object_hook=Expando)
             if not stats:
                 return
-            
+
             try:
                 # Handle all the log_to_leader messages
                 logs = stats.workers.logs_to_leader

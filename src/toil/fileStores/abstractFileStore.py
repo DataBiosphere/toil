@@ -628,7 +628,7 @@ class AbstractFileStore(ABC):
         log information.
 
         :param name: A hierarchical, .-delimited string.
-        :param stream: A stream of encoded text. Encodign errirs will be
+        :param stream: A stream of encoded text. Encoding errors will be
             tolerated.
         """
 

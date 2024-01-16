@@ -34,7 +34,7 @@ import stat
 import sys
 import textwrap
 import uuid
-from tempfile import NamedTemporaryFile, gettempdir
+from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (
     IO,
@@ -1987,7 +1987,7 @@ def upload_file(
 
     Uploads local files to the Toil file store, and sets their location to a
     reference to the toil file store.
-    
+
     Unless skip_remote is set, downloads remote files into the file store and
     sets their locations to references into the file store as well.
     """
@@ -2614,6 +2614,13 @@ class CWLJob(CWLNamedJob):
                 streaming_allowed=runtime_context.streaming_allowed,
             )
 
+        # Collect standard output and standard error somewhere if they don't go to files.
+        # We need to keep two FDs to these because cwltool will close what we give it.
+        default_stdout = TemporaryFile()
+        runtime_context.default_stdout = os.fdopen(os.dup(default_stdout.fileno()), 'wb')
+        default_stderr = TemporaryFile()
+        runtime_context.default_stderr = os.fdopen(os.dup(default_stderr.fileno()), 'wb')
+
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
@@ -2635,6 +2642,16 @@ class CWLJob(CWLNamedJob):
         for t, fd in pipe_threads:
             os.close(fd)
             t.join()
+
+        # Log any output/error data
+        default_stdout.seek(0, os.SEEK_END)
+        if default_stdout.tell() > 0:
+            default_stdout.seek(0)
+            file_store.log_user_stream(self.description.unitName + '.stdout', default_stdout)
+        default_stderr.seek(0, os.SEEK_END)
+        if default_stderr.tell():
+            default_stderr.seek(0)
+            file_store.log_user_stream(self.description.unitName + '.stderr', default_stderr)
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
@@ -3352,12 +3369,12 @@ def determine_load_listing(
 
     1. no_listing: DIRECTORY_NAME.listing will be undefined.
         e.g.
-            
+
             inputs.DIRECTORY_NAME.listing == unspecified
 
     2. shallow_listing: DIRECTORY_NAME.listing will return a list one level
         deep of DIRECTORY_NAME's contents.
-        e.g. 
+        e.g.
 
             inputs.DIRECTORY_NAME.listing == [items in directory]
              inputs.DIRECTORY_NAME.listing[0].listing == undefined
@@ -3789,7 +3806,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 Callable[[str], FileID],
                 functools.partial(toil.import_file, symlink=True),
             )
-            
+
             # Import all the input files, some of which may be missing optional
             # files.
             logger.info("Importing input files...")

@@ -110,7 +110,7 @@ F = TypeVar('F', bound=Callable[..., Any])
 def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Callable[[F], F]:
     """
     Create a decorator to report WDL errors with the given task message.
-    
+
     Decorator can then be applied to a function, and if a WDL error happens it
     will say that it could not {task}.
     """
@@ -565,7 +565,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Put the UUID in the destination path in order for tasks to
                 # see where to put files depending on their parents.
                 dir_path = os.path.join(self._file_store.localTempDir, parent_id)
-                
+
             else:
                 # Parse the URL and extract the basename
                 file_basename = os.path.basename(urlsplit(filename).path)
@@ -575,7 +575,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 parent_url = urljoin(filename, ".")
                 # Turn it into a string we can make a directory for
                 dir_path = os.path.join(self._file_store.localTempDir, quote(parent_url, safe=''))
-            
+
             if not os.path.exists(dir_path):
                 # Make sure the chosen directory exists
                 os.mkdir(dir_path)
@@ -712,9 +712,13 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # WDL.StdLib.TaskOutputs next.
         super().__init__(file_store)
 
-        # Remember task putput files
+        # Remember task output files
         self._stdout_path = stdout_path
         self._stderr_path = stderr_path
+
+        # Remember that the WDL code has not referenced them yet.
+        self._stdout_used = False
+        self._stderr_used = False
 
         # Remember current directory
         self._current_directory_override = current_directory_override
@@ -741,13 +745,27 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         """
         Get the standard output of the command that ran, as a WDL File, outside the container.
         """
+        self._stdout_used = True
         return WDL.Value.File(self._stdout_path)
+
+    def stdout_used(self) -> bool:
+        """
+        Return True if the standard output was read by the WDL.
+        """
+        return self._stdout_used
 
     def _stderr(self) -> WDL.Value.File:
         """
         Get the standard error of the command that ran, as a WDL File, outside the container.
         """
+        self._stderr_used = True
         return WDL.Value.File(self._stderr_path)
+
+    def stderr_used(self) -> bool:
+        """
+        Return True if the standard error was read by the WDL.
+        """
+        return self._stderr_used
 
     def _glob(self, pattern: WDL.Value.String) -> WDL.Value.Array:
         """
@@ -1009,7 +1027,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # we have no auth.
                 logger.error("Something went wrong importing %s", candidate_uri)
                 raise
-            
+
             if imported is None:
                 # Wasn't found there
                 continue
@@ -1022,7 +1040,7 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
                 # We can't have files with no basename because we need to
                 # download them at that basename later.
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
-            
+
             # Was actually found
             if is_url(candidate_uri):
                 # Might be a file URI or other URI.
@@ -1638,7 +1656,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
-            
+
             # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
             dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
 
@@ -1668,18 +1686,25 @@ class WDLTaskJob(WDLBaseJob):
             logger.info('Executing command in %s: %s', task_container, command_string)
             try:
                 task_container.run(miniwdl_logger, command_string)
-            finally:
+            except Exception:
                 if os.path.exists(host_stderr_txt):
-                    logger.info('Standard error at %s', host_stderr_txt)
-                    # Save the whole error stream.
-                    file_store.log_user_stream(self._namespace + '.stderr', open(host_stderr_txt, 'rb'))
+                    size = os.path.getsize(host_stderr_txt)
+                    logger.error('Failed task left standard error at %s of %d bytes', host_stderr_txt, size)
+                    if size > 0:
+                        # Send the whole error stream.
+                        file_store.log_user_stream(self._namespace + '.stderr', open(host_stderr_txt, 'rb'))
 
                 if os.path.exists(host_stdout_txt):
-                    logger.info('Standard output at %s', host_stdout_txt)
-                    # Save the whole output stream.
-                    file_store.log_user_stream(self._namespace + '.stdout', open(host_stdout_txt, 'rb'))
+                    size = os.path.getsize(host_stdout_txt)
+                    logger.info('Failed task left standard output at %s of %d bytes', host_stdout_txt, size)
+                    if size > 0:
+                        # Save the whole output stream.
+                        # TODO: We can't tell if this was supposed to be
+                        # captured. It might really be huge binary data.
+                        file_store.log_user_stream(self._namespace + '.stdout', open(host_stdout_txt, 'rb'))
 
-
+                # Keep crashing
+                raise
         else:
             # We need to fake stdout and stderr, since nothing ran but the
             # standard library lets you grab them. TODO: Can these be None?
@@ -1696,8 +1721,25 @@ class WDLTaskJob(WDLBaseJob):
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
         output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
+        # Now we know if the standard output and error were sent somewhere by
+        # the workflow. If not, we should report them to the leader.
+
         # Drop any files from the output which don't actually exist
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
+
+        if not outputs_library.stderr_used() and os.path.exists(host_stderr_txt):
+            size = os.path.getsize(host_stderr_txt)
+            logger.info('Unused standard error at %s of %d bytes', host_stderr_txt, size)
+            if size > 0:
+                # Save the whole error stream because the workflow didn't capture it.
+                file_store.log_user_stream(self._namespace + '.stderr', open(host_stderr_txt, 'rb'))
+
+        if not outputs_library.stdout_used() and os.path.exists(host_stdout_txt):
+            size = os.path.getsize(host_stdout_txt)
+            logger.info('Unused standard output at %s of %d bytes', host_stdout_txt, size)
+            if size > 0:
+                # Save the whole output stream because the workflow didn't capture it.
+                file_store.log_user_stream(self._namespace + '.stdout', open(host_stdout_txt, 'rb'))
 
         # TODO: Check the output bindings against the types of the decls so we
         # can tell if we have a null in a value that is supposed to not be
@@ -2674,7 +2716,7 @@ def main() -> None:
                     raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
             else:
                 inputs = {}
-            
+
             # Parse out the available and required inputs. Each key in the
             # JSON ought to start with the workflow's name and then a .
             # TODO: WDL's Bindings[] isn't variant in the right way, so we
@@ -2735,7 +2777,7 @@ def main() -> None:
                 # If a UUID is included, it will be omitted
                 # TODO: Deal with name collisions in the export directory
                 dest_name = os.path.join(output_directory, file_basename)
-                    
+
                 if filename.startswith(TOIL_URI_SCHEME):
                     # Export the file
                     toil.export_file(file_id, dest_name)
