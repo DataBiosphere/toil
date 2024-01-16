@@ -215,6 +215,4 @@ print(heredoc('''
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
-    
-    RUN ln -s /usr/share/zoneinfo/UTC /etc/localtime
 '''))
