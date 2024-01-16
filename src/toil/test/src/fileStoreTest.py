@@ -670,20 +670,20 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            job.fileStore.logToMaster('Double writing a file into job store')
+            job.fileStore.log_to_leader('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
             with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            job.fileStore.logToMaster('Writing copy 1 and discarding ID')
+            job.fileStore.log_to_leader('Writing copy 1 and discarding ID')
             job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster('Writing copy 2 and saving ID')
+            job.fileStore.log_to_leader('Writing copy 2 and saving ID')
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster(f'Copy 2 ID: {fsID}')
+            job.fileStore.log_to_leader(f'Copy 2 ID: {fsID}')
 
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
 
-            job.fileStore.logToMaster('Writing copy 3 and returning ID')
+            job.fileStore.log_to_leader('Writing copy 3 and returning ID')
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
@@ -695,7 +695,7 @@ class hidden:
             :param fsID: Job store file ID for the read file
             :return: None
             """
-            job.fileStore.logToMaster('Reading the written file')
+            job.fileStore.log_to_leader('Reading the written file')
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
@@ -1137,7 +1137,7 @@ class hidden:
             """
 
             # Make sure we actually have the disk size we are supposed to
-            job.fileStore.logToMaster('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
+            job.fileStore.log_to_leader('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
             assert job.disk == jobDisk, 'Job was scheduled with %d bytes but requested %d' % (job.disk, jobDisk)
 
             cls = hidden.AbstractCachingFileStoreTest
@@ -1203,7 +1203,7 @@ class hidden:
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except IllegalDeletionCacheError:
-                    job.fileStore.logToMaster('Detected a deleted file %s.' % fileToDelete)
+                    job.fileStore.log_to_leader('Detected a deleted file %s.' % fileToDelete)
                     os.rename(tempfile, outfile)
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
