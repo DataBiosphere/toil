@@ -1065,11 +1065,11 @@ class CachingFileStore(AbstractFileStore):
             disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                                f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
             if disk > self.jobDiskBytes:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
             else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
 
             # Go back up to the per-worker local temp directory.
             os.chdir(startingDir)
@@ -1811,7 +1811,7 @@ class CachingFileStore(AbstractFileStore):
             # Add the file to the list of files to be deleted from the job store
             # once the run method completes.
             self.filesToDelete.add(str(fileStoreID))
-            self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
+            self.log_to_leader('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
                              ' globally deleted.', level=logging.DEBUG)
 
     @deprecated(new_function_name='export_file')

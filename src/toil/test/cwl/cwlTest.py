@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import unittest
@@ -136,6 +137,8 @@ def run_conformance_tests(
             "--statusWait=10",
             "--retryCount=2",
             "--relax-path-checks",
+            # Defaults to 20s but we can't start hundreds of nodejs processes that fast on our CI potatoes
+            "--eval-timeout=600",
             f"--caching={caching}"
         ]
 
@@ -253,6 +256,13 @@ class CWLWorkflowTest(ToilTest):
         out.get(out_name, {}).pop("nameext", None)
         out.get(out_name, {}).pop("nameroot", None)
         self.assertEqual(out, expect)
+
+        for k, v in expect.items():
+            if isinstance(v, dict) and "class" in v and v["class"] == "File" and "path" in v:
+                # This is a top-level output file.
+                # None of our output files should be executable.
+                self.assertTrue(os.path.exists(v["path"]))
+                self.assertFalse(os.stat(v["path"]).st_mode & stat.S_IXUSR)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
         from toil.cwl import cwltoil
@@ -1362,7 +1372,7 @@ def test_workflow_echo_string():
     cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
-    assert stdout == b"{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
+    assert stdout.decode("utf-8").strip() == "{}", f"Got wrong output: {stdout}\nWith error: {stderr}"
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
 

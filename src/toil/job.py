@@ -1820,8 +1820,8 @@ class Job:
         return self._tempDir
 
     def log(self, text: str, level=logging.INFO) -> None:
-        """Log using :func:`fileStore.logToMaster`."""
-        self._fileStore.logToMaster(text, level)
+        """Log using :func:`fileStore.log_to_leader`."""
+        self._fileStore.log_to_leader(text, level)
 
     @staticmethod
     def wrapFn(fn, *args, **kwargs) -> "FunctionWrappingJob":
@@ -2606,7 +2606,7 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
 
-        logger.info("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
+        logger.debug("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
 
         # Make sure we're the root
         if ordering[-1] != self:
@@ -2626,17 +2626,17 @@ class Job:
             self._fulfillPromises(returnValues, jobStore)
 
         for job in ordering:
-            logger.info("Processing job %s", job.description)
+            logger.debug("Processing job %s", job.description)
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
-                    logger.info("Processing service %s", serviceID)
+                    logger.debug("Processing service %s", serviceID)
                     if serviceID in self._registry:
                         # It's a new service
 
                         # Find the actual job
                         serviceJob = self._registry[serviceID]
-                        logger.info("Saving service %s", serviceJob.description)
+                        logger.debug("Saving service %s", serviceJob.description)
                         # Pickle the service body, which triggers all the promise stuff
                         serviceJob.saveBody(jobStore)
             if job != self or saveSelf:

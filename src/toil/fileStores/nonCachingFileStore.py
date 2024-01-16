@@ -121,11 +121,11 @@ class NonCachingFileStore(AbstractFileStore):
             disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
             if disk > jobReqs:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
             else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()

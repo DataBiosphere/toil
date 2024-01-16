@@ -602,7 +602,7 @@ class AbstractFileStore(ABC):
             os.rename(fileName + '.tmp', fileName)
 
     # Functions related to logging
-    def logToMaster(self, text: str, level: int = logging.INFO) -> None:
+    def log_to_leader(self, text: str, level: int = logging.INFO) -> None:
         """
         Send a logging message to the leader. The message will also be \
         logged by the worker at the same level.
@@ -612,6 +612,12 @@ class AbstractFileStore(ABC):
         """
         logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
         self.loggingMessages.append(dict(text=text, level=level))
+
+
+    @deprecated(new_function_name='export_file')
+    def logToMaster(self, text: str, level: int = logging.INFO) -> None:
+        self.log_to_leader(text, level)
+        
 
     # Functions run after the completion of the job.
     @abstractmethod
