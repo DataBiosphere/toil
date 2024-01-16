@@ -1643,7 +1643,7 @@ def getDirSizeRecursively(dirPath: str) -> int:
         # The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
         # --block-size=1 because Apple can't handle it.
     except (OSError, subprocess.CalledProcessError):
-        # Fallback to pure Python implementation, useful for when kernal limits
+        # Fallback to pure Python implementation, useful for when kernel limits
         # to argument list size are hit, etc..
         total_size: int = 0
         if os.path.isfile(dirPath):
