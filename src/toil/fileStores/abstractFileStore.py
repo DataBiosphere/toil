@@ -116,7 +116,8 @@ class AbstractFileStore(ABC):
             self.jobDesc.command.split()[1] if self.jobDesc.command else ""
         )
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.loggingMessages: List[Dict[str, Union[int, str]]] = []
+        self.logging_messages: List[Dict[str, Union[int, str]]] = []
+        self.logging_user_streams: List[dict[str, str]] = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
@@ -611,13 +612,30 @@ class AbstractFileStore(ABC):
         :param level: The logging level.
         """
         logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
-        self.loggingMessages.append(dict(text=text, level=level))
+        self.logging_messages.append(dict(text=text, level=level))
 
 
     @deprecated(new_function_name='export_file')
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:
         self.log_to_leader(text, level)
-        
+
+    def log_user_stream(self, name: str, stream: IO[bytes]):
+        """
+        Send a stream of UTF-8 text to the leader as a named log stream.
+
+        Useful for things like the error logs of Docker containers. The leader
+        will show it to the user or organize it appropriately for user-level
+        log information.
+
+        :param name: A hierarchical, .-delimited string.
+        :param stream: A stream of encoded text. Encodign errirs will be
+            tolerated.
+        """
+
+        # Read the whole stream into memory
+        steam_data = stream.read().decode('utf-8', errors='replace')
+        # And remember it for the worker to fish out
+        self.logging_user_streams.append(dict(name=name, text=steam_data))
 
     # Functions run after the completion of the job.
     @abstractmethod

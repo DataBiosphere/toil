@@ -1670,9 +1670,15 @@ class WDLTaskJob(WDLBaseJob):
                 task_container.run(miniwdl_logger, command_string)
             finally:
                 if os.path.exists(host_stderr_txt):
-                    logger.info('Standard error at %s: %s', host_stderr_txt, open(host_stderr_txt).read())
+                    logger.info('Standard error at %s', host_stderr_txt)
+                    # Save the whole error stream.
+                    file_store.log_user_stream(self._namespace + '.stderr', open(host_stderr_txt, 'rb'))
+
                 if os.path.exists(host_stdout_txt):
-                    logger.info('Standard output at %s: %s', host_stdout_txt, open(host_stdout_txt).read())
+                    logger.info('Standard output at %s', host_stdout_txt)
+                    # Save the whole output stream.
+                    file_store.log_user_stream(self._namespace + '.stdout', open(host_stdout_txt, 'rb'))
+
 
         else:
             # We need to fake stdout and stderr, since nothing ran but the
