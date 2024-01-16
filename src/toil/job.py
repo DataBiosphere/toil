@@ -63,7 +63,6 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 
-from toil.bus import Names
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
