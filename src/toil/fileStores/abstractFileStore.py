@@ -619,7 +619,7 @@ class AbstractFileStore(ABC):
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:
         self.log_to_leader(text, level)
 
-    def log_user_stream(self, name: str, stream: IO[bytes]):
+    def log_user_stream(self, name: str, stream: IO[bytes]) -> None:
         """
         Send a stream of UTF-8 text to the leader as a named log stream.
 
