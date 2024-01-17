@@ -314,7 +314,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         ##########################################
 
         jobDesc = jobStore.load_job(jobStoreID)
-        listOfJobs[0] = str(jobDesc)
+        listOfJobs[0] = jobDesc.displayName
         logger.debug("Parsed job description")
 
         ##########################################
@@ -460,7 +460,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             successorID = successor.jobStoreID
 
             # add the successor to the list of jobs run
-            listOfJobs.append(str(successor))
+            listOfJobs.append(successor.displayName)
 
             # Now we need to become that successor, under the original ID.
             successor.replace(jobDesc)

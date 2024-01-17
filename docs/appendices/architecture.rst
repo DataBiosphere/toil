@@ -84,15 +84,16 @@ several human-readable names that are useful for logging and identification:
 | unitName         | Name of this *instance* of this kind of job. If set by the user,   |
 |                  | it will appear with the jobName in logging.                        |
 |                  |                                                                    |
-|                  | For a CWL workflow, the unitName is set to a descriptive name that |
-|                  | includes the CWL file name and the ID in the file if set.          |
+|                  | For a CWL workflow, the unitName is the dotted path from the       |
+|                  | workflow down to the task being run, including numbers for scatter |
+|                  | steps.                                                             |
 +------------------+--------------------------------------------------------------------+
 | displayName      | A human-readable name to identify this particular job instance.    |
 |                  | Used as an identifier of the job class in the stats report.        |
 |                  | Defaults to the job class's name if no real user-defined name is   |
 |                  | available.                                                         |
 |                  |                                                                    |
-|                  | For a CWL workflow, the displayName is the absolute workflow URI.  |
+|                  | For CWL workflows, this includes the jobName and the unitName.     |
 +------------------+--------------------------------------------------------------------+
 
 Statistics and Logging

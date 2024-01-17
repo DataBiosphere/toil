@@ -96,7 +96,7 @@ class StatsAndLogging:
             logName = ('failed_' if failed else '') + logName
             counter = 0
             while True:
-                suffix = str(counter).zfill(3) + logExtension
+                suffix = '_' + str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
                 #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
                 if len(fullName) >= 255:
