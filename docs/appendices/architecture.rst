@@ -104,7 +104,7 @@ Toil's statistics and logging system is implemented in a joint class
 and run as a thread on the leader, where it polls for new log files in the job
 store with the
 :meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.read_logs` method.
-These are JSON files, which contain strucutred data. Structured log messages
+These are JSON files, which contain structured data. Structured log messages
 from user Python code, stored under ``workers.logs_to_leader``, from the file
 store's
 :meth:`~toil.fileStores.abstractFileStore.AbstractFileStore.log_to_leader`
@@ -122,6 +122,13 @@ to the file store, and the log file is made available through
 :meth:`toil.job.JobDescription.getLogFileHandle`. The leader thread retrieves
 these logs and calls back into :class:`~toil.statsAndLogging.StatsAndLogging`
 to print or locally save them as appropriate.
+
+The CWL and WDL interpreters use
+:meth:`~toil.fileStores.abstractFileStore.AbstractFileStore.log_user_stream` to
+inject CWL and WDL task-level logs into the stats and logging logging system.
+The full text of those logs gets stored in the JSON stats files, and when the
+StatsAndLogging thread sees them it reports and saves them, similarly to how it
+treats Toil job logs.
 
 To ship the statistics and the non-failed-job logs around, the job store has a
 logs mailbox system: the
