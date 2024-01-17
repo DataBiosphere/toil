@@ -145,7 +145,7 @@ autodoc_member_order = "bysource"
 autoapi_dirs = ["../src/toil"]
 autodoc_typehints = "description"
 autoapi_keep_files = True
-autoapi_ignore = ["*.pyi"]
+autoapi_ignore = ["*.pyi", "*/test/cwl/spec*/*.py", "*/fake_mpi_run.py", "*/tutorial_*.py", "*/example_*.py", "*/mkFile.py", "*/debugWorkflow.py"]
 autoapi_options = [
     "members",
     "undoc-members",
