@@ -87,6 +87,43 @@ from pubsub.core.topicutils import ALL_TOPICS
 
 logger = logging.getLogger( __name__ )
 
+# We define some ways to talk about jobs.
+
+class Names(NamedTuple):
+    """
+    Stores all the kinds of name a job can have.
+    """
+    # Name of the kind of job this is
+    job_name: str
+    # Name of this particular work unit
+    unit_name: str
+    # Human-readable name for the job
+    display_name: str
+    # What the job prints as, used for stats-and-logging log management
+    stats_name: str
+    # Job store ID of the job for the work unit
+    job_store_id: str
+
+def get_job_kind(names: Names) -> str:
+    """
+    Return an identifying string for the job.
+
+    The result may contain spaces.
+
+    Returns: Either the unit name, job name, or display name, which identifies
+             the kind of job it is to toil.
+             Otherwise "Unknown Job" in case no identifier is available
+    """
+    if names.unit_name:
+        return names.unit_name
+    elif names.job_name:
+        return names.job_name
+    elif names.display_name:
+        return names.display_name
+    else:
+        return "Unknown Job"
+
+
 # We define a bunch of named tuple message types.
 # These all need to be plain data: only hold ints, strings, etc.
 
@@ -648,6 +685,7 @@ class JobStatus:
 
     def __repr__(self) -> str:
         return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+
 def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.

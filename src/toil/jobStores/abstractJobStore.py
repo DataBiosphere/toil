@@ -835,16 +835,17 @@ class AbstractJobStore(ABC):
             root_job_description = self.load_root_job()
             reachable_from_root: Set[str] = set()
 
-            # Add first root job outside of the loop below.
-            reachable_from_root.add(str(root_job_description.jobStoreID))
-            # add all of root's linked service jobs as well
-            for service_jobstore_id in root_job_description.services:
-                if haveJob(service_jobstore_id):
-                    reachable_from_root.add(service_jobstore_id)
-            for merged_jobstore_id in root_job_description.merged_jobs:
+            
+            for merged_in in root_job_description.get_chain():
+                # Add the job itself and any other jobs that chained with it.
                 # Keep merged-in jobs around themselves, but don't bother
                 # exploring them, since we took their successors.
-                reachable_from_root.add(merged_jobstore_id)
+                reachable_from_root.add(merged_in.job_store_id)
+            # add all of root's linked service jobs as well
+            for service_job_store_id in root_job_description.services:
+                if haveJob(service_job_store_id):
+                    reachable_from_root.add(service_job_store_id)
+            
 
             # Unprocessed means it might have successor jobs we need to add.
             unprocessed_job_descriptions = [root_job_description]
@@ -852,24 +853,21 @@ class AbstractJobStore(ABC):
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
                 for job_description in unprocessed_job_descriptions:
-                    for successor_jobstore_id in job_description.allSuccessors():
-                        if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                            successor_job_description = getJobDescription(successor_jobstore_id)
-
-                            # Add each successor job.
-                            reachable_from_root.add(
-                                str(successor_job_description.jobStoreID)
-                            )
-                            # Add all of the successor's linked service jobs as well.
-                            for service_jobstore_id in successor_job_description.services:
-                                if haveJob(service_jobstore_id):
-                                    reachable_from_root.add(service_jobstore_id)
-
-                            new_job_descriptions_to_process.append(successor_job_description)
-                    for merged_jobstore_id in job_description.merged_jobs:
+                    for merged_in in job_description.get_chain():
+                        # Add the job and anything chained with it.
                         # Keep merged-in jobs around themselves, but don't bother
                         # exploring them, since we took their successors.
-                        reachable_from_root.add(merged_jobstore_id)
+                        reachable_from_root.add(merged_in.job_store_id)
+                    for successor_job_store_id in job_description.allSuccessors():
+                        if successor_job_store_id not in reachable_from_root and haveJob(successor_job_store_id):
+                            successor_job_description = getJobDescription(successor_job_store_id)
+
+                            # Add all of the successor's linked service jobs as well.
+                            for service_job_store_id in successor_job_description.services:
+                                if haveJob(service_job_store_id):
+                                    reachable_from_root.add(service_job_store_id)
+
+                            new_job_descriptions_to_process.append(successor_job_description)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
