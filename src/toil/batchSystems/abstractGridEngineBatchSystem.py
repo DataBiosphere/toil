@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple, Union
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.bus import ExternalBatchIdMessage
+from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.job import AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
 
@@ -407,10 +407,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             else:
                 gpus = jobDesc.accelerators
 
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.get_job_kind(),
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, get_job_kind(jobDesc.get_names()),
                                    job_environment, gpus))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.get_job_kind())
+                         get_job_kind(jobDesc.get_names()))
         return jobID
 
     def killBatchJobs(self, jobIDs):

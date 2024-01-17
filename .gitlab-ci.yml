@@ -24,7 +24,6 @@ before_script:
         echo "  mirrors = [\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
         echo "[registry.\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
         echo "  http = true" >>buildkitd.toml
-        echo "  insecure = true" >>buildkitd.toml
     else
         echo "" >buildkitd.toml
     fi
