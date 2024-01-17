@@ -82,7 +82,7 @@ printed to the stdout stream after workflow execution.
 
 ``--logFile``: Path to the main logfile.
 
-``--writeLogs``: Directory where job logs will be stored. At ``DEBUG`` log level, this will contain logs for each Toil job run, as well as ``stdout``/``stderr`` logs for each CWL job, for output the workflow didn't capture.
+``--writeLogs``: Directory where job logs will be stored. At ``DEBUG`` log level, this will contain logs for each Toil job run, as well as ``stdout``/``stderr`` logs for each CWL ``CommandLineTool`` that didn't use the ``stdout``/``stderr`` directives to redirect output.
 
 ``--retryCount``: How many times to retry each Toil job.
 
