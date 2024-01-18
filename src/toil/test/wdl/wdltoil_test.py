@@ -403,7 +403,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
         ])
 
         # run on kubernetes batchsystem
-        toil_options = ['--provisioner=aws', '--batchSystem=kubernetes',
+        toil_options = ['--batchSystem=kubernetes',
                         f"--jobstore={self.jobStore}"]
 
         # run WDL workflow that will run singularity
