@@ -505,7 +505,8 @@ systems have issues!).
                         to provision mesos for autoscaling.
   --statusWait INT      Seconds to wait between reports of running jobs.
                         (default=3600)
-  --disableProgress     Disables the progress bar shown when standard error is
+  --disableProgress BOOL
+			Disables the progress bar shown when standard error is
                         a terminal.
 
 **Debug Options**
