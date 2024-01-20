@@ -5,4 +5,4 @@ flask-cors==4.0.0
 gunicorn==21.2.0
 celery>=5.1.0, <6
 wes-service>=4.0.0, <5
-ruamel.yaml>=0.15,<0.18.4
+ruamel.yaml>=0.15,<0.19
