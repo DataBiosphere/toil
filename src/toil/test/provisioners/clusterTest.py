@@ -17,6 +17,7 @@ import os
 import subprocess
 import time
 from uuid import uuid4
+from typing import Optional, List
 
 from toil.lib.aws import zone_to_region
 from toil.lib.retry import retry
@@ -28,7 +29,7 @@ log = logging.getLogger(__name__)
 @needs_aws_ec2
 @needs_fetchable_appliance
 class AbstractClusterTest(ToilTest):
-    def __init__(self, methodName):
+    def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
@@ -43,13 +44,13 @@ class AbstractClusterTest(ToilTest):
         # Where should we put our virtualenv?
         self.venvDir = '/tmp/venv'
 
-    def python(self):
+    def python(self) -> str:
         """
         Return the full path to the venv Python on the leader.
         """
         return os.path.join(self.venvDir, 'bin/python')
 
-    def pip(self):
+    def pip(self) -> str:
         """
         Return the full path to the venv pip on the leader.
         """
@@ -63,7 +64,7 @@ class AbstractClusterTest(ToilTest):
         """
         subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', '-z', self.zone, self.clusterName])
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Set up for the test.
         Must be overridden to call this method and set self.jobStore.
@@ -73,13 +74,13 @@ class AbstractClusterTest(ToilTest):
         # If this fails, no tests will run.
         self.destroyCluster()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         # Note that teardown will run even if the test crashes.
         super().tearDown()
         self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
-    def sshUtil(self, command):
+    def sshUtil(self, command: List[str]) -> None:
         """
         Run the given command on the cluster.
         Raise subprocess.CalledProcessError if it fails.
@@ -155,7 +156,7 @@ class AbstractClusterTest(ToilTest):
         subprocess.check_call(cmd)
 
     @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
-    def createClusterUtil(self, args=None):
+    def createClusterUtil(self, args: Optional[List[str]]=None) -> None:
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',
@@ -167,5 +168,5 @@ class AbstractClusterTest(ToilTest):
         subprocess.check_call(command)
         # If we fail, tearDown will destroy the cluster.
 
-    def launchCluster(self):
+    def launchCluster(self) -> None:
         self.createClusterUtil()
