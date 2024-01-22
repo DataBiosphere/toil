@@ -1301,7 +1301,7 @@ class Toil(ContextManager["Toil"]):
         return coordination_dir
 
     @staticmethod
-    def _get_workflow_path_component(workflow_id: str) -> str:
+    def get_workflow_path_component(workflow_id: str) -> str:
         """
         Get a safe filesystem path component for a workflow.
 
@@ -1310,7 +1310,7 @@ class Toil(ContextManager["Toil"]):
 
         :param workflow_id: The ID of the current Toil workflow.
         """
-        return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
+        return "toilwf-" + str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
     @classmethod
     def getLocalWorkflowDir(
@@ -1327,7 +1327,7 @@ class Toil(ContextManager["Toil"]):
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, cls._get_workflow_path_component(workflowID))
+        workflowDir: str = os.path.join(base, cls.get_workflow_path_component(workflowID))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -1369,7 +1369,7 @@ class Toil(ContextManager["Toil"]):
         base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
 
         # Make a per-workflow and node subdirectory
-        subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
+        subdir = os.path.join(base, cls.get_workflow_path_component(workflow_id))
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
