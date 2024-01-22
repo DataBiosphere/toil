@@ -812,6 +812,14 @@ class AbstractProvisioner(ABC):
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
+                # Pass in a path to use for singularity image caching into the container
+                -e TOIL_KUBERNETES_HOST_PATH=/var/lib/toil \\
+                -e SINGULARITY_CACHEDIR=/var/lib/toil/singularity \\
+                -e MINIWDL__SINGULARITY__IMAGE_CACHE=/var/lib/toil/miniwdl \\
+                # These rules are necessary in order to get user namespaces working
+                # https://github.com/apptainer/singularity/issues/5806
+                --security-opt seccomp=unconfined \\
+                --security-opt systempaths=unconfined \\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}
