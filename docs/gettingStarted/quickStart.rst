@@ -144,11 +144,11 @@ An example Toil Python workflow can be run with just three steps:
 
 3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
 
-       (venv) $ python helloWorld.py file:my-job-store
+       (venv) $ python3 helloWorld.py file:my-job-store
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
-Toil's customization options are available in Python workflows. Run ``python helloWorld.py --help`` to see a complete list of available options.
+Toil's customization options are available in Python workflows. Run ``python3 helloWorld.py --help`` to see a complete list of available options.
 
 .. _runningDetail:
 
@@ -169,7 +169,7 @@ Running the example
 
 #. Run it with the default settings::
 
-      (venv) $ python sort.py file:jobStore
+      (venv) $ python3 sort.py file:jobStore
 
    The workflow created a file called ``sortedFile.txt`` in your current directory.
    Have a look at it and notice that it contains a whole lot of sorted lines!
@@ -186,7 +186,7 @@ Running the example
 
 3. Run with custom options::
 
-      (venv) $ python sort.py file:jobStore \
+      (venv) $ python3 sort.py file:jobStore \
                    --numLines=5000 \
                    --lineLength=10 \
                    --overwriteOutput=True \
@@ -291,7 +291,7 @@ Kubernetes the worker processes will typically be started on separate machines. 
 boilerplate ensures that the pipeline is only started once---on the leader---but
 not when its job functions are imported and executed on the individual workers.
 
-Typing ``python sort.py --help`` will show the complete list of
+Typing ``python3 sort.py --help`` will show the complete list of
 arguments for the workflow which includes both Toil's and ones defined inside
 ``sort.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
@@ -305,7 +305,7 @@ in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
 messages to the screen::
 
-   (venv) $ python sort.py file:jobStore \
+   (venv) $ python3 sort.py file:jobStore \
                 --logLevel=critical \
                 --overwriteOutput=True
 
@@ -331,7 +331,7 @@ example (the first line of ``down()``):
 
 When we run the pipeline, Toil will show a detailed failure log with a traceback::
 
-   (venv) $ python sort.py file:jobStore
+   (venv) $ python3 sort.py file:jobStore
    ...
    ---TOIL WORKER OUTPUT LOG---
    ...
@@ -353,13 +353,13 @@ that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that the workflow can be restarted,
 starting from the previously failed jobs. We can restart the pipeline by running ::
 
-   (venv) $ python sort.py file:jobStore \
+   (venv) $ python3 sort.py file:jobStore \
                 --restart \
                 --overwriteOutput=True
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   (venv) $ python sort.py file:jobStore \
+   (venv) $ python3 sort.py file:jobStore \
                 --retryCount 2 \
                 --restart \
                 --overwriteOutput=True
@@ -373,7 +373,7 @@ line 30, or remove it, and then run
 
 ::
 
-    (venv) $ python sort.py file:jobStore \
+    (venv) $ python3 sort.py file:jobStore \
                  --restart \
                  --overwriteOutput=True
 
@@ -424,7 +424,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Run the workflow on the cluster::
 
-        $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
+        $ python3 /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 
    In this particular case, we create an S3 bucket called ``my-S3-bucket`` in
    the ``us-west-2`` availability zone to store intermediate job results.
