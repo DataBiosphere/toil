@@ -40,7 +40,6 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.aws.utils import create_s3_bucket, get_object_for_url
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
@@ -1463,6 +1462,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url: str) -> str:
         from toil.jobStores.aws.jobStore import AWSJobStore
+        from toil.lib.aws.utils import get_object_for_url
         str(AWSJobStore)  # to prevent removal of that import
         key = get_object_for_url(urlparse.urlparse(url), existing=True)
         contents = key.get().get('Body').read()
@@ -1471,7 +1471,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import retry_s3
+        from toil.lib.aws.utils import retry_s3, create_s3_bucket
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()
