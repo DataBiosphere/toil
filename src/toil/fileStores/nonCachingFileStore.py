@@ -362,7 +362,10 @@ class NonCachingFileStore(AbstractFileStore):
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
-        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        try:
+            (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        except Exception as e:
+            raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
         with open(fd, 'wb') as fH:
             # Write data
             dill.dump(jobState, fH)

@@ -182,17 +182,43 @@ def make_public_dir(in_directory: Optional[str] = None) -> str:
     os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
 
-def try_path(path: str) -> Optional[str]:
+def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
     """
     Try to use the given path. Return it if it exists or can be made,
     and we can make things within it, or None otherwise.
+
+    :param min_size: Reject paths on filesystems smaller than this many bytes.
     """
+
     try:
         os.makedirs(path, exist_ok=True)
     except OSError:
         # Maybe we lack permissions
         return None
-    return path if os.path.exists(path) and os.access(path, os.W_OK) else None
+
+    if not os.path.exists(path):
+        # We didn't manage to make it
+        return None
+
+    if not os.access(path, os.W_OK):
+        # It doesn't look writable
+        return None
+
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        # Maybe we lack permissions
+        return None
+
+    # Is the filesystem big enough?
+    # We need to look at the FS size and not the free space so we don't change
+    # over to a different filesystem when this one fills up.
+    fs_size = stats.f_frsize * stats.f_blocks
+    if fs_size < min_size:
+        # Too small
+        return None
+
+    return path
 
 
 class WriteWatchingStream:

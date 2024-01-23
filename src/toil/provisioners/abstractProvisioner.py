@@ -812,6 +812,10 @@ class AbstractProvisioner(ABC):
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
+                # These rules are necessary in order to get user namespaces working
+                # https://github.com/apptainer/singularity/issues/5806
+                --security-opt seccomp=unconfined \\
+                --security-opt systempaths=unconfined\\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}
