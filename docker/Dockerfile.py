@@ -61,7 +61,9 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libcurl4-nss-dev',
                          'libapr1',
                          # Dependencies for singularity
-                         'containernetworking-plugins'])
+                         'containernetworking-plugins',
+                         # Dependencies for singularity on kubernetes
+                         'tzdata'])
 
 
 def heredoc(s):
