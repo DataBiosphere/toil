@@ -1341,7 +1341,7 @@ class WDLTaskJob(WDLBaseJob):
 
     def can_fake_root(self) -> bool:
         """
-        Determie if --fakeroot is likely to work for Singularity.
+        Determine if --fakeroot is likely to work for Singularity.
         """
 
         # We need to have an entry for our user in /etc/subuid to grant us a range of UIDs to use, for fakeroot to work.
@@ -1358,6 +1358,16 @@ class WDLTaskJob(WDLBaseJob):
         # If there is no line, we have no subuids
         logger.warning('No subuids are assigned to %s; cannot fake root.', username)
         return False
+
+    def can_mount_proc(self) -> bool:
+        """
+        Determine if --containall will work for Singularity. On Kubernetes, this will result in operation not permitted
+        See: https://github.com/apptainer/singularity/issues/5857
+
+        So if Kubernetes is detected, return False
+        :return: bool
+        """
+        return "KUBERNETES_SERVICE_HOST" not in os.environ
 
     @report_wdl_errors("run task")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
@@ -1604,6 +1614,10 @@ class WDLTaskJob(WDLBaseJob):
                     if '--fakeroot' in command_line and not self.can_fake_root():
                         # We can't fake root so don't try.
                         command_line.remove('--fakeroot')
+
+                    # If on Kubernetes and proc cannot be mounted, get rid of --containall
+                    if '--containall' in command_line and not self.can_mount_proc():
+                        command_line.remove('--containall')
 
                     extra_flags: Set[str] = set()
                     accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators

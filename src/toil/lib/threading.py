@@ -529,9 +529,14 @@ class LastProcessStandingArena:
                 os.mkdir(self.lockfileDir)
             except FileExistsError:
                 pass
+            except Exception as e:
+                raise RuntimeError("Could not make lock file directory " + self.lockfileDir) from e
 
             # Make ourselves a file in it and lock it to prove we are alive.
-            self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir) # type: ignore
+            try:
+                self.lockfileFD, self.lockfileName = tempfile.mkstemp(dir=self.lockfileDir) # type: ignore
+            except Exception as e:
+                raise RuntimeError("Could not make lock file in " + self.lockfileDir) from e
             # Nobody can see it yet, so lock it right away
             fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX) # type: ignore
 
