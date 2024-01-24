@@ -1505,13 +1505,13 @@ class WDLTaskJob(WDLBaseJob):
 
             # Prepare to use Singularity. We will need plenty of space to
             # download images.
-            # Set the Singularity and MiniWDL cache directory to the default Singularity cache directory. This sets the
-            # cache to the same place as Singularity/MiniWDL's default cache directory
+            # Default the Singularity and MiniWDL cache directories. This sets the cache to the same place as
+            # Singularity/MiniWDL's default cache directory
             # With launch-cluster, the singularity and miniwdl cache is set to /var/lib/toil in abstractProvisioner.py
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
-            singularity_cache = os.path.join(os.path.expanduser("~"), "/.singularity/cache")
-            miniwdl_cache = os.path.join(os.path.expanduser("~"), "/.cache/miniwdl")
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity/cache")
+            miniwdl_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
 
             # Cache Singularity's layers somewhere known to have space
             os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
