@@ -1544,7 +1544,7 @@ class WDLTaskJob(WDLBaseJob):
             # With launch-cluster, the singularity and miniwdl cache is set to /var/lib/toil in abstractProvisioner.py
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
-            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity/cache")
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
             miniwdl_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
 
             # Cache Singularity's layers somewhere known to have space
