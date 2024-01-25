@@ -547,14 +547,16 @@ class AbstractJobStoreTest:
             jobNames = ['testStatsAndLogging_writeLogFiles']
             jobLogList = ['string', b'bytes', '', b'newline\n']
             config = self._createConfig()
-            setattr(config, 'writeLogs', '.')
+            setattr(config, 'writeLogs', self._createTempDir())
             setattr(config, 'writeLogsGzip', None)
             StatsAndLogging.writeLogFiles(jobNames, jobLogList, config)
-            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '000.log')
+            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '_000.log')
+            # The log directory should get exactly one file, names after this
+            # easy job name with no replacements needed.
+            self.assertEqual(os.listdir(config.writeLogs), [os.path.basename(jobLogFile)])
             self.assertTrue(os.path.isfile(jobLogFile))
             with open(jobLogFile) as f:
                 self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
-            os.remove(jobLogFile)
 
         def testBatchCreate(self):
             """Test creation of many jobs."""
