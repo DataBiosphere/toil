@@ -1348,9 +1348,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
         :param task_path: Like the namespace, but including subscript numbers
                for scatters.
         """
-        super().__init__(unitName=task_path + ".wdl", displayName=task_path + ".wdl", local=True, **kwargs)
+        super().__init__(unitName=task_path + ".inputs", displayName=task_path + ".inputs", local=True, **kwargs)
 
-        logger.info("Preparing to evaluate task inputs and runtime for %s as %s", task.name, namespace)
+        logger.info("Preparing to run task code for %s as %s", task.name, namespace)
 
         self._task = task
         self._prev_node_results = prev_node_results
@@ -1358,7 +1358,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         self._namespace = namespace
         self._task_path = task_path
 
-    @report_wdl_errors("evaluate task inputs and runtime")
+    @report_wdl_errors("evaluate task code")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Evaluate inputs and runtime and schedule the task.
@@ -1374,7 +1374,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
-            logger.debug("Evaluating task inputs")
+            logger.debug("Evaluating task code")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
@@ -1735,7 +1735,7 @@ class WDLTaskJob(WDLBaseJob):
                     logger.error('Failed task left standard error at %s of %d bytes', host_stderr_txt, size)
                     if size > 0:
                         # Send the whole error stream.
-                        file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                        file_store.log_user_stream(self._task_path + '.stderr', open(host_stderr_txt, 'rb'))
 
                 if os.path.exists(host_stdout_txt):
                     size = os.path.getsize(host_stdout_txt)
@@ -1744,7 +1744,7 @@ class WDLTaskJob(WDLBaseJob):
                         # Save the whole output stream.
                         # TODO: We can't tell if this was supposed to be
                         # captured. It might really be huge binary data.
-                        file_store.log_user_stream(self.description.displayName + '.stdout', open(host_stdout_txt, 'rb'))
+                        file_store.log_user_stream(self._task_path + '.stdout', open(host_stdout_txt, 'rb'))
 
                 # Keep crashing
                 raise
@@ -1775,14 +1775,14 @@ class WDLTaskJob(WDLBaseJob):
             logger.info('Unused standard error at %s of %d bytes', host_stderr_txt, size)
             if size > 0:
                 # Save the whole error stream because the workflow didn't capture it.
-                file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                file_store.log_user_stream(self._task_path + '.stderr', open(host_stderr_txt, 'rb'))
 
         if not outputs_library.stdout_used() and os.path.exists(host_stdout_txt):
             size = os.path.getsize(host_stdout_txt)
             logger.info('Unused standard output at %s of %d bytes', host_stdout_txt, size)
             if size > 0:
                 # Save the whole output stream because the workflow didn't capture it.
-                file_store.log_user_stream(self.description.displayName + '.stdout', open(host_stdout_txt, 'rb'))
+                file_store.log_user_stream(self._task_path + '.stdout', open(host_stdout_txt, 'rb'))
 
         # TODO: Check the output bindings against the types of the decls so we
         # can tell if we have a null in a value that is supposed to not be
