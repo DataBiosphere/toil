@@ -68,19 +68,19 @@ def padStr(s: str, field: Optional[int] = None) -> str:
 
 
 def prettyMemory(k: float, field: Optional[int] = None, isBytes: bool = False) -> str:
-    """Given input k as kilobytes, return a nicely formatted string."""
+    """Given input k as kibibytes, return a nicely formatted string."""
     if isBytes:
         k /= 1024
     if k < 1024:
-        return padStr("%gK" % k, field)
+        return padStr("%gKi" % k, field)
     if k < (1024 * 1024):
-        return padStr("%.1fM" % (k / 1024.0), field)
+        return padStr("%.1fMi" % (k / 1024.0), field)
     if k < (1024 * 1024 * 1024):
-        return padStr("%.1fG" % (k / 1024.0 / 1024.0), field)
+        return padStr("%.1fGi" % (k / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fT" % (k / 1024.0 / 1024.0 / 1024.0), field)
+        return padStr("%.1fTi" % (k / 1024.0 / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fP" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
+        return padStr("%.1fPi" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
@@ -141,16 +141,16 @@ def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str
 def reportMemory(
     k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False
 ) -> str:
-    """Given k kilobytes, report back the correct format as string."""
+    """Given k kibibytes, report back the correct format as string."""
     if options.pretty:
         return prettyMemory(int(k), field=field, isBytes=isBytes)
     else:
         if isBytes:
             k /= 1024.0
         if field is not None:
-            return "%*dK" % (field - 1, k)  # -1 for the "K"
+            return "%*dKi" % (field - 2, k)  # -1 for the "K"
         else:
-            return "%dK" % int(k)
+            return "%dKi" % int(k)
 
 
 def reportNumber(n: float, field: Optional[int] = None) -> str:
