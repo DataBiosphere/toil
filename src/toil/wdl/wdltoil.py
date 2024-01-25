@@ -1348,7 +1348,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         :param task_path: Like the namespace, but including subscript numbers
                for scatters.
         """
-        super().__init__(unitName=task_path + ".inputs", displayName=task_path + ".inputs", local=True, **kwargs)
+        super().__init__(unitName=task_path + ".inputs", displayName=namespace + ".inputs", local=True, **kwargs)
 
         logger.info("Preparing to run task code for %s as %s", task.name, namespace)
 
@@ -1498,7 +1498,7 @@ class WDLTaskJob(WDLBaseJob):
         # This job should not be local because it represents a real workflow task.
         # TODO: Instead of re-scheduling with more resources, add a local
         # "wrapper" job like CWL uses to determine the actual requirements.
-        super().__init__(unitName=task_path + ".command", displayName=task_path + ".command", local=False, **kwargs)
+        super().__init__(unitName=task_path + ".command", displayName=namespace + ".command", local=False, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, namespace)
 
