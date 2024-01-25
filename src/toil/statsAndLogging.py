@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gzip
+import io
 import json
 import logging
 import os
@@ -49,7 +50,7 @@ class StatsAndLogging:
         self._worker.start()
 
     @classmethod
-    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], job_name: Optional[str] = None) -> str:
+    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], stream_name: str) -> str:
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -62,7 +63,7 @@ class StatsAndLogging:
 
         :param stream: The stream of text or bytes to print for the user.
         """
-        lines = [f'Log from job "{job_name}" follows:', '=========>']
+        lines = [f'{stream_name} follows:', '=========>']
 
         for line in stream:
             if isinstance(line, bytes):
@@ -75,13 +76,13 @@ class StatsAndLogging:
 
 
     @classmethod
-    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
+    def logWithFormatting(cls, stream_name: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
                             message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
 
-        # Format and log the logs, identifying the job with its job store ID.
-        method(cls.formatLogStream(jobLogs, jobStoreID))
+        # Format and log the logs, identifying the stream with the given name.
+        method(cls.formatLogStream(jobLogs, stream_name))
 
     @classmethod
     def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
@@ -95,7 +96,7 @@ class StatsAndLogging:
             logName = ('failed_' if failed else '') + logName
             counter = 0
             while True:
-                suffix = str(counter).zfill(3) + logExtension
+                suffix = '_' + str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
                 #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
                 if len(fullName) >= 255:
@@ -117,6 +118,9 @@ class StatsAndLogging:
         else:
             # we don't have anywhere to write the logs, return now
             return
+
+        # Make sure the destination exists
+        os.makedirs(path, exist_ok=True)
 
         fullName = createName(path, mainFileName, extension, failed)
         with writeFn(fullName, 'wb') as f:
@@ -150,8 +154,10 @@ class StatsAndLogging:
             stats = json.loads(statsStr, object_hook=Expando)
             if not stats:
                 return
+
             try:
-                logs = stats.workers.logsToMaster
+                # Handle all the log_to_leader messages
+                logs = stats.workers.logs_to_leader
             except AttributeError:
                 # To be expected if there were no calls to log_to_leader()
                 pass
@@ -160,6 +166,28 @@ class StatsAndLogging:
                     logger.log(int(message.level),
                                'Got message from job at time %s: %s',
                                time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+
+            try:
+                # Handle all the user-level text streams reported back (command output, etc.)
+                user_logs = stats.workers.logging_user_streams
+            except AttributeError:
+                # To be expected if there were no calls to log_user_stream()
+                pass
+            else:
+                for stream_entry in user_logs:
+                    try:
+                        # Unpack the stream name and text.
+                        name, text = stream_entry.name, stream_entry.text
+                    except AttributeError:
+                        # Doesn't have a user-provided stream name and stream
+                        # text, so skip it.
+                        continue
+                    # Since this is sent as inline text we need to pretend to stream it.
+                    # TODO: Save these as individual files if they start to get too big?
+                    cls.logWithFormatting(name, io.StringIO(text), logger.info)
+                    # Save it as a log file, as if it were a Toil-level job.
+                    cls.writeLogFiles([name], [text], config=config)
+
             try:
                 logs = stats.logs
             except AttributeError:
@@ -168,7 +196,7 @@ class StatsAndLogging:
                 # we may have multiple jobs per worker
                 jobNames = logs.names
                 messages = logs.messages
-                cls.logWithFormatting(jobNames[0], messages,
+                cls.logWithFormatting(f'Log from job "{jobNames[0]}"', messages,
                                       message='Received Toil worker log. Disable debug level logging to hide this output')
                 cls.writeLogFiles(jobNames, messages, config=config)
 
