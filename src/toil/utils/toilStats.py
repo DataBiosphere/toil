@@ -167,7 +167,7 @@ def sprintTag(
     """Generate a pretty-print ready string from a JTTag()."""
     if columnWidths is None:
         columnWidths = ColumnWidths()
-    header = "  %7s " % decorateTitle("Count", options)
+    header = "  %7s " % decorateTitle("count", "Count", options)
     sub_header = "  %7s " % "n"
     tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
     out_str = ""
@@ -187,9 +187,9 @@ def sprintTag(
     if "time" in options.categories:
         header += "| %*s " % (
             columnWidths.title("time"),
-            decorateTitle("Time", options),
+            decorateTitle("time", "Real Time", options),
         )
-        sub_header += decorateSubHeader("Time", columnWidths, options)
+        sub_header += decorateSubHeader("time", columnWidths, options)
         tag_str += " | "
         for t, width in [
             (tag.min_time, columnWidths.getWidth("time", "min")),
@@ -202,9 +202,9 @@ def sprintTag(
     if "clock" in options.categories:
         header += "| %*s " % (
             columnWidths.title("clock"),
-            decorateTitle("Clock", options),
+            decorateTitle("time", "CPU Clock", options),
         )
-        sub_header += decorateSubHeader("Clock", columnWidths, options)
+        sub_header += decorateSubHeader("clock", columnWidths, options)
         tag_str += " | "
         for t, width in [
             (tag.min_clock, columnWidths.getWidth("clock", "min")),
@@ -217,9 +217,9 @@ def sprintTag(
     if "wait" in options.categories:
         header += "| %*s " % (
             columnWidths.title("wait"),
-            decorateTitle("Wait", options),
+            decorateTitle("wait", "CPU Wait", options),
         )
-        sub_header += decorateSubHeader("Wait", columnWidths, options)
+        sub_header += decorateSubHeader("wait", columnWidths, options)
         tag_str += " | "
         for t, width in [
             (tag.min_wait, columnWidths.getWidth("wait", "min")),
@@ -232,9 +232,9 @@ def sprintTag(
     if "memory" in options.categories:
         header += "| %*s " % (
             columnWidths.title("memory"),
-            decorateTitle("Memory", options),
+            decorateTitle("memory", "Memory", options),
         )
-        sub_header += decorateSubHeader("Memory", columnWidths, options)
+        sub_header += decorateSubHeader("memory", columnWidths, options)
         tag_str += " | "
         for t, width in [
             (tag.min_memory, columnWidths.getWidth("memory", "min")),
@@ -250,41 +250,40 @@ def sprintTag(
     return out_str
 
 
-def decorateTitle(title: str, options: Namespace) -> str:
+def decorateTitle(category: str, title: str, options: Namespace) -> str:
     """Add a marker to TITLE if the TITLE is sorted on."""
-    if title.lower() == options.sortCategory:
+    if category.lower() == options.sortCategory:
         return "%s*" % title
     else:
         return title
 
 
 def decorateSubHeader(
-    title: str, columnWidths: ColumnWidths, options: Namespace
+    category: str, columnWidths: ColumnWidths, options: Namespace
 ) -> str:
     """Add a marker to the correct field if the TITLE is sorted on."""
-    title = title.lower()
-    if title != options.sortCategory:
+    if category != options.sortCategory:
         s = "| %*s%*s%*s%*s%*s " % (
-            columnWidths.getWidth(title, "min"),
+            columnWidths.getWidth(category, "min"),
             "min",
-            columnWidths.getWidth(title, "med"),
+            columnWidths.getWidth(category, "med"),
             "med",
-            columnWidths.getWidth(title, "ave"),
+            columnWidths.getWidth(category, "ave"),
             "ave",
-            columnWidths.getWidth(title, "max"),
+            columnWidths.getWidth(category, "max"),
             "max",
-            columnWidths.getWidth(title, "total"),
+            columnWidths.getWidth(category, "total"),
             "total",
         )
         return s
     else:
         s = "| "
         for field, width in [
-            ("min", columnWidths.getWidth(title, "min")),
-            ("med", columnWidths.getWidth(title, "med")),
-            ("ave", columnWidths.getWidth(title, "ave")),
-            ("max", columnWidths.getWidth(title, "max")),
-            ("total", columnWidths.getWidth(title, "total")),
+            ("min", columnWidths.getWidth(category, "min")),
+            ("med", columnWidths.getWidth(category, "med")),
+            ("ave", columnWidths.getWidth(category, "ave")),
+            ("max", columnWidths.getWidth(category, "max")),
+            ("total", columnWidths.getWidth(category, "total")),
         ]:
             if options.sortField == field:
                 s += "%*s*" % (width - 1, field)
@@ -423,6 +422,7 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
     itemTimes = []
     itemClocks = []
     itemMemory = []
+    itemCores = []
 
     for item in items:
         # If something lacks an entry, assume it used none of that thing.
@@ -433,12 +433,13 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         totalCores += assertNonnegative(
             float(item.get("requested_cores", 0)), "requested_cores"
         )
+        itemCores.append(assertNonnegative(float(item.get("requested_cores", 0)), "cores"))
 
     assert len(itemClocks) == len(itemTimes) == len(itemMemory)
 
     itemWaits = []
     for index in range(0, len(itemTimes)):
-        itemWaits.append(itemTimes[index] - itemClocks[index])
+        itemWaits.append(itemTimes[index] * itemCores[index] - itemClocks[index])
 
     itemWaits.sort()
     itemTimes.sort()
