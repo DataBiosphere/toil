@@ -299,7 +299,7 @@ remove_unused_imports: $(PYSOURCES)
 remove_trailing_whitespace:
 	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
 
-format: $(wildcard src/toil/cwl/*.py)
+format: $(PYSOURCES)
 	black $^ contrib/mypy-stubs
 
 mypy:
