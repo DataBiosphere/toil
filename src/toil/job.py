@@ -874,7 +874,7 @@ class JobDescription(Requirer):
         """
         Get the names and ID of this job as a named tuple.
         """
-        return Names(self.jobName, self.unitName, self.displayName, str(self), str(self.jobStoreID))
+        return Names(self.jobName, self.unitName, self.displayName, self.displayName, str(self.jobStoreID))
 
     def get_chain(self) -> List[Names]:
         """

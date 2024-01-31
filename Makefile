@@ -303,9 +303,7 @@ format: $(wildcard src/toil/cwl/*.py)
 	black $^ contrib/mypy-stubs
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
-		--warn-redundant-casts --warn-unused-ignores \
-		$(CURDIR)/src/toil/cwl/cwltoil.py
+	MYPYPATH=$(CURDIR)/contrib/mypy-stubs mypy --strict $(CURDIR)/src/toil/{cwl/cwltoil.py,test/cwl/cwlTest.py}
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 	
 # This target will check any modified files for pylint errors.

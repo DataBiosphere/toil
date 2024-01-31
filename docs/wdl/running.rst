@@ -68,6 +68,38 @@ to nest that under an ``outputs`` key and includes a ``dir`` key.
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.
 
+Managing Workflow Logs
+----------------------
+
+At the default settings, if a WDL task succeeds, the standard output and
+standard error will be printed in the ``toil-wdl-runner`` output, unless they
+are captured by the workflow (with the ``stdout()`` and ``stderr()`` WDL
+built-in functions). If a WDL task fails, they will be printed whether they
+were meant to be captured or not. Complete logs from Toil for failed jobs will
+also be printed.
+
+If you would like to save the logs organized by WDL task, you can use the
+``--writeLogs`` or ``--writeLogsGzip`` options to specify a directory where the
+log files should be saved. Log files will be named after the same dotted,
+hierarchical workflow and task names used to set values from the input JSON,
+except that scatters will add an additional numerical component. In addition
+to the logs for WDL tasks, Toil job logs for failed jobs will also appear here
+when running at the default log level.
+
+For example, if you run::
+
+    toil-wdl-runner --writeLogs logs https://raw.githubusercontent.com/DataBiosphere/toil/36b54c45e8554ded5093bcdd03edb2f6b0d93887/src/toil/test/wdl/miniwdl_self_test/self_test.wdl https://raw.githubusercontent.com/DataBiosphere/toil/36b54c45e8554ded5093bcdd03edb2f6b0d93887/src/toil/test/wdl/miniwdl_self_test/inputs.json
+
+You will end up with a ``logs/`` directory containing::
+
+    hello_caller.0.hello.stderr_000.log
+    hello_caller.1.hello.stderr_000.log
+    hello_caller.2.hello.stderr_000.log
+
+The final number is a sequential counter: if a step has to be retried, or if
+you run the workflow multiple times without clearing out the logs directory, it
+will increment.
+
 
 
 
