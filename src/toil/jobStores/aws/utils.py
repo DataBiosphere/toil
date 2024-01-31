@@ -17,13 +17,12 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import Optional, cast
+from typing import Optional, cast, TYPE_CHECKING
 
 from boto3.s3.transfer import TransferConfig
 from boto.exception import SDBResponseError
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from mypy_boto3_s3 import S3Client, S3ServiceResource
 
 from toil.lib.aws import session
 from toil.lib.aws.utils import connection_reset, get_bucket_region
@@ -36,6 +35,8 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             get_error_status,
                             old_retry,
                             retry)
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +291,7 @@ class ServerSideCopyProhibitedError(RuntimeError):
     error=ClientError,
     error_codes=[404, 500, 502, 503, 504]
 )])
-def copyKeyMultipart(resource: S3ServiceResource,
+def copyKeyMultipart(resource: "S3ServiceResource",
                      srcBucketName: str,
                      srcKeyName: str,
                      srcKeyVersion: str,
@@ -346,7 +347,7 @@ def copyKeyMultipart(resource: S3ServiceResource,
     # not wherever the bucket virtual hostnames go.
     source_region = get_bucket_region(srcBucketName)
     source_client = cast(
-        S3Client,
+        "S3Client",
         session.client(
             's3',
             region_name=source_region,
