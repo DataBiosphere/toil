@@ -16,6 +16,9 @@
 
 import logging
 import os
+from pathlib import PurePosixPath
+import posixpath
+import stat
 from typing import (
     Any,
     Callable,
@@ -24,7 +27,6 @@ from typing import (
     List,
     MutableMapping,
     MutableSequence,
-    Tuple,
     Type,
     TypeVar,
     Union,
@@ -32,6 +34,7 @@ from typing import (
 
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +132,32 @@ def visit_cwl_class_and_reduce(
 
 DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]
 
+def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, DirectoryStructure, None]:
+    """
+    Given a relative path, follow it in the given directory structure.
+
+    Return the string URI for files, the directory dict for
+    subdirectories, or None for nonexistent things.
+    """
+
+    # Resolve .. and split into path components
+    parts = PurePosixPath(posixpath.normpath(path)).parts
+    if len(parts) == 0:
+        return dir_dict
+    if parts[0] in ('..', '/'):
+        raise RuntimeError(f"Path {path} not resolvable in virtual directory")
+    found: Union[str, DirectoryStructure] = dir_dict
+    for part in parts:
+        # Go down by each path component in turn
+        if isinstance(found, str):
+            # Looking for a subdirectory of a file, which doesn't exist
+            return None
+        if part not in found:
+            return None
+        found = found[part]
+    # Now we're at the place we want to be.
+    return found
+
 
 def download_structure(
     file_store: AbstractFileStore,
@@ -140,17 +169,21 @@ def download_structure(
     """
     Download nested dictionary from the Toil file store to a local path.
 
+    Guaranteed to fill the structure with real files, and not symlinks out of
+    it to elsewhere. File URIs may be toilfile: URIs or any other URI that
+    Toil's job store system can read.
+
     :param file_store: The Toil file store to download from.
 
-    :param index: Maps from downloaded file path back to input Toil URI.
+    :param index: Maps from downloaded file path back to input URI.
 
     :param existing: Maps from file_store_id URI to downloaded file path.
 
     :param dir_dict: a dict from string to string (for files) or dict (for
-    subdirectories) describing a directory structure.
+        subdirectories) describing a directory structure.
 
     :param into_dir: The directory to download the top-level dict's files
-    into.
+        into.
     """
     logger.debug("Downloading directory with %s items", len(dir_dict))
 
@@ -167,14 +200,26 @@ def download_structure(
             download_structure(file_store, index, existing, value, subdir)
         else:
             # This must be a file path uploaded to Toil.
-            assert isinstance(value, str)
-            assert value.startswith("toilfile:")
+            if not isinstance(value, str):
+                raise RuntimeError(f"Did not find a file at {value}.")
+
             logger.debug("Downloading contained file '%s'", name)
             dest_path = os.path.join(into_dir, name)
-            # So download the file into place
-            file_store.readGlobalFile(
-                FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=True
-            )
+
+            if value.startswith("toilfile:"):
+                # So download the file into place.
+                # Make sure to get a real copy of the file because we may need to
+                # mount the directory into a container as a whole.
+                file_store.readGlobalFile(
+                    FileID.unpack(value[len("toilfile:") :]), dest_path, symlink=False
+                )
+            else:
+                # We need to download from some other kind of URL.
+                size, executable = AbstractJobStore.read_from_url(value, open(dest_path, 'wb'))
+                if executable:
+                    # Make the written file executable
+                    os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
+
             # Update the index dicts
             # TODO: why?
             index[dest_path] = value

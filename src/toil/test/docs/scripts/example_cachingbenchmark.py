@@ -24,13 +24,15 @@ import socket
 import sys
 import time
 
+from configargparse import ArgumentParser
+
 from toil.common import Toil
 from toil.job import Job
 from toil.realtimeLogger import RealtimeLogger
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('--minSleep', type=int, default=1,
                         help="Minimum seconds to sleep")

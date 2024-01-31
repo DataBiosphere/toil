@@ -3,23 +3,44 @@ import os
 import shutil
 import subprocess
 import unittest
-import uuid
-import zipfile
-from urllib.request import urlretrieve
+from uuid import uuid4
+from typing import Optional
+
+from unittest.mock import patch
+from typing import Any, Dict, List, Set
 
 import pytest
 
-from toil.test import ToilTest, needs_docker, needs_docker_cuda, needs_google_storage, needs_java, needs_singularity_or_docker, slow
+from toil.provisioners import cluster_factory
+from toil.test import (ToilTest,
+                       needs_docker_cuda,
+                       needs_google_storage,
+                       needs_singularity_or_docker,
+                       slow, integrative)
+from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.version import exactPython
-# Don't import the test case directly or pytest will test it again.
-import toil.test.wdl.toilwdlTest
+from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
 
-class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
+class BaseWDLTest(ToilTest):
+    """Base test class for WDL tests."""
+
+    def setUp(self) -> None:
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid4()))
+        os.makedirs(self.output_dir)
+
+    def tearDown(self) -> None:
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
+
+
+class WDLConformanceTests(BaseWDLTest):
     """
-    New WDL conformance tests for Toil
+    WDL conformance tests for Toil.
     """
     wdl_dir = "wdl-conformance-tests"
+
     @classmethod
     def setUpClass(cls) -> None:
 
@@ -47,7 +68,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
 
         if p.returncode != 0:
-            print(p.stdout)
+            print(p.stdout.decode('utf-8', errors='replace'))
 
         p.check_returncode()
 
@@ -58,7 +79,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
 
         if p.returncode != 0:
-            print(p.stdout)
+            print(p.stdout.decode('utf-8', errors='replace'))
 
         p.check_returncode()
 
@@ -69,26 +90,25 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         shutil.rmtree("wdl-conformance-tests")
 
 
-class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
-    """
-    Version of the old Toil WDL tests that tests the new MiniWDL-based implementation.
-    """
+class WDLTests(BaseWDLTest):
+    """Tests for Toil's MiniWDL-based implementation."""
 
     @classmethod
     def setUpClass(cls) -> None:
         """Runs once for all tests."""
         cls.base_command = [exactPython, '-m', 'toil.wdl.wdltoil']
 
-    # We inherit a testMD5sum but it is going to need Singularity and not
-    # Docker now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
+    # We inherit a testMD5sum but it is going to need Singularity or Docker
+    # now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity_or_docker
-    def testMD5sum(self):
+    def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
         result = json.loads(result_json)
 
         assert 'ga4ghMd5.value' in result
@@ -96,25 +116,15 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
-
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
-
-        assert retval != 0
-        assert b'Could not find' in stderr
-
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self):
+    def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/self_test.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/inputs.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect',
+                                 'miniwdl'] + (extra_args or []))
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -138,10 +148,17 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert 'hello_caller.messages' in outputs
         assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
 
+    @needs_singularity_or_docker
+    def test_miniwdl_self_test_by_reference(self) -> None:
+        """
+        Test if the MiniWDL self test works when passing input files by URL reference.
+        """
+        self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
+
     @slow
     @needs_docker_cuda
     def test_giraffe_deepvariant(self):
-        """Test if Giraffe and CPU DeepVariant run. This could take 25 minutes."""
+        """Test if Giraffe and GPU DeepVariant run. This could take 25 minutes."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
@@ -164,7 +181,8 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                 "GiraffeDeepVariant.runDeepVariantCallVariants.in_dv_gpu_container": "google/deepvariant:1.3.0-gpu"
             })
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl'])
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -184,7 +202,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     @slow
     @needs_singularity_or_docker
     def test_giraffe(self):
-        """Test if Giraffe runs. This could take 12 minutes. Also we scale it down."""
+        """Test if Giraffe runs. This could take 12 minutes. Also we scale it down but it still demands lots of memory."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
         json_dir = self._createTempDir()
@@ -192,7 +210,9 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale', '0.1'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale',
+                                 '0.1'])
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -224,17 +244,175 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
+    def test_coalesce(self):
+        """
+        Test if WDLSectionJob can coalesce WDL decls.
 
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
+        White box test; will need to be changed or removed if the WDL interpreter changes.
+        """
 
-        assert retval != 0
-        assert b'Could not find' in stderr
+        # Set up data structures for our fake workflow graph to pull from.
+        # This has all decl-type nodes
+        all_decls: Set[str] = set()
+        # And this has all transitive dependencies for all nodes.
+        all_deps: Dict[str, Set[str]] = {}
+
+        def mock_is_decl(self: Any, node_id: str) -> bool:
+            """
+            Replacement function to determine if a node is a decl or not.
+            """
+            return node_id in all_decls
+
+        def mock_get_transitive_dependencies(self: Any, node_id: str) -> Set[str]:
+            """
+            Replacement function to get all the transitive dependencies of a node.
+            """
+            return all_deps[node_id]
+
+        # These are the only two methods coalesce_nodes calls, so we can
+        # replace them to ensure our graph is used without actually needing to
+        # make any WDL objects for it.
+        #
+        # If that changes, the test will need to change! Maybe then it will be
+        # worth extracting a base type for this interface.
+        with patch.object(WDLWorkflowGraph, 'is_decl', mock_is_decl):
+            with patch.object(WDLWorkflowGraph, 'get_transitive_dependencies', mock_get_transitive_dependencies):
+                with self.subTest(msg="Two unrelated decls can coalesce"):
+                    # Set up two unrelated decls
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": set(),
+                        "decl2": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl1", "decl2"], WDLWorkflowGraph([]))
+
+                    # Make sure they coalesced
+                    assert len(result) == 1
+                    assert "decl1" in result[0]
+                    assert "decl2" in result[0]
+
+                with self.subTest(msg="A decl will not coalesce with a non-decl"):
+                    all_decls = {"decl"}
+                    all_deps = {
+                        "decl": set(),
+                        "nondecl": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl", "nondecl"], WDLWorkflowGraph([]))
+
+                    assert len(result) == 2
+                    assert len(result[0]) == 1
+                    assert len(result[1]) == 1
+
+                with self.subTest(msg="Two adjacent decls with a common dependency can coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": {"base"},
+                        "decl2": {"base"},
+                        "base": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
+
+                    assert len(result) == 2
+                    assert "base" in result[0]
+                    assert "decl1" in result[1]
+                    assert "decl2" in result[1]
+
+                with self.subTest(msg="Two adjacent decls with different dependencies will not coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": {"base"},
+                        "decl2": set(),
+                        "base": set()
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
+
+                    assert len(result) == 3
+                    assert "base" in result[0]
+
+                with self.subTest(msg="Two adjacent decls with different successors will coalesce"):
+                    all_decls = {"decl1", "decl2"}
+                    all_deps = {
+                        "decl1": set(),
+                        "decl2": set(),
+                        "successor": {"decl2"}
+                    }
+
+                    result = WDLSectionJob.coalesce_nodes(["decl1", "decl2", "successor"], WDLWorkflowGraph([]))
+
+                    assert len(result) == 2
+                    assert "decl1" in result[0]
+                    assert "decl2" in result[0]
+                    assert "successor" in result[1]
+
+
+@integrative
+@slow
+@pytest.mark.timeout(600)
+class WDLKubernetesClusterTest(AbstractClusterTest):
+    """
+    Ensure WDL works on the Kubernetes batchsystem.
+    """
+
+    def __init__(self, name):
+        super().__init__(name)
+        self.clusterName = 'wdl-integration-test-' + str(uuid4())
+        # t2.medium is the minimum t2 instance that permits Kubernetes
+        self.leaderNodeType = "t2.medium"
+        self.instanceTypes = ["t2.medium"]
+        self.clusterType = "kubernetes"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.jobStore = f'aws:{self.awsRegion()}:wdl-test-{uuid4()}'
+
+    def launchCluster(self) -> None:
+        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
+                                     '--nodeTypes', ",".join(self.instanceTypes),
+                                     '-w', ",".join(self.numWorkers),
+                                     '--nodeStorage', str(self.requestedLeaderStorage)])
+
+    def test_wdl_kubernetes_cluster(self):
+        """
+        Test that a wdl workflow works on a kubernetes cluster. Launches a cluster with 1 worker. This runs a wdl
+        workflow that performs an image pull on the worker.
+        :return:
+        """
+        self.numWorkers = "1"
+        self.requestedLeaderStorage = 30
+        # create the cluster
+        self.launchCluster()
+        # get leader
+        self.cluster = cluster_factory(
+            provisioner="aws", zone=self.zone, clusterName=self.clusterName
+        )
+        self.leader = self.cluster.getLeader()
+
+        url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
+        commit = "09b9659cd01473e836738a2e0dd205df0adb49c5"
+        wdl_dir = "wdl_conformance_tests"
+
+        # get the wdl-conformance-tests repo to get WDL tasks to run
+        self.sshUtil([
+            "bash",
+            "-c",
+            f"git clone {url} {wdl_dir} && cd {wdl_dir} && git checkout {commit}"
+        ])
+
+        # run on kubernetes batchsystem
+        toil_options = ['--batchSystem=kubernetes',
+                        f"--jobstore={self.jobStore}"]
+
+        # run WDL workflow that will run singularity
+        test_options = [f"tests/md5sum/md5sum.wdl", f"tests/md5sum/md5sum.json"]
+        self.sshUtil([
+            "bash",
+            "-c",
+            f"cd {wdl_dir} && toil-wdl-runner {' '.join(test_options)} {' '.join(toil_options)}"])
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

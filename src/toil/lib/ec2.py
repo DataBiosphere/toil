@@ -103,11 +103,13 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
             if i.state == 'pending':
                 pending_ids.add(i.id)
             elif i.state == 'running':
-                assert i.id not in running_ids
+                if i.id in running_ids:
+                    raise RuntimeError("An instance was already added to the list of running instance IDs. Maybe there is a duplicate.")
                 running_ids.add(i.id)
                 yield i
             else:
-                assert i.id not in other_ids
+                if i.id in other_ids:
+                    raise RuntimeError("An instance was already added to the list of other instances. Maybe there is a duplicate.")
                 other_ids.add(i.id)
                 yield i
         logger.info('%i instance(s) pending, %i running, %i other.',
@@ -130,10 +132,10 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     :param requests: The requests to wait on.
 
     :param timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
-    timeout occurs, the remaining open requests will be cancelled.
+        timeout occurs, the remaining open requests will be cancelled.
 
     :param tentative: if True, give up on a spot request at the earliest indication of it
-    not being fulfilled immediately
+        not being fulfilled immediately
 
     """
 
@@ -166,11 +168,13 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                             'Request %s entered status %s indicating that it will not be '
                             'fulfilled anytime soon.', r.id, r.status.code)
                 elif r.state == 'active':
-                    assert r.id not in active_ids
+                    if r.id in active_ids:
+                        raise RuntimeError("A request was already added to the list of active requests. Maybe there are duplicate requests.")
                     active_ids.add(r.id)
                     batch.append(r)
                 else:
-                    assert r.id not in other_ids
+                    if r.id in other_ids:
+                        raise RuntimeError("A request was already added to the list of other IDs. Maybe there are duplicate requests.")
                     other_ids.add(r.id)
                     batch.append(r)
             if batch:

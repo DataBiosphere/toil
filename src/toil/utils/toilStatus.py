@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tool for reporting on job status."""
-from collections import defaultdict
 import logging
 import os
 import sys
-from functools import reduce
-import json
 from typing import Any, Dict, List, Optional, Set
 
 from toil.bus import replay_message_bus
@@ -85,7 +82,7 @@ class ToilStatus:
                 with job.getLogFileHandle(self.jobStore) as fH:
                     # TODO: This looks intended to be machine-readable, but the format is
                     #  unspecified and no escaping is done. But keep these tags around.
-                    print(StatsAndLogging.formatLogStream(fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
+                    print(StatsAndLogging.formatLogStream(fH, stream_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
             else:
                 print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
@@ -320,7 +317,7 @@ class ToilStatus:
 
 def main() -> None:
     """Reports the state of a Toil workflow."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil status")
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                         default=False)

@@ -15,7 +15,6 @@ If using Toil for your research, please cite
 .. _website: http://toil.ucsc-cgl.org/
 .. _announce: https://groups.google.com/forum/#!forum/toil-announce
 .. _GridEngine: http://gridscheduler.sourceforge.net/
-.. _Parasol: http://genecats.soe.ucsc.edu/eng/parasol.html
 .. _Apache Mesos: http://mesos.apache.org/
 .. _spot market: https://aws.amazon.com/ec2/spot/
 .. _Amazon Web Services: https://aws.amazon.com/
@@ -34,30 +33,42 @@ If using Toil for your research, please cite
    gettingStarted/quickStart
 
 .. toctree::
-   :caption: Running Toil
+   :caption: Common Workflow Language (CWL)
+
+   cwl/introduction
+   cwl/running
+
+.. toctree::
+   :caption: Workflow Description Language (WDL)
+   
+   wdl/introduction
+   wdl/running
+   wdl/developing
+   wdl/conformance
+
+.. toctree::
+   :caption: Advanced Toil Usage
 
    running/introduction
    running/cliOptions
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments
-   running/cwl
-   running/wdl
    running/server/wes
-
+   
 .. toctree::
-   :caption: Developing Toil Workflows
+   :caption: Toil Python API
 
-   developingWorkflows/developing
-   developingWorkflows/toilAPI
-   developingWorkflows/toilAPIJobstore
-   developingWorkflows/toilAPIJobFunctions
-   developingWorkflows/toilAPIMethods
-   developingWorkflows/toilAPIRunner
-   developingWorkflows/toilAPIFilestore
-   developingWorkflows/toilAPIBatchsystem
-   developingWorkflows/toilAPIService
-   developingWorkflows/toilAPIExceptions
+   python/developing
+   python/toilAPI
+   python/toilAPIJobstore
+   python/toilAPIJobFunctions
+   python/toilAPIMethods
+   python/toilAPIRunner
+   python/toilAPIFilestore
+   python/toilAPIBatchsystem
+   python/toilAPIService
+   python/toilAPIExceptions
 
 .. toctree::
    :caption: Contributing to Toil

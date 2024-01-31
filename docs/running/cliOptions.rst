@@ -5,17 +5,59 @@
 Commandline Options
 ===================
 
-A quick way to see all of Toil's commandline options is by executing the following on a toil script::
+A quick way to see all of Toil's commandline options is by executing the following on a workflow language front-end::
 
-    $ toil example.py --help
+    $ toil-wdl-runner --help
+
+Or a Toil Python workflow::
+
+    $ python example.py --help
 
 For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
+
+The Config File
+---------------
+Instead of changing the arguments on the command line, Toil offers support for using a configuration file.
+
+Options will be applied with priority:
+
+  1. Command line options
+
+  2. Environmental Variables
+
+  3. Config file values
+
+     a. Provided config file through ``--config``
+
+     b. Default config value in ``$HOME/.toil/default.yaml``
+
+  4. Defaults
+
+You can manually generate an example configuration file to a path you select. To generate a configuration file, run::
+
+    $ toil config [filename].yaml
+
+Then uncomment options as necessary and change/provide new values. 
+
+After editing the config file, you can run Toil with its settings by passing it on the command line::
+
+    $ python example.py --config=[filename].yaml
+
+Alternatively, you can edit the default config file, which is located at ``$HOME/.toil/default.yaml``
+
+If CLI options are used in addition to the configuration file, the CLI options will overwrite the configuration file
+options. For example::
+
+    $ python example.py --config=[filename].yaml --defaultMemory 80Gi
+
+This will result in a default memory per job of 80GiB no matter what is in the configuration file provided.
 
 The Job Store
 -------------
 
-Running toil scripts requires a filepath or url to a centralizing location for all of the files of the workflow.
-This is Toil's one required positional argument: the job store.  To use the :ref:`quickstart <quickstart>` example,
+Running Toil workflows requires a file path or URL to a central location for all of the intermediate files for the workflow: the job store.
+For ``toil-cwl-runner`` and ``toil-wdl-runner`` a job store can often be selected automatically or can be specified with the ``--jobStore`` option; Toil Python workflows generally require the job store as a positional command line argument.
+To use the :ref:`Python quickstart <pyquickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.
@@ -134,14 +176,11 @@ levels in toil are based on priority from the logging module:
 **Batch System Options**
 
   --batchSystem BATCHSYSTEM
-                        The type of batch system to run the job(s) with,
-                        currently can be one of aws_batch, parasol, single_machine,
-                        grid_engine, lsf, mesos, slurm, tes, torque,
-                        htcondor, kubernetes. (default: single_machine)
+                        The type of batch system to run the job(s) with. Default = single_machine.
   --disableAutoDeployment
-                        Should auto-deployment of the user script be deactivated?
-                        If True, the user script/package should be present at
-                        the same location on all workers.  Default = False.
+                        Should auto-deployment of Toil Python workflows be
+                        deactivated? If True, the workflow's Python code should
+                        be present at the same location on all workers. Default = False.
   --maxJobs MAXJOBS
                         Specifies the maximum number of jobs to submit to the
                         backing scheduler at once. Not supported on Mesos or
@@ -175,14 +214,6 @@ levels in toil are based on priority from the logging module:
                         unset, the Toil work directory will be used. Only 
                         works for grid engine batch systems such as gridengine,
                         htcondor, torque, slurm, and lsf.
-  --parasolCommand PARASOLCOMMAND
-                        The name or path of the parasol program. Will be
-                        looked up on PATH unless it starts with a
-                        slash. (default: parasol)
-  --parasolMaxBatches PARASOLMAXBATCHES
-                        Maximum number of job batches the Parasol batch is
-                        allowed to create. One batch is created for jobs with
-                        a unique set of resource requirements. (default: 1000)
   --mesosEndpoint MESOSENDPOINT
                         The host and port of the Mesos server separated by a
                         colon. (default: <leader IP>:5050)
@@ -202,14 +233,6 @@ levels in toil are based on priority from the logging module:
   --kubernetesPodTimeout KUBERNETES_POD_TIMEOUT
                         Seconds to wait for a scheduled Kubernetes pod to
                         start running. (default: 120s)
-  --tesEndpoint TES_ENDPOINT
-                        The http(s) URL of the TES server.
-                        (default: http://<leader IP>:8000)
-  --tesUser TES_USER    User name to use for basic authentication to TES server.
-  --tesPassword TES_PASSWORD
-                        Password to use for basic authentication to TES server.
-  --tesBearerToken TES_BEARER_TOKEN
-                        Bearer token to use for authentication to TES server.
   --awsBatchRegion AWS_BATCH_REGION
                         The AWS region containing the AWS Batch queue to submit
                         to.
@@ -228,25 +251,25 @@ levels in toil are based on priority from the logging module:
 **Data Storage Options**
 Allows configuring Toil's data storage.
 
-  --linkImports         When using a filesystem based job store, CWL input files
-                        are by default symlinked in. Specifying this option
+  --symlinkImports BOOL 
+                        When using a filesystem based job store, CWL input files
+                        are by default symlinked in. Setting this option to True
                         instead copies the files into the job store, which may
-                        protect them from being modified externally. When not
-                        specified and as long as caching is enabled, Toil will
+                        protect them from being modified externally. When set
+                        to False and as long as caching is enabled, Toil will
                         protect the file automatically by changing the permissions
-                        to read-only.
-  --moveExports         When using a filesystem based job store, output files
+                        to read-only. (Default=True)
+  --moveOutputs BOOL    
+                        When using a filesystem based job store, output files
                         are by default moved to the output directory, and a
                         symlink to the moved exported file is created at the
-                        initial location. Specifying this option instead copies
-                        the files into the output directory. Applies to
-                        filesystem-based job stores only.
-  --disableCaching      Disables caching in the file store. This flag must be
-                        set to use a batch system that does not support
-                        cleanup, such as Parasol.
-  --caching BOOL        Set caching options. This must be set to "false"
+                        initial location. Setting this option to True instead
+                        copies the files into the output directory. Applies to
+                        filesystem-based job stores only. (Default=False)
+  --caching BOOL        
+                        Set caching options. This must be set to "false"
                         to use a batch system that does not support
-                        cleanup, such as Parasol. Set to "true" if caching
+                        cleanup. Set to "true" if caching
                         is desired.
 
 **Autoscaling Options**
@@ -363,18 +386,18 @@ from the batch system.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultCores FLOAT  The default number of CPU cores to dedicate a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Fractions of a
                         core (for example 0.1) are supported on some batch
-                        systems, namely Mesos and singleMachine. Default is
+                        systems, namely Mesos and single_machine. Default is
                         1.0
   --defaultDisk INT     The default amount of disk space to dedicate a job.
                         Only applicable to jobs that do not specify an
                         explicit value for this requirement. Standard suffixes
                         like K, Ki, M, Mi, G or Gi are supported. Default is
-                        2.0G
+                        2.0Gi
   --defaultAccelerators ACCELERATOR
                         The default amount of accelerators to request for a
                         job. Only applicable to jobs that do not specify an
@@ -510,8 +533,8 @@ Debug options for finding problems or helping with testing.
 Restart Option
 --------------
 In the event of failure, Toil can resume the pipeline by adding the argument
-``--restart`` and rerunning the python script. Toil pipelines (but not CWL
-pipelines) can even be edited and resumed which is useful for development or
+``--restart`` and rerunning the workflow. Toil Python workflows (but not CWL or WDL
+workflows) can even be edited and resumed, which is useful for development or
 troubleshooting.
 
 Running Workflows with Services
@@ -541,22 +564,21 @@ Toil will detect this situation if it occurs and throw a
 :class:`toil.DeadlockException` exception. Increasing the cluster size
 and these limits will resolve the issue.
 
-Setting Options directly with the Toil Script
+Setting Options directly in a Python Workflow
 ---------------------------------------------
 
-It's good to remember that commandline options can be overridden in the Toil script itself.  For example,
-:func:`toil.job.Job.Runner.getDefaultOptions` can be used to run toil with all default options, and in this example,
-it will override commandline args to run the default options and always run with the "./toilWorkflow" directory
-specified as the jobstore:
+It's good to remember that commandline options can be overridden in the code of a Python workflow.  For example,
+:func:`toil.job.Job.Runner.getDefaultOptions` can be used to get the default Toil options, ignoring what was passed on the command line. In this example,
+this is used to ignore command-line options and always run with the "./toilWorkflow" directory as the jobstore:
 
 .. code-block:: python
 
     options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
-However, each option can be explicitly set within the script by supplying arguments (in this example, we are setting
+However, each option can be explicitly set within the workflow by modifying the options object. In this example, we are setting
 ``logLevel = "DEBUG"`` (all log statements are shown) and ``clean="ALWAYS"`` (always delete the jobstore) like so:
 
 .. code-block:: python
@@ -566,7 +588,7 @@ However, each option can be explicitly set within the script by supplying argume
     options.clean = "ALWAYS" # Always delete the jobStore after a run
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
 However, the usual incantation is to accept commandline args from the user with the following:
 
@@ -576,9 +598,9 @@ However, the usual incantation is to accept commandline args from the user with 
     options = parser.parse_args() # Parse user args to create the options object
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job
 
-Which can also, of course, then accept script supplied arguments as before (which will overwrite any user supplied args):
+We can also have code in the workflow to overwrite user supplied arguments:
 
 .. code-block:: python
 
@@ -588,4 +610,4 @@ Which can also, of course, then accept script supplied arguments as before (whic
     options.clean = "ALWAYS" # Always delete the jobStore after a run
 
     with Toil(options) as toil:
-        toil.start(Job())  # Run the script
+        toil.start(Job())  # Run the root job

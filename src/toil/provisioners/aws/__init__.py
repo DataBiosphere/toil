@@ -13,18 +13,15 @@
 # limitations under the License.
 import datetime
 import logging
-import os
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from toil.lib.aws import (get_aws_zone_from_boto,
                           get_aws_zone_from_environment,
                           get_aws_zone_from_environment_region,
-                          get_aws_zone_from_metadata,
-                          running_on_ec2,
-                          zone_to_region)
+                          get_aws_zone_from_metadata)
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +143,7 @@ def optimize_spot_bid(boto2_ec2, instance_type, spot_bid, zone_options: List[str
     the instance in a sensible zone.
 
     :param zone_options: The collection of allowed zones to consider, within
-    the region associated with the Boto2 connection.
+        the region associated with the Boto2 connection.
     """
     spot_history = _get_spot_history(boto2_ec2, instance_type)
     if spot_history:

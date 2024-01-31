@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 from six.moves import xrange
-from argparse import ArgumentParser
+from configargparse import ArgumentParser
 import os
 import logging
 import random
@@ -14,7 +14,7 @@ def setup(job, input_file_id, n, down_checkpoints):
     Returns the FileID of the sorted file
     """
     # Write the input file to the file store
-    job.fileStore.logToMaster("Starting the merge sort")
+    job.fileStore.log_to_leader("Starting the merge sort")
     return job.addChildJobFn(down,
                              input_file_id, n,
                              down_checkpoints=down_checkpoints,
@@ -33,7 +33,7 @@ def down(job, input_file_id, n, down_checkpoints):
     length = os.path.getsize(input_file)
     if length > n:
         # We will subdivide the file
-        job.fileStore.logToMaster("Splitting file: %s of size: %s"
+        job.fileStore.log_to_leader("Splitting file: %s of size: %s"
                                   % (input_file_id, length), level=logging.CRITICAL)
         # Split the file into two copies
         mid_point = get_midpoint(input_file, 0, length)
@@ -52,7 +52,7 @@ def down(job, input_file_id, n, down_checkpoints):
                                                       memory='600M').rv()).rv()
     else:
         # We can sort this bit of the file
-        job.fileStore.logToMaster("Sorting file: %s of size: %s"
+        job.fileStore.log_to_leader("Sorting file: %s of size: %s"
                                   % (input_file_id, length), level=logging.CRITICAL)
         # Sort the copy and write back to the fileStore
         output_file = job.fileStore.getLocalTempFile()
@@ -66,7 +66,7 @@ def up(job, input_file_id_1, input_file_id_2):
     with job.fileStore.writeGlobalFileStream() as (fileHandle, output_id):
         with job.fileStore.readGlobalFileStream(input_file_id_1) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream(input_file_id_2) as inputFileHandle2:
-                job.fileStore.logToMaster("Merging %s and %s to %s"
+                job.fileStore.log_to_leader("Merging %s and %s to %s"
                                           % (input_file_id_1, input_file_id_2, output_id))
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
 

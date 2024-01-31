@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import errno
 import hashlib
 import logging
@@ -19,11 +20,17 @@ import re
 import shutil
 import sqlite3
 import stat
-import tempfile
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Optional, Tuple
+from tempfile import mkstemp
+from typing import (Any,
+                    Callable,
+                    Generator,
+                    Iterator,
+                    Optional,
+                    Sequence,
+                    Tuple)
 
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.fileStores import FileID
@@ -35,6 +42,7 @@ from toil.lib.conversions import bytes2human
 from toil.lib.io import (atomic_copy,
                          atomic_copyobj,
                          make_public_dir,
+                         mkdtemp,
                          robust_rmtree)
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
@@ -224,15 +232,23 @@ class CachingFileStore(AbstractFileStore):
         # be able to tell that from showing up on a machine where a cache has
         # already been created.
         self.dbPath = os.path.join(self.coordination_dir, f'cache-{self.workflowAttemptNumber}.db')
-        # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
-        self.con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
-        self.cur = self.con.cursor()
+
+        # Database connections are provided by magic properties self.con and
+        # self.cur that always have the right object for the current thread to
+        # use. They store stuff in this thread-local storage.
+        self._thread_local = threading.local()
 
         # Note that sqlite3 automatically starts a transaction when we go to
         # modify the database.
         # To finish this transaction and let other people read our writes (or
         # write themselves), we need to COMMIT after every coherent set of
         # writes.
+
+        # Because we support multi-threaded access to files, but we talk to the
+        # database as one process with one identity for owning file references,
+        # we need to make sure only one thread of our process is trying to e.g.
+        # free up space in the cache for a file at a time.
+        self.process_identity_lock = threading.RLock()
 
         # Set up the tables
         self._ensureTables(self.con)
@@ -253,6 +269,37 @@ class CachingFileStore(AbstractFileStore):
         # time.
         self.commitThread = None
 
+    @contextmanager
+    def as_process(self) -> Generator[str, None, None]:
+        """
+        Assume the process's identity to act on the caching database.
+
+        Yields the process's name in the caching database, and holds onto a
+        lock while your thread has it.
+        """
+        with self.process_identity_lock:
+            yield get_process_name(self.coordination_dir)
+
+    @property
+    def con(self) -> sqlite3.Connection:
+        """
+        Get the database connection to be used for the current thread.
+        """
+        if not hasattr(self._thread_local, 'con'):
+            # Connect to the database for this thread.
+            # TODO: We assume the connection closes when the thread goes away and can no longer use it.
+            self._thread_local.con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
+        return self._thread_local.con
+
+    @property
+    def cur(self) -> sqlite3.Cursor:
+        """
+        Get the main cursor to be used for the current thread.
+        """
+        if not hasattr(self._thread_local, 'cur'):
+            # If we don't already have a main cursor for the thread, make one.
+            self._thread_local.cur = self.con.cursor()
+        return self._thread_local.cur
 
     @staticmethod
     @retry(infinite_retries=True,
@@ -261,7 +308,7 @@ class CachingFileStore(AbstractFileStore):
                              error=sqlite3.OperationalError,
                              error_message_must_include='is locked')
                      ])
-    def _staticWrite(con, cur, operations):
+    def _static_write(con, cur, operations):
         """
         Write to the caching database, using the given connection.
 
@@ -313,6 +360,35 @@ class CachingFileStore(AbstractFileStore):
 
         return cur.rowcount
 
+    @staticmethod
+    @retry(infinite_retries=True,
+           errors=[
+                         ErrorCondition(
+                             error=sqlite3.OperationalError,
+                             error_message_must_include='is locked')
+                     ])
+    def _static_read(cur: sqlite3.Cursor, query: str, args: Optional[Sequence[Any]] = ()) -> Iterator[Any]:
+        """
+        Read from the database.
+
+        Run the given select query with the given arguments. Yield each result.
+        If the query cannot be run because someone else has a write lock on the
+        database, retry.
+        """
+        # All the real work is the decorators
+        return cur.execute(query, args)
+
+    def _read(self, query: str, args: Optional[Sequence[Any]] = ()) -> Iterator[Any]:
+        """
+        Read from the database using the instance's connection.
+
+        Run the given select query with the given arguments. Yield each result.
+        If the query cannot be run because someone else has a write lock on the
+        database, retry.
+        """
+
+        return self._static_read(self.cur, query, args)
+
     def _write(self, operations):
         """
         Write to the caching database, using the instance's connection
@@ -331,7 +407,7 @@ class CachingFileStore(AbstractFileStore):
         :rtype: int
         """
 
-        return self._staticWrite(self.con, self.cur, operations)
+        return self._static_write(self.con, self.cur, operations)
 
     @classmethod
     def _ensureTables(cls, con):
@@ -344,7 +420,7 @@ class CachingFileStore(AbstractFileStore):
         # Get a cursor
         cur = con.cursor()
 
-        cls._staticWrite(con, cur, ["""
+        cls._static_write(con, cur, ["""
             CREATE TABLE IF NOT EXISTS files (
                 id TEXT NOT NULL PRIMARY KEY,
                 path TEXT UNIQUE NOT NULL,
@@ -399,7 +475,7 @@ class CachingFileStore(AbstractFileStore):
         if self.cachingIsFree():
             return 0
 
-        for row in self.cur.execute('SELECT TOTAL(size) FROM files'):
+        for row in self._read('SELECT TOTAL(size) FROM files'):
             return row[0]
 
         raise RuntimeError('Unable to retrieve cache usage')
@@ -417,7 +493,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Total up the sizes of all the reads of files and subtract it from the total disk reservation of all jobs
-        for row in self.cur.execute("""
+        for row in self._read("""
             SELECT (
                 (SELECT TOTAL(disk) FROM jobs) -
                 (SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state == 'immutable')
@@ -443,24 +519,24 @@ class CachingFileStore(AbstractFileStore):
         # content.
 
         # Do a little report first
-        for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
+        for row in self._read("SELECT value FROM properties WHERE name = 'maxSpace'"):
             logger.debug('Max space: %d', row[0])
-        for row in self.cur.execute("SELECT TOTAL(size) FROM files"):
+        for row in self._read("SELECT TOTAL(size) FROM files"):
             logger.debug('Total file size: %d', row[0])
-        for row in self.cur.execute("SELECT TOTAL(disk) FROM jobs"):
+        for row in self._read("SELECT TOTAL(disk) FROM jobs"):
             logger.debug('Total job disk requirement size: %d', row[0])
-        for row in self.cur.execute("SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'"):
+        for row in self._read("SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'"):
             logger.debug('Total immutable reference size: %d', row[0])
 
         if self.cachingIsFree():
             # If caching is free, we just say that all the space is always available.
-            for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
+            for row in self._read("SELECT value FROM properties WHERE name = 'maxSpace'"):
                 return row[0]
 
             raise RuntimeError('Unable to retrieve available cache space')
 
 
-        for row in self.cur.execute("""
+        for row in self._read("""
             SELECT (
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
                 (SELECT TOTAL(size) FROM files) -
@@ -480,7 +556,7 @@ class CachingFileStore(AbstractFileStore):
         If not retrievable, raises an error.
         """
 
-        for row in self.cur.execute("""
+        for row in self._read("""
             SELECT (
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
                 (SELECT TOTAL(disk) FROM jobs)
@@ -502,14 +578,14 @@ class CachingFileStore(AbstractFileStore):
 
         logger.debug('Get unused space for job %s', self.jobID)
 
-        for row in self.cur.execute('SELECT * FROM files'):
+        for row in self._read('SELECT * FROM files'):
             logger.debug('File record: %s', str(row))
 
-        for row in self.cur.execute('SELECT * FROM refs'):
+        for row in self._read('SELECT * FROM refs'):
             logger.debug('Ref record: %s', str(row))
 
 
-        for row in self.cur.execute('SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.job_id = ? AND refs.state != ?',
+        for row in self._read('SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.job_id = ? AND refs.state != ?',
             (self.jobID, 'mutable')):
             # Sum up all the sizes of our referenced files, then subtract that from how much we came in with
             return self.jobDiskBytes - row[0]
@@ -532,7 +608,7 @@ class CachingFileStore(AbstractFileStore):
         file you need to do it in a transaction.
         """
 
-        for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+        for row in self._read('SELECT COUNT(*) FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
             (fileID, 'cached', 'uploadable', 'uploading')):
 
             return row[0] > 0
@@ -545,7 +621,7 @@ class CachingFileStore(AbstractFileStore):
         Counts mutable references too.
         """
 
-        for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE file_id = ?', (fileID,)):
+        for row in self._read('SELECT COUNT(*) FROM refs WHERE file_id = ?', (fileID,)):
             return row[0]
         return 0
 
@@ -558,7 +634,7 @@ class CachingFileStore(AbstractFileStore):
         configurations, most notably the FileJobStore.
         """
 
-        for row in self.cur.execute('SELECT value FROM properties WHERE name = ?', ('freeCaching',)):
+        for row in self._read('SELECT value FROM properties WHERE name = ?', ('freeCaching',)):
             return row[0] == 1
 
         # Otherwise we need to set it
@@ -570,7 +646,7 @@ class CachingFileStore(AbstractFileStore):
             emptyID = self.jobStore.getEmptyFileStoreID()
 
             # Read it out to a generated name.
-            destDir = tempfile.mkdtemp(dir=self.localCacheDir)
+            destDir = mkdtemp(dir=self.localCacheDir)
             cachedFile = os.path.join(destDir, 'sniffLinkCount')
             self.jobStore.read_file(emptyID, cachedFile, symlink=False)
 
@@ -614,7 +690,7 @@ class CachingFileStore(AbstractFileStore):
         # sure we can never collide even though we are going to remove the
         # file.
         # TODO: use a de-slashed version of the ID instead?
-        handle, path = tempfile.mkstemp(dir=self.localCacheDir, suffix=hasher.hexdigest())
+        handle, path = mkstemp(dir=self.localCacheDir, suffix=hasher.hexdigest())
         os.close(handle)
         os.unlink(path)
 
@@ -627,153 +703,137 @@ class CachingFileStore(AbstractFileStore):
         We don't actually process them here. We take action based on the states of files we own later.
         """
 
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Get a list of all file owner processes on this node.
-        # Exclude NULL because it comes out as 0 and we can't look for PID 0.
-        owners = []
-        for row in self.cur.execute('SELECT DISTINCT owner FROM files WHERE owner IS NOT NULL'):
-            owners.append(row[0])
+            # Get a list of all file owner processes on this node.
+            # Exclude NULL because it comes out as 0 and we can't look for PID 0.
+            owners = []
+            for row in self._read('SELECT DISTINCT owner FROM files WHERE owner IS NOT NULL'):
+                owners.append(row[0])
 
-        # Work out which of them have died.
-        deadOwners = []
-        for owner in owners:
-            if not process_name_exists(self.coordination_dir, owner):
-                logger.debug('Owner %s is dead', owner)
-                deadOwners.append(owner)
-            else:
-                logger.debug('Owner %s is alive', owner)
+            # Work out which of them have died.
+            deadOwners = []
+            for owner in owners:
+                if not process_name_exists(self.coordination_dir, owner):
+                    logger.debug('Owner %s is dead', owner)
+                    deadOwners.append(owner)
+                else:
+                    logger.debug('Owner %s is alive', owner)
 
-        for owner in deadOwners:
-            # Try and adopt all the files that any dead owner had
+            for owner in deadOwners:
+                # Try and adopt all the files that any dead owner had
 
-            # If they were deleting, we delete.
-            # If they were downloading, we delete. Any outstanding references
-            # can't be in use since they are from the dead downloader.
-            # If they were uploading or uploadable, we mark as cached even
-            # though it never made it to the job store (and leave it unowned).
-            #
-            # Once the dead job that it was being uploaded from is cleaned up,
-            # and there are no longer any immutable references, it will be
-            # evicted as normal. Since the dead job can't have been marked
-            # successfully completed (since the file is still not uploaded),
-            # nobody is allowed to actually try and use the file.
-            #
-            # TODO: if we ever let other PIDs be responsible for writing our
-            # files asynchronously, this will need to change.
-            self._write([('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (me, 'deleting', owner, 'deleting')),
-                ('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (me, 'deleting', owner, 'downloading')),
-                ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
-                ('cached', owner, 'uploadable', 'uploading'))])
+                # If they were deleting, we delete.
+                # If they were downloading, we delete. Any outstanding references
+                # can't be in use since they are from the dead downloader.
+                # If they were uploading or uploadable, we mark as cached even
+                # though it never made it to the job store (and leave it unowned).
+                #
+                # Once the dead job that it was being uploaded from is cleaned up,
+                # and there are no longer any immutable references, it will be
+                # evicted as normal. Since the dead job can't have been marked
+                # successfully completed (since the file is still not uploaded),
+                # nobody is allowed to actually try and use the file.
+                #
+                # TODO: if we ever let other PIDs be responsible for writing our
+                # files asynchronously, this will need to change.
+                self._write([('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
+                    (me, 'deleting', owner, 'deleting')),
+                    ('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
+                    (me, 'deleting', owner, 'downloading')),
+                    ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
+                    ('cached', owner, 'uploadable', 'uploading'))])
 
-            logger.debug('Tried to adopt file operations from dead worker %s to ourselves as %s', owner, me)
+                logger.debug('Tried to adopt file operations from dead worker %s to ourselves as %s', owner, me)
 
-    @classmethod
-    def _executePendingDeletions(cls, coordination_dir, con, cur):
+    def _executePendingDeletions(self):
         """
         Delete all the files that are registered in the database as in the
         process of being deleted from the cache by us.
 
         Returns the number of files that were deleted.
-
-        Implemented as a class method so it can use the database connection
-        appropriate to its thread without any chance of getting at the main
-        thread's connection and cursor in self.
-
-        :param str coordination_dir: The coordination directory.
-        :param sqlite3.Connection con: Connection to the cache database.
-        :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
-        me = get_process_name(coordination_dir)
+        with self.as_process() as me:
 
-        # Remember the file IDs we are deleting
-        deletedFiles = []
-        for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (me, 'deleting')):
-            # Grab everything we are supposed to delete and delete it
-            fileID = row[0]
-            filePath = row[1]
-            try:
-                os.unlink(filePath)
-                logger.debug('Successfully deleted: %s', filePath)
-            except OSError:
-                # Probably already deleted
-                logger.debug('File already gone: %s', filePath)
-                # Still need to mark it as deleted
+            # Remember the file IDs we are deleting
+            deletedFiles = []
+            for row in self._read('SELECT id, path FROM files WHERE owner = ? AND state = ?', (me, 'deleting')):
+                # Grab everything we are supposed to delete and delete it
+                fileID = row[0]
+                filePath = row[1]
+                try:
+                    os.unlink(filePath)
+                    logger.debug('Successfully deleted: %s', filePath)
+                except OSError:
+                    # Probably already deleted
+                    logger.debug('File already gone: %s', filePath)
+                    # Still need to mark it as deleted
 
-            # Whether we deleted the file or just found out that it is gone, we
-            # need to take credit for deleting it so that we remove it from the
-            # database.
-            deletedFiles.append(fileID)
+                # Whether we deleted the file or just found out that it is gone, we
+                # need to take credit for deleting it so that we remove it from the
+                # database.
+                deletedFiles.append(fileID)
 
-        for fileID in deletedFiles:
-            # Drop all the files. They should have stayed in deleting state. We move them from there to not present at all.
-            # Also drop their references, if they had any from dead downloaders.
-            cls._staticWrite(con, cur, [('DELETE FROM files WHERE id = ? AND state = ?', (fileID, 'deleting')),
-                ('DELETE FROM refs WHERE file_id = ?', (fileID,))])
+            for fileID in deletedFiles:
+                # Drop all the files. They should have stayed in deleting state. We move them from there to not present at all.
+                # Also drop their references, if they had any from dead downloaders.
+                self._write([('DELETE FROM files WHERE id = ? AND state = ?', (fileID, 'deleting')),
+                    ('DELETE FROM refs WHERE file_id = ?', (fileID,))])
 
-        return len(deletedFiles)
+            return len(deletedFiles)
 
-    def _executePendingUploads(self, con, cur):
+    def _executePendingUploads(self):
         """
         Uploads all files in uploadable state that we own.
 
         Returns the number of files that were uploaded.
-
-        Needs access to self to get at the job store for uploading files, but
-        still needs to take con and cur so it can run in a thread with the
-        thread's database connection.
-
-        :param sqlite3.Connection con: Connection to the cache database.
-        :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Record how many files we upload
-        uploadedCount = 0
-        while True:
-            # Try and find a file we might want to upload
-            fileID = None
-            filePath = None
-            for row in cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', me)):
-                fileID = row[0]
-                filePath = row[1]
+            # Record how many files we upload
+            uploadedCount = 0
+            while True:
+                # Try and find a file we might want to upload
+                fileID = None
+                filePath = None
+                for row in self._static_read(self.cur, 'SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', me)):
+                    fileID = row[0]
+                    filePath = row[1]
 
-            if fileID is None:
-                # Nothing else exists to upload
-                break
+                if fileID is None:
+                    # Nothing else exists to upload
+                    break
 
-            # We need to set it to uploading in a way that we can detect that *we* won the update race instead of anyone else.
-            rowCount = self._staticWrite(con, cur, [('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploading', fileID, 'uploadable'))])
-            if rowCount != 1:
-                # We didn't manage to update it. Someone else (a running job if
-                # we are a committing thread, or visa versa) must have grabbed
-                # it.
-                logger.debug('Lost race to upload %s', fileID)
-                # Try again to see if there is something else to grab.
-                continue
+                # We need to set it to uploading in a way that we can detect that *we* won the update race instead of anyone else.
+                rowCount = self._static_write(self.con, self.cur, [('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploading', fileID, 'uploadable'))])
+                if rowCount != 1:
+                    # We didn't manage to update it. Someone else (a running job if
+                    # we are a committing thread, or visa versa) must have grabbed
+                    # it.
+                    logger.debug('Lost race to upload %s', fileID)
+                    # Try again to see if there is something else to grab.
+                    continue
 
-            # Upload the file
-            logger.debug('Actually executing upload for file %s', fileID)
-            try:
-                self.jobStore.update_file(fileID, filePath)
-            except:
-                # We need to set the state back to 'uploadable' in case of any failures to ensure
-                # we can retry properly.
-                self._staticWrite(con, cur, [('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploadable', fileID, 'uploading'))])
-                raise
+                # Upload the file
+                logger.debug('Actually executing upload for file %s', fileID)
+                try:
+                    self.jobStore.update_file(fileID, filePath)
+                except:
+                    # We need to set the state back to 'uploadable' in case of any failures to ensure
+                    # we can retry properly.
+                    self._static_write(self.con, self.cur, [('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploadable', fileID, 'uploading'))])
+                    raise
 
-            # Count it for the total uploaded files value we need to return
-            uploadedCount += 1
+                # Count it for the total uploaded files value we need to return
+                uploadedCount += 1
 
-            # Remember that we uploaded it in the database
-            self._staticWrite(con, cur, [('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))])
+                # Remember that we uploaded it in the database
+                self._static_write(self.con, self.cur, [('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))])
 
-        return uploadedCount
+            return uploadedCount
 
     def _allocateSpaceForJob(self, newJobReqs):
         """
@@ -794,23 +854,23 @@ class CachingFileStore(AbstractFileStore):
         # This will take up space for us and potentially make the cache over-full.
         # But we won't actually let the job run and use any of this space until
         # the cache has been successfully cleared out.
-        me = get_process_name(self.coordination_dir)
-        self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, me))])
+        with self.as_process() as me:
+            self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, me))])
 
-        # Now we need to make sure that we can fit all currently cached files,
-        # and the parts of the total job requirements not currently spent on
-        # cached files, in under the total disk space limit.
+            # Now we need to make sure that we can fit all currently cached files,
+            # and the parts of the total job requirements not currently spent on
+            # cached files, in under the total disk space limit.
 
-        available = self.getCacheAvailable()
+            available = self.getCacheAvailable()
 
-        logger.debug('Available space with job: %d bytes', available)
+            logger.debug('Available space with job: %d bytes', available)
 
-        if available >= 0:
-            # We're fine on disk space
-            return
+            if available >= 0:
+                # We're fine on disk space
+                return
 
-        # Otherwise we need to clear stuff.
-        self._freeUpSpace()
+            # Otherwise we need to clear stuff.
+            self._freeUpSpace()
 
     @classmethod
     def _removeJob(cls, con, cur, jobID):
@@ -827,10 +887,10 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Get the job's temp dir
-        for row in cur.execute('SELECT tempdir FROM jobs WHERE id = ?', (jobID,)):
+        for row in cls._static_read(cur, 'SELECT tempdir FROM jobs WHERE id = ?', (jobID,)):
             jobTemp = row[0]
 
-        for row in cur.execute('SELECT path FROM refs WHERE job_id = ?', (jobID,)):
+        for row in cls._static_read(cur, 'SELECT path FROM refs WHERE job_id = ?', (jobID,)):
             try:
                 # Delete all the reference files.
                 os.unlink(row[0])
@@ -838,7 +898,7 @@ class CachingFileStore(AbstractFileStore):
                 # May not exist
                 pass
         # And their database entries
-        cls._staticWrite(con, cur, [('DELETE FROM refs WHERE job_id = ?', (jobID,))])
+        cls._static_write(con, cur, [('DELETE FROM refs WHERE job_id = ?', (jobID,))])
 
         try:
             # Delete the job's temp directory to the extent that we can.
@@ -847,7 +907,7 @@ class CachingFileStore(AbstractFileStore):
             pass
 
         # Strike the job from the database
-        cls._staticWrite(con, cur, [('DELETE FROM jobs WHERE id = ?', (jobID,))])
+        cls._static_write(con, cur, [('DELETE FROM jobs WHERE id = ?', (jobID,))])
 
     def _deallocateSpaceForJob(self):
         """
@@ -866,66 +926,65 @@ class CachingFileStore(AbstractFileStore):
         Return whether we manage to get any space freed or not.
         """
 
-        # First we want to make sure that dead jobs aren't holding
-        # references to files and keeping them from looking unused.
-        self._removeDeadJobs(self.coordination_dir, self.con)
+        with self.as_process() as me:
 
-        # Adopt work from any dead workers
-        self._stealWorkFromTheDead()
+            # First we want to make sure that dead jobs aren't holding
+            # references to files and keeping them from looking unused.
+            self._removeDeadJobs(self.coordination_dir, self.con)
 
-        if self._executePendingDeletions(self.coordination_dir, self.con, self.cur) > 0:
-            # We actually had something to delete, which we deleted.
-            # Maybe there is space now
-            logger.debug('Successfully executed pending deletions to free space')
-            return True
+            # Adopt work from any dead workers
+            self._stealWorkFromTheDead()
 
-        if self._executePendingUploads(self.con, self.cur) > 0:
-            # We had something to upload. Maybe it can be evicted now.
-            logger.debug('Successfully executed pending uploads to free space')
-            return True
+            if self._executePendingDeletions() > 0:
+                # We actually had something to delete, which we deleted.
+                # Maybe there is space now
+                logger.debug('Successfully executed pending deletions to free space')
+                return True
 
-        # Otherwise, not enough files could be found in deleting state to solve our problem.
-        # We need to put something into the deleting state.
-        # TODO: give other people time to finish their in-progress
-        # evictions before starting more, or we might evict everything as
-        # soon as we hit the cache limit.
+            if self._executePendingUploads() > 0:
+                # We had something to upload. Maybe it can be evicted now.
+                logger.debug('Successfully executed pending uploads to free space')
+                return True
 
-        # Find something that has no non-mutable references and is not already being deleted.
-        self.cur.execute("""
-            SELECT files.id FROM files WHERE files.state = 'cached' AND NOT EXISTS (
-                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
-            ) LIMIT 1
-        """)
-        row = self.cur.fetchone()
-        if row is None:
-            # Nothing can be evicted by us.
-            # Someone else might be in the process of evicting something that will free up space for us too.
-            # Or someone mught be uploading something and we have to wait for them to finish before it can be deleted.
-            logger.debug('Could not find anything to evict! Cannot free up space!')
-            return False
+            # Otherwise, not enough files could be found in deleting state to solve our problem.
+            # We need to put something into the deleting state.
+            # TODO: give other people time to finish their in-progress
+            # evictions before starting more, or we might evict everything as
+            # soon as we hit the cache limit.
 
-        # Otherwise we found an eviction candidate.
-        fileID = row[0]
+            # Find something that has no non-mutable references and is not already being deleted.
+            self._read("""
+                SELECT files.id FROM files WHERE files.state = 'cached' AND NOT EXISTS (
+                    SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
+                ) LIMIT 1
+            """)
+            row = self.cur.fetchone()
+            if row is None:
+                # Nothing can be evicted by us.
+                # Someone else might be in the process of evicting something that will free up space for us too.
+                # Or someone mught be uploading something and we have to wait for them to finish before it can be deleted.
+                logger.debug('Could not find anything to evict! Cannot free up space!')
+                return False
 
-        # Work out who we are
-        me = get_process_name(self.coordination_dir)
+            # Otherwise we found an eviction candidate.
+            fileID = row[0]
 
-        # Try and grab it for deletion, subject to the condition that nothing has started reading it
-        self._write([("""
-            UPDATE files SET owner = ?, state = ? WHERE id = ? AND state = ?
-            AND owner IS NULL AND NOT EXISTS (
-                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
-            )
-            """,
-            (me, 'deleting', fileID, 'cached'))])
+            # Try and grab it for deletion, subject to the condition that nothing has started reading it
+            self._write([("""
+                UPDATE files SET owner = ?, state = ? WHERE id = ? AND state = ?
+                AND owner IS NULL AND NOT EXISTS (
+                    SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
+                )
+                """,
+                (me, 'deleting', fileID, 'cached'))])
 
-        logger.debug('Evicting file %s', fileID)
+            logger.debug('Evicting file %s', fileID)
 
-        # Whether we actually got it or not, try deleting everything we have to delete
-        if self._executePendingDeletions(self.coordination_dir, self.con, self.cur) > 0:
-            # We deleted something
-            logger.debug('Successfully executed pending deletions to free space')
-            return True
+            # Whether we actually got it or not, try deleting everything we have to delete
+            if self._executePendingDeletions() > 0:
+                # We deleted something
+                logger.debug('Successfully executed pending deletions to free space')
+                return True
 
     def _freeUpSpace(self):
         """
@@ -1006,11 +1065,11 @@ class CachingFileStore(AbstractFileStore):
             disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                                f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
             if disk > self.jobDiskBytes:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
             else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
 
             # Go back up to the per-worker local temp directory.
             os.chdir(startingDir)
@@ -1038,60 +1097,60 @@ class CachingFileStore(AbstractFileStore):
         # TODO: this empty file could leak if we die now...
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Work out where the file ought to go in the cache
-        cachePath = self._getNewCachingPath(fileID)
+            # Work out where the file ought to go in the cache
+            cachePath = self._getNewCachingPath(fileID)
 
-        # Create a file in uploadable state and a reference, in the same transaction.
-        # Say the reference is an immutable reference
-        self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', me)),
-            ('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))])
+            # Create a file in uploadable state and a reference, in the same transaction.
+            # Say the reference is an immutable reference
+            self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', me)),
+                ('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))])
 
-        if absLocalFileName.startswith(self.localTempDir) and not os.path.islink(absLocalFileName):
-            # We should link into the cache, because the upload is coming from our local temp dir (and not via a symlink in there)
-            try:
-                # Try and hardlink the file into the cache.
-                # This can only fail if the system doesn't have hardlinks, or the
-                # file we're trying to link to has too many hardlinks to it
-                # already, or something.
-                os.link(absLocalFileName, cachePath)
+            if absLocalFileName.startswith(self.localTempDir) and not os.path.islink(absLocalFileName):
+                # We should link into the cache, because the upload is coming from our local temp dir (and not via a symlink in there)
+                try:
+                    # Try and hardlink the file into the cache.
+                    # This can only fail if the system doesn't have hardlinks, or the
+                    # file we're trying to link to has too many hardlinks to it
+                    # already, or something.
+                    os.link(absLocalFileName, cachePath)
 
-                linkedToCache = True
+                    linkedToCache = True
 
-                logger.debug('Hardlinked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
-                assert not os.path.islink(cachePath), "Symlink %s has invaded cache!" % cachePath
+                    logger.debug('Hardlinked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                    assert not os.path.islink(cachePath), "Symlink %s has invaded cache!" % cachePath
 
-                # Don't do the upload now. Let it be deferred until later (when the job is committing).
-            except OSError:
-                # We couldn't make the link for some reason
+                    # Don't do the upload now. Let it be deferred until later (when the job is committing).
+                except OSError:
+                    # We couldn't make the link for some reason
+                    linkedToCache = False
+            else:
+                # If you are uploading a file that physically exists outside the
+                # local temp dir, it should not be linked into the cache. On
+                # systems that support it, we could end up with a
+                # hardlink-to-symlink in the cache if we break this rule, allowing
+                # files to vanish from our cache.
                 linkedToCache = False
-        else:
-            # If you are uploading a file that physically exists outside the
-            # local temp dir, it should not be linked into the cache. On
-            # systems that support it, we could end up with a
-            # hardlink-to-symlink in the cache if we break this rule, allowing
-            # files to vanish from our cache.
-            linkedToCache = False
 
 
-        if not linkedToCache:
-            # If we can't do the link into the cache and upload from there, we
-            # have to just upload right away.  We can't guarantee sufficient
-            # space to make a full copy in the cache, if we aren't allowed to
-            # take this copy away from the writer.
+            if not linkedToCache:
+                # If we can't do the link into the cache and upload from there, we
+                # have to just upload right away.  We can't guarantee sufficient
+                # space to make a full copy in the cache, if we aren't allowed to
+                # take this copy away from the writer.
 
-            # Change the reference to 'mutable', which it will be.
-            # And drop the file altogether.
-            self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', absLocalFileName, fileID)),
-                ('DELETE FROM files WHERE id = ?', (fileID,))])
+                # Change the reference to 'mutable', which it will be.
+                # And drop the file altogether.
+                self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', absLocalFileName, fileID)),
+                    ('DELETE FROM files WHERE id = ?', (fileID,))])
 
-            # Save the file to the job store right now
-            logger.debug('Actually executing upload immediately for file %s', fileID)
-            self.jobStore.update_file(fileID, absLocalFileName)
+                # Save the file to the job store right now
+                logger.debug('Actually executing upload immediately for file %s', fileID)
+                self.jobStore.update_file(fileID, absLocalFileName)
 
-        # Ship out the completed FileID object with its real size.
-        return FileID.forPath(fileID, absLocalFileName)
+            # Ship out the completed FileID object with its real size.
+            return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
 
@@ -1162,7 +1221,7 @@ class CachingFileStore(AbstractFileStore):
 
                 # Find where the file is cached
                 cachedPath = None
-                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                for row in self._read('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
                     cachedPath = row[0]
 
                 if cachedPath is None:
@@ -1239,130 +1298,130 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Work out where to cache the file if it isn't cached already
-        cachedPath = self._getNewCachingPath(fileStoreID)
+            # Work out where to cache the file if it isn't cached already
+            cachedPath = self._getNewCachingPath(fileStoreID)
 
-        # Start a loop until we can do one of these
-        while True:
-            # Try and create a downloading entry if no entry exists
-            logger.debug('Trying to make file record for id %s', fileStoreID)
-            self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me))])
+            # Start a loop until we can do one of these
+            while True:
+                # Try and create a downloading entry if no entry exists
+                logger.debug('Trying to make file record for id %s', fileStoreID)
+                self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
+                    (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me))])
 
-            # See if we won the race
-            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
-            if self.cur.fetchone()[0] > 0:
-                # We are responsible for downloading the file
-                logger.debug('We are now responsible for downloading file %s', fileStoreID)
-
-                # Make sure we have space for this download.
-                self._freeUpSpace()
-
-                # Do the download into the cache.
-                self._downloadToCache(fileStoreID, cachedPath)
-
-                # Now, we may have to immediately give away this file, because
-                # we don't have space for two copies.
-                # If so, we can't let it go to cached state, because someone
-                # else might make a reference to it, and we may get stuck with
-                # two readers, one cached copy, and space for two copies total.
-
-                # Make the copying reference
-                self._write([('INSERT INTO refs VALUES (?, ?, ?, ?)',
-                    (localFilePath, fileStoreID, readerID, 'copying'))])
-
-                # Fulfill it with a full copy or by giving away the cached copy
-                self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
-
-                # Now we're done
-                return localFilePath
-
-            else:
-                logger.debug('Someone else is already responsible for file %s', fileStoreID)
-
-                # A record already existed for this file.
-                # Try and create an immutable or copying reference to an entry that
-                # is in 'cached' or 'uploadable' or 'uploading' state.
-                # It might be uploading because *we* are supposed to be uploading it.
-                logger.debug('Trying to make reference to file %s', fileStoreID)
-                self._write([('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
-                    (localFilePath, readerID, 'copying', fileStoreID, 'cached', 'uploadable', 'uploading'))])
-
-                # See if we got it
-                self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                # See if we won the race
+                self._read('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
                 if self.cur.fetchone()[0] > 0:
-                    # The file is cached and we can copy or link it
-                    logger.debug('Obtained reference to file %s', fileStoreID)
+                    # We are responsible for downloading the file
+                    logger.debug('We are now responsible for downloading file %s', fileStoreID)
 
-                    # Get the path it is actually at in the cache, instead of where we wanted to put it
-                    for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
-                        cachedPath = row[0]
+                    # Make sure we have space for this download.
+                    self._freeUpSpace()
 
+                    # Do the download into the cache.
+                    self._downloadToCache(fileStoreID, cachedPath)
 
-                    while self.getCacheAvailable() < 0:
-                        # Since we now have a copying reference, see if we have used too much space.
-                        # If so, try to free up some space by deleting or uploading, but
-                        # don't loop forever if we can't get enough.
-                        self._tryToFreeUpSpace()
+                    # Now, we may have to immediately give away this file, because
+                    # we don't have space for two copies.
+                    # If so, we can't let it go to cached state, because someone
+                    # else might make a reference to it, and we may get stuck with
+                    # two readers, one cached copy, and space for two copies total.
 
-                        if self.getCacheAvailable() >= 0:
-                            # We made room
-                            break
+                    # Make the copying reference
+                    self._write([('INSERT INTO refs VALUES (?, ?, ?, ?)',
+                        (localFilePath, fileStoreID, readerID, 'copying'))])
 
-                        # See if we have no other references and we can give away the file.
-                        # Change it to downloading owned by us if we can grab it.
-                        self._write([("""
-                            UPDATE files SET files.owner = ?, files.state = ? WHERE files.id = ? AND files.state = ?
-                            AND files.owner IS NULL AND NOT EXISTS (
-                                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
-                            )
-                            """,
-                            (me, 'downloading', fileStoreID, 'cached'))])
-
-                        if self._giveAwayDownloadingFile(fileStoreID, cachedPath, localFilePath):
-                            # We got ownership of the file and managed to give it away.
-                            return localFilePath
-
-                        # If we don't have space, and we couldn't make space, and we
-                        # couldn't get exclusive control of the file to give it away, we
-                        # need to wait for one of those people with references to the file
-                        # to finish and give it up.
-                        # TODO: work out if that will never happen somehow.
-                        time.sleep(self.contentionBackoff)
-
-                    # OK, now we have space to make a copy.
-
-                    if self.forceDownloadDelay is not None:
-                        # Wait around to simulate a big file for testing
-                        time.sleep(self.forceDownloadDelay)
-
-                    # Make the copy
-                    atomic_copy(cachedPath, localFilePath)
-
-                    # Change the reference to mutable
-                    self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))])
+                    # Fulfill it with a full copy or by giving away the cached copy
+                    self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
 
                     # Now we're done
                     return localFilePath
 
                 else:
-                    # We didn't get a reference. Maybe it is still downloading.
-                    logger.debug('Could not obtain reference to file %s', fileStoreID)
+                    logger.debug('Someone else is already responsible for file %s', fileStoreID)
 
-                    # Loop around again and see if either we can download it or we can get a reference to it.
+                    # A record already existed for this file.
+                    # Try and create an immutable or copying reference to an entry that
+                    # is in 'cached' or 'uploadable' or 'uploading' state.
+                    # It might be uploading because *we* are supposed to be uploading it.
+                    logger.debug('Trying to make reference to file %s', fileStoreID)
+                    self._write([('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+                        (localFilePath, readerID, 'copying', fileStoreID, 'cached', 'uploadable', 'uploading'))])
 
-            # If we didn't get a download or a reference, adopt and do work
-            # from dead workers and loop again.
-            # We may have to wait for someone else's download or delete to
-            # finish. If they die, we will notice.
-            self._removeDeadJobs(self.coordination_dir, self.con)
-            self._stealWorkFromTheDead()
-            self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
+                    # See if we got it
+                    self._read('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                    if self.cur.fetchone()[0] > 0:
+                        # The file is cached and we can copy or link it
+                        logger.debug('Obtained reference to file %s', fileStoreID)
 
-            # Wait for other people's downloads to progress before re-polling.
-            time.sleep(self.contentionBackoff)
+                        # Get the path it is actually at in the cache, instead of where we wanted to put it
+                        for row in self._read('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                            cachedPath = row[0]
+
+
+                        while self.getCacheAvailable() < 0:
+                            # Since we now have a copying reference, see if we have used too much space.
+                            # If so, try to free up some space by deleting or uploading, but
+                            # don't loop forever if we can't get enough.
+                            self._tryToFreeUpSpace()
+
+                            if self.getCacheAvailable() >= 0:
+                                # We made room
+                                break
+
+                            # See if we have no other references and we can give away the file.
+                            # Change it to downloading owned by us if we can grab it.
+                            self._write([("""
+                                UPDATE files SET files.owner = ?, files.state = ? WHERE files.id = ? AND files.state = ?
+                                AND files.owner IS NULL AND NOT EXISTS (
+                                    SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
+                                )
+                                """,
+                                (me, 'downloading', fileStoreID, 'cached'))])
+
+                            if self._giveAwayDownloadingFile(fileStoreID, cachedPath, localFilePath):
+                                # We got ownership of the file and managed to give it away.
+                                return localFilePath
+
+                            # If we don't have space, and we couldn't make space, and we
+                            # couldn't get exclusive control of the file to give it away, we
+                            # need to wait for one of those people with references to the file
+                            # to finish and give it up.
+                            # TODO: work out if that will never happen somehow.
+                            time.sleep(self.contentionBackoff)
+
+                        # OK, now we have space to make a copy.
+
+                        if self.forceDownloadDelay is not None:
+                            # Wait around to simulate a big file for testing
+                            time.sleep(self.forceDownloadDelay)
+
+                        # Make the copy
+                        atomic_copy(cachedPath, localFilePath)
+
+                        # Change the reference to mutable
+                        self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))])
+
+                        # Now we're done
+                        return localFilePath
+
+                    else:
+                        # We didn't get a reference. Maybe it is still downloading.
+                        logger.debug('Could not obtain reference to file %s', fileStoreID)
+
+                        # Loop around again and see if either we can download it or we can get a reference to it.
+
+                # If we didn't get a download or a reference, adopt and do work
+                # from dead workers and loop again.
+                # We may have to wait for someone else's download or delete to
+                # finish. If they die, we will notice.
+                self._removeDeadJobs(self.coordination_dir, self.con)
+                self._stealWorkFromTheDead()
+                self._executePendingDeletions()
+
+                # Wait for other people's downloads to progress before re-polling.
+                time.sleep(self.contentionBackoff)
 
     def _fulfillCopyingReference(self, fileStoreID, cachedPath, localFilePath):
         """
@@ -1422,27 +1481,27 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # See if we actually own this file and can giove it away
-        self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
-            (fileStoreID, 'downloading', me))
-        if self.cur.fetchone()[0] > 0:
-            # Now we have exclusive control of the cached copy of the file, so we can give it away.
+            # See if we actually own this file and can giove it away
+            self._read('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
+                (fileStoreID, 'downloading', me))
+            if self.cur.fetchone()[0] > 0:
+                # Now we have exclusive control of the cached copy of the file, so we can give it away.
 
-            # Don't fake a delay here; this should be a rename always.
+                # Don't fake a delay here; this should be a rename always.
 
-            # We are giving it away
-            shutil.move(cachedPath, localFilePath)
-            # Record that.
-            self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID)),
-                ('DELETE FROM files WHERE id = ?', (fileStoreID,))])
+                # We are giving it away
+                shutil.move(cachedPath, localFilePath)
+                # Record that.
+                self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID)),
+                    ('DELETE FROM files WHERE id = ?', (fileStoreID,))])
 
-            # Now we're done
-            return True
-        else:
-            # We don't own this file in 'downloading' state
-            return False
+                # Now we're done
+                return True
+            else:
+                # We don't own this file in 'downloading' state
+                return False
 
     def _createLinkFromCache(self, cachedPath, localFilePath, symlink=True):
         """
@@ -1493,108 +1552,108 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache, and that we don't require a mutable copy.
 
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Work out where to cache the file if it isn't cached already
-        cachedPath = self._getNewCachingPath(fileStoreID)
+            # Work out where to cache the file if it isn't cached already
+            cachedPath = self._getNewCachingPath(fileStoreID)
 
-        # Start a loop until we can do one of these
-        while True:
-            # Try and create a downloading entry if no entry exists.
-            # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
-            # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-            logger.debug('Trying to make file downloading file record and reference for id %s', fileStoreID)
-            self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me)),
-                ('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
-                (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', me))])
+            # Start a loop until we can do one of these
+            while True:
+                # Try and create a downloading entry if no entry exists.
+                # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
+                # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
+                logger.debug('Trying to make file downloading file record and reference for id %s', fileStoreID)
+                self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
+                    (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me)),
+                    ('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
+                    (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', me))])
 
-            # See if we won the race
-            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
-            if self.cur.fetchone()[0] > 0:
-                # We are responsible for downloading the file (and we have the reference)
-                logger.debug('We are now responsible for downloading file %s', fileStoreID)
-
-                # Make sure we have space for this download.
-                self._freeUpSpace()
-
-                # Do the download into the cache.
-                self._downloadToCache(fileStoreID, cachedPath)
-
-                # Try and make the link before we let the file go to cached state.
-                # If we fail we may end up having to give away the file we just downloaded.
-                if self._createLinkFromCache(cachedPath, localFilePath, symlink):
-                    # We made the link!
-
-                    # Change file state from downloading to cached so other people can use it
-                    self._write([('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
-                        ('cached', fileStoreID))])
-
-                    # Now we're done!
-                    return localFilePath
-                else:
-                    # We could not make a link. We need to make a copy.
-
-                    # Change the reference to copying.
-                    self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('copying', localFilePath, fileStoreID))])
-
-                    # Fulfill it with a full copy or by giving away the cached copy
-                    self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
-
-                    # Now we're done
-                    return localFilePath
-
-            else:
-                logger.debug('We already have an entry in the cache database for file %s', fileStoreID)
-
-                # A record already existed for this file.
-                # Try and create an immutable reference to an entry that
-                # is in 'cached' or 'uploadable' or 'uploading' state.
-                # It might be uploading because *we* are supposed to be uploading it.
-                logger.debug('Trying to make reference to file %s', fileStoreID)
-                self._write([('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
-                    (localFilePath, readerID, 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))])
-
-                # See if we got it
-                self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                # See if we won the race
+                self._read('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
                 if self.cur.fetchone()[0] > 0:
-                    # The file is cached and we can copy or link it
-                    logger.debug('Obtained reference to file %s', fileStoreID)
+                    # We are responsible for downloading the file (and we have the reference)
+                    logger.debug('We are now responsible for downloading file %s', fileStoreID)
 
-                    # Get the path it is actually at in the cache, instead of where we wanted to put it
-                    for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
-                        cachedPath = row[0]
+                    # Make sure we have space for this download.
+                    self._freeUpSpace()
 
+                    # Do the download into the cache.
+                    self._downloadToCache(fileStoreID, cachedPath)
+
+                    # Try and make the link before we let the file go to cached state.
+                    # If we fail we may end up having to give away the file we just downloaded.
                     if self._createLinkFromCache(cachedPath, localFilePath, symlink):
-                        # We managed to make the link
+                        # We made the link!
+
+                        # Change file state from downloading to cached so other people can use it
+                        self._write([('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
+                            ('cached', fileStoreID))])
+
+                        # Now we're done!
                         return localFilePath
                     else:
-                        # We can't make the link. We need a copy instead.
+                        # We could not make a link. We need to make a copy.
 
-                        # We could change the reference to copying, see if
-                        # there's space, make the copy, try and get ahold of
-                        # the file if there isn't space, and give it away, but
-                        # we already have code for that for mutable downloads,
-                        # so just clear the reference and download mutably.
+                        # Change the reference to copying.
+                        self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('copying', localFilePath, fileStoreID))])
 
-                        self._write([('DELETE FROM refs WHERE path = ? AND file_id = ?', (localFilePath, fileStoreID))])
+                        # Fulfill it with a full copy or by giving away the cached copy
+                        self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
 
-                        return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                        # Now we're done
+                        return localFilePath
+
                 else:
-                    logger.debug('Could not obtain reference to file %s', fileStoreID)
+                    logger.debug('We already have an entry in the cache database for file %s', fileStoreID)
 
-                    # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
-                    # We may have to wait for someone else's download or delete to
-                    # finish. If they die, we will notice.
-                    self._removeDeadJobs(self.coordination_dir, self.con)
-                    self._stealWorkFromTheDead()
-                    # We may have acquired ownership of partially-downloaded
-                    # files, now in deleting state, that we need to delete
-                    # before we can download them.
-                    self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
+                    # A record already existed for this file.
+                    # Try and create an immutable reference to an entry that
+                    # is in 'cached' or 'uploadable' or 'uploading' state.
+                    # It might be uploading because *we* are supposed to be uploading it.
+                    logger.debug('Trying to make reference to file %s', fileStoreID)
+                    self._write([('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+                        (localFilePath, readerID, 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))])
 
-                    # Wait for other people's downloads to progress.
-                    time.sleep(self.contentionBackoff)
+                    # See if we got it
+                    self._read('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                    if self.cur.fetchone()[0] > 0:
+                        # The file is cached and we can copy or link it
+                        logger.debug('Obtained reference to file %s', fileStoreID)
+
+                        # Get the path it is actually at in the cache, instead of where we wanted to put it
+                        for row in self._read('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                            cachedPath = row[0]
+
+                        if self._createLinkFromCache(cachedPath, localFilePath, symlink):
+                            # We managed to make the link
+                            return localFilePath
+                        else:
+                            # We can't make the link. We need a copy instead.
+
+                            # We could change the reference to copying, see if
+                            # there's space, make the copy, try and get ahold of
+                            # the file if there isn't space, and give it away, but
+                            # we already have code for that for mutable downloads,
+                            # so just clear the reference and download mutably.
+
+                            self._write([('DELETE FROM refs WHERE path = ? AND file_id = ?', (localFilePath, fileStoreID))])
+
+                            return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                    else:
+                        logger.debug('Could not obtain reference to file %s', fileStoreID)
+
+                        # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
+                        # We may have to wait for someone else's download or delete to
+                        # finish. If they die, we will notice.
+                        self._removeDeadJobs(self.coordination_dir, self.con)
+                        self._stealWorkFromTheDead()
+                        # We may have acquired ownership of partially-downloaded
+                        # files, now in deleting state, that we need to delete
+                        # before we can download them.
+                        self._executePendingDeletions()
+
+                        # Wait for other people's downloads to progress.
+                        time.sleep(self.contentionBackoff)
 
     @contextmanager
     def _with_copying_reference_to_upload(self, file_store_id: FileID, reader_id: str, local_file_path: Optional[str] = None) -> Generator:
@@ -1624,7 +1683,7 @@ class CachingFileStore(AbstractFileStore):
 
         # See if we got it
         have_reference = False
-        for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (local_file_path, file_store_id)):
+        for row in self._read('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (local_file_path, file_store_id)):
             have_reference = row[0] > 0
 
         if have_reference:
@@ -1651,12 +1710,12 @@ class CachingFileStore(AbstractFileStore):
             # Try and grab a reference to the file if it is being uploaded.
             if ref_path is not None:
                 # We have an update in the cache that isn't written back yet.
-                # So we must stream from the ceche for consistency.
+                # So we must stream from the cache for consistency.
 
                 # The ref file is not actually copied to; find the actual file
                 # in the cache
                 cached_path = None
-                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                for row in self._read('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
                     cached_path = row[0]
 
                 if cached_path is None:
@@ -1666,7 +1725,7 @@ class CachingFileStore(AbstractFileStore):
                     # Pass along the results of the open context manager on the
                     # file in the cache.
                     yield result
-                # When we exit the with the copying reference will go away and
+                # When we exit the with, the copying reference will go away and
                 # the file will be allowed to leave the cache again.
             else:
                 # No local update, so we can stream from the job store
@@ -1684,7 +1743,7 @@ class CachingFileStore(AbstractFileStore):
         # missing ref file, we will raise an error about it and stop deleting
         # things.
         missingFile = None
-        for row in self.cur.execute('SELECT path FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
+        for row in self._read('SELECT path FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
             # Delete all the files that are references to this cached file (even mutable copies)
             path = row[0]
 
@@ -1735,25 +1794,25 @@ class CachingFileStore(AbstractFileStore):
                 raise
 
         # Work out who we are
-        me = get_process_name(self.coordination_dir)
+        with self.as_process() as me:
 
-        # Make sure nobody else has references to it
-        for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
-            raise RuntimeError(f'Deleted file ID {fileStoreID} which is still in use by job {row[0]}')
-        # TODO: should we just let other jobs and the cache keep the file until
-        # it gets evicted, and only delete at the back end?
+            # Make sure nobody else has references to it
+            for row in self._read('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
+                raise RuntimeError(f'Deleted file ID {fileStoreID} which is still in use by job {row[0]}')
+            # TODO: should we just let other jobs and the cache keep the file until
+            # it gets evicted, and only delete at the back end?
 
-        # Pop the file into deleting state owned by us if it exists
-        self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', me, fileStoreID))])
+            # Pop the file into deleting state owned by us if it exists
+            self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', me, fileStoreID))])
 
-        # Finish the delete if the file is present
-        self._executePendingDeletions(self.coordination_dir, self.con, self.cur)
+            # Finish the delete if the file is present
+            self._executePendingDeletions()
 
-        # Add the file to the list of files to be deleted from the job store
-        # once the run method completes.
-        self.filesToDelete.add(str(fileStoreID))
-        self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
-                         ' globally deleted.', level=logging.DEBUG)
+            # Add the file to the list of files to be deleted from the job store
+            # once the run method completes.
+            self.filesToDelete.add(str(fileStoreID))
+            self.log_to_leader('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
+                             ' globally deleted.', level=logging.DEBUG)
 
     @deprecated(new_function_name='export_file')
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
@@ -1768,7 +1827,7 @@ class CachingFileStore(AbstractFileStore):
         # until they are done.
 
         # For safety and simplicity, we just execute all pending uploads now.
-        self._executePendingUploads(self.con, self.cur)
+        self._executePendingUploads()
 
         # Then we let the job store export. TODO: let the export come from the
         # cache? How would we write the URL?
@@ -1796,11 +1855,37 @@ class CachingFileStore(AbstractFileStore):
         # value?) wait on it, so we can't forget to join it later.
         self.waitForCommit()
 
+        if len(self.jobDesc.filesToDelete) > 0:
+            raise RuntimeError("Job is already in the process of being committed!")
+
+        state_to_commit: Optional[JobDescription] = None
+
+        if jobState:
+            # Clone the current job description, so that further updates to it
+            # (such as new successors being added when it runs) occur after the
+            # commit process, and aren't committed early or partially.
+            state_to_commit = copy.deepcopy(self.jobDesc)
+            # Also snapshot the files that should be seen as deleted once the
+            # update of the job description is visible.
+            state_to_commit.filesToDelete = list(self.filesToDelete)
+            # TODO: We never clear this out on the file store itself. This
+            # might be necessary for later jobs to see earlier jobs' deleted
+            # before they are committed?
+
+            logger.debug('Starting commit of %s forked from %s', state_to_commit, self.jobDesc)
+            # Make sure the deep copy isn't summoning ghosts of old job
+            # versions. It must be as new or newer at this point.
+            self.jobDesc.check_new_version(state_to_commit)
+
+            # Bump the original's version since saving will do that too and we
+            # don't want duplicate versions.
+            self.jobDesc.reserve_versions(1 if len(state_to_commit.filesToDelete) == 0 else 2)
+
         # Start the commit thread
-        self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,))
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(state_to_commit,))
         self.commitThread.start()
 
-    def startCommitThread(self, jobState):
+    def startCommitThread(self, state_to_commit: Optional[JobDescription]):
         """
         Run in a thread to actually commit the current job.
         """
@@ -1810,38 +1895,28 @@ class CachingFileStore(AbstractFileStore):
             self.waitForPreviousCommit()
 
         try:
-            # Reconnect to the database from this thread. The main thread can
-            # keep using self.con and self.cur. We need to do this because
-            # SQLite objects are tied to a thread.
-            con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
-            cur = con.cursor()
-
             logger.debug('Committing file uploads asynchronously')
 
             # Finish all uploads
-            self._executePendingUploads(con, cur)
+            self._executePendingUploads()
             # Finish all deletions out of the cache (not from the job store)
-            self._executePendingDeletions(self.coordination_dir, con, cur)
+            self._executePendingDeletions()
 
-            if jobState:
+            if state_to_commit is not None:
                 # Do all the things that make this job not redoable
 
-                logger.debug('Committing file deletes and job state changes asynchronously')
+                logger.debug('Committing file deletes and job state changes asynchronously from %s', state_to_commit)
 
-                # Indicate any files that should be deleted once the update of
-                # the job wrapper is completed.
-                self.jobDesc.filesToDelete = list(self.filesToDelete)
                 # Complete the job
-                self.jobStore.update_job(self.jobDesc)
-                # Delete any remnant jobs
-                list(map(self.jobStore.delete_job, self.jobsToDelete))
-                # Delete any remnant files
-                list(map(self.jobStore.delete_file, self.filesToDelete))
+                self.jobStore.update_job(state_to_commit)
+                # Delete the files
+                list(map(self.jobStore.delete_file, state_to_commit.filesToDelete))
                 # Remove the files to delete list, having successfully removed the files
-                if len(self.filesToDelete) > 0:
-                    self.jobDesc.filesToDelete = []
+                if len(state_to_commit.filesToDelete) > 0:
+                    state_to_commit.filesToDelete = []
                     # Update, removing emptying files to delete
-                    self.jobStore.update_job(self.jobDesc)
+                    self.jobStore.update_job(state_to_commit)
+
         except:
             self._terminateEvent.set()
             raise
@@ -1852,14 +1927,14 @@ class CachingFileStore(AbstractFileStore):
     def shutdown(cls, shutdown_info: Tuple[str, str]) -> None:
         """
         :param shutdown_info: Tuple of the coordination directory (where the
-               cache database is) and the cache directory (where the cached data is). 
-                     
+               cache database is) and the cache directory (where the cached data is).
+
         Job local temp directories will be removed due to their appearance in
         the database.
         """
-        
+
         coordination_dir, cache_dir = shutdown_info
-        
+
         if os.path.isdir(cache_dir):
             # There is a directory to clean up
 
@@ -1877,7 +1952,7 @@ class CachingFileStore(AbstractFileStore):
             # and use that.
             dbFilename = None
             dbAttempt = float('-inf')
-            
+
             # We also need to remember all the plausible database files and
             # journals
             all_db_files = []
@@ -1929,7 +2004,7 @@ class CachingFileStore(AbstractFileStore):
             for filename in all_db_files:
                 # And delete everything related to the caching database
                 robust_rmtree(filename)
-                
+
     def __del__(self):
         """
         Cleanup function that is run when destroying the class instance that ensures that all the
@@ -1951,12 +2026,14 @@ class CachingFileStore(AbstractFileStore):
         # Get a cursor
         cur = con.cursor()
 
-        # Work out our process name for taking ownership of jobs
+        # We're allowed to assign jobs to us without acquiring the process
+        # identity lock; we know it won't interfere with any of the other logic
+        # happening under our process's identity in the database.
         me = get_process_name(coordination_dir)
 
         # Get all the dead worker PIDs
         workers = []
-        for row in cur.execute('SELECT DISTINCT worker FROM jobs WHERE worker IS NOT NULL'):
+        for row in cls._static_read(cur, 'SELECT DISTINCT worker FROM jobs WHERE worker IS NOT NULL'):
             workers.append(row[0])
 
         # Work out which of them are not currently running.
@@ -1969,14 +2046,14 @@ class CachingFileStore(AbstractFileStore):
         # Now we know which workers are dead.
         # Clear them off of the jobs they had.
         for deadWorker in deadWorkers:
-            cls._staticWrite(con, cur, [('UPDATE jobs SET worker = NULL WHERE worker = ?', (deadWorker,))])
+            cls._static_write(con, cur, [('UPDATE jobs SET worker = NULL WHERE worker = ?', (deadWorker,))])
         if len(deadWorkers) > 0:
             logger.debug('Reaped %d dead workers', len(deadWorkers))
 
         while True:
             # Find an unowned job.
             # Don't take all of them; other people could come along and want to help us with the other jobs.
-            cur.execute('SELECT id FROM jobs WHERE worker IS NULL LIMIT 1')
+            cls._static_read(cur, 'SELECT id FROM jobs WHERE worker IS NULL LIMIT 1')
             row = cur.fetchone()
             if row is None:
                 # We cleaned up all the jobs
@@ -1985,10 +2062,10 @@ class CachingFileStore(AbstractFileStore):
             jobID = row[0]
 
             # Try to own this job
-            cls._staticWrite(con, cur, [('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (me, jobID))])
+            cls._static_write(con, cur, [('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (me, jobID))])
 
             # See if we won the race
-            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (jobID, me))
+            cls._static_read(cur, 'SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (jobID, me))
             row = cur.fetchone()
             if row is None:
                 # We didn't win the race. Try another one.

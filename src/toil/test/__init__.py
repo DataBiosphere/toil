@@ -21,7 +21,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -30,6 +29,7 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
+from tempfile import mkstemp
 from textwrap import dedent
 from typing import (Any,
                     Callable,
@@ -57,6 +57,7 @@ from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
                                    have_working_nvidia_smi)
 from toil.lib.aws import running_on_ec2
+from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -188,7 +189,7 @@ class ToilTest(unittest.TestCase):
         prefix.extend([_f for _f in names if _f])
         prefix.append('')
         temp_dir_path = os.path.realpath(
-            tempfile.mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
+            mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
         )
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
@@ -314,7 +315,7 @@ else:
 def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
     """Return a string representing a temporary file, that must be manually deleted."""
     if rootDir is None:
-        handle, tmp_file = tempfile.mkstemp(suffix)
+        handle, tmp_file = mkstemp(suffix)
         os.close(handle)
         return tmp_file
     else:
@@ -359,10 +360,17 @@ def needs_rsync3(test_item: MT) -> MT:
     return test_item
 
 
+def needs_online(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if we are meant to talk to the Internet."""
+    test_item = _mark_test('online', test_item)
+    if os.getenv('TOIL_SKIP_ONLINE', '').lower() == 'true':
+        return unittest.skip('Skipping online test.')(test_item)
+    return test_item
+
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
-    test_item = _mark_test('aws-s3', test_item)
+    test_item = _mark_test('aws-s3', needs_online(test_item))
     try:
         from boto import config
         boto_credentials = config.get('Credentials', 'aws_access_key_id')
@@ -415,7 +423,7 @@ def needs_google_storage(test_item: MT) -> MT:
     Cloud is installed and we ought to be able to access public Google Storage
     URIs.
     """
-    test_item = _mark_test('google-storage', test_item)
+    test_item = _mark_test('google-storage', needs_online(test_item))
     try:
         from google.cloud import storage  # noqa
     except ImportError:
@@ -427,7 +435,7 @@ def needs_google_project(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
     """
-    test_item = _mark_test('google-project', test_item)
+    test_item = _mark_test('google-project', needs_online(test_item))
     test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
     return test_item
 
@@ -447,44 +455,19 @@ def needs_torque(test_item: MT) -> MT:
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
-
-def needs_tes(test_item: MT) -> MT:
-    """Use as a decorator before test classes or methods to run only if TES is available."""
-    test_item = _mark_test('tes', test_item)
-
-    try:
-        from toil.batchSystems.tes import TESBatchSystem
-    except ImportError:
-        return unittest.skip("Install py-tes to include this test")(test_item)
-
-    tes_url = os.environ.get('TOIL_TES_ENDPOINT', TESBatchSystem.get_default_tes_endpoint())
-    try:
-        urlopen(tes_url)
-    except HTTPError:
-        # Funnel happens to 404 if TES is working. But any HTTPError means we
-        # dialed somebody who picked up.
-        pass
-    except URLError:
-        # Will give connection refused if we can't connect because the server's
-        # not there. We can also get a "cannot assign requested address" if
-        # we're on Kubernetes dialing localhost and !!creative things!! have
-        # been done to the network stack.
-        return unittest.skip(f"Run a TES server on {tes_url} to include this test")(test_item)
-    return test_item
-
-
 def needs_kubernetes_installed(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
     test_item = _mark_test('kubernetes', test_item)
     try:
         import kubernetes
+        str(kubernetes)  # to prevent removal of this import
     except ImportError:
         return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
     return test_item
 
 def needs_kubernetes(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
-    test_item = needs_kubernetes_installed(test_item)
+    test_item = needs_kubernetes_installed(needs_online(test_item))
     try:
         import kubernetes
         try:
@@ -512,14 +495,6 @@ def needs_mesos(test_item: MT) -> MT:
     except ImportError:
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     return test_item
-
-
-def needs_parasol(test_item: MT) -> MT:
-    """Use as decorator so tests are only run if Parasol is installed."""
-    test_item = _mark_test('parasol', test_item)
-    if which('parasol'):
-        return test_item
-    return unittest.skip("Install Parasol to include this test.")(test_item)
 
 
 def needs_slurm(test_item: MT) -> MT:
@@ -571,20 +546,20 @@ def needs_docker(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     docker is installed and docker-based tests are enabled.
     """
-    test_item = _mark_test('docker', test_item)
+    test_item = _mark_test('docker', needs_online(test_item))
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
-        
+
 def needs_singularity(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
     singularity is installed.
     """
-    test_item = _mark_test('singularity', test_item)
+    test_item = _mark_test('singularity', needs_online(test_item))
     if which('singularity'):
         return test_item
     else:
@@ -621,7 +596,7 @@ def needs_docker_cuda(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     a CUDA setup is available through Docker.
     """
-    test_item = _mark_test('docker_cuda', test_item)
+    test_item = _mark_test('docker_cuda', needs_online(test_item))
     if have_working_nvidia_docker_runtime():
         return test_item
     else:
@@ -677,7 +652,7 @@ def needs_celery_broker(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
     """
-    test_item = _mark_test('celery', test_item)
+    test_item = _mark_test('celery', needs_online(test_item))
     test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
     return test_item
 
@@ -686,7 +661,7 @@ def needs_wes_server(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to run only if a WES
     server is available to run against.
     """
-    test_item = _mark_test('wes_server', test_item)
+    test_item = _mark_test('wes_server', needs_online(test_item))
 
     wes_url = os.environ.get('TOIL_WES_ENDPOINT')
     if not wes_url:
@@ -744,7 +719,7 @@ def needs_fetchable_appliance(test_item: MT) -> MT:
     the Toil appliance Docker image is able to be downloaded from the Internet.
     """
 
-    test_item = _mark_test('fetchable_appliance', test_item)
+    test_item = _mark_test('fetchable_appliance', needs_online(test_item))
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     try:
@@ -765,9 +740,7 @@ def integrative(test_item: MT) -> MT:
     Use this to decorate integration tests so as to skip them during regular builds.
 
     We define integration tests as A) involving other, non-Toil software components
-    that we develop and/or B) having a higher cost (time or money). Note that brittleness
-    does not qualify a test for being integrative. Neither does involvement of external
-    services such as AWS, since that would cover most of Toil's test.
+    that we develop and/or B) having a higher cost (time or money).
     """
     test_item = _mark_test('integrative', test_item)
     if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':
@@ -797,11 +770,13 @@ methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 @contextmanager
 def timeLimit(seconds: int) -> Generator[None, None, None]:
     """
-    http://stackoverflow.com/a/601168
-    Use to limit the execution time of a function. Raises an exception if the execution of the
-    function takes more than the specified amount of time.
+    Use to limit the execution time of a function.
+
+    Raises an exception if the execution of the function takes more than the
+    specified amount of time. See <http://stackoverflow.com/a/601168>.
 
     :param seconds: maximum allowable time, in seconds
+    
     >>> import time
     >>> with timeLimit(2):
     ...    time.sleep(1)

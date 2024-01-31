@@ -31,6 +31,7 @@ class ColumnWidths:
     """
     Convenience object that stores the width of columns for printing. Helps make things pretty.
     """
+
     def __init__(self) -> None:
         self.categories = ["time", "clock", "wait", "memory"]
         self.fields_count = ["count", "min", "med", "ave", "max", "total"]
@@ -41,11 +42,10 @@ class ColumnWidths:
                 self.setWidth(category, field, 8)
 
     def title(self, category: str) -> int:
-        """ Return the total printed length of this category item.
-        """
+        """Return the total printed length of this category item."""
         return sum(self.getWidth(category, x) for x in self.fields)
 
-    def getWidth(self, category: str, field: str ) -> int:
+    def getWidth(self, category: str, field: str) -> int:
         category = category.lower()
         return self.data[f"{category}_{field}"]
 
@@ -56,7 +56,7 @@ class ColumnWidths:
     def report(self) -> None:
         for c in self.categories:
             for f in self.fields:
-                print('%s %s %d' % (c, f, self.getWidth(c, f)))
+                print("%s %s %d" % (c, f, self.getWidth(c, f)))
 
 
 def padStr(s: str, field: Optional[int] = None) -> str:
@@ -87,43 +87,46 @@ def prettyMemory(k: float, field: Optional[int] = None, isBytes: bool = False) -
 
 
 def prettyTime(t: float, field: Optional[int] = None) -> str:
-    """ Given input t as seconds, return a nicely formatted string.
-    """
+    """Given input t as seconds, return a nicely formatted string."""
     from math import floor
+
     pluralDict = {True: "s", False: ""}
     if t < 120:
         return padStr("%ds" % t, field)
     if t < 120 * 60:
-        m = floor(t / 60.)
+        m = floor(t / 60.0)
         s = t % 60
         return padStr("%dm%ds" % (m, s), field)
     if t < 25 * 60 * 60:
-        h = floor(t / 60. / 60.)
-        m = floor((t - (h * 60. * 60.)) / 60.)
+        h = floor(t / 60.0 / 60.0)
+        m = floor((t - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
         return padStr("%dh%gm%ds" % (h, m, s), field)
     if t < 7 * 24 * 60 * 60:
-        d = floor(t / 24. / 60. / 60.)
-        h = floor((t - (d * 24. * 60. * 60.)) / 60. / 60.)
-        m = floor((t
-                   - (d * 24. * 60. * 60.)
-                   - (h * 60. * 60.)) / 60.)
+        d = floor(t / 24.0 / 60.0 / 60.0)
+        h = floor((t - (d * 24.0 * 60.0 * 60.0)) / 60.0 / 60.0)
+        m = floor((t - (d * 24.0 * 60.0 * 60.0) - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
         dPlural = pluralDict[d > 1]
         return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
-    w = floor(t / 7. / 24. / 60. / 60.)
-    d = floor((t - (w * 7 * 24 * 60 * 60)) / 24. / 60. / 60.)
-    h = floor((t - (w * 7. * 24. * 60. * 60.)
-                 - (d * 24. * 60. * 60.))
-              / 60. / 60.)
-    m = floor((t - (w * 7. * 24. * 60. * 60.)
-                 - (d * 24. * 60. * 60.)
-                 - (h * 60. * 60.)) / 60.)
+    w = floor(t / 7.0 / 24.0 / 60.0 / 60.0)
+    d = floor((t - (w * 7 * 24 * 60 * 60)) / 24.0 / 60.0 / 60.0)
+    h = floor(
+        (t - (w * 7.0 * 24.0 * 60.0 * 60.0) - (d * 24.0 * 60.0 * 60.0)) / 60.0 / 60.0
+    )
+    m = floor(
+        (
+            t
+            - (w * 7.0 * 24.0 * 60.0 * 60.0)
+            - (d * 24.0 * 60.0 * 60.0)
+            - (h * 60.0 * 60.0)
+        )
+        / 60.0
+    )
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
-    return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d,
-                                                dPlural, h, m, s), field)
+    return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d, dPlural, h, m, s), field)
 
 
 def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str:
@@ -135,13 +138,15 @@ def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str
     return "%.2f" % t
 
 
-def reportMemory(k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False) -> str:
+def reportMemory(
+    k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False
+) -> str:
     """Given k kilobytes, report back the correct format as string."""
     if options.pretty:
         return prettyMemory(int(k), field=field, isBytes=isBytes)
     else:
         if isBytes:
-            k /= 1024.
+            k /= 1024.0
         if field is not None:
             return "%*dK" % (field - 1, k)  # -1 for the "K"
         else:
@@ -153,9 +158,13 @@ def reportNumber(n: float, field: Optional[int] = None) -> str:
     return "%*g" % (field, n) if field else "%g" % n
 
 
-def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional[ColumnWidths] = None) -> str:
-    """ Generate a pretty-print ready string from a JTTag().
-    """
+def sprintTag(
+    key: str,
+    tag: Expando,
+    options: Namespace,
+    columnWidths: Optional[ColumnWidths] = None,
+) -> str:
+    """Generate a pretty-print ready string from a JTTag()."""
     if columnWidths is None:
         columnWidths = ColumnWidths()
     header = "  %7s " % decorateTitle("Count", options)
@@ -163,16 +172,23 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
     tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
     out_str = ""
     if key == "job":
-        out_str += " {:<12} | {:>7}{:>7}{:>7}{:>7}\n".format("Worker Jobs", "min",
-                                           "med", "ave", "max")
+        out_str += " {:<12} | {:>7}{:>7}{:>7}{:>7}\n".format(
+            "Worker Jobs", "min", "med", "ave", "max"
+        )
         worker_str = "%s| " % (" " * 14)
-        for t in [tag.min_number_per_worker, tag.median_number_per_worker,
-                  tag.average_number_per_worker, tag.max_number_per_worker]:
+        for t in [
+            tag.min_number_per_worker,
+            tag.median_number_per_worker,
+            tag.average_number_per_worker,
+            tag.max_number_per_worker,
+        ]:
             worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
     if "time" in options.categories:
-        header += "| %*s " % (columnWidths.title("time"),
-                              decorateTitle("Time", options))
+        header += "| %*s " % (
+            columnWidths.title("time"),
+            decorateTitle("Time", options),
+        )
         sub_header += decorateSubHeader("Time", columnWidths, options)
         tag_str += " | "
         for t, width in [
@@ -181,11 +197,13 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
             (tag.average_time, columnWidths.getWidth("time", "ave")),
             (tag.max_time, columnWidths.getWidth("time", "max")),
             (tag.total_time, columnWidths.getWidth("time", "total")),
-            ]:
+        ]:
             tag_str += reportTime(t, options, field=width)
     if "clock" in options.categories:
-        header += "| %*s " % (columnWidths.title("clock"),
-                              decorateTitle("Clock", options))
+        header += "| %*s " % (
+            columnWidths.title("clock"),
+            decorateTitle("Clock", options),
+        )
         sub_header += decorateSubHeader("Clock", columnWidths, options)
         tag_str += " | "
         for t, width in [
@@ -194,11 +212,13 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
             (tag.average_clock, columnWidths.getWidth("clock", "ave")),
             (tag.max_clock, columnWidths.getWidth("clock", "max")),
             (tag.total_clock, columnWidths.getWidth("clock", "total")),
-            ]:
+        ]:
             tag_str += reportTime(t, options, field=width)
     if "wait" in options.categories:
-        header += "| %*s " % (columnWidths.title("wait"),
-                              decorateTitle("Wait", options))
+        header += "| %*s " % (
+            columnWidths.title("wait"),
+            decorateTitle("Wait", options),
+        )
         sub_header += decorateSubHeader("Wait", columnWidths, options)
         tag_str += " | "
         for t, width in [
@@ -207,11 +227,13 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
             (tag.average_wait, columnWidths.getWidth("wait", "ave")),
             (tag.max_wait, columnWidths.getWidth("wait", "max")),
             (tag.total_wait, columnWidths.getWidth("wait", "total")),
-            ]:
+        ]:
             tag_str += reportTime(t, options, field=width)
     if "memory" in options.categories:
-        header += "| %*s " % (columnWidths.title("memory"),
-                              decorateTitle("Memory", options))
+        header += "| %*s " % (
+            columnWidths.title("memory"),
+            decorateTitle("Memory", options),
+        )
         sub_header += decorateSubHeader("Memory", columnWidths, options)
         tag_str += " | "
         for t, width in [
@@ -220,40 +242,50 @@ def sprintTag(key: str, tag: Expando, options: Namespace, columnWidths: Optional
             (tag.average_memory, columnWidths.getWidth("memory", "ave")),
             (tag.max_memory, columnWidths.getWidth("memory", "max")),
             (tag.total_memory, columnWidths.getWidth("memory", "total")),
-            ]:
+        ]:
             tag_str += reportMemory(t, options, field=width)
     out_str += header + "\n"
     out_str += sub_header + "\n"
     out_str += tag_str + "\n"
     return out_str
 
+
 def decorateTitle(title: str, options: Namespace) -> str:
-    """ Add a marker to TITLE if the TITLE is sorted on.
-    """
+    """Add a marker to TITLE if the TITLE is sorted on."""
     if title.lower() == options.sortCategory:
         return "%s*" % title
     else:
         return title
 
-def decorateSubHeader(title: str, columnWidths: ColumnWidths, options: Namespace) -> str:
-    """ Add a marker to the correct field if the TITLE is sorted on.
-    """
+
+def decorateSubHeader(
+    title: str, columnWidths: ColumnWidths, options: Namespace
+) -> str:
+    """Add a marker to the correct field if the TITLE is sorted on."""
     title = title.lower()
     if title != options.sortCategory:
         s = "| %*s%*s%*s%*s%*s " % (
-            columnWidths.getWidth(title, "min"), "min",
-            columnWidths.getWidth(title, "med"), "med",
-            columnWidths.getWidth(title, "ave"), "ave",
-            columnWidths.getWidth(title, "max"), "max",
-            columnWidths.getWidth(title, "total"), "total")
+            columnWidths.getWidth(title, "min"),
+            "min",
+            columnWidths.getWidth(title, "med"),
+            "med",
+            columnWidths.getWidth(title, "ave"),
+            "ave",
+            columnWidths.getWidth(title, "max"),
+            "max",
+            columnWidths.getWidth(title, "total"),
+            "total",
+        )
         return s
     else:
         s = "| "
-        for field, width in [("min", columnWidths.getWidth(title, "min")),
-                             ("med", columnWidths.getWidth(title, "med")),
-                             ("ave", columnWidths.getWidth(title, "ave")),
-                             ("max", columnWidths.getWidth(title, "max")),
-                             ("total", columnWidths.getWidth(title, "total"))]:
+        for field, width in [
+            ("min", columnWidths.getWidth(title, "min")),
+            ("med", columnWidths.getWidth(title, "med")),
+            ("ave", columnWidths.getWidth(title, "ave")),
+            ("max", columnWidths.getWidth(title, "max")),
+            ("total", columnWidths.getWidth(title, "total")),
+        ]:
             if options.sortField == field:
                 s += "%*s*" % (width - 1, field)
             else:
@@ -272,48 +304,60 @@ def get(tree: Expando, name: str) -> float:
 
 def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     """Return a jobTypes all sorted."""
-    longforms = {"med": "median",
-                 "ave": "average",
-                 "min": "min",
-                 "total": "total",
-                 "max": "max",}
+    longforms = {
+        "med": "median",
+        "ave": "average",
+        "min": "min",
+        "total": "total",
+        "max": "max",
+    }
     sortField = longforms[options.sortField]
-    if (options.sortCategory == "time" or
-        options.sortCategory == "clock" or
-        options.sortCategory == "wait" or
-        options.sortCategory == "memory"
-        ):
+    if (
+        options.sortCategory == "time"
+        or options.sortCategory == "clock"
+        or options.sortCategory == "wait"
+        or options.sortCategory == "memory"
+    ):
         return sorted(
             jobTypes,
-            # due to https://github.com/python/mypy/issues/9656
-            key=lambda tag: getattr(tag, "%s_%s" # type: ignore
-                                    % (sortField, options.sortCategory)),
-            reverse=options.sortReverse)
+            key=lambda tag: getattr(tag, "%s_%s" % (sortField, options.sortCategory)),
+            reverse=options.sortReverse,
+        )
     elif options.sortCategory == "alpha":
         return sorted(
-            jobTypes, key=lambda tag: tag.name, # type: ignore
-            reverse=options.sortReverse)
+            jobTypes,
+            key=lambda tag: tag.name,  # type: ignore
+            reverse=options.sortReverse,
+        )
     elif options.sortCategory == "count":
-        return sorted(jobTypes, key=lambda tag: tag.total_number, # type: ignore
-                      reverse=options.sortReverse)
+        return sorted(
+            jobTypes,
+            key=lambda tag: tag.total_number,  # type: ignore
+            reverse=options.sortReverse,
+        )
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
 
 
-def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types: List[Any], options: Namespace) -> str:
+def reportPrettyData(
+    root: Expando,
+    worker: List[Job],
+    job: List[Job],
+    job_types: List[Any],
+    options: Namespace,
+) -> str:
     """Print the important bits out."""
     out_str = "Batch System: %s\n" % root.batch_system
-    out_str += ("Default Cores: %s  Default Memory: %s\n"
-                "Max Cores: %s\n" % (
+    out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
         reportNumber(n=get(root, "default_cores")),
         reportMemory(get(root, "default_memory"), options, isBytes=True),
         reportNumber(n=get(root, "max_cores")),
-        ))
-    out_str += ("Total Clock: {}  Total Runtime: {}\n".format(
+    )
+    out_str += "Total Clock: {}  Total Runtime: {}\n".format(
         reportTime(get(root, "total_clock"), options),
         reportTime(get(root, "total_run_time"), options),
-        ))
+    )
     job_types = sortJobs(job_types, options)
     columnWidths = computeColumnWidths(job_types, worker, job, options)
     out_str += "Worker\n"
@@ -327,9 +371,10 @@ def reportPrettyData(root: Expando, worker: List[Job], job: List[Job], job_types
     return out_str
 
 
-def computeColumnWidths(job_types: List[Any], worker: List[Job], job: List[Job], options: Expando) -> ColumnWidths:
-    """ Return a ColumnWidths() object with the correct max widths.
-    """
+def computeColumnWidths(
+    job_types: List[Any], worker: List[Job], job: List[Job], options: Expando
+) -> ColumnWidths:
+    """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
     for t in job_types:
         updateColumnWidths(t, cw, options)
@@ -339,34 +384,37 @@ def computeColumnWidths(job_types: List[Any], worker: List[Job], job: List[Job],
 
 
 def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
-    """ Update the column width attributes for this tag's fields.
-    """
-    longforms = {"med": "median",
-                 "ave": "average",
-                 "min": "min",
-                 "total": "total",
-                 "max": "max",}
+    """Update the column width attributes for this tag's fields."""
+    longforms = {
+        "med": "median",
+        "ave": "average",
+        "min": "min",
+        "total": "total",
+        "max": "max",
+    }
     for category in ["time", "clock", "wait", "memory"]:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
                 t = getattr(tag, f"{longforms[field]}_{category}")
                 if category in ["time", "clock", "wait"]:
-                    s = reportTime(t, options,
-                                   field=cw.getWidth(category, field)).strip()
+                    s = reportTime(
+                        t, options, field=cw.getWidth(category, field)
+                    ).strip()
                 else:
-                    s = reportMemory(t, options,
-                                     field=cw.getWidth(category, field), isBytes=True).strip()
+                    s = reportMemory(
+                        t, options, field=cw.getWidth(category, field), isBytes=True
+                    ).strip()
                 if len(s) >= cw.getWidth(category, field):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
 
 
 def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
-    """ Create an element for output.
-    """
+    """Create an element for output."""
+
     def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
-            raise RuntimeError("Negative value %s reported for %s" %(i,name) )
+            raise RuntimeError("Negative value %s reported for %s" % (i, name))
         else:
             return float(i)
 
@@ -382,12 +430,14 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         itemTimes.append(assertNonnegative(float(item.get("time", 0)), "time"))
         itemClocks.append(assertNonnegative(float(item.get("clock", 0)), "clock"))
         itemMemory.append(assertNonnegative(float(item.get("memory", 0)), "memory"))
-        totalCores += assertNonnegative(float(item.get("requested_cores", 0)), "requested_cores")
+        totalCores += assertNonnegative(
+            float(item.get("requested_cores", 0)), "requested_cores"
+        )
 
     assert len(itemClocks) == len(itemTimes) == len(itemMemory)
 
     itemWaits = []
-    for index in range(0,len(itemTimes)):
+    for index in range(0, len(itemTimes)):
         itemWaits.append(itemTimes[index] - itemClocks[index])
 
     itemWaits.sort()
@@ -401,7 +451,7 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         itemWaits.append(0)
         itemMemory.append(0)
 
-    element[itemName]=Expando(
+    element[itemName] = Expando(
         total_number=float(len(items)),
         total_time=float(sum(itemTimes)),
         median_time=float(itemTimes[len(itemTimes) // 2]),
@@ -424,26 +474,34 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         min_memory=float(min(itemMemory)),
         max_memory=float(max(itemMemory)),
         total_cores=totalCores,
-        name=itemName
+        name=itemName,
     )
     return element[itemName]
 
 
-def createSummary(element: Expando, containingItems: List[Job], containingItemName: str, getFn: Callable[[Job], List[Optional[Job]]]) -> None:
-    itemCounts = [len(getFn(containingItem)) for
-                  containingItem in containingItems]
+def createSummary(
+    element: Expando,
+    containingItems: List[Job],
+    containingItemName: str,
+    getFn: Callable[[Job], List[Optional[Job]]],
+) -> None:
+    itemCounts = [len(getFn(containingItem)) for containingItem in containingItems]
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
-    element["median_number_per_%s" % containingItemName] = itemCounts[len(itemCounts) // 2]
-    element["average_number_per_%s" % containingItemName] = float(sum(itemCounts) / len(itemCounts))
+    element["median_number_per_%s" % containingItemName] = itemCounts[
+        len(itemCounts) // 2
+    ]
+    element["average_number_per_%s" % containingItemName] = float(
+        sum(itemCounts) / len(itemCounts)
+    )
     element["min_number_per_%s" % containingItemName] = min(itemCounts)
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
 
 def getStats(jobStore: AbstractJobStore) -> Expando:
-    """ Collect and return the stats and config data.
-    """
+    """Collect and return the stats and config data."""
+
     def aggregateStats(fileHandle: TextIO, aggregateObject: Expando) -> None:
         try:
             stats = json.load(fileHandle, object_hook=Expando)
@@ -451,9 +509,11 @@ def getStats(jobStore: AbstractJobStore) -> Expando:
                 if key in aggregateObject:
                     aggregateObject[key].append(stats[key])
                 else:
-                    aggregateObject[key]=[stats[key]]
+                    aggregateObject[key] = [stats[key]]
         except ValueError:
-            logger.critical("File %s contains corrupted json. Skipping file." % fileHandle)
+            logger.critical(
+                "File %s contains corrupted json. Skipping file." % fileHandle
+            )
             pass  # The file is corrupted.
 
     aggregateObject = Expando()
@@ -466,7 +526,7 @@ def processData(config: Config, stats: Expando) -> Expando:
     """
     Collate the stats and report
     """
-    if 'total_time' not in stats or 'total_clock' not in stats:
+    if "total_time" not in stats or "total_clock" not in stats:
         # toil job not finished yet
         stats.total_time = [0.0]
         stats.total_clock = [0.0]
@@ -474,17 +534,18 @@ def processData(config: Config, stats: Expando) -> Expando:
     stats.total_time = sum(float(number) for number in stats.total_time)
     stats.total_clock = sum(float(number) for number in stats.total_clock)
 
-    collatedStatsTag = Expando(total_run_time=stats.total_time,
-                               total_clock=stats.total_clock,
-                               batch_system=config.batchSystem,
-                               default_memory=str(config.defaultMemory),
-                               default_cores=str(config.defaultCores),
-                               max_cores=str(config.maxCores)
-                               )
+    collatedStatsTag = Expando(
+        total_run_time=stats.total_time,
+        total_clock=stats.total_clock,
+        batch_system=config.batchSystem,
+        default_memory=str(config.defaultMemory),
+        default_cores=str(config.defaultCores),
+        max_cores=str(config.maxCores),
+    )
 
     # Add worker info
-    worker = [_f for _f in getattr(stats, 'workers', []) if _f]
-    jobs = [_f for _f in getattr(stats, 'jobs', []) if _f]
+    worker = [_f for _f in getattr(stats, "workers", []) if _f]
+    jobs = [_f for _f in getattr(stats, "jobs", []) if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
     def fn4(job: Job) -> List[Optional[Job]]:
@@ -494,8 +555,12 @@ def processData(config: Config, stats: Expando) -> Expando:
             return []
 
     buildElement(collatedStatsTag, worker, "worker")
-    createSummary(buildElement(collatedStatsTag, jobs, "jobs"),
-                  getattr(stats, 'workers', []), "worker", fn4)
+    createSummary(
+        buildElement(collatedStatsTag, jobs, "jobs"),
+        getattr(stats, "workers", []),
+        "worker",
+        fn4,
+    )
     # Get info for each job
     jobNames = set()
     for job in jobs:
@@ -503,7 +568,7 @@ def processData(config: Config, stats: Expando) -> Expando:
     jobTypesTag = Expando()
     collatedStatsTag.job_types = jobTypesTag
     for jobName in jobNames:
-        jobTypes = [ job for job in jobs if job.class_name == jobName ]
+        jobTypes = [job for job in jobs if job.class_name == jobName]
         buildElement(jobTypesTag, jobTypes, jobName)
     collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
@@ -512,9 +577,11 @@ def processData(config: Config, stats: Expando) -> Expando:
 def reportData(tree: Expando, options: Namespace) -> None:
     # Now dump it all out to file
     if options.raw:
-        out_str = json.dumps(tree, indent=4, separators=(',', ': '))
+        out_str = json.dumps(tree, indent=4, separators=(",", ": "))
     else:
-        out_str = reportPrettyData(tree, tree.worker, tree.jobs, tree.job_types.values(), options)
+        out_str = reportPrettyData(
+            tree, tree.worker, tree.jobs, tree.job_types.values(), options
+        )
     if options.outputFile is not None:
         with open(options.outputFile, "w") as f:
             f.write(out_str)
@@ -524,32 +591,62 @@ def reportData(tree: Expando, options: Namespace) -> None:
 
 category_choices = ["time", "clock", "wait", "memory"]
 sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
-sort_field_choices = ['min', 'med', 'ave', 'max', 'total']
+sort_field_choices = ["min", "med", "ave", "max", "total"]
 
 
 def add_stats_options(parser: ArgumentParser) -> None:
-    parser.add_argument("--outputFile", dest="outputFile", default=None, help="File in which to write results.")
-    parser.add_argument("--raw", action="store_true", default=False, help="Return raw json data.")
-    parser.add_argument("--pretty", "--human", action="store_true", default=False,
-                        help="if not raw, prettify the numbers to be human readable.")
-    parser.add_argument("--sortReverse", "--reverseSort", default=False, action="store_true", help="Reverse sort.")
-    parser.add_argument("--categories", default=','.join(category_choices), type=str,
-                        help=f"Comma separated list of any of the following: {category_choices}.")
-    parser.add_argument("--sortCategory", default="time", choices=sort_category_choices,
-                        help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.")
-    parser.add_argument("--sortField", default="med", choices=sort_field_choices,
-                        help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.")
+    parser.add_argument(
+        "--outputFile",
+        dest="outputFile",
+        default=None,
+        help="File in which to write results.",
+    )
+    parser.add_argument(
+        "--raw", action="store_true", default=False, help="Return raw json data."
+    )
+    parser.add_argument(
+        "--pretty",
+        "--human",
+        action="store_true",
+        default=False,
+        help="if not raw, prettify the numbers to be human readable.",
+    )
+    parser.add_argument(
+        "--sortReverse",
+        "--reverseSort",
+        default=False,
+        action="store_true",
+        help="Reverse sort.",
+    )
+    parser.add_argument(
+        "--categories",
+        default=",".join(category_choices),
+        type=str,
+        help=f"Comma separated list of any of the following: {category_choices}.",
+    )
+    parser.add_argument(
+        "--sortCategory",
+        default="time",
+        choices=sort_category_choices,
+        help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.",
+    )
+    parser.add_argument(
+        "--sortField",
+        default="med",
+        choices=sort_field_choices,
+        help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.",
+    )
 
 
 def main() -> None:
     """Reports stats on the workflow, use with --stats option to toil."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil stats")
     add_stats_options(parser)
     options = parser.parse_args()
 
     for c in options.categories.split(","):
         if c.strip() not in category_choices:
-            raise ValueError(f'{c} not in {category_choices}!')
+            raise ValueError(f"{c} not in {category_choices}!")
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
     set_logging_from_options(options)

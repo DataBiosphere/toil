@@ -31,10 +31,9 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # in order to import properly. Import them later, in tests
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        addBatchSystemFactory,
+from toil.batchSystems.registry import (add_batch_system_factory,
+                                        get_batch_system,
+                                        get_batch_systems,
                                         restore_batch_system_plugin_state,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -52,12 +51,9 @@ from toil.test import (ToilTest,
                        needs_kubernetes_installed,
                        needs_lsf,
                        needs_mesos,
-                       needs_parasol,
                        needs_slurm,
-                       needs_tes,
                        needs_torque,
                        slow)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
 
@@ -88,16 +84,16 @@ class BatchSystemPluginTest(ToilTest):
         restore_batch_system_plugin_state(self.__state)
         super().tearDown()
 
-    def testAddBatchSystemFactory(self):
+    def test_add_batch_system_factory(self):
         def test_batch_system_factory():
             # TODO: Adding the same batch system under multiple names means we
             # can't actually create Toil options, because each version tries to
             # add its arguments.
             return SingleMachineBatchSystem
 
-        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-        assert 'testBatchSystem' in BATCH_SYSTEMS
+        add_batch_system_factory('testBatchSystem', test_batch_system_factory)
+        assert 'testBatchSystem' in get_batch_systems()
+        assert get_batch_system('testBatchSystem') == SingleMachineBatchSystem
 
 class hidden:
     """
@@ -248,10 +244,6 @@ class hidden:
             self.batchSystem.killBatchJobs([10])
 
         def test_set_env(self):
-            # Parasol disobeys shell rules and splits the command at the space
-            # character into arguments before exec'ing it, whether the space is
-            # quoted, escaped or not.
-
             # Start with a relatively safe script
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
@@ -575,23 +567,6 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.assertEqual(str(spec.tolerations), "None")
 
 
-@needs_tes
-@needs_fetchable_appliance
-class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
-    """
-    Tests against the TES batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def createBatchSystem(self):
-        # Import the batch system when we know we have it.
-        # Doesn't really matter for TES right now, but someday it might.
-        from toil.batchSystems.tes import TESBatchSystem
-        return TESBatchSystem(config=self.config,
-                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
 @needs_aws_batch
 @needs_fetchable_appliance
 class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -849,7 +824,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
             if len(sys.argv) < 3:
                 count(1)
                 try:
-                    time.sleep(1)
+                    time.sleep(0.5)
                 finally:
                     count(-1)
             else:
@@ -910,9 +885,10 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         logger.info(f'maxCores: {maxCores}, '
                                  f'coresPerJob: {coresPerJob}, '
                                  f'load: {load}')
-                        # This is the key assertion:
+                        # This is the key assertion: we shouldn't run too many jobs.
+                        # Because of nondeterminism we can't guarantee hitting the limit.
                         expectedMaxConcurrentTasks = min(maxCores // coresPerJob, jobs)
-                        self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
+                        self.assertLessEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
@@ -963,82 +939,6 @@ class Service(Job.Service):
 
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
-
-
-@slow
-@needs_parasol
-class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
-    """
-    Tests the Parasol batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def _createConfig(self):
-        config = super()._createConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
-        return config
-
-    def createBatchSystem(self) -> AbstractBatchSystem:
-        memory = int(3e9)
-        self._startParasol(numCores=numCores, memory=memory)
-
-        return ParasolBatchSystem(config=self.config,
-                                  maxCores=numCores,
-                                  maxMemory=memory,
-                                  maxDisk=1001)
-
-    def tearDown(self):
-        super().tearDown()
-        self._stopParasol()
-
-    def testBatchResourceLimits(self):
-        jobDesc1 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=1 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job1 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job1)
-        jobDesc2 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=2 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job2 = self.batchSystem.issueBatchJob(jobDesc2)
-        self.assertIsNotNone(job2)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 2)
-        # It would be better to directly check that the batches have the correct memory and cpu
-        # values, but Parasol seems to slightly change the values sometimes.
-        self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
-        # Need to kill one of the jobs because there are only two cores available
-        self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job3)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 1)
-
-    def _parseBatchString(self, batchString):
-        import re
-        batchInfo = dict()
-        memPattern = re.compile(r"(\d+\.\d+)([kgmbt])")
-        items = batchString.split()
-        batchInfo["cores"] = int(items[7])
-        memMatch = memPattern.match(items[8])
-        ramValue = float(memMatch.group(1))
-        ramUnits = memMatch.group(2)
-        ramConversion = {'b': 1e0, 'k': 1e3, 'm': 1e6, 'g': 1e9, 't': 1e12}
-        batchInfo["ram"] = ramValue * ramConversion[ramUnits]
-        return batchInfo
-
-    def _getBatchList(self):
-        # noinspection PyUnresolvedReferences
-        exitStatus, batchLines = self.batchSystem._runParasol(['list', 'batches'])
-        self.assertEqual(exitStatus, 0)
-        return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
 @slow

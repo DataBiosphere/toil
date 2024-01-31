@@ -14,17 +14,17 @@
 
 import os
 
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, slow
 
 
-@slow
 class ResumabilityTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/808
     """
+    @slow
     def test(self):
         """
         Tests that a toil workflow that fails once can be resumed without a NoSuchJobException.
@@ -53,6 +53,34 @@ class ResumabilityTest(ToilTest):
             # store ID: n/t/jobwbijqL failed with exit value 1"
             self.assertTrue("failed with exit value" not in logString)
 
+    def test_chaining(self):
+        """
+        Tests that a job which is chained to and fails can resume and succeed.
+        """
+
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.logLevel = "DEBUG"
+        options.retryCount = 0
+        tempDir = self._createTempDir()
+        options.logFile = os.path.join(tempDir, "log.txt")
+
+        root = Job.wrapJobFn(chaining_parent)
+
+        with self.assertRaises(FailedJobsException):
+            # This one is intended to fail.
+            Job.Runner.startToil(root, options)
+
+        with open(options.logFile, 'r') as f:
+            log_content = f.read()
+            # Make sure we actually did do chaining
+            assert "Chaining from" in log_content
+
+        # Because of the chaining, the problem we are looking for is the job
+        # with the root ID not being able to load the body of a job with a
+        # different ID. That doesn't look like a job deleted despite failure.
+        options.restart = True
+        Job.Runner.startToil(root, options)
+
 def parent(job):
     """
     Set up a bunch of dummy child jobs, and a bad job that needs to be
@@ -60,6 +88,12 @@ def parent(job):
     """
     for _ in range(5):
         job.addChildJobFn(goodChild)
+    job.addFollowOnJobFn(badChild)
+
+def chaining_parent(job):
+    """
+    Set up a failing job to chain to.
+    """
     job.addFollowOnJobFn(badChild)
 
 def goodChild(job):

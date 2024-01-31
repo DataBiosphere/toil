@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import os
@@ -13,6 +12,7 @@ from urllib.parse import urldefrag, urljoin, urlparse
 import requests
 import ruamel.yaml
 import schema_salad
+from configargparse import ArgumentParser
 from wes_client.util import WESClient  # type: ignore
 from wes_client.util import wes_reponse as wes_response
 
@@ -147,7 +147,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         :param workflow_params_file: The URL or path to the CWL input file.
         """
-        loader = schema_salad.ref_resolver.Loader(
+        loader = schema_salad.ref_resolver.Loader(  # type:ignore
             {"location": {"@type": "@id"}, "path": {"@type": "@id"}}
         )
 
@@ -396,7 +396,7 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
         input_file,
         attachments=attachments,
         workflow_engine_parameters=engine_options)
-    return run_result.get("run_id", None)
+    return str(run_result["run_id"])
 
 
 def poll_run(client: WESClientWithWorkflowEngineParameters, run_id: str) -> bool:
@@ -425,7 +425,7 @@ def print_logs_and_exit(client: WESClientWithWorkflowEngineParameters, run_id: s
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="A CWL runner that runs workflows through WES.")
+    parser = ArgumentParser(description="A CWL runner that runs workflows through WES.")
 
     # the first two positional arguments are the CWL file and its input file
     parser.add_argument("cwl_file", type=str)

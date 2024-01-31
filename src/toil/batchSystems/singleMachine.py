@@ -22,23 +22,26 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
+                                                   InsufficientSystemResources,
                                                    ResourcePool,
                                                    ResourceSet,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
-
-from toil.bus import ExternalBatchIdMessage
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-
-from toil.common import SYS_MAX_SIZE, Config, Toil, fC
-from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
-from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
+from toil.bus import ExternalBatchIdMessage
+from toil.common import Config, Toil
+from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
+from toil.job import (AcceleratorRequirement,
+                      JobDescription,
+                      Requirer,
+                      accelerator_satisfies)
+from toil.lib.accelerators import (get_individual_local_accelerators,
+                                   get_restrictive_environment_for_local_accelerators)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -104,7 +107,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            if maxMemory != SYS_MAX_SIZE:
+            if maxMemory < SYS_MAX_SIZE:  # todo: looks like humans2bytes converts SYS_MAX_SIZE to SYS_MAX_SIZE+1
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
@@ -112,7 +115,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
-            if maxDisk != SYS_MAX_SIZE:
+            if maxDisk < SYS_MAX_SIZE:  # same as maxMemory logger.warning
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
@@ -843,7 +846,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--scale", dest="scale", default=1,
+        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_open_interval_action(0.0),
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                                  "Used in the single_machine batch system. Useful for running workflows on "
                                  "smaller machines than they were designed for, by setting a value less than 1. "
@@ -851,7 +854,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        setOption("scale", float, fC(0.0), default=1)
+        setOption("scale")
 
 
 class Info:

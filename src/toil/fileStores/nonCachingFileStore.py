@@ -21,14 +21,17 @@ from contextlib import contextmanager
 from typing import (IO,
                     Any,
                     Callable,
+                    ContextManager,
                     DefaultDict,
                     Dict,
                     Generator,
                     Iterator,
                     List,
+                    Literal,
                     Optional,
                     Union,
-                    cast)
+                    cast,
+                    overload)
 
 import dill
 
@@ -40,7 +43,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
-from toil.lib.retry import retry, ErrorCondition
+from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -118,15 +121,19 @@ class NonCachingFileStore(AbstractFileStore):
             disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
             if disk > jobReqs:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
             else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()
-            os.remove(self.jobStateFile)
+            try:
+                os.remove(self.jobStateFile)
+            except FileNotFoundError:
+                logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
+                pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
@@ -152,7 +159,25 @@ class NonCachingFileStore(AbstractFileStore):
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
-    @contextmanager
+    @overload
+    def readGlobalFileStream(
+        self,
+        fileStoreID: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> ContextManager[IO[bytes]]:
+        ...
+
+    @overload
+    def readGlobalFileStream(
+        self, fileStoreID: str, encoding: str, errors: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        ...
+
+    # TODO: This seems to hit https://github.com/python/mypy/issues/11373
+    # But that is supposedly fixed.
+
+    @contextmanager # type: ignore
     def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
         with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
@@ -194,18 +219,21 @@ class NonCachingFileStore(AbstractFileStore):
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
 
+        # We are going to commit synchronously, so no need to clone a snapshot
+        # of the job description or mess with its version numbering.
+
         if not jobState:
             # All our operations that need committing are job state related
             return
 
         try:
-            # Indicate any files that should be deleted once the update of
-            # the job wrapper is completed.
+            # Indicate any files that should be seen as deleted once the
+            # update of the job description is visible.
+            if len(self.jobDesc.filesToDelete) > 0:
+                raise RuntimeError("Job is already in the process of being committed!")
             self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
             self.jobStore.update_job(self.jobDesc)
-            # Delete any remnant jobs
-            list(map(self.jobStore.delete_job, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.delete_file, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
@@ -216,6 +244,7 @@ class NonCachingFileStore(AbstractFileStore):
         except:
             self._terminateEvent.set()
             raise
+
 
     def __del__(self) -> None:
         """
@@ -299,6 +328,10 @@ class NonCachingFileStore(AbstractFileStore):
                     # This is a FileNotFoundError.
                     # job finished & deleted its jobState file since the jobState files were discovered
                     continue
+                elif e.errno == 5:
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # on network file system sometimes)
+                    continue
                 else:
                     raise
 
@@ -329,7 +362,10 @@ class NonCachingFileStore(AbstractFileStore):
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
-        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        try:
+            (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        except Exception as e:
+            raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
         with open(fd, 'wb') as fH:
             # Write data
             dill.dump(jobState, fH)

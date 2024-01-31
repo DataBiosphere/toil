@@ -13,26 +13,30 @@
 # limitations under the License.
 import logging
 import os
+
 import pytest
 
 from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
-                              get_flatcar_ami,
                               feed_flatcar_ami_release,
-                              flatcar_release_feed_amis)
+                              flatcar_release_feed_amis,
+                              get_flatcar_ami)
 from toil.lib.aws.session import establish_boto3_session
-from toil.test import ToilTest, needs_aws_ec2
+from toil.test import ToilTest, needs_aws_ec2, needs_online
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
-
+@needs_online
 class FlatcarFeedTest(ToilTest):
-    """Test accessing the FLatcar AMI release feed, independent of the AWS API"""
-    
+    """Test accessing the Flatcar AMI release feed, independent of the AWS API"""
+
+    # Note that we need to support getting an empty list back, because
+    # sometimes the Flatcar feeds are just down, and we can't fail CI at those
+    # times.
+
     def test_parse_archive_feed(self):
         """Make sure we can get a Flatcar release from the Internet Archive."""
         amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'archive'))
-        self.assertTrue(len(amis) > 0)
         for ami in amis:
             self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami.startswith('ami-'))
@@ -40,26 +44,17 @@ class FlatcarFeedTest(ToilTest):
     def test_parse_beta_feed(self):
         """Make sure we can get a Flatcar release from the beta channel."""
         amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'beta'))
-        self.assertTrue(len(amis) > 0)
         for ami in amis:
             self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami.startswith('ami-'))
     
-    # TODO: This will fail until https://github.com/flatcar/Flatcar/issues/962 is fixed
-    @pytest.mark.xfail
     def test_parse_stable_feed(self):
         """Make sure we can get a Flatcar release from the stable channel."""
         amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'stable'))
-        self.assertTrue(len(amis) > 0)
         for ami in amis:
             self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami.startswith('ami-'))
             
-    def test_bypass_stable_feed(self):
-        """Make sure we can either get or safely not get a Flatcar release from the stable channel."""
-        list(flatcar_release_feed_amis('us-west-2', 'amd64', 'stable'))
-        # Ifd we get here we safely managed to iterate everything.
-
 @needs_aws_ec2
 class AMITest(ToilTest):
     @classmethod

@@ -79,7 +79,7 @@ class WritablePipe(ABC):
         binary and text mode output.
 
         :param file readable: the file object representing the readable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
@@ -211,7 +211,7 @@ class ReadablePipe(ABC):
         binary and text mode input.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
@@ -316,7 +316,7 @@ class ReadableTransformingPipe(ReadablePipe):
         :param file readable: the input stream file object to transform.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
@@ -327,7 +327,6 @@ class JobStoreUnavailableException(RuntimeError):
     """
     Raised when a particular type of job store is requested but can't be used.
     """
-    pass
 
 def generate_locator(
     job_store_type: str,
@@ -340,9 +339,9 @@ def generate_locator(
 
     :param job_store_type: Registry name of the job store to use.
     :param local_suggestion: Path to a nonexistent local directory suitable for
-    use as a file job store.
+        use as a file job store.
     :param decoration: Extra string to add to the job store locator, if
-    convenient.
+        convenient.
 
     :return str: Job store locator for a usable job store.
     """

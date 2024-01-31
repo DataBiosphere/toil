@@ -17,7 +17,7 @@ import os
 import re
 import struct
 from shlex import quote
-from typing import Optional, List
+from typing import List, Optional
 
 import requests
 
@@ -27,7 +27,6 @@ from docker.errors import (ContainerError,
                            NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
-
 from toil.lib.accelerators import get_host_accelerator_numbers
 
 logger = logging.getLogger(__name__)
@@ -84,16 +83,17 @@ def apiDockerCall(job,
     jobs, with the intention that failed/orphaned docker jobs be handled
     appropriately.
 
-    Example of using dockerCall in toil to index a FASTA file with SAMtools:
-    def toil_job(job):
-        working_dir = job.fileStore.getLocalTempDir()
-        path = job.fileStore.readGlobalFile(ref_id,
-                                          os.path.join(working_dir, 'ref.fasta')
-        parameters = ['faidx', path]
-        apiDockerCall(job,
-                      image='quay.io/ucgc_cgl/samtools:latest',
-                      working_dir=working_dir,
-                      parameters=parameters)
+    Example of using dockerCall in toil to index a FASTA file with SAMtools::
+
+        def toil_job(job):
+            working_dir = job.fileStore.getLocalTempDir()
+            path = job.fileStore.readGlobalFile(ref_id,
+                                              os.path.join(working_dir, 'ref.fasta')
+            parameters = ['faidx', path]
+            apiDockerCall(job,
+                          image='quay.io/ucgc_cgl/samtools:latest',
+                          working_dir=working_dir,
+                          parameters=parameters)
 
     Note that when run with detach=False, or with detach=True and stdout=True
     or stderr=True, this is a blocking call. When run with detach=True and
@@ -103,13 +103,13 @@ def apiDockerCall(job,
     :param toil.Job.job job: The Job instance for the calling function.
     :param str image: Name of the Docker image to be used.
                      (e.g. 'quay.io/ucsc_cgl/samtools:latest')
-    :param list[str] parameters: A list of string elements.  If there are
+    :param list[str] parameters: A list of string elements. If there are
                                  multiple elements, these will be joined with
-                                 spaces.  This handling of multiple elements
+                                 spaces. This handling of multiple elements
                                  provides backwards compatibility with previous
                                  versions which called docker using
                                  subprocess.check_call().
-                                 **If list of lists: list[list[str]], then treat
+                                 If list of lists: list[list[str]], then treat
                                  as successive commands chained with pipe.
     :param str working_dir: The working directory.
     :param int deferParam: Action to take on the container upon job completion.
@@ -225,8 +225,8 @@ def apiDockerCall(job,
     working_dir = os.path.abspath(working_dir)
 
     # Ensure the user has passed a valid value for deferParam
-    assert deferParam in (None, FORGO, STOP, RM), \
-        'Please provide a valid value for deferParam.'
+    if deferParam not in (None, FORGO, STOP, RM):
+        raise RuntimeError('Please provide a valid value for deferParam.')
 
     client = docker.from_env(version='auto', timeout=timeout)
 
@@ -413,12 +413,11 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
 
     :param container_name: Name of the container being checked.
     :param int timeout: Use the given timeout in seconds for interactions with
-                        the Docker daemon. Note that the underlying docker module is
-                        not always able to abort ongoing reads and writes in order
-                        to respect the timeout. Defaults to 1 year (i.e. wait
-                        essentially indefinitely).
+        the Docker daemon. Note that the underlying docker module is not always
+        able to abort ongoing reads and writes in order to respect the timeout.
+        Defaults to 1 year (i.e. wait essentially indefinitely).
     :returns: True if status is 'running', False if status is anything else,
-    and None if the container does not exist.
+        and None if the container does not exist.
     """
     client = docker.from_env(version='auto', timeout=timeout)
     try:
@@ -439,7 +438,7 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
 def getContainerName(job):
     """
     Create a random string including the job name, and return it. Name will
-    match [a-zA-Z0-9][a-zA-Z0-9_.-]
+    match ``[a-zA-Z0-9][a-zA-Z0-9_.-]``.
     """
     parts = ['toil', str(job.description), base64.b64encode(os.urandom(9), b'-_').decode('utf-8')]
     name = re.sub('[^a-zA-Z0-9_.-]', '', '--'.join(parts))

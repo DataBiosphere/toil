@@ -20,6 +20,7 @@ import sys
 import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Tuple
+
 import requests
 from pytz import timezone
 
@@ -106,7 +107,8 @@ def toilPackageDirPath() -> str:
     The return value is guaranteed to end in '/toil'.
     """
     result = os.path.dirname(os.path.realpath(__file__))
-    assert result.endswith('/toil')
+    if not result.endswith('/toil'):
+        raise RuntimeError("The top-level toil package is not named Toil.")
     return result
 
 
@@ -132,7 +134,8 @@ def resolveEntryPoint(entryPoint: str) -> str:
             # opposed to being included via --system-site-packages). For clusters this means that
             # if Toil is installed in a virtualenv on the leader, it must be installed in
             # a virtualenv located at the same path on each worker as well.
-            assert os.access(path, os.X_OK)
+            if not os.access(path, os.X_OK):
+                raise RuntimeError("Cannot access the Toil virtualenv. If installed in a virtualenv on a cluster, make sure that the virtualenv path is the same for the leader and workers.")
             return path
     # Otherwise, we aren't in a virtualenv, or we're in a virtualenv but Toil
     # came in via --system-site-packages, or we think the virtualenv might not
@@ -238,7 +241,8 @@ def customInitCmd() -> str:
 
 def _check_custom_bash_cmd(cmd_str):
     """Ensure that the Bash command doesn't contain invalid characters."""
-    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
+    if re.search(r'[\n\r\t]', cmd_str):
+        raise RuntimeError(f'"{cmd_str}" contains invalid characters (newline and/or tab).')
 
 
 def lookupEnvVar(name: str, envName: str, defaultValue: str) -> str:
@@ -370,11 +374,10 @@ def requestCheckRegularDocker(origAppliance: str, registryName: str, imageName: 
     separate check is done for docker.io images.
 
     :param origAppliance: The full url of the docker image originally
-                          specified by the user (or the default).
-                           e.g. ``quay.io/ucsc_cgl/toil:latest``
-    :param registryName: The url of a docker image's registry.  e.g. ``quay.io``
-    :param imageName: The image, including path and excluding the tag. e.g. ``ucsc_cgl/toil``
-    :param tag: The tag used at that docker image's registry.  e.g. ``latest``
+        specified by the user (or the default). For example, ``quay.io/ucsc_cgl/toil:latest``.
+    :param registryName: The url of a docker image's registry. For example, ``quay.io``.
+    :param imageName: The image, including path and excluding the tag. For example, ``ucsc_cgl/toil``.
+    :param tag: The tag used at that docker image's registry. For example, ``latest``.
     :raises: ApplianceImageNotFound if no match is found.
     :return: Return True if match found.
     """
@@ -399,9 +402,9 @@ def requestCheckDockerIo(origAppliance: str, imageName: str, tag: str) -> bool:
     URL is based on the docker v2 schema.  Requires that an access token be fetched first.
 
     :param origAppliance: The full url of the docker image originally
-                          specified by the user (or the default).  e.g. "ubuntu:latest"
-    :param imageName: The image, including path and excluding the tag. e.g. "ubuntu"
-    :param tag: The tag used at that docker image's registry.  e.g. "latest"
+        specified by the user (or the default). For example, ``ubuntu:latest``.
+    :param imageName: The image, including path and excluding the tag. For example, ``ubuntu``.
+    :param tag: The tag used at that docker image's registry. For example, ``latest``.
     :raises: ApplianceImageNotFound if no match is found.
     :return: Return True if match found.
     """
@@ -548,7 +551,8 @@ try:
             So if we ever want to refresh, Boto 3 wants to refresh too.
             """
             # This should only happen if we have expiring credentials, which we should only get from boto3
-            assert (self._boto3_resolver is not None)
+            if self._boto3_resolver is None:
+                raise RuntimeError("The Boto3 resolver should not be None.")
 
             self._obtain_credentials_from_cache_or_boto3()
 
@@ -612,7 +616,8 @@ try:
                         content = f.read()
                         if content:
                             record = content.split('\n')
-                            assert len(record) == 4
+                            if len(record) != 4:
+                                raise RuntimeError("Number of cached credentials is not 4.")
                             self._access_key = record[0]
                             self._secret_key = record[1]
                             self._security_token = record[2]

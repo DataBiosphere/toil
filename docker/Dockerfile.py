@@ -28,10 +28,11 @@ pip = f'{python} -m pip'
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          python,
                          f'{python}-dev',
-                         'python3.7-distutils' if python == 'python3.7' else '',
                          'python3.8-distutils' if python == 'python3.8' else '',
                          'python3.9-distutils' if python == 'python3.9' else '',
                          'python3.10-distutils' if python == 'python3.10' else '',
+                         'python3.11-distutils' if python == 'python3.11' else '',
+                         'python3.12-distutils' if python== 'python3.12' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -60,7 +61,9 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libcurl4-nss-dev',
                          'libapr1',
                          # Dependencies for singularity
-                         'containernetworking-plugins'])
+                         'containernetworking-plugins',
+                         # Dependencies for singularity on kubernetes
+                         'tzdata'])
 
 
 def heredoc(s):
@@ -102,16 +105,13 @@ print(heredoc('''
     RUN add-apt-repository -y ppa:deadsnakes/ppa
 
     # Find a repo with a Mesos build.
-    # See https://rpm.aventer.biz/README.txt
-    # A working snapshot is https://ipfs.io/ipfs/QmfTy9sXhHsgyWwosCJDfYR4fChTosA8HhoaMgmeJ5LSmS/ for https://rpm.aventer.biz/Ubuntu
-    # And one that works with https://rpm.aventer.biz/Ubuntu/focal (the new URL) is at https://ipfs.io/ipfs/Qmcrmx7T1YkEnyexMXdd7QjoBZxf7DMDrQ5ErUKi9mDRw6/
-    # As archived with:
+    # This one was archived like:
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://rpm.aventer.biz/Ubuntu/focal focal main" \
+    RUN echo "deb https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && curl https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \

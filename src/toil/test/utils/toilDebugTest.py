@@ -1,4 +1,3 @@
-"""A set of test cases for toilwdl.py"""
 # Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,32 +14,33 @@
 import logging
 import os
 import subprocess
-from pathlib import Path
+import tempfile
+
+import pytest
+
+from toil.test import ToilTest
 
 from toil.lib.resources import glob
 from toil.test import slow
 from toil.version import python
 
-import pytest
-
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def workflow_debug_jobstore(tmp_path: Path) -> str:
-    jobStorePath = str(tmp_path / "toilWorkflowRun")
+def workflow_debug_jobstore() -> str:
+    job_store_path = os.path.join(tempfile.mkdtemp(), "toilWorkflowRun")
     subprocess.check_call(
         [
             python,
             os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py"),
-            jobStorePath,
+            job_store_path,
         ]
     )
-    return jobStorePath
+    return job_store_path
 
 
 @slow
-def testJobStoreContents(workflow_debug_jobstore: str):
+def testJobStoreContents():
     """
     Test toilDebugFile.printContentsOfJobStore().
 
@@ -48,14 +48,13 @@ def testJobStoreContents(workflow_debug_jobstore: str):
     jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This checks to
     make sure these contents are found in the jobStore and printed.
     """
-    jobStoreDir = workflow_debug_jobstore
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
 
     subprocess.check_call(
         [
             python,
             os.path.abspath("src/toil/utils/toilDebugFile.py"),
-            jobStoreDir,
+            workflow_debug_jobstore(),
             "--logDebug",
             "--listFilesInJobStore=True",
         ]
@@ -78,7 +77,7 @@ def testJobStoreContents(workflow_debug_jobstore: str):
     os.remove(jobstoreFileContents)
 
 
-def fetchFiles(symLink, jobStoreDir: str, outputDir):
+def fetchFiles(symLink: bool, jobStoreDir: str, outputDir: str):
     """
     Fn for testFetchJobStoreFiles() and testFetchJobStoreFilesWSymlinks().
 
@@ -99,8 +98,8 @@ def fetchFiles(symLink, jobStoreDir: str, outputDir):
         "*C.txt",
         "*ABC.txt",
         "*mkFile.py",
-        "--localFilePath=" + outputDir,
-        "--useSymlinks=" + str(symLink),
+        f"--localFilePath={outputDir}",
+        f"--useSymlinks={symLink}",
     ]
     print(cmd)
     subprocess.check_call(cmd)
@@ -114,22 +113,89 @@ def fetchFiles(symLink, jobStoreDir: str, outputDir):
 
 
 # expected run time = 4s
-def testFetchJobStoreFiles(tmp_path: Path, workflow_debug_jobstore: str) -> None:
-    """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
-    outputDir = tmp_path / "testoutput"
-    outputDir.mkdir()
-    fetchFiles(
-        symLink=False, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
-    )
+def testFetchJobStoreFiles() -> None:
+    """Test toilDebugFile.fetchJobStoreFiles() symlinks."""
+    job_store_dir = workflow_debug_jobstore()
+    output_dir = os.path.join(os.path.dirname(job_store_dir), "testoutput")
+    os.makedirs(output_dir, exist_ok=True)
+    for symlink in (True, False):
+        fetchFiles(symLink=symlink, jobStoreDir=job_store_dir, outputDir=output_dir)
+
+class DebugJobTest(ToilTest):
+    """
+    Test the toil debug-job command.
+    """
+
+    def _get_job_store_and_job_id(self):
+        """
+        Get a job store and the ID of a failing job within it.
+        """
+
+        # First make a job store.
+        job_store = os.path.join(self._createTempDir(), "tree")
+
+        logger.info("Running workflow that always fails")
+        try:
+            # Run an always-failign workflow
+            subprocess.check_call([
+                python,
+                os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
+                "--retryCount=0",
+                "--logCritical",
+                "--disableProgress=True",
+                job_store
+            ], stderr=subprocess.DEVNULL)
+            raise RuntimeError("Failing workflow succeeded!")
+        except subprocess.CalledProcessError:
+            # Should fail to run
+            logger.info("Task failed successfully")
+            pass
+
+        # Get the job ID.
+        # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
+        job_id = "kind-explode/" + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
+
+        return job_store, job_id
+
+    def test_run_job(self):
+        """
+        Make sure that we can use toil debug-job to try and run a job in-process.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
+
+        logger.info("Trying to rerun job %s", job_id)
+
+        # Rerun the job, which should fail again
+        output = subprocess.check_output([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            job_id
+        ], stderr=subprocess.STDOUT)
+        # Even if the job fails, the attempt to run it will succeed.
+        log = output.decode('utf-8')
+        assert "Boom!" in log, f"Did not find the expected exception message in: {log}"
 
 
-# expected run time = 4s
-def testFetchJobStoreFilesWSymlinks(
-    tmp_path: Path, workflow_debug_jobstore: str
-) -> None:
-    """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
-    outputDir = tmp_path / "testoutput"
-    outputDir.mkdir()
-    fetchFiles(
-        symLink=True, jobStoreDir=workflow_debug_jobstore, outputDir=str(outputDir)
-    )
+    def test_print_job_info(self):
+        """
+        Make sure that we can use --printJobInfo to get information on a job from a job store.
+        """
+
+        job_store, job_id = self._get_job_store_and_job_id()
+
+        logger.info("Trying to print job info for job %s", job_id)
+
+        # Print the job info and make sure that doesn't crash.
+        subprocess.check_call([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            "--printJobInfo",
+            job_id
+        ])
+
+

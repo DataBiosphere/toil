@@ -74,7 +74,7 @@ This should output the following:
 
 .. code-block:: python
 
-    Batch System: singleMachine
+    Batch System: single_machine
     Default Cores: 1  Default Memory: 2097152K
     Max Cores: 9.22337e+18
     Total Clock: 0.56  Total Runtime: 1.01
@@ -290,7 +290,7 @@ Rsync-Cluster Command
 ---------------------
 
 The most frequent use case for the ``rsync-cluster`` utility is deploying your
-Toil script to the Toil leader. Note that the syntax is the same as traditional
+workflow code to the Toil leader. Note that the syntax is the same as traditional
 `rsync <https://linux.die.net/man/1/rsync>`_ with the exception of the hostname before
 the colon. This is not needed in ``toil rsync-cluster`` since the hostname is automatically
 determined by Toil.

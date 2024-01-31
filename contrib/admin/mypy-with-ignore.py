@@ -20,8 +20,10 @@ def main():
     for d in ['dashboard', 'docker', 'docs', 'src']:
         all_files_to_check += glob(glob_pattern='*.py', directoryname=os.path.join(pkg_root, d))
 
-    # TODO: Remove these paths as typing is added and mypy conflicts are addressed
+    # TODO: Remove these paths as typing is added and mypy conflicts are addressed.
+    # These are handled as path prefixes.
     ignore_paths = [os.path.abspath(f) for f in [
+        'docs/_build',
         'docker/Dockerfile.py',
         'docs/conf.py',
         'docs/vendor/sphinxcontrib/fulltoc.py',
@@ -31,14 +33,6 @@ def main():
         'src/toil/__init__.py',
         'src/toil/deferred.py',
         'src/toil/version.py',
-        'src/toil/wdl/utils.py',
-        'src/toil/wdl/wdl_synthesis.py',
-        'src/toil/wdl/wdl_analysis.py',
-        'src/toil/wdl/wdl_functions.py',
-        'src/toil/wdl/toilwdl.py',
-        'src/toil/wdl/versions/draft2.py',
-        'src/toil/wdl/versions/v1.py',
-        'src/toil/wdl/versions/dev.py',
         'src/toil/provisioners/abstractProvisioner.py',
         'src/toil/provisioners/gceProvisioner.py',
         'src/toil/provisioners/__init__.py',
@@ -49,7 +43,6 @@ def main():
         'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/parasol.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
@@ -90,12 +83,22 @@ def main():
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/__init__.py',
         'src/toil/server/utils.py',
+        'src/toil/test',
         'src/toil/utils/toilStats.py'
     ]]
 
+    def ignore(file_path):
+        """
+        Return True if a file should be ignored.
+        """
+        for prefix in ignore_paths:
+            if file_path.startswith(prefix):
+                return True
+        return False
+
     filtered_files_to_check = []
     for file_path in all_files_to_check:
-        if file_path not in ignore_paths and 'src/toil/test' not in file_path:
+        if not ignore(file_path):
             filtered_files_to_check.append(file_path)
     args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
     p = subprocess.run(args=args)

@@ -1,12 +1,12 @@
 import json
 import logging
 import os
-import time
 import urllib.request
-from urllib.error import HTTPError
-from typing import Dict, Optional, Iterator, cast
+from typing import Dict, Iterator, Optional, cast
+from urllib.error import HTTPError, URLError
 
 from botocore.client import BaseClient
+from botocore.exceptions import ClientError
 
 from toil.lib.retry import retry
 
@@ -110,6 +110,12 @@ def flatcar_release_feed_amis(region: str, architecture: str = 'amd64', source: 
             # Try again
             try_number += 1
             continue
+        except URLError:
+            # Could be a connection timeout
+            logger.exception(f'Failed to retrieve {source} Flatcar release feed JSON')
+            # Try again
+            try_number += 1
+            continue
     if try_number == MAX_TRIES:
         # We could not get the JSON
         logger.error(f'Could not get a readable {source} Flatcar release feed JSON')
@@ -150,11 +156,18 @@ def feed_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'amd64'
                 
     for ami in flatcar_release_feed_amis(region, architecture, source):
         # verify it exists on AWS
-        response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])  # type: ignore
-        if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
-            return ami 
-        else:
-            logger.warning(f'Flatcar release feed suggests image {ami} which does not exist on AWS in {region}')
+        try:
+            response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])  # type: ignore
+            if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
+                return ami
+            else:
+                logger.warning(f'Flatcar release feed suggests image {ami} which does not exist on AWS in {region}')
+        except ClientError:
+            # Sometimes we get back nonsense like:
+            # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
+            # Don't hold that against the AMI.
+            logger.exception(f'Unable to check if AMI {ami} exists on AWS in {region}; assuming it does')
+            return ami
     # We didn't find it
     logger.warning(f'Flatcar release feed does not have an image for region {region} that exists on AWS')
     return None
@@ -162,7 +175,7 @@ def feed_flatcar_ami_release(ec2_client: BaseClient, architecture: str = 'amd64'
 
 @retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient, architecture: str = 'amd64') -> Optional[str]:
-    """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
+    """Query AWS for all AMI names matching ``Flatcar-stable-*`` and return the most recent one."""
 
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
     # Possible arch choices on AWS: 'i386'|'x86_64'|'arm64'|'x86_64_mac'

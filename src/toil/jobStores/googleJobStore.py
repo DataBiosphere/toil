@@ -20,23 +20,20 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import List, Optional
+from typing import IO, List, Optional
 from urllib.parse import ParseResult
 
 from google.api_core.exceptions import (GoogleAPICallError,
                                         InternalServerError,
                                         ServiceUnavailable)
-from google.cloud import exceptions, storage
 from google.auth.exceptions import DefaultCredentialsError
+from google.cloud import exceptions, storage
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchFileException,
                                              NoSuchJobException,
                                              NoSuchJobStoreException)
-
-from toil.fileStores import FileID
-
 from toil.jobStores.utils import ReadablePipe, WritablePipe
 from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
@@ -146,7 +143,6 @@ class GoogleJobStore(AbstractJobStore):
                 # Probably we don't have permission to use the file.
                 log.warning("File '%s' exists but didn't work to authenticate!",
                             cls.nodeServiceAccountJson)
-                pass
 
         # Either a filename is specified, or our fallback file isn't there.
         try:
@@ -394,7 +390,15 @@ class GoogleJobStore(AbstractJobStore):
         return blob
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            cls._get_blob_from_url(url, exists=True)
+            return True
+        except NoSuchFileException:
+            return False
+
+    @classmethod
+    def _get_size(cls, url):
         return cls._get_blob_from_url(url, exists=True).size
 
     @classmethod
@@ -402,6 +406,11 @@ class GoogleJobStore(AbstractJobStore):
         blob = cls._get_blob_from_url(url, exists=True)
         blob.download_to_file(writable)
         return blob.size, False
+
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        blob = cls._get_blob_from_url(url, exists=True)
+        return blob.open("rb")
 
     @classmethod
     def _supports_url(cls, url, export=False):

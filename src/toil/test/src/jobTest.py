@@ -20,8 +20,8 @@ import unittest
 import pytest
 
 from toil.common import Toil
-from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.exceptions import FailedJobsException
+from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
@@ -37,15 +37,15 @@ class JobTest(ToilTest):
     @slow
     def testStatic(self):
         r"""
-        Create a DAG of jobs non-dynamically and run it. DAG is:
+        Create a DAG of jobs non-dynamically and run it. DAG is::
 
-        A -> F
-        \-------
-        B -> D  \
-         \       \
-          ------- C -> E
+            A -> F
+            \-------
+            B -> D  \
+             \       \
+              ------- C -> E
 
-        Follow on is marked by ->
+        Follow on is marked by ``->``
         """
         outFile = get_temp_file(rootDir=self._createTempDir())
         try:
@@ -81,15 +81,15 @@ class JobTest(ToilTest):
 
     def testStatic2(self):
         r"""
-        Create a DAG of jobs non-dynamically and run it. DAG is:
+        Create a DAG of jobs non-dynamically and run it. DAG is::
 
-        A -> F
-        \-------
-        B -> D  \
-         \       \
-          ------- C -> E
+            A -> F
+            \-------
+            B -> D  \
+             \       \
+              ------- C -> E
 
-        Follow on is marked by ->
+        Follow on is marked by ``->``
         """
         outFile = get_temp_file(rootDir=self._createTempDir())
         try:
@@ -269,7 +269,7 @@ class JobTest(ToilTest):
         identifies leaf vertices incorrectly
 
         Test verification of new checkpoint jobs being leaf verticies,
-        starting with the following baseline workflow:
+        starting with the following baseline workflow::
 
             Parent
               |
@@ -291,7 +291,7 @@ class JobTest(ToilTest):
                               omits the workflow root job
 
         Test verification of a new checkpoint job being leaf vertex,
-        starting with a baseline workflow of a single, root job:
+        starting with a baseline workflow of a single, root job::
 
             Root # Checkpoint=True
 
@@ -623,7 +623,7 @@ class JobTest(ToilTest):
         return True
 
 def simpleJobFn(job, value):
-    job.fileStore.logToMaster(value)
+    job.fileStore.log_to_leader(value)
 
 def fn1Test(string, outputFile):
     """

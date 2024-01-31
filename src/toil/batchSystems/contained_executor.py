@@ -14,7 +14,7 @@
 """
 Executor for running inside a container.
 
-Useful for Kubernetes and TES batch systems.
+Useful for Kubernetes batch system and TES batch system plugin.
 """
 import base64
 import logging
@@ -39,10 +39,10 @@ def pack_job(job_desc: JobDescription, user_script: Optional[Resource] = None, e
     :param job_desc: Job description for the job to run.
     :param user_script: User script that will be loaded before the job is run.
     :param environment: Environment variable dict that will be applied before
-    the job is run.
+        the job is run.
 
     :returns: Command to run the job, as an argument list that can be run
-    inside the Toil appliance container.
+        inside the Toil appliance container.
     """
     # Make a job dict to send to the executor.
     # TODO: Factor out executor setup from here and Kubernetes and TES

@@ -13,7 +13,6 @@
 # limitations under the License.
 import hashlib
 import itertools
-import json
 import logging
 import os
 import pickle
@@ -21,12 +20,10 @@ import re
 import reprlib
 import stat
 import time
-import urllib.error
-import urllib.request
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import List, Optional
+from typing import List, Optional, IO
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 import boto.s3.connection
@@ -35,7 +32,6 @@ from boto.exception import SDBResponseError
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
-from toil.lib.aws import build_tag_dict_from_env
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              ConcurrentFileModificationException,
@@ -56,6 +52,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
 from toil.jobStores.utils import (ReadablePipe,
                                   ReadableTransformingPipe,
                                   WritablePipe)
+from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import (create_s3_bucket,
                                 enable_public_objects,
@@ -450,7 +447,6 @@ class AWSJobStore(AbstractJobStore):
         except ServerSideCopyProhibitedError:
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
-            pass
 
         # copy if exception
         return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)
@@ -465,12 +461,21 @@ class AWSJobStore(AbstractJobStore):
         except ServerSideCopyProhibitedError:
             # AWS refuses to do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
-            pass
         else:
             super()._default_export_file(otherCls, file_id, uri)
 
     @classmethod
-    def get_size(cls, url):
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            get_object_for_url(url, existing=True)
+            return True
+        except FileNotFoundError:
+            # Not a file
+            # Might be a directory.
+            return cls._get_is_directory(url)
+
+    @classmethod
+    def _get_size(cls, url):
         return get_object_for_url(url, existing=True).content_length
 
     @classmethod
@@ -481,6 +486,15 @@ class AWSJobStore(AbstractJobStore):
             srcObj.content_length,
             False  # executable bit is always False
         )
+
+    @classmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        src_obj = get_object_for_url(url, existing=True)
+        response = src_obj.get()
+        # We should get back a response with a stream in 'Body'
+        if 'Body' not in response:
+            raise RuntimeError(f"Could not fetch body stream for {url}")
+        return response['Body']
 
     @classmethod
     def _write_to_url(cls, readable, url, executable=False):
@@ -757,7 +771,7 @@ class AWSJobStore(AbstractJobStore):
                                 bucket_tagging.put(Tagging={'TagSet': flat_tags})
 
                             # Configure bucket so that we can make objects in
-                            # it public, which was the historical default. 
+                            # it public, which was the historical default.
                             enable_public_objects(bucket_name)
                         elif block:
                             raise

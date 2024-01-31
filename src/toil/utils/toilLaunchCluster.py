@@ -37,9 +37,10 @@ def create_tags_dict(tags: List[str]) -> Dict[str, str]:
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil launch-cluster")
     parser.add_argument("-T", "--clusterType", dest="clusterType",
-                        choices=['mesos', 'kubernetes'], default='mesos',
+                        choices=['mesos', 'kubernetes'],
+                        default=None,  # TODO: change default to "kubernetes" when we are ready.
                         help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptible node type to use for the cluster leader.")
@@ -160,6 +161,16 @@ def main() -> None:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
+    if options.clusterType == "mesos":
+        logger.warning('You are using a Mesos cluster, which is no longer recommended as Toil is '
+                       'transitioning to Kubernetes-based clusters. Consider switching to '
+                       '--clusterType=kubernetes instead.')
+
+    if options.clusterType is None:
+        logger.warning('Argument --clusterType is not set... using "mesos". '
+                       'In future versions of Toil, the default cluster scheduler will be '
+                       'set to "kubernetes" if the cluster type is not specified.')
+        options.clusterType = "mesos"
 
     logger.info('Creating cluster %s...', options.clusterName)
 

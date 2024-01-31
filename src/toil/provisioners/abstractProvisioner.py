@@ -15,7 +15,6 @@ import configparser
 import json
 import logging
 import os.path
-import platform
 import subprocess
 import tempfile
 import textwrap
@@ -477,15 +476,13 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, instance_type: str, preemptible=False):
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         """
         The shape of a preemptible or non-preemptible node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
         :param str instance_type: Instance type name to return the shape of.
-
-        :rtype: Shape
         """
         raise NotImplementedError
 
@@ -815,6 +812,10 @@ class AbstractProvisioner(ABC):
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
+                # These rules are necessary in order to get user namespaces working
+                # https://github.com/apptainer/singularity/issues/5806
+                --security-opt seccomp=unconfined \\
+                --security-opt systempaths=unconfined\\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}

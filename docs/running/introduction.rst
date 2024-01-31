@@ -4,15 +4,14 @@ Introduction
 ============
 
 Toil runs in various environments, including :ref:`locally <fileJobStore>` and :ref:`in the cloud <cloudOverview>`
-(Amazon Web Services and Google Compute Engine).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
-(Amazon Web Services and Google Compute Engine).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
-:ref:`WDL <wdl>` (experimental).
+(Amazon Web Services and Google Compute Engine). Toil also supports workflows written in two DSLs: :ref:`CWL <cwl>` and
+:ref:`WDL <wdl>`, as well as workflows written in Python (see :ref:`devPython`).
 
 Toil is built in a modular way so that it can be used on lots of different systems, and with different configurations.
 The three configurable pieces are the
 
- - :ref:`jobStoreInterface`: A filepath or url that can host and centralize all files for a workflow (e.g. a local folder, or an AWS s3 bucket url).
- - :ref:`batchSystemInterface`: Specifies either a local single-machine or a currently supported HPC environment (lsf, parasol, mesos, slurm, torque, htcondor, kubernetes, or grid_engine).  Mesos is a special case, and is launched for cloud environments.
+ - :ref:`jobStoreOverview`: A filepath or url that can host and centralize all files for a workflow (e.g. a local folder, or an AWS s3 bucket url).
+ - :ref:`batchSystemOverview`: Specifies either a local single-machine or a currently supported HPC environment (lsf, mesos, slurm, torque, htcondor, kubernetes, or grid_engine).
  - :ref:`provisionerOverview`: For running in the cloud only.  This specifies which cloud provider provides instances to do the "work" of your workflow.
 
 .. _jobStoreOverview:
@@ -24,7 +23,7 @@ The job store is a storage abstraction which contains all of the information use
 of the files used by jobs in the workflow and also the details of the progress of the run. If a workflow crashes
 or fails, the job store contains all of the information necessary to resume with minimal repetition of work.
 
-Several different job stores are supported, including the file job store and cloud job stores.
+Several different job stores are supported, including the file job store and cloud job stores. For information on developing job stores, see :ref:`jobStoreInterface`.
 
 .. _fileJobStore:
 
@@ -52,13 +51,14 @@ worker machines all running jobs that need to access the job store.
 Batch System
 ------------
 
-A Toil batch system is either a local single-machine (one computer) or a currently supported
-HPC cluster of computers (lsf, parasol, mesos, slurm, torque, htcondor, or grid_engine).  Mesos
-is a special case, and is launched for cloud environments.  These environments manage individual
-worker nodes under a leader node to process the work required in a workflow.  The leader and its
-workers all coordinate their tasks and files through a centralized job store location.
+A Toil batch system is either a local single-machine (one computer) or a
+currently supported cluster of computers (lsf, mesos, slurm, torque,
+htcondor, or grid_engine) These environments manage individual worker nodes
+under a leader node to process the work required in a workflow.  The leader and
+its workers all coordinate their tasks and files through a centralized job
+store location.
 
-See :ref:`batchSystemInterface` for a more detailed description of different batch systems.
+See :ref:`batchSystemInterface` for a more detailed description of different batch systems, or information on developing batch systems.
 
 .. _provisionerOverview:
 

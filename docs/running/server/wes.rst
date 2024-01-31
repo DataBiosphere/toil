@@ -255,7 +255,7 @@ There are a few required parameters that have to be set for all workflow submiss
 +---------------------------+-------------------------------------------------------------+
 | workflow_type             | The type of workflow language. Toil currently supports one  |
 |                           | of the following: ``"CWL"``, ``"WDL"``, or ``"py"``. To run |
-|                           | a Toil native python script, set this to ``"py"``.          |
+|                           | a Toil Python workflow, set this to ``"py"``.               |
 +---------------------------+-------------------------------------------------------------+
 | workflow_type_version     | The version of the workflow language. Supported versions    |
 |                           | can be found by accessing the ``GET /service-info``         |

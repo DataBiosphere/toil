@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2021 Regents of the University of California
+# Copyright (C) 2015-2024 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,17 @@ import logging
 import os
 import re
 import textwrap
-from typing import Any, Dict, List, Tuple, Union
-
 import requests
+import shutil
+import enlighten  # type: ignore
+
+from typing import Dict, List, Tuple, Union, Any
+
 
 logger = logging.getLogger(__name__)
+manager = enlighten.get_manager()
 dirname = os.path.dirname(__file__)
+region_json_dirname = os.path.join(dirname, 'region_jsons')
 
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
@@ -83,7 +88,7 @@ class InstanceType:
         return False
 
 
-def isNumber(s: str) -> bool:
+def is_number(s: str) -> bool:
     """
     Determines if a unicode string (that may include commas) is a number.
 
@@ -105,7 +110,7 @@ def isNumber(s: str) -> bool:
     return False
 
 
-def parseStorage(storageData: str) -> Union[List[int], Tuple[Union[int, float], float]]:
+def parse_storage(storage_info: str) -> Union[List[int], Tuple[Union[int, float], float]]:
     """
     Parses EC2 JSON storage param string into a number.
 
@@ -117,22 +122,22 @@ def parseStorage(storageData: str) -> Union[List[int], Tuple[Union[int, float], 
         "8 x 1.9 NVMe SSD"
         "900 GB NVMe SSD"
 
-    :param str storageData: EC2 JSON storage param string.
+    :param str storage_info: EC2 JSON storage param string.
     :return: Two floats representing: (# of disks), and (disk_capacity in GiB of each disk).
     """
-    if storageData == "EBS only":
+    if storage_info == "EBS only":
         return [0, 0]
     else:
-        specs = storageData.strip().split()
-        if isNumber(specs[0]) and specs[1] == 'x' and isNumber(specs[2]):
+        specs = storage_info.strip().split()
+        if is_number(specs[0]) and specs[1] == 'x' and is_number(specs[2]):
             return float(specs[0].replace(',', '')), float(specs[2].replace(',', ''))
-        elif isNumber(specs[0]) and specs[1] == 'GB' and specs[2] == 'NVMe' and specs[3] == 'SSD':
+        elif is_number(specs[0]) and specs[1] == 'GB' and specs[2] == 'NVMe' and specs[3] == 'SSD':
             return 1, float(specs[0].replace(',', ''))
         else:
             raise RuntimeError('EC2 JSON format has likely changed.  Error parsing disk specs.')
 
 
-def parseMemory(memAttribute: str) -> float:
+def parse_memory(mem_info: str) -> float:
     """
     Returns EC2 'memory' string as a float.
 
@@ -140,18 +145,19 @@ def parseMemory(memAttribute: str) -> float:
     Amazon loves to put commas in their numbers, so we have to accommodate that.
     If the syntax ever changes, this will raise.
 
-    :param memAttribute: EC2 JSON memory param string.
+    :param mem_info: EC2 JSON memory param string.
     :return: A float representing memory in GiB.
     """
-    mem = memAttribute.replace(',', '').split()
+    mem = mem_info.replace(',', '').split()
     if mem[1] == 'GiB':
         return float(mem[0])
     else:
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
-def fetchEC2Index(filename: str) -> None:
-    """Downloads and writes the AWS Billing JSON to a file using the AWS pricing API.
+def download_region_json(filename: str, region: str = 'us-east-1') -> None:
+    """
+    Downloads and writes the AWS Billing JSON to a file using the AWS pricing API.
 
     See: https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
 
@@ -159,61 +165,45 @@ def fetchEC2Index(filename: str) -> None:
              aws instance name (example: 't2.micro'), and the value is an
              InstanceType object representing that aws instance name.
     """
-    print('Downloading ~1Gb AWS billing file to parse for information.\n')
+    response = requests.get(f'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/{region}/index.json', stream=True)
+    file_size = int(response.headers.get("content-length", 0))
+    print(f'Downloading ~{file_size / 1000000000}Gb {region} AWS billing file to: {filename}')
 
-    response = requests.get('https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json')
-    if response.ok:
-        with open(filename, 'w') as f:
-            f.write(str(json.dumps(json.loads(response.text), indent=4)))
-            print('Download completed successfully!\n')
-    else:
-        raise RuntimeError('Error: ' + str(response) + ' :: ' + str(response.text))
+    with manager.counter(total=file_size, desc=os.path.basename(filename), unit='bytes', leave=False) as progress_bar:
+        with open(filename, "wb") as file:
+            for data in response.iter_content(1048576):
+                progress_bar.update(len(data))
+                file.write(data)
 
 
-def fetchEC2InstanceDict(awsBillingJson: Dict[str, Any], region: str) -> Dict[str, InstanceType]:
+def reduce_region_json_size(filename:str) -> List[Dict[str, Any]]:
     """
-    Takes a JSON and returns a list of InstanceType objects representing EC2 instance params.
+    Deletes information in the json file that we don't need, and rewrites it.  This makes the file smaller.
 
-    :param region:
-    :return:
+    The reason being: we used to download the unified AWS Bulk API JSON, which eventually crept up to 5.6Gb,
+    the loading of which could not be done on a 32Gb RAM machine.  Now we download each region JSON individually
+    (with AWS's new Query API), but even those may eventually one day grow ridiculously large, so we do what we can to
+    keep the file sizes down (and thus also the amount loaded into memory) to keep this script working for longer.
     """
-    ec2InstanceList = []
-    for k, v in awsBillingJson['products'].items():
-        i = v['attributes']
-        # NOTES:
-        #
-        # 3 tenant types: 'Host' (always $0.00; just a template?)
-        #                 'Dedicated' (toil does not support; these are pricier)
-        #                 'Shared' (AWS default and what toil uses)
-        #
-        # The same instance can appear with multiple "operation" values;
-        # "RunInstances" is normal
-        # "RunInstances:<code>" is e.g. Linux with MS SQL Server installed.
-        if (i.get('location') == region and
-            i.get('tenancy') == 'Shared' and
-            i.get('operatingSystem') == 'Linux' and
-            i.get('operation') == 'RunInstances'):
-
-            normal_use = i.get('usagetype').endswith('BoxUsage:' + i['instanceType'])  # not reserved or unused
-            if normal_use:
-                disks, disk_capacity = parseStorage(v["attributes"]["storage"])
-
-                # Determines whether the instance type is from an ARM or AMD family
-                # ARM instance names include a digit followed by a 'g' before the instance size
-                architecture = 'arm64' if re.search(r".*\dg.*\..*", i["instanceType"]) else 'amd64'
-
-                instance = InstanceType(name=i["instanceType"],
-                                        cores=i["vcpu"],
-                                        memory=parseMemory(i["memory"]),
-                                        disks=disks,
-                                        disk_capacity=disk_capacity,
-                                        architecture=architecture)
-                if instance in ec2InstanceList:
-                    raise RuntimeError('EC2 JSON format has likely changed.  '
-                                       'Duplicate instance {} found.'.format(instance))
-                ec2InstanceList.append(instance)
-    print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.')
-    return {_.name: _ for _ in ec2InstanceList}
+    with open(filename, 'r') as f:
+        aws_products = json.loads(f.read())['products']
+    aws_product_list = list()
+    for k in list(aws_products.keys()):
+        ec2_attributes = aws_products[k]['attributes']
+        if     (ec2_attributes.get('tenancy') == 'Shared' and
+                ec2_attributes.get('operatingSystem') == 'Linux' and
+                ec2_attributes.get('operation') == 'RunInstances' and
+                ec2_attributes.get('usagetype').endswith('BoxUsage:' + ec2_attributes['instanceType'])):
+            aws_product_list.append(dict(disk=ec2_attributes["storage"],
+                                         loc=ec2_attributes["location"],
+                                         name=ec2_attributes["instanceType"],
+                                         mem=ec2_attributes["memory"],
+                                         cpu=ec2_attributes["vcpu"]))
+        del aws_products[k]
+    del aws_products
+    with open(filename, 'w') as f:
+        f.write(json.dumps(dict(aws=aws_product_list), indent=2))
+    return aws_product_list
 
 
 def updateStaticEC2Instances() -> None:
@@ -225,39 +215,58 @@ def updateStaticEC2Instances() -> None:
     :return: Nothing.  Writes a new 'generatedEC2Lists.py' file.
     """
     print("Updating Toil's EC2 lists to the most current version from AWS's bulk API.\n"
-          "This may take a while, depending on your internet connection (~1Gb file).\n")
+          "This may take a while, depending on your internet connection.\n")
 
-    origFile = os.path.join(dirname, 'generatedEC2Lists.py')  # original
-    assert os.path.exists(origFile)
+    original_aws_instance_list = os.path.join(dirname, 'generatedEC2Lists.py')  # original
+    if not os.path.exists(original_aws_instance_list):
+        raise RuntimeError(f"Path {original_aws_instance_list} does not exist.")
     # use a temporary file until all info is fetched
-    genFile = os.path.join(dirname, 'generatedEC2Lists_tmp.py')  # temp
-    if os.path.exists(genFile):
-        os.remove(genFile)
+    updated_aws_instance_list = os.path.join(dirname, 'generatedEC2Lists_tmp.py')  # temp
+    if os.path.exists(updated_aws_instance_list):
+        os.remove(updated_aws_instance_list)
 
-    # filepath to store the aws json request (will be cleaned up)
-    # this is done because AWS changes their json format from time to time
-    # and debugging is faster with the file stored locally
-    awsJsonIndex = os.path.join(dirname, 'index.json')
-
-    if not os.path.exists(awsJsonIndex):
-        fetchEC2Index(filename=awsJsonIndex)
-    else:
-        print('Reusing previously downloaded json @: ' + awsJsonIndex)
-
-    with open(awsJsonIndex) as f:
-        awsProductDict = json.loads(f.read())
+    if not os.path.exists(region_json_dirname):
+        os.mkdir(region_json_dirname)
 
     currentEC2List = []
     instancesByRegion: Dict[str, List[str]] = {}
-    for regionNickname in EC2Regions:
-        currentEC2Dict = fetchEC2InstanceDict(awsProductDict, region=EC2Regions[regionNickname])
+    for region in EC2Regions.keys():
+        region_json = os.path.join(region_json_dirname, f'{region}.json')
+
+        if os.path.exists(region_json):
+            try:
+                with open(region_json, 'r') as f:
+                    aws_products = json.loads(f.read())['aws']
+                print(f'Reusing previously downloaded json @: {region_json}')
+            except:
+                os.remove(region_json)
+                download_region_json(filename=region_json, region=region)
+                aws_products = reduce_region_json_size(filename=region_json)
+        else:
+            download_region_json(filename=region_json, region=region)
+            aws_products = reduce_region_json_size(filename=region_json)
+
+        ec2InstanceList = []
+        for i in aws_products:
+            disks, disk_capacity = parse_storage(i["disk"])
+            # Determines whether the instance type is from an ARM or AMD family
+            # ARM instance names include a digit followed by a 'g' before the instance size
+            architecture = 'arm64' if re.search(r".*\dg.*\..*", i["name"]) else 'amd64'
+            ec2InstanceList.append(InstanceType(name=i["name"],
+                                                cores=i["cpu"],
+                                                memory=parse_memory(i["mem"]),
+                                                disks=disks,
+                                                disk_capacity=disk_capacity,
+                                                architecture=architecture))
+        print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.\n')
+        currentEC2Dict = {_.name: _ for _ in ec2InstanceList}
         for instanceName, instanceTypeObj in currentEC2Dict.items():
             if instanceTypeObj not in currentEC2List:
                 currentEC2List.append(instanceTypeObj)
-            instancesByRegion.setdefault(regionNickname, []).append(instanceName)
+            instancesByRegion.setdefault(region, []).append(instanceName)
 
     # write provenance note, copyright and imports
-    with open(genFile, 'w') as f:
+    with open(updated_aws_instance_list, 'w') as f:
         f.write(textwrap.dedent('''
         # !!! AUTOGENERATED FILE !!!
         # Update with: src/toil/utils/toilUpdateEC2Instances.py
@@ -278,16 +287,13 @@ def updateStaticEC2Instances() -> None:
         from toil.lib.ec2nodes import InstanceType\n\n\n''').format(year=datetime.date.today().strftime("%Y"))[1:])
 
     # write header of total EC2 instance type list
-    genString = "# {num} Instance Types.  Generated {date}.\n".format(
-                num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
+    genString = f'# {len(currentEC2List)} Instance Types.  Generated {datetime.datetime.now()}.\n'
     genString = genString + "E2Instances = {\n"
     sortedCurrentEC2List = sorted(currentEC2List, key=lambda x: x.name)
 
     # write the list of all instances types
     for i in sortedCurrentEC2List:
-        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, architecture='{architecture}')," \
-            "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, architecture=i.architecture)
-        genString = genString + z
+        genString = genString + f"    '{i.name}': InstanceType(name='{i.name}', cores={i.cores}, memory={i.memory}, disks={i.disks}, disk_capacity={i.disk_capacity}, architecture='{i.architecture}'),\n"
     genString = genString + '}\n\n'
 
     genString = genString + 'regionDict = {\n'
@@ -301,19 +307,19 @@ def updateStaticEC2Instances() -> None:
     if genString.endswith(',\n'):
         genString = genString[:-len(',\n')]
     genString = genString + '}\n'
-    with open(genFile, 'a+') as f:
+    with open(updated_aws_instance_list, 'a+') as f:
         f.write(genString)
 
     # append key for fetching at the end
     regionKey = '\nec2InstancesByRegion = {region: [E2Instances[i] for i in instances] for region, instances in regionDict.items()}\n'
 
-    with open(genFile, 'a+') as f:
+    with open(updated_aws_instance_list, 'a+') as f:
         f.write(regionKey)
-    # delete the original file
-    if os.path.exists(origFile):
-        os.remove(origFile)
+
     # replace the instance list with a current list
-    os.rename(genFile, origFile)
-    # delete the aws billing json file
-    if os.path.exists(awsJsonIndex):
-        os.remove(awsJsonIndex)
+    os.rename(updated_aws_instance_list, original_aws_instance_list)
+
+    # delete the aws region json file directory
+    if os.path.exists(region_json_dirname):
+        print(f'Update Successful!  Removing AWS Region JSON Files @: {region_json_dirname}')
+        shutil.rmtree(region_json_dirname)
