@@ -289,7 +289,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     failure_exit_code = 1
     statsDict = StatsDict()  # type: ignore[no-untyped-call]
     statsDict.jobs = []
-    statsDict.workers.logsToMaster = []
+    statsDict.workers.logs_to_leader = []
+    statsDict.workers.logging_user_streams = []
 
     def blockFn() -> bool:
         return True
@@ -409,7 +410,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             # job body cut.
 
                 # Accumulate messages from this job & any subsequent chained jobs
-                statsDict.workers.logsToMaster += fileStore.loggingMessages
+                statsDict.workers.logs_to_leader += fileStore.logging_messages
+                statsDict.workers.logging_user_streams += fileStore.logging_user_streams
 
                 logger.info("Completed body for %s", jobDesc)
 
@@ -602,7 +604,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         statsDict.logs.names = [names.stats_name for names in jobDesc.get_chain()]
         statsDict.logs.messages = logMessages
 
-    if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
+    if debugging or config.stats or statsDict.workers.logs_to_leader or statsDict.workers.logging_user_streams:
+        # We have stats/logging to report back.
+        # We report even if the job attempt failed.
+        # TODO: Will that upset analysis of the stats?
         jobStore.write_logs(json.dumps(statsDict, ensure_ascii=True))
 
     # Remove the temp dir

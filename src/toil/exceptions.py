@@ -36,7 +36,7 @@ class FailedJobsException(Exception):
             for job_desc in failed_jobs:
                 if job_desc.logJobStoreFileID:
                     with job_desc.getLogFileHandle(job_store) as f:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, job_desc)
+                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, f'Log from job "{job_desc}"')
         # catch failures to prepare more complex details and only return the basics
         except Exception:
             logger.exception("Exception when compiling information about failed jobs")
