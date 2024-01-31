@@ -21,4 +21,4 @@ jobs:
           PR_READY_STATE: "ready_for_review"
           # Don't fail on the triggering commit if it makes a merge conflict
           # with a PR and the PR can't update
-          MERGE_CONFLICT_ACTION: "igniore"
+          MERGE_CONFLICT_ACTION: "ignore"
