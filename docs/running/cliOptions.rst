@@ -11,7 +11,7 @@ A quick way to see all of Toil's commandline options is by executing the followi
 
 Or a Toil Python workflow::
 
-    $ python example.py --help
+    $ python3 example.py --help
 
 For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
 
@@ -41,14 +41,14 @@ Then uncomment options as necessary and change/provide new values.
 
 After editing the config file, you can run Toil with its settings by passing it on the command line::
 
-    $ python example.py --config=[filename].yaml
+    $ python3 example.py --config=[filename].yaml
 
 Alternatively, you can edit the default config file, which is located at ``$HOME/.toil/default.yaml``
 
 If CLI options are used in addition to the configuration file, the CLI options will overwrite the configuration file
 options. For example::
 
-    $ python example.py --config=[filename].yaml --defaultMemory 80Gi
+    $ python3 example.py --config=[filename].yaml --defaultMemory 80Gi
 
 This will result in a default memory per job of 80GiB no matter what is in the configuration file provided.
 
@@ -59,8 +59,8 @@ Running Toil workflows requires a file path or URL to a central location for all
 For ``toil-cwl-runner`` and ``toil-wdl-runner`` a job store can often be selected automatically or can be specified with the ``--jobStore`` option; Toil Python workflows generally require the job store as a positional command line argument.
 To use the :ref:`Python quickstart <pyquickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
-executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
-``python HelloWorld.py file:/scratch/my-job-store``.
+executing: ``python3 HelloWorld.py /scratch/my-job-store``, or more explicitly,
+``python3 HelloWorld.py file:/scratch/my-job-store``.
 
 Syntax for specifying different job stores:
 

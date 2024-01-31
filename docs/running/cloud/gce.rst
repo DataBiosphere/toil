@@ -58,7 +58,7 @@ To use the Google Job Store you will need to set the
 
 Then to run the sort example with the Google job store you would type ::
 
-    $ python sort.py google:my-project-id:my-google-sort-jobstore
+    $ python3 sort.py google:my-project-id:my-google-sort-jobstore
 
 Running a Workflow with Autoscaling
 -----------------------------------
@@ -93,7 +93,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Run the workflow::
 
-    $ python /root/sort.py  google:<PROJECT-ID>:<JOBSTORE-NAME> \
+    $ python3 /root/sort.py  google:<PROJECT-ID>:<JOBSTORE-NAME> \
           --provisioner gce \
           --batchSystem mesos \
           --nodeTypes n1-standard-2 \
