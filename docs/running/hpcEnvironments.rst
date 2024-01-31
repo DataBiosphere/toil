@@ -24,7 +24,7 @@ To run a Toil workflow on Slurm, include ``--batchSystem slurm`` in your command
 For example, to run the sort example :ref:`sort example <sortExample>` on Slurm, assuming you are currently in a shared directory, you would type, on the cluster head node::
 
     $ mkdir -p logs
-    $ python sort.py ./store --batchSystem slurm --batchLogsDir ./logs
+    $ python3 sort.py ./store --batchSystem slurm --batchLogsDir ./logs
 
 Slurm Tips
 ~~~~~~~~~~
