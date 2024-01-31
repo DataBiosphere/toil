@@ -26,7 +26,7 @@ RUN apt-get -q -y update && \
     apt-get -q -y install \
         make git software-properties-common build-essential virtualenv libssl-dev libffi-dev \
         libncurses5-dev curl zip unzip cmake wget docker.io python3-pip python3-virtualenv \
-        python-dev npm nodejs tzdata jq awscli && \
+        python-dev npm nodejs tzdata jq awscli graphviz && \
     apt-get clean
 
 RUN sudo add-apt-repository -y ppa:deadsnakes/ppa && \
