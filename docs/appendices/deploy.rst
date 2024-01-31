@@ -70,7 +70,7 @@ both Python and Toil are assumed to be present on the leader and all worker node
 
 We can now run our workflow::
 
-   $ python main.py --batchSystem=kubernetes …
+   $ python3 main.py --batchSystem=kubernetes …
 
 .. important::
 
@@ -79,9 +79,9 @@ We can now run our workflow::
 
 .. warning::
 
-   Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
+   Neither ``python3 setup.py develop`` nor ``pip install -e .`` can be used in
    this process as, instead of copying the source files, they create ``.egg-link``
-   files that Toil can't auto-deploy. Similarly, ``python setup.py install``
+   files that Toil can't auto-deploy. Similarly, ``python3 setup.py install``
    doesn't work either as it installs the project as a Python ``.egg`` which is
    also not currently supported by Toil (though it `could be`_ in the future).
 
@@ -143,7 +143,7 @@ The following shell session illustrates this::
        └── main.py
 
    3 directories, 5 files
-   $ python -m workflow.main --batchSystem=kubernetes …
+   $ python3 -m workflow.main --batchSystem=kubernetes …
 
 .. _package: https://docs.python.org/2/tutorial/modules.html#packages
 
@@ -151,7 +151,7 @@ Here the workflow entry point module ``main.py`` does not reside in the current 
 is part of a package called ``util``, in a subdirectory of the current
 directory. Additional functionality is in a separate module called
 ``util.sort.quick`` which corresponds to ``util/sort/quick.py``. Because we
-invoke the workflow via ``python -m workflow.main``, Toil can determine the
+invoke the workflow via ``python3 -m workflow.main``, Toil can determine the
 root directory of the hierarchy–``my_project`` in this case–and copy all Python
 modules underneath it to each worker. The ``-m`` option is documented `here`_
 
@@ -160,7 +160,7 @@ modules underneath it to each worker. The ``-m`` option is documented `here`_
 When ``-m`` is passed, Python adds the current working directory to
 ``sys.path``, the list of root directories to be considered when resolving a
 module name like ``workflow.main``. Without that added convenience we'd have to
-run the workflow as ``PYTHONPATH="$PWD" python -m workflow.main``. This also
+run the workflow as ``PYTHONPATH="$PWD" python3 -m workflow.main``. This also
 means that Toil can detect the root directory of the invoked module's package
 hierarchy even if it isn't the current working directory. In other words we
 could do this::
@@ -168,7 +168,7 @@ could do this::
    $ cd my_project
    $ export PYTHONPATH="$PWD"
    $ cd /some/other/dir
-   $ python -m workflow.main --batchSystem=kubernetes …
+   $ python3 -m workflow.main --batchSystem=kubernetes …
 
 Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
