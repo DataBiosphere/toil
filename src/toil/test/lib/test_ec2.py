@@ -20,7 +20,6 @@ from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
                               feed_flatcar_ami_release,
                               flatcar_release_feed_amis,
                               get_flatcar_ami)
-from toil.lib.aws.session import establish_boto3_session
 from toil.test import ToilTest, needs_aws_ec2, needs_online
 
 logger = logging.getLogger(__name__)
@@ -59,6 +58,7 @@ class FlatcarFeedTest(ToilTest):
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
+        from toil.lib.aws.session import establish_boto3_session
         session = establish_boto3_session(region_name='us-west-2')
         cls.ec2_client = session.client('ec2')
 
