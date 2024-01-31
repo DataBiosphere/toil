@@ -98,7 +98,7 @@ def run_setup():
           'Topic :: System :: Distributed Computing',
           'Topic :: Utilities'],
         license="Apache License v2.0",
-        python_requires=">=3.7",
+        python_requires=">=3.8",
         install_requires=install_requires,
         extras_require=extras_require,
         package_dir={'': 'src'},
@@ -116,7 +116,6 @@ def run_setup():
                 'cwltoil = toil.cwl.cwltoil:cwltoil_was_removed [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.wdltoil:main [wdl]',
-                'toil-wdl-runner-old = toil.wdl.toilwdl:main [wdl]',
                 'toil-wes-cwl-runner = toil.server.cli.wes_cwl_runner:main [server]',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
                 '_toil_contained_executor = toil.batchSystems.contained_executor:executor']})

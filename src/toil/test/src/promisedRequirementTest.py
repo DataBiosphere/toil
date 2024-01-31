@@ -194,7 +194,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.logToMaster(f'{funcName}: {diskUsage}')
+    job.fileStore.log_to_leader(f'{funcName}: {diskUsage}')
     time.sleep(sleep)
     return diskUsage
 

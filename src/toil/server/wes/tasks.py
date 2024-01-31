@@ -133,8 +133,8 @@ class ToilWorkflowRunner:
         the workflow execution engine.
 
         :param workflow_engine_parameters: User-specified parameters for this
-        particular workflow. Keys are command-line options, and values are
-        option arguments, or None for options that are flags.
+            particular workflow. Keys are command-line options, and values are
+            option arguments, or None for options that are flags.
         """
         options = []
 

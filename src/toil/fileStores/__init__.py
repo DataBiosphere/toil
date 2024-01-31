@@ -40,7 +40,7 @@ class FileID(str):
 
     def pack(self) -> str:
         """Pack the FileID into a string so it can be passed through external code."""
-        return f'{self.size}:{int(self.executable)}:{self}'
+        return f'{self.size}:{"1" if self.executable else "0"}:{self}'
 
     @classmethod
     def forPath(cls, fileStoreID: str, filePath: str) -> 'FileID':
@@ -54,7 +54,7 @@ class FileID(str):
         vals = packedFileStoreID.split(':', 2)
         # Break up the packed value
         size = int(vals[0])
-        executable = bool(vals[1])
+        executable = (vals[1] == "1")
         value = vals[2]
         # Create the FileID
         return cls(value, size, executable)

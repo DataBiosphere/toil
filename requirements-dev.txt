@@ -1,5 +1,4 @@
-mock>=4.0.3,<6
-pytest>=6.2.1,<8
+pytest>=6.2.1,<9
 pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
@@ -11,13 +10,13 @@ astroid>=2.15,<3
 sphinx-autodoc-typehints>=1.24.0,<2
 sphinxcontrib-autoprogram==0.1.8
 cwltest>=2.2.20211116163652
-mypy==1.7.1
+mypy==1.8.0
 types-requests
 types-setuptools
 types-boto
 types-pytz
-flake8>=3.8.4,<7
-flake8-bugbear>=20.11.1,<24
+flake8>=3.8.4,<8
+flake8-bugbear>=20.11.1,<25
 black
 isort
 pydocstyle

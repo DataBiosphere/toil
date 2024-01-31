@@ -33,14 +33,6 @@ def main():
         'src/toil/__init__.py',
         'src/toil/deferred.py',
         'src/toil/version.py',
-        'src/toil/wdl/utils.py',
-        'src/toil/wdl/wdl_synthesis.py',
-        'src/toil/wdl/wdl_analysis.py',
-        'src/toil/wdl/wdl_functions.py',
-        'src/toil/wdl/toilwdl.py',
-        'src/toil/wdl/versions/draft2.py',
-        'src/toil/wdl/versions/v1.py',
-        'src/toil/wdl/versions/dev.py',
         'src/toil/provisioners/abstractProvisioner.py',
         'src/toil/provisioners/gceProvisioner.py',
         'src/toil/provisioners/__init__.py',
@@ -103,7 +95,6 @@ def main():
             if file_path.startswith(prefix):
                 return True
         return False
-        
 
     filtered_files_to_check = []
     for file_path in all_files_to_check:

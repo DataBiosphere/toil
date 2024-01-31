@@ -69,6 +69,7 @@ export TOIL_AWS_NODE_DEBUG?=False  # Don't shut down EC2 instances that fail so 
 export TOIL_TEST_INTEGRATIVE?=False  # If ``True``, this allows the integration tests to run.
 export TOIL_TEST_QUICK?=False  # If ``True``, long running tests are skipped.
 export TOIL_SKIP_DOCKER?=False  # Skip docker dependent tests
+export TOIL_SKIP_ONLINE?=False  # Skip Internet-dependent tests
 
 export TOIL_AWS_KEYNAME?=id_rsa  # SSH key to use for tests in AWS.
 export TOIL_GOOGLE_KEYNAME?=id_rsa  # SSH key to use for tests in google.

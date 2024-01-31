@@ -69,8 +69,13 @@ class WorkerCleanupContext:
 
     def __enter__(self) -> None:
         # Set up an arena so we know who is the last worker to leave
-        self.arena = LastProcessStandingArena(Toil.get_toil_coordination_dir(self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir),
-                                              self.workerCleanupInfo.workflow_id + '-cleanup')
+        self.arena = LastProcessStandingArena(
+            Toil.get_toil_coordination_dir(
+                self.workerCleanupInfo.work_dir,
+                self.workerCleanupInfo.coordination_dir
+            ),
+            Toil.get_workflow_path_component(self.workerCleanupInfo.workflow_id) + "-cleanup"
+        )
         logger.debug('Entering cleanup arena')
         self.arena.enter()
         logger.debug('Cleanup arena entered')
@@ -89,5 +94,4 @@ class WorkerCleanupContext:
             BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
             # Now the coordination_dir is allowed to no longer exist on the node.
         logger.debug('Cleanup arena left')
-
 

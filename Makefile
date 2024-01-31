@@ -135,12 +135,17 @@ test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
 	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
+test_debug: check_venv check_build_reqs
+	TOIL_OWNER_TAG="$(whoami)" \
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native --maxfail=1
+
 
 # This target will skip building docker and all docker based tests
 # these are our travis tests; rename?
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
+	TOIL_SKIP_ONLINE=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
@@ -245,7 +250,6 @@ endif
 
 
 docs: check_venv check_build_reqs
-	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && ${MAKE} html
 
 clean_docs: check_venv
@@ -254,7 +258,7 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
@@ -299,9 +303,7 @@ format: $(wildcard src/toil/cwl/*.py)
 	black $^ contrib/mypy-stubs
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
-		--warn-redundant-casts --warn-unused-ignores \
-		$(CURDIR)/src/toil/cwl/cwltoil.py
+	MYPYPATH=$(CURDIR)/contrib/mypy-stubs mypy --strict $(CURDIR)/src/toil/{cwl/cwltoil.py,test/cwl/cwlTest.py}
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 	
 # This target will check any modified files for pylint errors.

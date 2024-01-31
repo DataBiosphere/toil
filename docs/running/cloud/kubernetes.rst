@@ -202,7 +202,7 @@ Option 1: Running the Leader Inside Kubernetes
 
 Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML so that they can be used from the leader as well.
 
-Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
+Note that the leader pod will need your workflow, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
 
 Here's an example YAML file to run a test workflow: ::
 
@@ -266,7 +266,7 @@ Here's an example YAML file to run a test workflow: ::
             # This Bash script will set up Toil and the workflow to run, and run them.
             set -e
             # We make sure to create a work directory; Toil can't hot-deploy a
-            # script from the root of the filesystem, which is where we start.
+            # Python file from the root of the filesystem, which is where we start.
             mkdir /tmp/work
             cd /tmp/work
             # We make a virtual environment to allow workflow dependencies to be
@@ -280,7 +280,7 @@ Here's an example YAML file to run a test workflow: ::
             virtualenv --python python3 --system-site-packages venv
             . venv/bin/activate
             # Now we install the workflow. Here we're using a demo workflow
-            # script from Toil itself.
+            # from Toil itself.
             wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
             # Now we run the workflow. We make sure to use the Kubernetes batch
             # system and an AWS job store, and we set some generally useful

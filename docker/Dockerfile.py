@@ -61,7 +61,9 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libcurl4-nss-dev',
                          'libapr1',
                          # Dependencies for singularity
-                         'containernetworking-plugins'])
+                         'containernetworking-plugins',
+                         # Dependencies for singularity on kubernetes
+                         'tzdata'])
 
 
 def heredoc(s):
@@ -107,9 +109,9 @@ print(heredoc('''
     # mkdir mesos-repo && cd mesos-repo
     # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
+    RUN echo "deb https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://courtyard.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && curl https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \

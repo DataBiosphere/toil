@@ -548,14 +548,16 @@ class AbstractJobStoreTest:
             jobNames = ['testStatsAndLogging_writeLogFiles']
             jobLogList = ['string', b'bytes', '', b'newline\n']
             config = self._createConfig()
-            setattr(config, 'writeLogs', '.')
+            setattr(config, 'writeLogs', self._createTempDir())
             setattr(config, 'writeLogsGzip', None)
             StatsAndLogging.writeLogFiles(jobNames, jobLogList, config)
-            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '000.log')
+            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '_000.log')
+            # The log directory should get exactly one file, names after this
+            # easy job name with no replacements needed.
+            self.assertEqual(os.listdir(config.writeLogs), [os.path.basename(jobLogFile)])
             self.assertTrue(os.path.isfile(jobLogFile))
             with open(jobLogFile) as f:
                 self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
-            os.remove(jobLogFile)
 
         def testBatchCreate(self):
             """Test creation of many jobs."""
@@ -1147,7 +1149,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         return mkdtemp()
 
     def _cleanUpExternalStore(self, dirPath):
-        shutil.rmtree(dirPath)
+        shutil.rmtree(dirPath, ignore_errors=True)
 
     def testPreserveFileName(self):
         """Check that the fileID ends with the given file name."""
@@ -1486,8 +1488,13 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                 return bucket
 
     def _cleanUpExternalStore(self, bucket):
-        bucket.objects.all().delete()
-        bucket.delete()
+        from toil.jobStores.aws.jobStore import establish_boto3_session
+        from toil.lib.aws.utils import delete_s3_bucket
+
+        resource = establish_boto3_session().resource(
+            "s3", region_name=self.awsRegion()
+        )
+        delete_s3_bucket(resource, bucket.name)
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

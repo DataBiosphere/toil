@@ -37,7 +37,7 @@ def create_tags_dict(tags: List[str]) -> Dict[str, str]:
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil launch-cluster")
     parser.add_argument("-T", "--clusterType", dest="clusterType",
                         choices=['mesos', 'kubernetes'],
                         default=None,  # TODO: change default to "kubernetes" when we are ready.
