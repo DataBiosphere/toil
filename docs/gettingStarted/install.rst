@@ -27,7 +27,7 @@ If not already present, please install the latest Python ``virtualenv`` using pi
 
 And create a virtual environment called ``venv`` somewhere convenient, usch as under ``~``::
 
-    $ python -m virtualenv ~/venv
+    $ python3 -m virtualenv ~/venv
 
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 

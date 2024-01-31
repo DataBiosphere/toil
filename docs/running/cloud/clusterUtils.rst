@@ -58,7 +58,7 @@ that toil does not delete the job store, no matter what other options are specif
 
 An example of this would be running the following::
 
-    python discoverfiles.py file:my-jobstore --stats
+    python3 discoverfiles.py file:my-jobstore --stats
 
 Where ``discoverfiles.py`` is the following:
 
@@ -112,7 +112,7 @@ Status Command
 
 Continuing the example from the stats section above, if we ran our workflow with the command ::
 
-    python discoverfiles.py file:my-jobstore --stats
+    python3 discoverfiles.py file:my-jobstore --stats
 
 We could interrogate our jobstore with the status command, for example::
 
