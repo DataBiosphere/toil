@@ -11,23 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 import os
 import signal
 import time
-import psutil
 from abc import ABCMeta
 from uuid import uuid4
 
+import psutil
+
+from toil.exceptions import FailedJobsException
 from toil.job import Job
-from toil.leader import FailedJobsException
 from toil.lib.threading import cpu_count
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
+
+logger = logging.getLogger(__name__)
 
 
 class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
-    """
-    Test the deferred function system.
-    """
+    """Test the deferred function system."""
     # This determines what job store type to use.
     jobStoreType = 'file'
 
@@ -35,15 +37,15 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         if self.jobStoreType == 'file':
             return self._getTestJobStorePath()
         elif self.jobStoreType == 'aws':
-            return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+            return f'aws:{self.awsRegion()}:cache-tests-{uuid4()}'
         elif self.jobStoreType == 'google':
             projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-            return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
+            return f'google:{projectID}:cache-tests-{str(uuid4())}'
         else:
             raise RuntimeError('Illegal job store type.')
 
     def setUp(self):
-        super(DeferredFunctionTest, self).setUp()
+        super().setUp()
         testDir = self._createTempDir()
         self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
         self.options.logLevel = 'INFO'
@@ -52,7 +54,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         self.options.logFile = os.path.join(testDir, 'logFile')
 
     # Tests for the various defer possibilities
-    @travis_test
     def testDeferredFunctionRunsWithMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -60,7 +61,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
 
-    @travis_test
     def testDeferredFunctionRunsWithClassMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -68,7 +68,6 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
 
-    @travis_test
     def testDeferredFunctionRunsWithLambda(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -168,13 +167,14 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         except FailedJobsException as e:
             pass
 
-    @travis_test
     def testBatchSystemCleanupCanHandleWorkerDeaths(self):
         """
-        Create a non-local files. Create a job that registers a deferred job to delete the file
-        and then kills itself.
+        Create some non-local files. Create a job that registers a deferred
+        function to delete the file and then kills its worker.
 
-        Assert that the file is missing after the pipeline fails.
+        Assert that the file is missing after the pipeline fails, because we're
+        using a single-machine batch system and the leader's batch system
+        cleanup will find and run the deferred function.
         """
 
         # There can be no retries
@@ -189,6 +189,9 @@ class DeferredFunctionTest(ToilTest, metaclass=ABCMeta):
         open(nonLocalFile2, 'w').close()
         assert os.path.exists(nonLocalFile1)
         assert os.path.exists(nonLocalFile2)
+        # We only use the "A" job here, and we fill in the first file, so all
+        # it will do is defer deleting the second file, delete the first file,
+        # and die.
         A = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_A,
                           files=(nonLocalFile1, nonLocalFile2))
         try:
@@ -259,9 +262,13 @@ def _deleteFile(nonLocalFile, nlf=None):
     :param str nlf:
     :return: None
     """
+    logger.debug("Removing file: %s", nonLocalFile)
     os.remove(nonLocalFile)
+    logger.debug("Successfully removed file: %s", nonLocalFile)
     if nlf is not None:
+        logger.debug("Removing file: %s", nlf)
         os.remove(nlf)
+        logger.debug("Successfully removed file: %s", nlf)
 
 def _testNewJobsCanHandleOtherJobDeaths_A(job, files):
     """
@@ -271,11 +278,13 @@ def _testNewJobsCanHandleOtherJobDeaths_A(job, files):
     :param tuple files: the tuple of the two files to work with
     :return: None
     """
+
     # Write the pid to files[1] such that we can be sure that this process has died before
     # we spawn the next job that will do the cleanup.
     with open(files[1], 'w') as fileHandle:
         fileHandle.write(str(os.getpid()))
     job.defer(_deleteFile, files[1])
+    logger.info("Deferred delete of %s", files[1])
     while os.stat(files[0]).st_size == 0:
         time.sleep(0.5)
     os.remove(files[0])
@@ -289,7 +298,7 @@ def _testNewJobsCanHandleOtherJobDeaths_B(job, files):
     while os.path.exists(files[0]):
         time.sleep(0.5)
     # Get the pid of _testNewJobsCanHandleOtherJobDeaths_A and wait for it to truly be dead.
-    with open(files[1], 'r') as fileHandle:
+    with open(files[1]) as fileHandle:
         pid = int(fileHandle.read())
     assert pid > 0
     while psutil.pid_exists(pid):
@@ -310,7 +319,7 @@ def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
         assert os.path.exists(testFile) is expectedResult
 
 
-class _deleteMethods(object):
+class _deleteMethods:
     @staticmethod
     def _deleteFileMethod(nonLocalFile, nlf=None):
         """

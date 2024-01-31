@@ -1,0 +1,34 @@
+apiVersion: batch/v1beta1 #Should be updated if Kubernetes version updated past 1.19.x
+kind: CronJob
+metadata:
+  name: pod-murder-bot
+spec:
+  schedule: "@weekly" #Weekly schedule
+  jobTemplate:
+    spec: 
+      template:
+        spec:
+          containers:
+          - name: murder-bot
+            image: quay.io/vgteam/vg_ci_prebake:latest
+            imagePullPolicy: Always
+            command:
+            - /bin/bash
+            - -c
+            - |
+              CUTOFF=$(date -u -Iseconds --date='2 days ago' | sed 's/+00:00/Z/')
+              kubectl get po --namespace "toil" -o json | jq -r '.items[] |[.metadata.name, .status.startTime] | @tsv' | while IFS= read -r line
+              do
+                NAME=$(echo $line | cut -d ' ' -f 1)
+                TIMESTAMP=$(echo $line | cut -d ' ' -f 2)
+                if [[ "$TIMESTAMP" < "$CUTOFF" ]];
+                then
+                  if [[ "$NAME" == "toiltest-toil"* || "$NAME" == "runner-"* ]];
+                    then
+                      echo deleting pod $NAME
+                      kubectl delete pod $NAME --namespace "toil"
+                  fi
+                fi
+              done
+          restartPolicy: Never
+  

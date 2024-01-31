@@ -1,0 +1,8 @@
+cwltool==3.1.20240112164112
+schema-salad>=8.4.20230128170514,<9
+galaxy-tool-util<23
+galaxy-util<23
+ruamel.yaml>=0.15,<=0.19
+ruamel.yaml.clib>=0.2.6
+networkx!=2.8.1,<4
+CacheControl[filecache]

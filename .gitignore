@@ -10,10 +10,10 @@ __pycache__
 .idea/
 /test-report.xml
 /test-report-*.xml
-venv/
+venv*
 v3nv/
 tmp/
-/src/toil/test/cwl/spec
+/src/toil/test/cwl/spec*
 /cwltool_deps/
 /docs/generated_rst/
 /docker/Dockerfile
@@ -22,3 +22,4 @@ tmp/
 .coverage*
 .mypy_cache
 /contrib/admin/.issue_cache/
+.docker_cache/

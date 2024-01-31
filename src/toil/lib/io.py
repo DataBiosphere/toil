@@ -1,16 +1,35 @@
 import logging
 import os
-import stat
 import shutil
+import stat
 import tempfile
 import uuid
-
 from contextlib import contextmanager
 from io import BytesIO
-from typing import Iterator, Union, Optional
+from typing import IO, Any, Callable, Iterator, Optional, Union
 
 logger = logging.getLogger(__name__)
 
+def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None) -> str:
+    """
+    Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
+
+    The permissions on the directory will be 711 instead of 700, allowing the
+    group and all other users to traverse the directory. This is necessary if
+    the direcotry is on NFS and the Docker daemon would like to mount it or a
+    file inside it into a container, because on NFS even the Docker daemon
+    appears bound by the file permissions.
+
+    See <https://github.com/DataBiosphere/toil/issues/4644>, and
+    <https://stackoverflow.com/a/67928880> which talks about a similar problem
+    but in the context of user namespaces.
+    """
+    # Make the directory
+    result = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
+    # Grant all the permissions: full control for user, and execute for group and other
+    os.chmod(result, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Return the path created
+    return result
 
 def robust_rmtree(path: Union[str, bytes]) -> None:
     """
@@ -40,6 +59,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # Directory went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
         # We assume the directory going away while we have it open won't upset
         # the listdir iterator.
@@ -56,6 +80,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # Directory went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
     else:
         # It is not or was not a directory.
@@ -65,6 +94,11 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
         except FileNotFoundError:
             # File went away
             return
+        except OSError as exc:
+            if exc.errno == 16:
+                # 'Device or resource busy'
+                return
+            raise
 
 
 def atomic_tmp_file(final_path: str) -> str:
@@ -77,7 +111,7 @@ def atomic_tmp_file(final_path: str) -> str:
         return final_path
     final_basename = os.path.basename(final_path)
     final_ext = os.path.splitext(final_path)[1]
-    base_name = "{}.{}.tmp{}".format(final_basename, uuid.uuid4(), final_ext)
+    base_name = f"{final_basename}.{uuid.uuid4()}.tmp{final_ext}"
     return os.path.join(final_dir, base_name)
 
 
@@ -148,6 +182,44 @@ def make_public_dir(in_directory: Optional[str] = None) -> str:
     os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
 
+def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
+    """
+    Try to use the given path. Return it if it exists or can be made,
+    and we can make things within it, or None otherwise.
+
+    :param min_size: Reject paths on filesystems smaller than this many bytes.
+    """
+
+    try:
+        os.makedirs(path, exist_ok=True)
+    except OSError:
+        # Maybe we lack permissions
+        return None
+
+    if not os.path.exists(path):
+        # We didn't manage to make it
+        return None
+
+    if not os.access(path, os.W_OK):
+        # It doesn't look writable
+        return None
+
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        # Maybe we lack permissions
+        return None
+
+    # Is the filesystem big enough?
+    # We need to look at the FS size and not the free space so we don't change
+    # over to a different filesystem when this one fills up.
+    fs_size = stats.f_frsize * stats.f_blocks
+    if fs_size < min_size:
+        # Too small
+        return None
+
+    return path
+
 
 class WriteWatchingStream:
     """
@@ -156,7 +228,7 @@ class WriteWatchingStream:
     Not seekable.
     """
 
-    def __init__(self, backingStream):
+    def __init__(self, backingStream: IO[Any]) -> None:
         """
         Wrap the given backing stream.
         """
@@ -165,7 +237,7 @@ class WriteWatchingStream:
         # We have no write listeners yet
         self.writeListeners = []
 
-    def onWrite(self, listener):
+    def onWrite(self, listener: Callable[[int], None]) -> None:
         """
         Call the given listener with the number of bytes written on every write.
         """

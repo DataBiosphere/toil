@@ -1,9 +1,11 @@
 import logging
 import os
 import subprocess
+import sys
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -19,11 +21,11 @@ def initialize_jobs(job):
     Stub function used to start a toil workflow since toil workflows can only
     start with one job (but afterwards can run many in parallel).
     '''
-    job.fileStore.logToMaster('''initialize_jobs''')
+    job.fileStore.log_to_leader('''initialize_jobs''')
 
 def writeA(job, mkFile):
     '''Runs a program, and writes a string 'A' into A.txt using mkFile.py.'''
-    job.fileStore.logToMaster('''writeA''')
+    job.fileStore.log_to_leader('''writeA''')
 
     # temp folder for the run
     tempDir = job.fileStore.getLocalTempDir()
@@ -49,7 +51,7 @@ def writeB(job, mkFile, B_file):
     Runs a program, extracts a string 'B' from an existing file, B_file.txt, and
     writes it into B.txt using mkFile.py.
     '''
-    job.fileStore.logToMaster('''writeB''')
+    job.fileStore.log_to_leader('''writeB''')
 
     # temp folder for the run
     tempDir = job.fileStore.getLocalTempDir()
@@ -59,7 +61,7 @@ def writeB(job, mkFile, B_file):
     B_file_fs = job.fileStore.readGlobalFile(B_file[0], userPath=os.path.join(tempDir, B_file[1]))
 
     # make a file (B.txt) and write the contents of 'B_file.txt' into it using 'mkFile.py'
-    with open(B_file_fs, "r") as f:
+    with open(B_file_fs) as f:
         file_contents = ''
         for line in f:
             file_contents = file_contents + line
@@ -77,7 +79,7 @@ def writeB(job, mkFile, B_file):
 
 def writeC(job):
     '''Creates/writes a file, C.txt, containing the string 'C'.'''
-    job.fileStore.logToMaster('''writeC''')
+    job.fileStore.log_to_leader('''writeC''')
 
     # temp folder for the run
     tempDir = job.fileStore.getLocalTempDir()
@@ -93,7 +95,7 @@ def writeC(job):
 
 def writeABC(job, A_dict, B_dict, C_dict, filepath):
     '''Takes 3 files (specified as dictionaries) and writes their contents to ABC.txt.'''
-    job.fileStore.logToMaster('''writeABC''')
+    job.fileStore.log_to_leader('''writeABC''')
 
     # temp folder for the run
     tempDir = job.fileStore.getLocalTempDir()
@@ -104,15 +106,15 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     C_fs = job.fileStore.readGlobalFile(C_dict['C1'][0], userPath=os.path.join(tempDir, C_dict['C1'][1]))
 
     file_contents = ''
-    with open(A_fs, "r") as f:
+    with open(A_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(B_fs, "r") as f:
+    with open(B_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
-    with open(C_fs, "r") as f:
+    with open(C_fs) as f:
         for line in f:
             file_contents = file_contents + line
 
@@ -122,21 +124,22 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
     # get the output file and return it as a tuple of location + name
     output_filename = os.path.join(tempDir, 'ABC.txt')
     output_file = job.fileStore.writeGlobalFile(output_filename)
-    job.fileStore.exportFile(output_file, "file://" + filepath)
+    job.fileStore.export_file(output_file, "file://" + filepath)
 
 
 def finalize_jobs(job, num):
     '''Does nothing but should be recorded in stats, status, and printDot().'''
-    job.fileStore.logToMaster('''finalize_jobs''')
+    job.fileStore.log_to_leader('''finalize_jobs''')
 
 def broken_job(job, num):
     '''A job that will always fail.  To be used for a tutorial.'''
-    job.fileStore.logToMaster('''broken_job''')
+    job.fileStore.log_to_leader('''broken_job''')
     file = toil.importFile(None)
 
 if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    # options.clean = "always"
+    jobStorePath = sys.argv[1] if len(sys.argv) > 1 else mkdtemp("debugWorkflow")
+    options = Job.Runner.getDefaultOptions(jobStorePath)
+    options.clean = "never"
     options.stats = True
     options.logLevel = "INFO"
     with Toil(options) as toil:

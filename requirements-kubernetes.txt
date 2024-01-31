@@ -1,0 +1,9 @@
+kubernetes>=12.0.1, <22
+# Nobody ever published stubs that support Python back to before 3.9, until
+# version 22.6.0 of the Kubernetes module. So we have to use the mismatched
+# stubs.
+kubernetes-stubs==v22.6.0post1
+types-urllib3
+types-PyYAML
+idna>=2
+# Kubernetes's urllib3 can mange to use idna without really depending on it.

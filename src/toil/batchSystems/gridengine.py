@@ -14,11 +14,13 @@
 import logging
 import math
 import os
+import shlex
 import time
-from pipes import quote
-from typing import Optional, List, Dict
+from shlex import quote
+from typing import Dict, List, Optional
 
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import \
+    AbstractGridEngineBatchSystem
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
-                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
             stdout = call_command(["qstat"])
 
             for currline in stdout.split('\n'):
@@ -55,8 +57,17 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None):
-            return self.prepareQsub(cpu, memory, jobID, job_environment) + [command]
+                              job_environment: Optional[Dict[str, str]] = None,
+                              gpus: Optional[int] = None):
+            # POSIX qsub
+            # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
+            # expects a single script argument, which is supposed to be a file.
+            # Toil commands usually are not file names but also include
+            # arguments. So we split off the arguments like the shell would and
+            # hope that the qsub we are using is clever enough to forward along
+            # arguments. Otherwise, some qsubs will go looking for the full
+            # Toil command string as a file.
+            return self.prepareQsub(cpu, memory, jobID, job_environment) + shlex.split(command)
 
         def submitJob(self, subLine):
             stdout = call_command(subLine)
@@ -135,18 +146,20 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if sgeArgs:
                 sgeArgs = sgeArgs.split()
                 for arg in sgeArgs:
-                    if arg.startswith(("vf=", "hvmem=", "-pe")):
+                    if arg.startswith(("vf=", "h_vmem=", "-pe")):
                         raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
                 qsubline.extend(sgeArgs)
-            if os.getenv('TOIL_GRIDENGINE_PE') is not None:
-                peCpu = int(math.ceil(cpu)) if cpu is not None else 1
+            # If cpu == 1 (or None) then don't add PE env variable to the qsub command.
+            #               This will allow for use of the serial queue for these jobs.
+            if (os.getenv('TOIL_GRIDENGINE_PE') is not None) and (cpu is not None) and (cpu > 1) :
+                peCpu = int(math.ceil(cpu))
                 qsubline.extend(['-pe', os.getenv('TOIL_GRIDENGINE_PE'), str(peCpu)])
             elif (cpu is not None) and (cpu > 1):
                 raise RuntimeError("must specify PE in TOIL_GRIDENGINE_PE environment variable when using multiple CPUs. "
                                    "Run qconf -spl and your local documentation for possible values")
 
-            stdoutfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'out')
-            stderrfile: str = self.boss.formatStdOutErrPath(jobID, '$JOB_ID', 'err')
+            stdoutfile: str = self.boss.format_std_out_err_path(jobID, '$JOB_ID', 'out')
+            stderrfile: str = self.boss.format_std_out_err_path(jobID, '$JOB_ID', 'err')
             qsubline.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return qsubline

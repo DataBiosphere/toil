@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2021 Regents of the University of California
+# Copyright (C) 2015-2022 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,38 +15,59 @@
 import logging
 import os
 import signal
+import sys
 
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Config, Toil, getNodeID, parser_with_common_options
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil kill")
+    parser.add_argument('--force', action='store_true',
+                        help="Send SIGKILL to the leader process if local.")
     options = parser.parse_args()
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
-    config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore
 
-    # ':' means an aws/google jobstore; use the old (broken?) method
-    if ':' in config.jobStore:
-        jobStore = Toil.resumeJobStore(config.jobStore)
-        logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
-        # TODO: This behaviour is now broken: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
-        batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
-        for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
-            batchSystem.killBatchJobs(jobID)
-        logger.info("All jobs SHOULD have been killed")
-    # otherwise, kill the pid recorded in the jobstore
-    else:
-        pid_log = os.path.join(os.path.abspath(config.jobStore), 'pid.log')
-        with open(pid_log, 'r') as f:
-            pid2kill = f.read().strip()
+    # Get the job store
+    try:
+        job_store = Toil.resumeJobStore(config.jobStore)
+    except NoSuchJobStoreException:
+        logger.error("The job store %s does not exist.", config.jobStore)
+        return
+
+    # NOTE: the kill will not work if the leader is still initializing at this
+    #  point. Changes to the kill flag will be ignored until the leader sets the
+    #  kill flag.
+
+    # Get the leader PID
+    pid_to_kill = job_store.read_leader_pid()
+
+    # Check if the leader is on the same machine
+    leader_node_id = job_store.read_leader_node_id()
+    local_leader = leader_node_id == getNodeID()
+
+    if local_leader:
+        # Check if we can send signals to the leader. If not, process might be
+        # in another container so we fall back to using the kill flag through
+        # the job store.
         try:
-            os.kill(int(pid2kill), signal.SIGKILL)
-            logger.info("Toil process %s successfully terminated." % str(pid2kill))
+            os.kill(pid_to_kill, 0)
         except OSError:
-            logger.error("Toil process %s could not be terminated." % str(pid2kill))
-            raise
+            local_leader = False
+
+    if local_leader:
+        try:
+            os.kill(pid_to_kill, signal.SIGKILL if options.force else signal.SIGTERM)
+            logger.info("Toil process %i successfully terminated.", pid_to_kill)
+        except OSError:
+            logger.error("Could not signal process %i. Is it still running?", pid_to_kill)
+            sys.exit(1)
+    else:
+        # Flip the flag inside the job store to signal kill
+        job_store.write_kill_flag(kill=True)
+        logger.info("Asked the leader to terminate.")

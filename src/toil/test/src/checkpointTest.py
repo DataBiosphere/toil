@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class CheckpointTest(ToilTest):
-
-    @travis_test
     def testCheckpointNotRetried(self):
         """A checkpoint job should not be retried if the workflow has a retryCount of 0."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -68,23 +66,23 @@ class CheckpointTest(ToilTest):
 class CheckRetryCount(Job):
     """Fail N times, succeed on the next try."""
     def __init__(self, numFailuresBeforeSuccess):
-        super(CheckRetryCount, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
         self.numFailuresBeforeSuccess = numFailuresBeforeSuccess
 
     def getNumRetries(self, fileStore):
         """Mark a retry in the fileStore, and return the number of retries so far."""
         try:
-            with fileStore.jobStore.readSharedFileStream("checkpointRun") as f:
+            with fileStore.jobStore.read_shared_file_stream("checkpointRun") as f:
                 timesRun = int(f.read().decode('utf-8'))
         except NoSuchFileException:
             timesRun = 0
-        with fileStore.jobStore.writeSharedFileStream("checkpointRun") as f:
+        with fileStore.jobStore.write_shared_file_stream("checkpointRun") as f:
             f.write(str(timesRun + 1).encode('utf-8'))
         return timesRun
 
     def run(self, fileStore):
         retryCount = self.getNumRetries(fileStore)
-        fileStore.logToMaster(str(retryCount))
+        fileStore.log_to_leader(str(retryCount))
         if retryCount < self.numFailuresBeforeSuccess:
             self.addChild(AlwaysFail())
 
@@ -94,7 +92,7 @@ class AlwaysFail(Job):
 
 class CheckpointFailsFirstTime(Job):
     def __init__(self):
-        super(CheckpointFailsFirstTime, self).__init__(checkpoint=True)
+        super().__init__(checkpoint=True)
 
     def run(self, fileStore):
         self.addChild(FailOnce())

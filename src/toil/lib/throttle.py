@@ -15,9 +15,10 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import threading
 import time
+from typing import Union
 
 
-class LocalThrottle(object):
+class LocalThrottle:
     """
     A thread-safe rate limiter that throttles each thread independently. Can be used as a
     function or method decorator or as a simple object, via its .throttle() method.
@@ -25,7 +26,7 @@ class LocalThrottle(object):
     The use as a decorator is deprecated in favor of throttle().
     """
 
-    def __init__( self, min_interval ):
+    def __init__(self, min_interval: int) -> None:
         """
         Initialize this local throttle.
 
@@ -33,10 +34,10 @@ class LocalThrottle(object):
         method or, if this throttle is used as a decorator, invocations of the decorated method.
         """
         self.min_interval = min_interval
-        self.per_thread = threading.local( )
+        self.per_thread = threading.local()
         self.per_thread.last_invocation = None
 
-    def throttle( self, wait=True ):
+    def throttle(self, wait: bool = True) -> bool:
         """
         If the wait parameter is True, this method returns True after suspending the current
         thread as necessary to ensure that no less than the configured minimum interval has
@@ -67,7 +68,7 @@ class LocalThrottle(object):
         return wrapper
 
 
-class throttle(object):
+class throttle:
     """
     A context manager for ensuring that the execution of its body takes at least a given amount
     of time, sleeping if necessary. It is a simpler version of LocalThrottle if used as a
@@ -142,7 +143,7 @@ class throttle(object):
     True
     """
 
-    def __init__( self, min_interval ):
+    def __init__(self, min_interval: Union[int, float]) -> None:
         self.min_interval = min_interval
 
     def __enter__( self ):

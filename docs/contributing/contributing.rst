@@ -52,10 +52,10 @@ depend on a currently installed *feature*, use
 This will run only the tests that don't depend on the ``aws`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
-not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the ``parasol`` feature and the ``aws`` extra, use the following::
+not extras, such as the ``gridengine`` feature.  To skip tests
+involving both the ``gridengine`` feature and the ``aws`` extra, use the following::
 
-    $ make test tests="-m 'not aws and not parasol' src"
+    $ make test tests="-m 'not aws and not gridengine' src"
 
 
 
@@ -193,7 +193,7 @@ Making Your Own Toil Docker Image
 **Note!**  Toil checks if the docker image specified by TOIL_APPLIANCE_SELF
 exists prior to launching by using the docker v2 schema.  This should be
 valid for any major docker repository, but there is an option to override
-this if desired using the option: `-\\-forceDockerAppliance`.
+this if desired using the option: ``--forceDockerAppliance``.
 
 Here is a general workflow (similar instructions apply when using Docker Hub):
 
@@ -350,9 +350,9 @@ Naming Conventions
   pull requests with their associated branches at any given point in time and
   this convention ensures that we can easily identify branches.)
 
-  Say there is an issue numbered #123 titled `Foo does not work`. The branch name
+  Say there is an issue numbered #123 titled ``Foo does not work``. The branch name
   would be ``issues/123-fix-foo`` and the title of the commit would be
-  `Fix foo in case of bar (resolves #123).`
+  ``Fix foo in case of bar (resolves #123).``
 
 .. _great: https://chris.beams.io/posts/git-commit/#seven-rules
 
@@ -375,7 +375,7 @@ Pull Requests
 
   .. _Draft Changelog: https://github.com/DataBiosphere/toil/wiki/Draft-Changelog
 
-* Pull requests will not be merged unless Travis and Gitlab CI tests pass.
+* Pull requests will not be merged unless CI tests pass.
   Gitlab tests are only run on code in the main Toil repository on some branch,
   so it is the responsibility of the approving reviewer to make sure that pull
   requests from outside repositories are copied to branches in the main
@@ -468,6 +468,35 @@ These are the steps to take to publish a Toil release:
       baseVersion = 'X.Y+1.0a1'
 
   Make sure to replace ``X`` and ``Y+1`` with actual numbers.
+
+Using Git Hooks
+~~~~~~~~~~~~~~~
+
+In the ``contrib/hooks`` directory, there are two scripts, ``mypy-after-commit.py`` and
+``mypy-before-push.py``, that can be set up as Git hooks to make sure you don't accidentally
+push commits that would immediately fail type-checking. These are supposed to eliminate the
+need to run ``make mypy`` constantly. You can install them into your Git working copy like
+this ::
+
+    ln -rs ./contrib/hooks/mypy-after-commit.py .git/hooks/post-commit
+    ln -rs ./contrib/hooks/mypy-before-push.py .git/hooks/pre-push
+
+After you make a commit, the post-commit script will start type-checking it, and if it takes
+too long re-launch the process in the background. When you push, the pre-push script will see
+if the commit you are pushing type-checked successfully, and if it hasn't been type-checked
+but is currently checked out, it will be type-checked. If type-checking fails, the push will
+be aborted.
+
+Type-checking will only be performed if you are in a Toil development virtual environment. If
+you aren't, the scripts won't do anything.
+
+To bypass or override pre-push hook, if it is wrong or if you need to push something that
+doesn't typecheck, you can ``git push --no-verify``. If the scripts get confused about whether
+a commit actually typechecks, you can clear out the type-checking result cache, which is in
+``/var/run/user/<your UID>/.mypy_toil_result_cache`` on Linux and in ``.mypy_toil_result_cache``
+in the Toil repo on Mac.
+
+To uninstall the scripts, delete ``.git/hooks/post-commit`` and ``.git/hooks/pre-push``.
 
 Adding Retries to a Function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

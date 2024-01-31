@@ -4,7 +4,7 @@ Also contains general conversion functions
 """
 
 import math
-from typing import Optional, SupportsInt, Tuple
+from typing import SupportsInt, Tuple, Union
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
@@ -46,8 +46,10 @@ def convert_units(num: float,
                   src_unit: str,
                   dst_unit: str = 'B') -> float:
     """Returns a float representing the converted input in dst_units."""
-    assert src_unit.lower() in VALID_PREFIXES, f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}."
-    assert dst_unit.lower() in VALID_PREFIXES, f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}."
+    if not src_unit.lower() in VALID_PREFIXES:
+        raise RuntimeError(f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
+    if not dst_unit.lower() in VALID_PREFIXES:
+        raise RuntimeError(f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
@@ -60,7 +62,8 @@ def parse_memory_string(string: str) -> Tuple[float, str]:
         # find the first character of the unit
         if character not in '0123456789.-_ ':
             units = string[i:].strip()
-            assert units.lower() in VALID_PREFIXES, f"{units} not a valid unit, valid units are {VALID_PREFIXES}."
+            if not units.lower() in VALID_PREFIXES:
+                raise RuntimeError(f"{units} not a valid unit, valid units are {VALID_PREFIXES}.")
             return float(string[:i]), units
     return float(string), 'b'
 
@@ -71,6 +74,7 @@ def human2bytes(string: str) -> int:
     integer number of bytes.
     """
     value, unit = parse_memory_string(string)
+
     return int(convert_units(value, src_unit=unit, dst_unit='b'))
 
 
@@ -88,6 +92,19 @@ def bytes2human(n: SupportsInt) -> str:
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
     return f'{value:.1f} {unit}'
+    
+def b_to_mib(n: Union[int, float]) -> float:
+    """
+    Convert a number from bytes to mibibytes.
+    """
+    return convert_units(n, 'b', 'mib')
+
+
+def mib_to_b(n: Union[int, float]) -> float:
+    """
+    Convert a number from mibibytes to bytes.
+    """
+    return convert_units(n, 'mib', 'b')
 
 #General Conversions
 

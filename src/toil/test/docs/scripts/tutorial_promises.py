@@ -1,13 +1,19 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def fn(job, i):
     job.log("i is: %s" % i, level=100)
-    return i+1
+    return i + 1
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_promises")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

@@ -13,33 +13,34 @@
 # limitations under the License.
 import os
 import stat
-
 from typing import Any
 
 
 class FileID(str):
     """
-    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
-    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
+    A small wrapper around Python's builtin string class.
 
-    Calls into the file store can use bare strings; size will be queried from the job store if unavailable in the ID.
+    It is used to represent a file's ID in the file store, and has a size attribute
+    that is the file's size in bytes. This object is returned by importFile and
+    writeGlobalFile.
+
+    Calls into the file store can use bare strings; size will be queried from
+    the job store if unavailable in the ID.
     """
 
     def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
-        return super(FileID, cls).__new__(cls, fileStoreID)
+        return super().__new__(cls, fileStoreID)
 
-    def __init__(self, fileStoreID: str, size: int, executable: bool = False):
+    def __init__(self, fileStoreID: str, size: int, executable: bool = False) -> None:
         # Don't pass an argument to parent class's __init__.
         # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
-        super(FileID, self).__init__()
+        super().__init__()
         self.size = size
         self.executable = executable
 
     def pack(self) -> str:
-        """
-        Pack the FileID into a string so it can be passed through external code.
-        """
-        return '{}:{}:{}'.format(self.size, int(self.executable), self)
+        """Pack the FileID into a string so it can be passed through external code."""
+        return f'{self.size}:{"1" if self.executable else "0"}:{self}'
 
     @classmethod
     def forPath(cls, fileStoreID: str, filePath: str) -> 'FileID':
@@ -48,14 +49,12 @@ class FileID(str):
 
     @classmethod
     def unpack(cls, packedFileStoreID: str) -> 'FileID':
-        """
-        Unpack the result of pack() into a FileID object.
-        """
+        """Unpack the result of pack() into a FileID object."""
         # Only separate twice in case the FileID itself has colons in it
         vals = packedFileStoreID.split(':', 2)
         # Break up the packed value
         size = int(vals[0])
-        executable = bool(vals[1])
+        executable = (vals[1] == "1")
         value = vals[2]
         # Create the FileID
         return cls(value, size, executable)

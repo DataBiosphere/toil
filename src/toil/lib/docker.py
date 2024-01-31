@@ -17,6 +17,7 @@ import os
 import re
 import struct
 from shlex import quote
+from typing import List, Optional
 
 import requests
 
@@ -26,6 +27,7 @@ from docker.errors import (ContainerError,
                            NotFound,
                            create_api_error_from_http_exception)
 from docker.utils.socket import consume_socket_output, demux_adaptor
+from toil.lib.accelerators import get_host_accelerator_numbers
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +70,7 @@ def apiDockerCall(job,
                   stream=False,
                   demux=False,
                   streamfile=None,
+                  accelerators: Optional[List[int]] = None,
                   timeout=365 * 24 * 60 * 60,
                   **kwargs):
     """
@@ -80,16 +83,17 @@ def apiDockerCall(job,
     jobs, with the intention that failed/orphaned docker jobs be handled
     appropriately.
 
-    Example of using dockerCall in toil to index a FASTA file with SAMtools:
-    def toil_job(job):
-        working_dir = job.fileStore.getLocalTempDir()
-        path = job.fileStore.readGlobalFile(ref_id,
-                                          os.path.join(working_dir, 'ref.fasta')
-        parameters = ['faidx', path]
-        apiDockerCall(job,
-                      image='quay.io/ucgc_cgl/samtools:latest',
-                      working_dir=working_dir,
-                      parameters=parameters)
+    Example of using dockerCall in toil to index a FASTA file with SAMtools::
+
+        def toil_job(job):
+            working_dir = job.fileStore.getLocalTempDir()
+            path = job.fileStore.readGlobalFile(ref_id,
+                                              os.path.join(working_dir, 'ref.fasta')
+            parameters = ['faidx', path]
+            apiDockerCall(job,
+                          image='quay.io/ucgc_cgl/samtools:latest',
+                          working_dir=working_dir,
+                          parameters=parameters)
 
     Note that when run with detach=False, or with detach=True and stdout=True
     or stderr=True, this is a blocking call. When run with detach=True and
@@ -99,13 +103,13 @@ def apiDockerCall(job,
     :param toil.Job.job job: The Job instance for the calling function.
     :param str image: Name of the Docker image to be used.
                      (e.g. 'quay.io/ucsc_cgl/samtools:latest')
-    :param list[str] parameters: A list of string elements.  If there are
+    :param list[str] parameters: A list of string elements. If there are
                                  multiple elements, these will be joined with
-                                 spaces.  This handling of multiple elements
+                                 spaces. This handling of multiple elements
                                  provides backwards compatibility with previous
                                  versions which called docker using
                                  subprocess.check_call().
-                                 **If list of lists: list[list[str]], then treat
+                                 If list of lists: list[list[str]], then treat
                                  as successive commands chained with pipe.
     :param str working_dir: The working directory.
     :param int deferParam: Action to take on the container upon job completion.
@@ -151,6 +155,11 @@ def apiDockerCall(job,
                         not always able to abort ongoing reads and writes in order
                         to respect the timeout. Defaults to 1 year (i.e. wait
                         essentially indefinitely).
+    :param accelerators: Toil accelerator numbers (usually GPUs) to forward to
+                         the container. These are interpreted in the current
+                         Python process's environment. See
+                         toil.lib.accelerators.get_individual_local_accelerators()
+                         for the menu of available accelerators.
     :param kwargs: Additional keyword arguments supplied to the docker API's
                    run command.  The list is 75 keywords total, for examples
                    and full documentation see:
@@ -190,7 +199,7 @@ def apiDockerCall(job,
         if entrypoint is None:
             entrypoint = ['/bin/bash', '-c']
         chain_params = \
-            [' '.join((quote(arg) for arg in command)) \
+            [' '.join(quote(arg) for arg in command) \
              for command in parameters]
         command = ' | '.join(chain_params)
         pipe_prefix = "set -eo pipefail && "
@@ -204,7 +213,7 @@ def apiDockerCall(job,
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = ' '.join((quote(arg) for arg in parameters))
+        command = ' '.join(quote(arg) for arg in parameters)
         logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which
@@ -216,8 +225,8 @@ def apiDockerCall(job,
     working_dir = os.path.abspath(working_dir)
 
     # Ensure the user has passed a valid value for deferParam
-    assert deferParam in (None, FORGO, STOP, RM), \
-        'Please provide a valid value for deferParam.'
+    if deferParam not in (None, FORGO, STOP, RM):
+        raise RuntimeError('Please provide a valid value for deferParam.')
 
     client = docker.from_env(version='auto', timeout=timeout)
 
@@ -237,6 +246,27 @@ def apiDockerCall(job,
 
     if auto_remove is None:
         auto_remove = remove
+
+    device_requests = []
+    if accelerators:
+        # Map accelerator numbers to host numbers
+        host_accelerators = []
+        accelerator_mapping = get_host_accelerator_numbers()
+        for our_number in accelerators:
+            if our_number >= len(accelerator_mapping):
+                raise RuntimeError(
+                    f"Cannot forward accelerator {our_number} because only "
+                    f"{len(accelerator_mapping)} accelerators are available "
+                    f"to this job."
+                )
+            host_accelerators.append(accelerator_mapping[our_number])
+        # TODO: Here we assume that the host accelerators are all GPUs
+        device_requests.append(
+            docker.types.DeviceRequest(
+                device_ids=[','.join(host_accelerators)],
+                capabilities=[['gpu']]
+            )
+        )
 
     try:
         if detach is False:
@@ -261,6 +291,7 @@ def apiDockerCall(job,
                                         log_config=log_config,
                                         user=user,
                                         environment=environment,
+                                        device_requests=device_requests,
                                         **kwargs)
 
             if demux is False:
@@ -303,6 +334,7 @@ def apiDockerCall(job,
                                               log_config=log_config,
                                               user=user,
                                               environment=environment,
+                                              device_requests=device_requests,
                                               **kwargs)
             if stdout or stderr:
                 if streamfile is None:
@@ -381,12 +413,11 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
 
     :param container_name: Name of the container being checked.
     :param int timeout: Use the given timeout in seconds for interactions with
-                        the Docker daemon. Note that the underlying docker module is
-                        not always able to abort ongoing reads and writes in order
-                        to respect the timeout. Defaults to 1 year (i.e. wait
-                        essentially indefinitely).
+        the Docker daemon. Note that the underlying docker module is not always
+        able to abort ongoing reads and writes in order to respect the timeout.
+        Defaults to 1 year (i.e. wait essentially indefinitely).
     :returns: True if status is 'running', False if status is anything else,
-    and None if the container does not exist.
+        and None if the container does not exist.
     """
     client = docker.from_env(version='auto', timeout=timeout)
     try:
@@ -399,7 +430,7 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
     except NotFound:
         return None
     except requests.exceptions.HTTPError as e:
-        logger.debug("Server error attempting to call container: ",
+        logger.debug("Server error attempting to call container: %s",
                      container_name)
         raise create_api_error_from_http_exception(e)
 
@@ -407,7 +438,7 @@ def containerIsRunning(container_name: str, timeout: int = 365 * 24 * 60 * 60):
 def getContainerName(job):
     """
     Create a random string including the job name, and return it. Name will
-    match [a-zA-Z0-9][a-zA-Z0-9_.-]
+    match ``[a-zA-Z0-9][a-zA-Z0-9_.-]``.
     """
     parts = ['toil', str(job.description), base64.b64encode(os.urandom(9), b'-_').decode('utf-8')]
     name = re.sub('[^a-zA-Z0-9_.-]', '', '--'.join(parts))

@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import configparser
+import json
 import logging
 import os.path
 import subprocess
 import tempfile
 import textwrap
-import json
 from abc import ABC, abstractmethod
-
 from functools import total_ordering
-from typing import List, Dict, Tuple, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from urllib.parse import quote
 from uuid import uuid4
 
@@ -42,11 +41,10 @@ class ManagedNodesNotSupportedException(RuntimeError):
     Polling with this and try/except is the Right Way to check if managed nodes
     are available from a provisioner.
     """
-    pass
 
 
 @total_ordering
-class Shape(object):
+class Shape:
     """
     Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
     wall-time allocation.
@@ -57,25 +55,31 @@ class Shape(object):
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
-
-    def __init__(self, wallTime, memory, cores, disk, preemptable):
+    def __init__(
+        self,
+        wallTime: Union[int, float],
+        memory: int,
+        cores: Union[int, float],
+        disk: int,
+        preemptible: bool,
+    ) -> None:
         self.wallTime = wallTime
         self.memory = memory
         self.cores = cores
         self.disk = disk
-        self.preemptable = preemptable
+        self.preemptible = preemptible
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return (self.wallTime == other.wallTime and
                 self.memory == other.memory and
                 self.cores == other.cores and
                 self.disk == other.disk and
-                self.preemptable == other.preemptable)
+                self.preemptible == other.preemptible)
 
-    def greater_than(self, other):
-        if self.preemptable < other.preemptable:
+    def greater_than(self, other: Any) -> bool:
+        if self.preemptible < other.preemptible:
             return True
-        elif self.preemptable > other.preemptable:
+        elif self.preemptible > other.preemptible:
             return False
         elif self.memory > other.memory:
             return True
@@ -96,38 +100,44 @@ class Shape(object):
         else:
             return False
 
-    def __gt__(self, other):
+    def __gt__(self, other: Any) -> bool:
         return self.greater_than(other)
 
-    def __repr__(self):
-        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
+    def __repr__(self) -> str:
+        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptible=%s)" % \
                (self.wallTime,
                 self.memory,
                 self.cores,
                 self.disk,
-                self.preemptable)
+                self.preemptible)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.__repr__()
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         # Since we replaced __eq__ we need to replace __hash__ as well.
         return hash(
             (self.wallTime,
              self.memory,
              self.cores,
              self.disk,
-             self.preemptable))
+             self.preemptible))
 
 
 class AbstractProvisioner(ABC):
-    """
-    An abstract base class to represent the interface for provisioning worker nodes to use in a
-    Toil cluster.
-    """
-    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
+    """Interface for provisioning worker nodes to use in a Toil cluster."""
 
-    def __init__(self, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None):
+    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
+    cloud: str = None
+
+    def __init__(
+        self,
+        clusterName: Optional[str] = None,
+        clusterType: Optional[str] = "mesos",
+        zone: Optional[str] = None,
+        nodeStorage: int = 50,
+        nodeStorageOverrides: Optional[List[str]] = None,
+    ) -> None:
         """
         Initialize provisioner.
 
@@ -342,13 +352,13 @@ class AbstractProvisioner(ABC):
         self._shape_to_instance_type = {}
 
         for node_type in nodeTypes:
-            preemptable = node_type[1] is not None
-            if preemptable:
+            preemptible = node_type[1] is not None
+            if preemptible:
                 # Record the spot bid for the whole equivalence class
                 self._spotBidsMap[frozenset(node_type[0])] = node_type[1]
             for instance_type_name in node_type[0]:
                 # Record the instance shape and associated type.
-                shape = self.getNodeShape(instance_type_name, preemptable)
+                shape = self.getNodeShape(instance_type_name, preemptible)
                 self._shape_to_instance_type[shape] = instance_type_name
 
     def hasAutoscaledNodeTypes(self) -> bool:
@@ -402,36 +412,42 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None):
+    def addNodes(
+        self,
+        nodeTypes: Set[str],
+        numNodes: int,
+        preemptible: bool,
+        spotBid: Optional[float] = None,
+    ) -> int:
         """
         Used to add worker nodes to the cluster
 
         :param numNodes: The number of nodes to add
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :param preemptible: whether or not the nodes will be preemptible
+        :param spotBid: The bid for preemptible nodes if applicable (this can be set in config, also).
         :return: number of nodes successfully added
         """
         raise NotImplementedError
 
-    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
-        The nodes will automatically be launched and termianted depending on cluster load.
+        The nodes will automatically be launched and terminated depending on cluster load.
 
         Raises ManagedNodesNotSupportedException if the provisioner
         implementation or cluster configuration can't have managed nodes.
 
         :param minNodes: The minimum number of nodes to scale to
         :param maxNodes: The maximum number of nodes to scale to
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :param preemptible: whether or not the nodes will be preemptible
+        :param spotBid: The bid for preemptible nodes if applicable (this can be set in config, also).
         """
 
         # Not available by default
         raise ManagedNodesNotSupportedException("Managed nodes not supported by this provisioner")
 
     @abstractmethod
-    def terminateNodes(self, nodes):
+    def terminateNodes(self, nodes: List[Node]) -> None:
         """
         Terminate the nodes represented by given Node objects
 
@@ -447,36 +463,34 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None):
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
         """
         Gets all nodes, optionally of the given instance type or
         preemptability, from the provisioner. Includes both static and
         autoscaled nodes.
 
-        :param preemptable: Boolean value to restrict to preemptable
-               nodes or non-preemptable nodes
+        :param preemptible: Boolean value to restrict to preemptible
+               nodes or non-preemptible nodes
         :return: list of Node objects
         """
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, instance_type: str, preemptable=False):
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         """
-        The shape of a preemptable or non-preemptable node managed by this provisioner. The node
+        The shape of a preemptible or non-preemptible node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
         :param str instance_type: Instance type name to return the shape of.
-
-        :rtype: Shape
         """
         raise NotImplementedError
 
     @abstractmethod
-    def destroyCluster(self):
+    def destroyCluster(self) -> None:
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
-        cluser.
+        cluster.
         :param clusterName: identifier of the cluster to terminate.
         """
         raise NotImplementedError
@@ -496,7 +510,7 @@ class AbstractProvisioner(ABC):
             # Holds strings like "ssh-rsa actualKeyData" for keys to authorize (independently of cloud provider's system)
             self.sshPublicKeys = []
 
-        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = ''):
+        def addFile(self, path: str, filesystem: str = 'root', mode: Union[str, int] = '0755', contents: str = '', append: bool = False):
             """
             Make a file on the instance with the given filesystem, mode, and contents.
 
@@ -510,7 +524,12 @@ class AbstractProvisioner(ABC):
 
             contents = 'data:,' + quote(contents.encode('utf-8'))
 
-            self.files.append({'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}})
+            ignition_file = {'path': path, 'filesystem': filesystem, 'mode': mode, 'contents': {'source': contents}}
+
+            if append:
+                ignition_file["append"] = append
+
+            self.files.append(ignition_file)
 
         def addUnit(self, name: str, enabled: bool = True, contents: str = ''):
             """
@@ -589,12 +608,22 @@ class AbstractProvisioner(ABC):
         """
         Add a service to prepare and mount local scratch volumes.
         """
+
+        # TODO: when
+        # https://www.flatcar.org/docs/latest/setup/storage/mounting-storage/
+        # describes how to collect all the ephemeral disks declaratively and
+        # make Ignition RAID them, stop doing it manually. Might depend on real
+        # solution for https://github.com/coreos/ignition/issues/1126
+        #
+        # TODO: check what kind of instance this is, and what ephemeral volumes
+        # *should* be there, and declaratively RAID and mount them.
         config.addFile("/home/core/volumes.sh", contents=textwrap.dedent("""\
             #!/bin/bash
             set -x
             ephemeral_count=0
             drives=()
-            directories=(toil mesos docker kubelet cwl)
+            # Directories are relative to /var
+            directories=(lib/toil lib/mesos lib/docker lib/kubelet lib/cwl tmp)
             for drive in /dev/xvd{a..z} /dev/nvme{0..26}n1; do
                 echo "checking for ${drive}"
                 if [ -b $drive ]; then
@@ -626,7 +655,7 @@ class AbstractProvisioner(ABC):
             if (("$ephemeral_count" == "0" )); then
                 echo "no ephemeral drive"
                 for directory in "${directories[@]}"; do
-                    sudo mkdir -p /var/lib/$directory
+                    sudo mkdir -p /var/$directory
                 done
                 exit 0
             fi
@@ -647,11 +676,12 @@ class AbstractProvisioner(ABC):
                 sudo mount /dev/md0 /mnt/ephemeral
             fi
             for directory in "${directories[@]}"; do
-                sudo mkdir -p /mnt/ephemeral/var/lib/$directory
-                sudo mkdir -p /var/lib/$directory
-                sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
+                sudo mkdir -p /mnt/ephemeral/var/$directory
+                sudo mkdir -p /var/$directory
+                sudo mount --bind /mnt/ephemeral/var/$directory /var/$directory
             done
             """))
+        # TODO: Make this retry?
         config.addUnit("volume-mounting.service", contents=textwrap.dedent("""\
             [Unit]
             Description=mounts ephemeral volumes & bind mounts toil directories
@@ -687,7 +717,7 @@ class AbstractProvisioner(ABC):
                 -v /:/rootfs \\
                 --name node-exporter \\
                 --restart always \\
-                quay.io/prometheus/node-exporter:v0.15.2 \\
+                quay.io/prometheus/node-exporter:v1.3.1 \\
                 --path.procfs /host/proc \\
                 --path.sysfs /host/sys \\
                 --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
@@ -696,7 +726,10 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addToilService(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptable: bool = False):
+    def toil_service_env_options(self) -> str:
+        return "-e TMPDIR=/var/tmp"
+
+    def add_toil_service(self, config: InstanceConfiguration, role: str, keyPath: str = None, preemptible: bool = False):
         """
         Add the Toil leader or worker service to an instance configuration.
 
@@ -706,7 +739,7 @@ class AbstractProvisioner(ABC):
 
         :param role: Should be 'leader' or 'worker'. Will not work for 'worker' until leader credentials have been collected.
         :param keyPath: path on the node to a server-side encryption key that will be added to the node after it starts. The service will wait until the key is present before starting.
-        :param preemptable: Whether a woeker should identify itself as preemptable or not to the scheduler.
+        :param preemptible: Whether a worker should identify itself as preemptible or not to the scheduler.
         """
 
         # If keys are rsynced, then the mesos-agent needs to be started after the keys have been
@@ -717,7 +750,7 @@ class AbstractProvisioner(ABC):
         LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
         # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
         # Mesos attempts to contact systemd but can't find its run file)
-        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+        WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptible:{preemptible} --no-hostname_lookup --no-systemd_enable_support'
 
         if self.clusterType == 'mesos':
             if role == 'leader':
@@ -726,7 +759,7 @@ class AbstractProvisioner(ABC):
             elif role == 'worker':
                 entryPoint = 'mesos-agent'
                 entryPointArgs = MESOS_LOG_DIR + WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
-                                                                           preemptable=preemptable)
+                                                                           preemptible=preemptible)
             else:
                 raise RuntimeError("Unknown role %s" % role)
         elif self.clusterType == 'kubernetes':
@@ -749,6 +782,9 @@ class AbstractProvisioner(ABC):
             entryPointArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, entryPointArgs])
             entryPoint = "customDockerInit.sh"
 
+        # Set up the service. Make sure to make it default to using the
+        # actually-big temp directory of /var/tmp (see
+        # https://systemd.io/TEMPORARY_DIRECTORIES/).
         config.addUnit(f"toil-{role}.service", contents=textwrap.dedent(f'''\
             [Unit]
             Description=toil-{role} container
@@ -761,17 +797,25 @@ class AbstractProvisioner(ABC):
             ExecStartPre=-/usr/bin/docker rm toil_{role}
             ExecStartPre=-/usr/bin/bash -c '{customInitCmd()}'
             ExecStart=/usr/bin/docker run \\
+                {self.toil_service_env_options()} \\
                 --entrypoint={entryPoint} \\
                 --net=host \\
+                --init \\
                 -v /var/run/docker.sock:/var/run/docker.sock \\
+                -v /run/lock:/run/lock \\
                 -v /var/lib/mesos:/var/lib/mesos \\
                 -v /var/lib/docker:/var/lib/docker \\
                 -v /var/lib/toil:/var/lib/toil \\
                 -v /var/lib/cwl:/var/lib/cwl \\
+                -v /var/tmp:/var/tmp \\
                 -v /tmp:/tmp \\
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
+                # These rules are necessary in order to get user namespaces working
+                # https://github.com/apptainer/singularity/issues/5806
+                --security-opt seccomp=unconfined \\
+                --security-opt systempaths=unconfined\\
                 --name=toil_{role} \\
                 {applianceSelf()} \\
                 {entryPointArgs}
@@ -780,15 +824,18 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def getKubernetesValues(self):
+    def getKubernetesValues(self, architecture: str = 'amd64'):
         """
         Returns a dict of Kubernetes component versions and paths for formatting into Kubernetes-related templates.
         """
+        cloud_provider = self.getKubernetesCloudProvider()
         return dict(
+            ARCHITECTURE=architecture,
             CNI_VERSION="v0.8.2",
             CRICTL_VERSION="v1.17.0",
             CNI_DIR="/opt/cni/bin",
             DOWNLOAD_DIR="/opt/bin",
+            SETUP_STATE_DIR="/etc/toil/kubernetes",
             # This is the version of Kubernetes to use
             # Get current from: curl -sSL https://dl.k8s.io/release/stable.txt
             # Make sure it is compatible with the kubelet.service unit we ship, or update that too.
@@ -804,16 +851,16 @@ class AbstractProvisioner(ABC):
             METRICS_API_VERSION="v0.3.7",
             CLUSTER_NAME=self.clusterName,
             # YAML line that tells the Kubelet to use a cloud provider, if we need one.
-            CLOUD_PROVIDER_SPEC=('cloud-provider: ' + self.getKubernetesCloudProvider()) if self.getKubernetesCloudProvider() else ''
+            CLOUD_PROVIDER_SPEC=('cloud-provider: ' + cloud_provider) if cloud_provider else ''
         )
 
-    def addKubernetesServices(self, config: InstanceConfiguration):
+    def addKubernetesServices(self, config: InstanceConfiguration, architecture: str = 'amd64'):
         """
         Add installing Kubernetes and Kubeadm and setting up the Kubelet to run when configured to an instance configuration.
         The same process applies to leaders and workers.
         """
 
-        values = self.getKubernetesValues()
+        values = self.getKubernetesValues(architecture)
 
         # We're going to ship the Kubelet service from Kubernetes' release pipeline via cloud-config
         config.addUnit("kubelet.service", contents=textwrap.dedent('''\
@@ -858,21 +905,33 @@ class AbstractProvisioner(ABC):
             ''').format(**values))
 
         # Before we let the kubelet try to start, we have to actually download it (and kubeadm)
+        # We set up this service so it can restart on failure despite not
+        # leaving a process running, see
+        # <https://github.com/openshift/installer/pull/604> and
+        # <https://github.com/litew/droid-config-ham/commit/26601d85d9d972dc1560096db1c419fd6fd9b238>
+        # We use a forking service with RemainAfterExit, since that lets
+        # restarts work if the script fails. We also use a condition which
+        # treats the service as successful and skips it if it made a file to
+        # say it already ran.
         config.addFile("/home/core/install-kubernetes.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
+            FLAG_FILE="{SETUP_STATE_DIR}/install-kubernetes.done"
 
             # Make sure we have Docker enabled; Kubeadm later might complain it isn't.
             systemctl enable docker.service
 
             mkdir -p {CNI_DIR}
-            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-amd64-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
+            curl -L "https://github.com/containernetworking/plugins/releases/download/{CNI_VERSION}/cni-plugins-linux-{ARCHITECTURE}-{CNI_VERSION}.tgz" | tar -C {CNI_DIR} -xz
             mkdir -p {DOWNLOAD_DIR}
-            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-amd64.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
+            curl -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/{CRICTL_VERSION}/crictl-{CRICTL_VERSION}-linux-{ARCHITECTURE}.tar.gz" | tar -C {DOWNLOAD_DIR} -xz
 
             cd {DOWNLOAD_DIR}
-            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/amd64/{{kubeadm,kubelet,kubectl}}
+            curl -L --remote-name-all https://storage.googleapis.com/kubernetes-release/release/{KUBERNETES_VERSION}/bin/linux/{ARCHITECTURE}/{{kubeadm,kubelet,kubectl}}
             chmod +x {{kubeadm,kubelet,kubectl}}
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
         config.addUnit("install-kubernetes.service", contents=textwrap.dedent('''\
             [Unit]
@@ -880,15 +939,19 @@ class AbstractProvisioner(ABC):
             Wants=network-online.target
             After=network-online.target
             Before=kubelet.service
+            ConditionPathExists=!{SETUP_STATE_DIR}/install-kubernetes.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/install-kubernetes.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            RequiredBy=kubelet.service
+            ''').format(**values))
 
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
@@ -988,6 +1051,8 @@ class AbstractProvisioner(ABC):
             #!/usr/bin/env bash
             set -e
 
+            FLAG_FILE="{SETUP_STATE_DIR}/create-kubernetes-cluster.done"
+
             export PATH="$PATH:{DOWNLOAD_DIR}"
 
             # We need the kubelet being restarted constantly by systemd while kubeadm is setting up.
@@ -997,7 +1062,10 @@ class AbstractProvisioner(ABC):
             # We also need to set the hostname for 'kubeadm init' to work properly.
             /bin/sh -c "/usr/bin/hostnamectl set-hostname $(curl -s http://169.254.169.254/latest/meta-data/hostname)"
 
-            kubeadm init --config /home/core/kubernetes-leader.yml
+            if [[ ! -e /etc/kubernetes/admin.conf ]] ; then
+                # Only run this once, it isn't idempotent
+                kubeadm init --config /home/core/kubernetes-leader.yml
+            fi
 
             mkdir -p $HOME/.kube
             cp /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -1023,6 +1091,9 @@ class AbstractProvisioner(ABC):
             echo "JOIN_TOKEN=$(kubeadm token create --ttl 0)" >>/etc/kubernetes/worker.ini
             echo "JOIN_CERT_HASH=sha256:$(openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //')" >>/etc/kubernetes/worker.ini
             echo "JOIN_ENDPOINT=$(hostname):6443" >>/etc/kubernetes/worker.ini
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
         config.addUnit("create-kubernetes-cluster.service", contents=textwrap.dedent('''\
             [Unit]
@@ -1031,15 +1102,19 @@ class AbstractProvisioner(ABC):
             After=docker.service
             Before=toil-leader.service
             # Can't be before kubelet.service because Kubelet has to come up as we run this.
+            ConditionPathExists=!{SETUP_STATE_DIR}/create-kubernetes-cluster.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/create-kubernetes-cluster.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            RequiredBy=toil-leader.service
+            ''').format(**values))
 
         # We also need a node cleaner service
         config.addFile("/home/core/cleanup-nodes.sh", contents=textwrap.dedent('''\
@@ -1065,7 +1140,8 @@ class AbstractProvisioner(ABC):
         config.addUnit("cleanup-nodes.service", contents=textwrap.dedent('''\
             [Unit]
             Description=Remove scaled-in nodes
-            After=install-kubernetes.service
+            After=create-kubernetes-cluster.service
+            Requires=create-kubernetes-cluster.service
             [Service]
             ExecStart=/home/core/cleanup-nodes.sh
             Restart=always
@@ -1075,7 +1151,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptable: bool = False):
+    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptible: bool = False):
         """
         Add services to configure as a Kubernetes worker, if Kubernetes is
         already set to be installed.
@@ -1085,17 +1161,17 @@ class AbstractProvisioner(ABC):
 
         :param config: The configuration to add services to
         :param authVars: Dict with authentication info
-        :param preemptable: Whether the worker should be labeled as preemptable or not
+        :param preemptible: Whether the worker should be labeled as preemptible or not
         """
 
         # Collect one combined set of auth and general settings.
         values = dict(**self.getKubernetesValues(), **authVars)
 
-        # Mark the node as preemptable if it is.
+        # Mark the node as preemptible if it is.
         # TODO: We use the same label that EKS uses here, because nothing is standardized.
         # This won't be quite appropriate as we aren't on EKS and we might not
         # even be on AWS, but the batch system should understand it.
-        values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptable else ''
+        values['WORKER_LABEL_SPEC'] = 'node-labels: "eks.amazonaws.com/capacityType=SPOT"' if preemptible else ''
 
         # Kubeadm worker configuration
         config.addFile("/home/core/kubernetes-worker.yml", mode='0644', contents=textwrap.dedent('''\
@@ -1122,6 +1198,7 @@ class AbstractProvisioner(ABC):
         config.addFile("/home/core/join-kubernetes-cluster.sh", contents=textwrap.dedent('''\
             #!/usr/bin/env bash
             set -e
+            FLAG_FILE="{SETUP_STATE_DIR}/join-kubernetes-cluster.done"
 
             export PATH="$PATH:{DOWNLOAD_DIR}"
 
@@ -1130,6 +1207,9 @@ class AbstractProvisioner(ABC):
             systemctl start kubelet
 
             kubeadm join {JOIN_ENDPOINT} --config /home/core/kubernetes-worker.yml
+
+            mkdir -p "{SETUP_STATE_DIR}"
+            touch "$FLAG_FILE"
             ''').format(**values))
 
         config.addUnit("join-kubernetes-cluster.service", contents=textwrap.dedent('''\
@@ -1138,17 +1218,21 @@ class AbstractProvisioner(ABC):
             After=install-kubernetes.service
             After=docker.service
             # Can't be before kubelet.service because Kubelet has to come up as we run this.
+            Requires=install-kubernetes.service
+            ConditionPathExists=!{SETUP_STATE_DIR}/join-kubernetes-cluster.done
 
             [Service]
-            Type=oneshot
-            Restart=no
             ExecStart=/usr/bin/bash /home/core/join-kubernetes-cluster.sh
+            Type=forking
+            RemainAfterExit=yes
+            Restart=on-failure
+            RestartSec=5s
 
             [Install]
             WantedBy=multi-user.target
-            '''))
+            ''').format(**values))
 
-    def _getIgnitionUserData(self, role, keyPath=None, preemptable=False):
+    def _getIgnitionUserData(self, role, keyPath=None, preemptible=False, architecture='amd64'):
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 
@@ -1156,7 +1240,7 @@ class AbstractProvisioner(ABC):
         the worker to the leader.
 
         :param str keyPath: The path of a secret key for the worker to wait for the leader to create on it.
-        :param bool preemptable: Set to true for a worker node to identify itself as preemptible in the cluster.
+        :param bool preemptible: Set to true for a worker node to identify itself as preemptible in the cluster.
         """
 
         # Start with a base config
@@ -1164,7 +1248,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'kubernetes':
             # Install Kubernetes
-            self.addKubernetesServices(config)
+            self.addKubernetesServices(config, architecture)
 
             if role == 'leader':
                 # Set up the cluster
@@ -1175,7 +1259,7 @@ class AbstractProvisioner(ABC):
 
         if self.clusterType == 'mesos' or role == 'leader':
             # Leaders, and all nodes in a Mesos cluster, need a Toil service
-            self.addToilService(config, role, keyPath, preemptable)
+            self.add_toil_service(config, role, keyPath, preemptible)
 
         if role == 'worker' and self._leaderWorkerAuthentication is not None:
             # We need to connect the worker to the leader.
@@ -1188,7 +1272,7 @@ class AbstractProvisioner(ABC):
                 # TODO: this puts sufficient info to fake a malicious worker
                 # into the worker config, which probably is accessible by
                 # anyone in the cloud account.
-                self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptable=preemptable)
+                self.addKubernetesWorker(config, self._leaderWorkerAuthentication, preemptible=preemptible)
 
         # Make it into a string for Ignition
         user_data = config.toIgnitionConfig()

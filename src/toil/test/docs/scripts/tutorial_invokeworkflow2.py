@@ -1,23 +1,30 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 class HelloWorld(Job):
     def __init__(self, message):
-        Job.__init__(self,  memory="2G", cores=2, disk="3G")
+        Job.__init__(self)
         self.message = message
 
     def run(self, fileStore):
-        self.log("Hello, world!, I have a message: {}".format(self.message))
+        return f"Hello, world!, I have a message: {self.message}"
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_invokeworkflow2")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 
     with Toil(options) as toil:
         if not toil.options.restart:
             job = HelloWorld("Woot!")
-            toil.start(job)
+            output = toil.start(job)
         else:
-            toil.restart()
+            output = toil.restart()
+    print(output)

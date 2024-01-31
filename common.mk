@@ -15,6 +15,8 @@ SHELL=bash
 export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
 export TOIL_DOCKER_NAME?=toil
 export TOIL_DOCKER_TAG?=$(shell python version_template.py dockerTag)
+export TOIL_DOCKER_CACHE_TAG?=$(shell python version_template.py cacheTag)
+export TOIL_DOCKER_MAIN_CACHE_TAG?=$(shell python version_template.py mainCacheTag)
 export TOIL_APPLIANCE_SELF?=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(TOIL_DOCKER_TAG)
 
 # TOIL_CHECK_ENV=''  # Determines whether toil refers to the same virtualenv paths it spawned from (across machines)
@@ -67,7 +69,7 @@ export TOIL_AWS_NODE_DEBUG?=False  # Don't shut down EC2 instances that fail so 
 export TOIL_TEST_INTEGRATIVE?=False  # If ``True``, this allows the integration tests to run.
 export TOIL_TEST_QUICK?=False  # If ``True``, long running tests are skipped.
 export TOIL_SKIP_DOCKER?=False  # Skip docker dependent tests
-export TRAVIS?=True  # Run tests for travis (shorter unit tests)
+export TOIL_SKIP_ONLINE?=False  # Skip Internet-dependent tests
 
 export TOIL_AWS_KEYNAME?=id_rsa  # SSH key to use for tests in AWS.
 export TOIL_GOOGLE_KEYNAME?=id_rsa  # SSH key to use for tests in google.

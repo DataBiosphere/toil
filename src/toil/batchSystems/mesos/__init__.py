@@ -34,7 +34,7 @@ TaskData = namedtuple('TaskData', (
     'cores'))
 
 
-class JobQueue(object):
+class JobQueue:
     def __init__(self):
         # mapping of jobTypes to queues of jobs of that type
         self.queues = {}

@@ -6,17 +6,15 @@ import time
 import traceback
 from functools import partial
 
-from toil.lib.threading import LastProcessStandingArena, global_mutex
-from toil.test import ToilTest, travis_test
+from toil.lib.threading import (LastProcessStandingArena,
+                                cpu_count,
+                                global_mutex)
+from toil.test import ToilTest
 
 log = logging.getLogger(__name__)
 
 class ThreadingTest(ToilTest):
-    """
-    Test Toil threading/synchronization tools
-    """
-
-    @travis_test
+    """Test Toil threading/synchronization tools."""
     def testGlobalMutexOrdering(self):
         for it in range(10):
             log.info('Iteration %d', it)
@@ -24,7 +22,7 @@ class ThreadingTest(ToilTest):
             scope = self._createTempDir()
             mutex = 'mutex'
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
-            pool = multiprocessing.Pool()
+            pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = 100
                 results = pool.map_async(
@@ -40,7 +38,6 @@ class ThreadingTest(ToilTest):
                 # Make sure all workers say they succeeded
                 self.assertEqual(item, True)
 
-    @travis_test
     def testLastProcessStanding(self):
         for it in range(10):
             log.info('Iteration %d', it)
@@ -48,7 +45,7 @@ class ThreadingTest(ToilTest):
             scope = self._createTempDir()
             arena_name = 'thunderdome'
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
-            pool = multiprocessing.Pool()
+            pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = 100
                 results = pool.map_async(
@@ -64,7 +61,7 @@ class ThreadingTest(ToilTest):
                 # Make sure all workers say they succeeded
                 self.assertEqual(item, True)
             for filename in os.listdir(scope):
-                assert not filename.startswith('precious'), "File {} still exists".format(filename)
+                assert not filename.startswith('precious'), f"File {filename} still exists"
 
 def _testGlobalMutexOrderingTask(scope, mutex, number):
     try:
@@ -83,9 +80,9 @@ def _testGlobalMutexOrderingTask(scope, mutex, number):
             time.sleep(random.random() * 0.01)
 
             # Make sure our name is still there
-            with open(potato, 'r') as in_stream:
+            with open(potato) as in_stream:
                 seen = in_stream.read().rstrip()
-                assert seen == str(number), "We are {} but {} stole our potato!".format(number, seen)
+                assert seen == str(number), f"We are {number} but {seen} stole our potato!"
 
             os.unlink(potato)
             assert not os.path.exists(potato), "We left the potato behind"
@@ -113,10 +110,10 @@ def _testLastProcessStandingTask(scope, arena_name, number):
             time.sleep(random.random() * 0.01)
 
             # Make sure our file is still there unmodified
-            assert os.path.exists(my_precious), "Precious file {} has been stolen!".format(my_precious)
-            with open(my_precious, 'r') as in_stream:
+            assert os.path.exists(my_precious), f"Precious file {my_precious} has been stolen!"
+            with open(my_precious) as in_stream:
                 seen = in_stream.read().rstrip()
-                assert seen == str(number), "We are {} but saw {} in our precious file!".format(number, seen)
+                assert seen == str(number), f"We are {number} but saw {seen} in our precious file!"
         finally:
             was_last = False
             for _ in arena.leave():

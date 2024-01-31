@@ -11,17 +11,30 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import logging
 from difflib import get_close_matches
-from typing import List, Tuple, Set, Optional
+from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Type, Union
+
+if TYPE_CHECKING:
+    from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+    from toil.provisioners.gceProvisioner import GCEProvisioner
+
 
 logger = logging.getLogger(__name__)
 
 
-def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
+def cluster_factory(
+    provisioner: str,
+    clusterName: Optional[str] = None,
+    clusterType: str = "mesos",
+    zone: Optional[str] = None,
+    nodeStorage: int = 50,
+    nodeStorageOverrides: Optional[List[str]] = None,
+    sseKey: Optional[str] = None,
+) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
-    Find and instantiate the appropriate provisioner instance to make clusters
-    in the given cloud.
+    Find and instantiate the appropriate provisioner instance to make clusters in the given cloud.
 
     Raises ClusterTypeNotSupportedException if the given provisioner does not
     implement clusters of the given type.
@@ -50,7 +63,7 @@ def cluster_factory(provisioner, clusterName=None, clusterType='mesos', zone=Non
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
 
-def add_provisioner_options(parser):
+def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
     group = parser.add_argument_group("Provisioner Options.")
 
     provisioner_choices = ['aws', 'gce']
@@ -60,7 +73,7 @@ def add_provisioner_options(parser):
                             f"Toil utils like launch-cluster and destroy-cluster, which always require a provisioner, "
                             f"and so this defaults to: %(default)s.  Choices: {provisioner_choices}.")
     group.add_argument('-z', '--zone', dest='zone', required=False, default=None,
-                       help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
+                       help="The availability zone of the leader. This parameter can also be set via the 'TOIL_X_ZONE' "
                             "environment variable, where X is AWS or GCE, or by the ec2_region_name parameter "
                             "in your .boto file, or derived from the instance metadata if using this utility on an "
                             "existing EC2 instance.")
@@ -75,7 +88,7 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     Takes a comma-separated list of node types. Each node type is a
     slash-separated list of at least one instance type name (like 'm5a.large'
     for AWS), and an optional bid in dollars after a colon.
-    
+
     Raises ValueError if a node type cannot be parsed.
 
     Inputs should look something like this:
@@ -88,10 +101,9 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     :returns: a list of node types, where each type is the set of
               instance types, and the float bid, or None.
     """
-    
     # Collect together all the node types
     parsed = []
-    
+
     if node_type_specs:
         # Some node types were actually specified
         for node_type_spec in node_type_specs.split(','):
@@ -132,11 +144,11 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
     :param node_types: A list of node types.  Example: [({'t2.micro'}, None), ({'t2.medium'}, 0.5)]
     :return: Nothing.  Raises if any instance type in the node type isn't real.
     """
-    
+
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':
-        from toil.provisioners.aws import get_current_aws_region
+        from toil.lib.aws import get_current_aws_region
         current_region = get_current_aws_region() or 'us-west-2'
         # check if instance type exists in this region
         for node_type in node_types:
@@ -163,10 +175,19 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
     def __init__(self, cluster_name):
-        super(NoSuchClusterException, self).__init__(f"The cluster '{cluster_name}' could not be found")
+        super().__init__(f"The cluster '{cluster_name}' could not be found")
 
 
 class ClusterTypeNotSupportedException(Exception):
     """Indicates that a provisioner does not support a given cluster type."""
     def __init__(self, provisioner_class, cluster_type):
         super().__init__(f"The {provisioner_class} provisioner does not support making {cluster_type} clusters")
+
+class ClusterCombinationNotSupportedException(Exception):
+    """Indicates that a provisioner does not support making a given type of cluster with a given architecture."""
+    def __init__(self, provisioner_class: Type, cluster_type: str, architecture: str, reason: Optional[str] = None):
+        message = (f"The {provisioner_class} provisioner does not support making {cluster_type} clusters "
+                   f"using nodes with the {architecture} architecture.")
+        if reason is not None:
+            message += f" This is because: {reason}"
+        super().__init__(message)

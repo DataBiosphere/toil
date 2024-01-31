@@ -1,30 +1,49 @@
-image: quay.io/vgteam/vg_ci_prebake:latest
+image: quay.io/ucsc_cgl/toil_ci_prebake:latest
 # Note that we must run in a privileged container for our internal Docker daemon to come up.
 
 variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
-  MAIN_PYTHON_PKG: "python3.8"
-
+  MAIN_PYTHON_PKG: "python3.11"
+  # Used to tell pytest which tests to be run by specifying markers,
+  # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
+  # Currently specifies special tests that are not run by quick_test_offline.
+  MARKER: "(tes or integrative or encryption or server_mode or fetchable_appliance or appliance or slow or docker or cwl or singularity or rsync3) and not kubernetes"
+  TEST_THREADS: "3"
 before_script:
-  # Configure Docker to use a mirror for Docker Hub and restart the daemon
+  # Log where we are running, in case some Kubernetes hosts are busted. IPs are assigned per host.
+  - ip addr
+  # Configure Docker and Buildkit to use a mirror for Docker Hub and restart the daemon
   # Set the registry as insecure because it is probably cluster-internal over plain HTTP.
   - |
     if [[ ! -z "${DOCKER_HUB_MIRROR}" ]] ; then
         echo "{\"registry-mirrors\": [\"${DOCKER_HUB_MIRROR}\"], \"insecure-registries\": [\"${DOCKER_HUB_MIRROR##*://}\"]}" | sudo tee /etc/docker/daemon.json
         export SINGULARITY_DOCKER_HUB_MIRROR="${DOCKER_HUB_MIRROR}"
+        echo "[registry.\"docker.io\"]" >buildkitd.toml
+        echo "  mirrors = [\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
+        echo "[registry.\"${DOCKER_HUB_MIRROR##*://}\"]" >>buildkitd.toml
+        echo "  http = true" >>buildkitd.toml
+    else
+        echo "" >buildkitd.toml
     fi
+  # Restart or start the Docker daemon
+  - stopdocker || true
+  - sudo rm -f /var/run/docker.sock
   - startdocker || true
   - docker info
   - cat /etc/hosts
   - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
   - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
-  - sudo apt-get update
-  - sudo apt-get install -y software-properties-common build-essential virtualenv
-  - sudo add-apt-repository -y ppa:deadsnakes/ppa
-  - sudo apt-get update
-  - sudo apt-get install -y tzdata jq python3.6 python3.6-dev python3.7 python3.7-dev python3.8 python3.8-dev
+  # We need to make sure docker buildx create can't see the ~/.kube/config that we deploy. It has
+  # a service account bearer token for auth and triggers https://github.com/docker/buildx/issues/267
+  # where buildx can't use a bearer token from a kube config and falls back to anonymous instead
+  # of using the system's service account.
+  - if [[ "${CI_BUILDKIT_DRIVER}" == "kubernetes" ]] ; then KUBECONFIG=/dev/null docker buildx create --use --name=buildkit --platform=linux/amd64,linux/arm64 --node=buildkit-amd64 --driver=kubernetes --driver-opt="nodeselector=kubernetes.io/arch=amd64" ; else cat buildkitd.toml ; docker buildx create --use --name=container-builder --driver=docker-container --config ./buildkitd.toml ; fi
+  # Report on the builders, and make sure they exist.
+  - docker buildx inspect --bootstrap || (echo "Docker builder deployment can't be found! Are we on the right Gitlab runner?" && exit 1)
+  # This will hang if we can't talk to the builder
+  - (echo "y" | docker buildx prune --keep-storage 80G) || true
 
 after_script:
   # We need to clean up any files that Toil may have made via Docker that
@@ -41,201 +60,294 @@ stages:
   - main_tests
   - integration
 
-
 lint:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[all] packages=htcondor
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - python3.11 -m pip freeze
+    - python3.11 --version
     - make mypy
     - make docs
-
+    # - make diff_pydocstyle_report
 
 cwl_dependency_is_stand_alone:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
-
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
 
 wdl_dependency_is_stand_alone:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test tests=src/toil/test/wdl/toilwdlTest.py::ToilWdlIntegrationTest::testMD5sum
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
 
-# Tests that used to be on Travis
-# The Makefile sets "TRAVIS=true", which is now a misnomer, but we don't need
-# to also do it here.
 quick_test_offline:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: basic_tests
   script:
-    - virtualenv -p python3.6 venv
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv
     - . venv/bin/activate
     - pip install -U pip wheel
     - make prepare
     - make develop extras=[aws,google,wdl]
-    - TOIL_TEST_QUICK=True make test_offline
+    - TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
 
-# Python3.6
-py36_main:
+py38_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: basic_tests
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-
-py36_appliance_build:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
+    - python3.8 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.0.post1'
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
 
+py39_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.9 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.0.post1'
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
+py310_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.10 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 &&  pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.0.post1'
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
+py311_appliance_build:
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 &&  pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.3'
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
+py311_main:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  stage: basic_tests
+  script:
+    - pwd
+    - python3.11 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
+    - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
+
 batch_systems:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
-    - make test tests=src/toil/test/batchSystems/batchSystemTest.py
-    - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
 
-cwl_v1.0:
-  stage: main_tests
-  only: []
+slurm_test:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+  stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
-    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test
-
-cwl_v1.1:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test
+    - cd contrib/slurm-test/
+    - docker compose version
+    - ./slurm_test.sh
 
 cwl_v1.2:
-  stage: main_tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
+          - 'src/toil/test/cwl/*'
+  stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test
+    # Run CWL integration tests excluded from cwl_misc
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
+    # Run CWL conformance tests, with file store bypassed
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+    - "*.junit.xml"
+    when: always
+    expire_in: 14 day
 
-cwl_v1.0_kubernetes:
-  stage: main_tests
-  only: []
+cwl_on_arm:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/cwl/*'
+  stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - echo Singularity mirror is ${SINGULARITY_DOCKER_HUB_MIRROR}
-    - mkdir -p ${TOIL_WORKDIR}
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_kubernetes_cwl_conformance_with_caching
-    
-cwl_v1.1_kubernetes:
-  stage: main_tests
-  only: []
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - mkdir -p ${TOIL_WORKDIR}
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv11Test::test_kubernetes_cwl_conformance_with_caching
-    
-cwl_v1.2_kubernetes:
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
+    # Run CWL conformance tests, on an ARM cluster on AWS, using the file store
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+  artifacts:
+    reports:
+      junit: "*.junit.xml"
+    paths:
+    - "*.junit.xml"
+    when: always
+    expire_in: 14 day
+
+cwl_misc:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - mkdir -p ${TOIL_WORKDIR}
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance
-    - make test tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and not integrative'"
+
+#cwl_v1.2_kubernetes:
+#  stage: main_tests
+#  script:
+#    - pwd
+#    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws,kubernetes]
+#    - export TOIL_KUBERNETES_OWNER=toiltest
+#    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+#    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+#    - export TOIL_WORKDIR=/var/lib/toil
+#    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+#    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
+#    - mkdir -p ${TOIL_WORKDIR}
+#    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
+#  artifacts:
+#    reports:
+#      junit: "*.junit.xml"
+#    paths:
+#      - "*.junit.xml"
+#    when: always
+#    expire_in: 14 days
 
 wdl:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
     - apt update && apt install -y default-jre
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - which java &> /dev/null || { echo >&2 "Java is not installed.  Install java to run these tests."; exit 1; }
-    - make test tests=src/toil/test/wdl/toilwdlTest.py  # needs java (default-jre) to run "GATK.jar"
-    - make test tests=src/toil/test/wdl/builtinTest.py
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py
 
-jobstore_and_provisioning:
+jobstore:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py
-    - make test tests=src/toil/test/sort/sortTest.py
-    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
-    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
-#    - python -m pytest --duration=0 -s -r s src/toil/test/provisioners/gceProvisionerTest.py
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/jobStores/jobStoreTest.py src/toil/test/sort/sortTest.py"
+
+provisioner:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  stage: main_tests
+  script:
+    - pwd
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests="src/toil/test/lib/aws/ src/toil/test/provisioners/aws/awsProvisionerTest.py src/toil/test/provisioners/clusterScalerTest.py"
+
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
-main:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages=htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-#    - make test tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testDocker
-
-appliance_build:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    - python setup_gitlab_docker.py
-    - make push_docker
-
-integration:
+jobstore_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/jobStores/jobStoreTest.py"
 
-provisioner_integration:
+server_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
+    # Test server and its integration with AWS
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/server"
+
+provisioner_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+  stage: integration
+  script:
+    - pwd
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -243,17 +355,18 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test tests=src/toil/test/sort/sortTest.py
-    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
-    - make test tests=src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils
-    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/wdl/wdltoil_test.py::WDLKubernetesClusterTest"
+#    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
   script:
     - pwd
-    - virtualenv -p ${MAIN_PYTHON_PKG} venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
@@ -261,53 +374,60 @@ google_jobstore:
     - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
     - export TOIL_GOOGLE_KEYNAME=id_rsa
     - export TOIL_GOOGLE_PROJECTID=toil-dev
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/jobStores/jobStoreTest.py::GoogleJobStoreTest
 
-# Python3.7
-py37_main:
-  stage: basic_tests
+mesos:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/test/mesos/*'
+          - 'src/toil/batchSystems/mesos/*'
+  stage: integration
   script:
     - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor awscli'
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
-    - make test tests=src/toil/test/lib/test_ec2.py
-    - make test tests=src/toil/test/lib/aws
-    - make test tests=src/toil/test/lib/test_conversions.py
-
-py37_appliance_build:
-  stage: basic_tests
-  script:
-    - pwd
-    - virtualenv -p python3.7 venv && . venv/bin/activate && pip install -U pip wheel && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor awscli'
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    - python setup_gitlab_docker.py
-    - make push_docker
+    - python3.10 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[mesos,aws]
+    - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
+    - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
+    - export LIBPROCESS_IP=127.0.0.1
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    - export GOOGLE_APPLICATION_CREDENTIALS=$GOOGLE_CREDENTIALS
+    - export TOIL_GOOGLE_KEYNAME=id_rsa
+    - export TOIL_GOOGLE_PROJECTID=toil-dev
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/mesos/MesosDataStructuresTest.py::DataStructuresTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testAwsMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testFileMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance_with_caching
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/src/promisedRequirementTest.py::MesosPromisedRequirementsTest
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH
+      changes:
+        compare_to: 'refs/heads/master'
+        paths:
+          - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
   script:
+    - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
     - set -e
-    - virtualenv --system-site-packages --python ${MAIN_PYTHON_PKG} venv
-    - . venv/bin/activate
-    - pip install -U pip wheel
-    - pip install .[aws,kubernetes]
-    - export TOIL_KUBERNETES_OWNER=toiltest
-    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
-    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
-    - export TOIL_WORKDIR=/var/lib/toil
-    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - mkdir -p ${TOIL_WORKDIR}
-    - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
-    - cd
-    - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
-    - cd cactus
-    - git fetch origin
-    - git checkout a06d65042b7292de7f55e9396738ce69087f10af
-    - git submodule update --init --recursive
-    - pip install --upgrade setuptools pip
-    - pip install --upgrade .
-    - pip install psutil numpy --upgrade
-    - toil clean aws:us-west-2:${BUCKET_NAME}
-    - time cactus --setEnv SINGULARITY_DOCKER_HUB_MIRROR --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
+    - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
+    - make test tests=src/toil/test/cactus/test_cactus_integration.py

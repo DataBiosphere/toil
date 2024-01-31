@@ -11,35 +11,45 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import collections
 import json
 import logging
 import os
+import platform
 import socket
 import string
 import textwrap
-import threading
 import time
 import uuid
+from functools import wraps
+from shlex import quote
+from typing import (Any,
+                    Callable,
+                    Collection,
+                    Dict,
+                    Iterable,
+                    List,
+                    Optional,
+                    Set)
+from urllib.parse import unquote
 
-import boto3
-import boto3.resources.base
-import botocore
-from botocore.exceptions import ClientError
 # We need these to exist as attributes we can get off of the boto object
 import boto.ec2
 import boto.iam
 import boto.vpc
-
-from typing import Any, Callable, Collection, Dict, Iterable, List, Optional, Set
-from functools import wraps
-from urllib.parse import unquote
-
-from boto.ec2.blockdevicemapping import BlockDeviceMapping as Boto2BlockDeviceMapping, BlockDeviceType as Boto2BlockDeviceType
+from boto.ec2.blockdevicemapping import \
+    BlockDeviceMapping as Boto2BlockDeviceMapping
+from boto.ec2.blockdevicemapping import BlockDeviceType as Boto2BlockDeviceType
+from boto.ec2.instance import Instance as Boto2Instance
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
-from boto.ec2.instance import Instance as Boto2Instance
+from botocore.exceptions import ClientError
 
+from toil.lib.aws import zone_to_region
+from toil.lib.aws.ami import get_flatcar_ami
+from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
+                              get_policy_permissions,
+                              policy_permissions_allow)
+from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.aws.utils import create_s3_bucket
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
@@ -48,27 +58,25 @@ from toil.lib.ec2 import (a_short_time,
                           create_launch_template,
                           create_ondemand_instances,
                           create_spot_instances,
-                          establish_boto3_session,
                           wait_instances_running,
                           wait_transition,
                           wait_until_instance_profile_arn_exists)
-from toil.lib.aws import zone_to_region
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
-from toil.lib.ec2 import get_flatcar_ami
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import (get_error_body,
+from toil.lib.retry import (ErrorCondition,
+                            get_error_body,
                             get_error_code,
                             get_error_message,
                             get_error_status,
                             old_retry,
-                            retry,
-                            ErrorCondition)
-from toil.provisioners import NoSuchClusterException
+                            retry)
+from toil.provisioners import (ClusterCombinationNotSupportedException,
+                               NoSuchClusterException)
 from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
-                                                   Shape,
-                                                   ManagedNodesNotSupportedException)
+                                                   ManagedNodesNotSupportedException,
+                                                   Shape)
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
 
@@ -90,6 +98,12 @@ _S3_BUCKET_MAX_NAME_LEN = 63
 # The suffix of the S3 bucket associated with the cluster
 _S3_BUCKET_INTERNAL_SUFFIX = '--internal'
 
+# prevent removal of these imports
+str(boto.ec2)
+str(boto.iam)
+str(boto.vpc)
+
+
 
 def awsRetryPredicate(e):
     if isinstance(e, socket.gaierror):
@@ -109,7 +123,15 @@ def awsRetryPredicate(e):
     return False
 
 
-def expectedShutdownErrors(e):
+def expectedShutdownErrors(e: Exception) -> bool:
+    """
+    Matches errors that we expect to occur during shutdown, and which indicate
+    that we need to wait or try again.
+
+    Should *not* match any errors which indicate that an operation is
+    impossible or unnecessary (such as errors resulting from a thing not
+    existing to be deleted).
+    """
     return get_error_status(e) == 400 and 'dependent object' in get_error_body(e)
 
 
@@ -148,91 +170,6 @@ def awsFilterImpairedNodes(nodes, ec2):
 class InvalidClusterStateException(Exception):
     pass
 
-class AWSConnectionManager:
-    """
-    Class that represents a connection to AWS. Caches Boto 3 and Boto 2 objects
-    by region.
-
-    Access to any kind of item goes through the particular method for the thing
-    you want (session, resource, service, Boto2 Context), and then you pass the
-    region you want to work in, and possibly the type of thing you want, as arguments.
-
-    This class is intended to eventually enable multi-region clusters, where
-    connections to multiple regions may need to be managed in the same
-    provisioner.
-
-    Since connection objects may not be thread safe (see
-    <https://boto3.amazonaws.com/v1/documentation/api/1.14.31/guide/session.html#multithreading-or-multiprocessing-with-sessions>),
-    one is created for each thread that calls the relevant lookup method.
-    """
-
-    # TODO: mypy is going to have !!FUN!! with this API because the final type
-    # we get out (and whether it has the right methods for where we want to use
-    # it) depends on having the right string value for the service. We could
-    # also individually wrap every service we use, but that seems like a good
-    # way to generate a lot of boring code.
-
-    def __init__(self):
-        """
-        Make a new empty AWSConnectionManager.
-        """
-        # This stores Boto3 sessions in .item of a thread-local storage, by
-        # region.
-        self.sessions_by_region = collections.defaultdict(threading.local)
-        # This stores Boto3 resources in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.resource_cache = collections.defaultdict(threading.local)
-        # This stores Boto3 clients in .item of a thread-local storage, by
-        # (region, service name) tuples
-        self.client_cache = collections.defaultdict(threading.local)
-        # This stores Boto 2 connections in .item of a thread-local storage, by
-        # (region, service name) tuples.
-        self.boto2_cache = collections.defaultdict(threading.local)
-
-    def session(self, region: str) -> boto3.session.Session:
-        """
-        Get the Boto3 Session to use for the given region.
-        """
-        storage = self.sessions_by_region[region]
-        if not hasattr(storage, 'item'):
-            # This is the first time this thread wants to talk to this region
-            # through this manager
-            storage.item = establish_boto3_session(region_name=region)
-        return storage.item
-
-    def resource(self, region: str, service_name: str) -> boto3.resources.base.ServiceResource:
-        """
-        Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.resource_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).resource(service_name)
-        return storage.item
-
-    def client(self, region: str, service_name: str) -> botocore.client.BaseClient:
-        """
-        Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
-        """
-        key = (region, service_name)
-        storage = self.client_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = self.session(region).client(service_name)
-        return storage.item
-
-    def boto2(self, region: str, service_name: str) -> boto.connection.AWSAuthConnection:
-        """
-        Get the connected boto2 connection for the given region and service.
-        """
-        if service_name == 'iam':
-            # IAM connections are regionless
-            region = 'universal'
-        key = (region, service_name)
-        storage = self.boto2_cache[key]
-        if not hasattr(storage, 'item'):
-            storage.item = getattr(boto, service_name).connect_to_region(region)
-        return storage.item
-
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
         self.cloud = 'aws'
@@ -254,9 +191,13 @@ class AWSProvisioner(AbstractProvisioner):
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
 
+        # Set our architecture to the current machine architecture
+        # Assume the same architecture unless specified differently in launchCluster()
+        self._architecture = 'amd64' if platform.machine() in ['x86_64', 'amd64'] else 'arm64'
+
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super(AWSProvisioner, self).__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
 
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
@@ -323,7 +264,7 @@ class AWSProvisioner(AbstractProvisioner):
             s3_client.head_bucket(Bucket=bucket_name)
             bucket = s3.Bucket(bucket_name)
         except ClientError as err:
-            if err.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if get_error_status(err) == 404:
                 bucket = create_s3_bucket(s3, bucket_name=bucket_name, region=self._region)
                 bucket.wait_until_exists()
                 bucket.Versioning().enable()
@@ -350,7 +291,7 @@ class AWSProvisioner(AbstractProvisioner):
         try:
             return obj.get().get('Body').read()
         except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            if get_error_status(e) == 404:
                 logger.warning(f'Trying to read non-existent file "{key}" from {bucket_name}.')
             raise
 
@@ -367,7 +308,8 @@ class AWSProvisioner(AbstractProvisioner):
                       userTags: Optional[dict],
                       vpcSubnet: Optional[str],
                       awsEc2ProfileArn: Optional[str],
-                      awsEc2ExtraSecurityGroupIds: Optional[list]):
+                      awsEc2ExtraSecurityGroupIds: Optional[list],
+                      **kwargs):
         """
         Starts a single leader node and populates this class with the leader's metadata.
 
@@ -383,6 +325,14 @@ class AWSProvisioner(AbstractProvisioner):
         :return: None
         """
 
+        if 'network' in kwargs:
+            logger.warning('AWS provisioner does not support a network parameter. Ignoring %s!', kwargs["network"])
+
+        # First, pre-flight-check our permissions before making anything.
+        if not policy_permissions_allow(get_policy_permissions(region=self._region), CLUSTER_LAUNCHING_PERMISSIONS):
+            # Function prints a more specific warning to the log, but give some context.
+            logger.warning('Toil may not be able to properly launch (or destroy!) your cluster.')
+
         leader_type = E2Instances[leaderNodeType]
 
         if self.clusterType == 'kubernetes':
@@ -390,8 +340,14 @@ class AWSProvisioner(AbstractProvisioner):
                 # Kubernetes won't run here.
                 raise RuntimeError('Kubernetes requires 2 or more cores, and %s is too small' %
                                    leaderNodeType)
-
         self._keyName = keyName
+        self._architecture = leader_type.architecture
+
+        if self.clusterType == 'mesos' and self._architecture != 'amd64':
+            # Mesos images aren't currently available for this architecture, so we can't start a Mesos cluster.
+            # Complain about this before we create anything.
+            raise ClusterCombinationNotSupportedException(type(self), self.clusterType, self._architecture,
+                                                          reason="Mesos is only available for amd64.")
 
         if vpcSubnet:
             # This is where we put the leader
@@ -401,28 +357,31 @@ class AWSProvisioner(AbstractProvisioner):
             self._leader_subnet = self._get_default_subnet(self._zone)
 
         profileArn = awsEc2ProfileArn or self._createProfileArn()
+
         # the security group name is used as the cluster identifier
         createdSGs = self._createSecurityGroups()
         bdms = self._getBoto3BlockDeviceMappings(leader_type, rootVolSize=leaderStorage)
-
-        userData = self._getIgnitionUserData('leader')
 
         # Make up the tags
         self._tags = {'Name': self.clusterName,
                       'Owner': owner,
                       _TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}
 
+        if userTags is not None:
+            self._tags.update(userTags)
+
+        #All user specified tags have been set
+        userData = self._getIgnitionUserData('leader', architecture=self._architecture)
+
         if self.clusterType == 'kubernetes':
             # All nodes need a tag putting them in the cluster.
             # This tag needs to be on there before the a leader can finish its startup.
             self._tags['kubernetes.io/cluster/' + self.clusterName] = ''
 
-        if userTags is not None:
-            self._tags.update(userTags)
-
         # Make tags for the leader specifically
         leader_tags = dict(self._tags)
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
+        logger.debug('Launching leader with tags: %s', leader_tags)
 
         instances = create_instances(self.aws.resource(self._region, 'ec2'),
                                      image_id=self._discoverAMI(),
@@ -442,13 +401,18 @@ class AWSProvisioner(AbstractProvisioner):
         leader.wait_until_exists()
 
         # Don't go on until the leader is started
+        logger.info('Waiting for leader instance %s to be running', leader)
         leader.wait_until_running()
 
         # Now reload it to make sure all the IPs are set.
         leader.reload()
 
         if leader.public_ip_address is None:
-            raise RuntimeError("AWS did not assign a public IP to the cluster leader! Leader is lost!")
+            # Sometimes AWS just fails to assign a public IP when we really need one.
+            # But sometimes people intend to use private IPs only in Toil-managed clusters.
+            # TODO: detect if we have a route to the private IP and fail fast if not.
+            logger.warning("AWS did not assign a public IP to the cluster leader. If you aren't "
+                           "connected to the private subnet, cluster setup will fail!")
 
         # Remember enough about the leader to let us launch workers in its
         # cluster.
@@ -460,12 +424,20 @@ class AWSProvisioner(AbstractProvisioner):
 
         leaderNode = Node(publicIP=leader.public_ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time,
-                          nodeType=leader_type.name, preemptable=False,
+                          nodeType=leader_type.name, preemptible=False,
                           tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
         # Download credentials
         self._setLeaderWorkerAuthentication(leaderNode)
+
+    def toil_service_env_options(self) -> str:
+        """
+        Set AWS tags in user docker container
+        """
+        config = super().toil_service_env_options()
+        instance_base_tags = json.dumps(self._tags)
+        return config + " -e TOIL_AWS_TAGS=" + quote(instance_base_tags)
 
     def _get_worker_subnets(self) -> List[str]:
         """
@@ -614,7 +586,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         return 'aws'
 
-    def getNodeShape(self, instance_type: str, preemptable=False) -> Shape:
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         """
         Get the Shape for the given instance type (e.g. 't2.medium').
         """
@@ -634,16 +606,14 @@ class AWSProvisioner(AbstractProvisioner):
                      memory=memory,
                      cores=type_info.cores,
                      disk=disk,
-                     preemptable=preemptable)
+                     preemptible=preemptible)
 
     @staticmethod
     def retryPredicate(e):
         return awsRetryPredicate(e)
 
-    def destroyCluster(self):
-        """
-        Terminate instances and delete the profile and security group.
-        """
+    def destroyCluster(self) -> None:
+        """Terminate instances and delete the profile and security group."""
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
         # The leader may create more instances while we're terminating the workers.
@@ -660,19 +630,28 @@ class AWSProvisioner(AbstractProvisioner):
 
         logger.debug('Deleting autoscaling groups ...')
         removed = False
+
         for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
             with attempt:
                 for asgName in self._getAutoScalingGroupNames():
-                    # We delete the group and all the instances via ForceDelete.
-                    self.aws.client(self._region, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
-                    removed = True
+                    try:
+                        # We delete the group and all the instances via ForceDelete.
+                        self.aws.client(self._region, 'autoscaling').delete_auto_scaling_group(AutoScalingGroupName=asgName, ForceDelete=True)
+                        removed = True
+                    except ClientError as e:
+                        if get_error_code(e) == 'ValidationError' and 'AutoScalingGroup name not found' in get_error_message(e):
+                            # This ASG does not need to be removed (or a
+                            # previous delete returned an error but also
+                            # succeeded).
+                            pass
+
         if removed:
             logger.debug('... Successfully deleted autoscaling groups')
 
         # Do the workers after the ASGs because some may belong to ASGs
         logger.info('Terminating any remaining workers ...')
         removed = False
-        instances = self._getNodesInCluster(both=True)
+        instances = self._get_nodes_in_cluster(include_stopped_nodes=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
             self.aws.boto2(self._region, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
@@ -754,15 +733,16 @@ class AWSProvisioner(AbstractProvisioner):
                 except s3.meta.client.exceptions.NoSuchBucket:
                     pass
                 except ClientError as e:
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+                    if get_error_status(e) == 404:
                         pass
                     else:
                         raise  # retry this
         if removed:
             print('... Successfully deleted S3 buckets')
 
-    def terminateNodes(self, nodes : List[Node]):
-        self._terminateIDs([x.name for x in nodes])
+    def terminateNodes(self, nodes: List[Node]) -> None:
+        if nodes:
+            self._terminateIDs([x.name for x in nodes])
 
     def _recover_node_type_bid(self, node_type: Set[str], spot_bid: Optional[float]) -> Optional[float]:
         """
@@ -791,19 +771,19 @@ class AWSProvisioner(AbstractProvisioner):
                         break
                 if spot_bid is None:
                     # We didn't bid on any class including this type either
-                    raise RuntimeError("No spot bid given for a preemptable node request.")
+                    raise RuntimeError("No spot bid given for a preemptible node request.")
             else:
-                raise RuntimeError("No spot bid given for a preemptable node request.")
+                raise RuntimeError("No spot bid given for a preemptible node request.")
 
         return spot_bid
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptable, spotBid=None) -> int:
+    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible, spotBid=None) -> int:
         # Grab the AWS connection we need
         ec2 = self.aws.boto2(self._region, 'ec2')
 
         assert self._leaderPrivateIP
 
-        if preemptable:
+        if preemptible:
             # May need to provide a spot bid
             spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
@@ -816,8 +796,8 @@ class AWSProvisioner(AbstractProvisioner):
                                                rootVolSize=root_vol_size)
 
         # Pick a zone and subnet_id to launch into
-        if preemptable:
-            # We may need to balance preemptable instances across zones, which
+        if preemptible:
+            # We may need to balance preemptible instances across zones, which
             # then affects the subnets they can use.
 
             # We're allowed to pick from any of these zones.
@@ -842,7 +822,7 @@ class AWSProvisioner(AbstractProvisioner):
             subnet_id = next(iter(self._worker_subnets_by_zone[zone]))
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptible, self._architecture)
         if isinstance(userData, str):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
@@ -863,13 +843,13 @@ class AWSProvisioner(AbstractProvisioner):
                 # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
-                if not preemptable:
-                    logger.debug('Launching %s non-preemptable nodes', numNodes)
+                if not preemptible:
+                    logger.debug('Launching %s non-preemptible nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(ec2,
                                                                   image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
-                    logger.debug('Launching %s preemptable nodes', numNodes)
+                    logger.debug('Launching %s preemptible nodes', numNodes)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=ec2,
                                                                    price=spotBid,
@@ -892,21 +872,21 @@ class AWSProvisioner(AbstractProvisioner):
             for i in instancesLaunched:
                 self._waitForIP(i)
                 node = Node(publicIP=i.ip_address, privateIP=i.private_ip_address, name=i.id,
-                            launchTime=i.launch_time, nodeType=i.instance_type, preemptable=preemptable,
+                            launchTime=i.launch_time, nodeType=i.instance_type, preemptible=preemptible,
                             tags=i.tags)
                 node.waitForNode('toil_worker')
                 node.coreRsync([self._sseKey, ':' + self._sseKey], applianceName='toil_worker')
         logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
-    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptable, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
 
         if self.clusterType != 'kubernetes':
             raise ManagedNodesNotSupportedException("Managed nodes only supported for Kubernetes clusters")
 
         assert self._leaderPrivateIP
 
-        if preemptable:
+        if preemptible:
             # May need to provide a spot bid
             spotBid = self._recover_node_type_bid(nodeTypes, spotBid)
 
@@ -914,24 +894,24 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Make one template per node type, so we can apply storage overrides correctly
         # TODO: deduplicate these if the same instance type appears in multiple sets?
-        launch_template_ids = {n: self._get_worker_launch_template(n, preemptable=preemptable) for n in nodeTypes}
+        launch_template_ids = {n: self._get_worker_launch_template(n, preemptible=preemptible) for n in nodeTypes}
         # Make the ASG across all of them
         self._createWorkerAutoScalingGroup(launch_template_ids, nodeTypes, minNodes, maxNodes,
                                            spot_bid=spotBid)
 
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptable: Optional[bool] = None) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
         assert self._leaderPrivateIP
-        entireCluster = self._getNodesInCluster(instance_type=instance_type, both=True)
+        entireCluster = self._get_nodes_in_cluster(instance_type=instance_type)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self._leaderPrivateIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
-        if preemptable is not None:
-            workerInstances = [i for i in workerInstances if preemptable == (i.spot_instance_request_id is not None)]
-            logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
+        if preemptible is not None:
+            workerInstances = [i for i in workerInstances if preemptible == (i.spot_instance_request_id is not None)]
+            logger.debug('%spreemptible workers found in cluster: %s', 'non-' if not preemptible else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.aws.boto2(self._region, 'ec2'))
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
                      name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
-                     preemptable=i.spot_instance_request_id is not None, tags=i.tags)
+                     preemptible=i.spot_instance_request_id is not None, tags=i.tags)
                 for i in workerInstances]
 
     @memoize
@@ -940,11 +920,11 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for Flatcar.
         :rtype: str
         """
-        return get_flatcar_ami(self.aws.client(self._region, 'ec2'))
+        return get_flatcar_ami(self.aws.client(self._region, 'ec2'), self._architecture)
 
     def _toNameSpace(self) -> str:
         assert isinstance(self.clusterName, (str, bytes))
-        if any((char.isupper() for char in self.clusterName)) or '_' in self.clusterName:
+        if any(char.isupper() for char in self.clusterName) or '_' in self.clusterName:
             raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
                                "character.")
         namespace = self.clusterName
@@ -977,7 +957,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the Boto 2 instance for the cluster's leader.
         """
-        instances = self._getNodesInCluster(both=True)
+        instances = self._get_nodes_in_cluster(include_stopped_nodes=True)
         instances.sort(key=lambda x: x.launch_time)
         try:
             leader = instances[0]  # assume leader was launched first
@@ -999,7 +979,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
-                          preemptable=False, tags=leader.tags)
+                          preemptible=False, tags=leader.tags)
         if wait:
             logger.debug("Waiting for toil_leader to enter 'running' state...")
             wait_instances_running(self.aws.boto2(self._region, 'ec2'), [leader])
@@ -1040,7 +1020,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateIDs(instanceIDs)
         logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
-            wait_transition(instance, {'pending', 'running', 'shutting-down'}, 'terminated')
+            wait_transition(instance, {'pending', 'running', 'shutting-down', 'stopping', 'stopped'}, 'terminated')
         logger.info('Instance(s) terminated.')
 
     @awsRetry
@@ -1094,7 +1074,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBoto2BlockDeviceMapping(cls, type_info: InstanceType, rootVolSize: int = 50) -> Boto2BlockDeviceMapping:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
-        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
+        bdtKeys = [''] + [f'/dev/xvd{c}' for c in string.ascii_lowercase[1:]]
         bdm = Boto2BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = Boto2BlockDeviceType(delete_on_termination=True)
@@ -1104,7 +1084,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Disk count is weirdly a float in our instance database, so make it an int here.
         for disk in range(1, int(type_info.disks) + 1):
             bdm[bdtKeys[disk]] = Boto2BlockDeviceType(
-                ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
+                ephemeral_name=f'ephemeral{disk - 1}')  # ephemeral counts start at 0
 
         logger.debug('Device mapping: %s', bdm)
         return bdm
@@ -1126,7 +1106,7 @@ class AWSProvisioner(AbstractProvisioner):
         }]
 
         # Get all the virtual drives we might have
-        bdtKeys = ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase]
+        bdtKeys = [f'/dev/xvd{c}' for c in string.ascii_lowercase]
 
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
@@ -1135,30 +1115,40 @@ class AWSProvisioner(AbstractProvisioner):
             # virtual block device in the VM
             bdms.append({
                 'DeviceName': bdtKeys[disk],
-                'VirtualName': 'ephemeral{}'.format(disk - 1)  # ephemeral counts start at 0
+                'VirtualName': f'ephemeral{disk - 1}'  # ephemeral counts start at 0
             })
         logger.debug('Device mapping: %s', bdms)
         return bdms
 
     @awsRetry
-    def _getNodesInCluster(self, instance_type: Optional[str] = None, preemptable=False, both=False) -> List[Boto2Instance]:
+    def _get_nodes_in_cluster(self, instance_type: Optional[str] = None, include_stopped_nodes=False) -> List[Boto2Instance]:
         """
         Get Boto2 instance objects for all nodes in the cluster.
         """
 
-        allInstances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
+        all_instances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
+
         def instanceFilter(i):
             # filter by type only if nodeType is true
             rightType = not instance_type or i.instance_type == instance_type
             rightState = i.state == 'running' or i.state == 'pending'
+            if include_stopped_nodes:
+                rightState = rightState or i.state == 'stopping' or i.state == 'stopped'
             return rightType and rightState
-        filteredInstances = [i for i in allInstances if instanceFilter(i)]
-        if not preemptable and not both:
-            return [i for i in filteredInstances if i.spot_instance_request_id is None]
-        elif preemptable and not both:
-            return [i for i in filteredInstances if i.spot_instance_request_id is not None]
-        elif both:
-            return filteredInstances
+
+        return [i for i in all_instances if instanceFilter(i)]
+
+    def _filter_nodes_in_cluster(self, instance_type: Optional[str] = None, preemptible: bool = False) -> List[Boto2Instance]:
+        """
+        Get Boto2 instance objects for the nodes in the cluster filtered by preemptability.
+        """
+
+        instances = self._get_nodes_in_cluster(instance_type, include_stopped_nodes=False)
+
+        if preemptible:
+            return [i for i in instances if i.spot_instance_request_id is not None]
+
+        return [i for i in instances if i.spot_instance_request_id is None]
 
     def _getSpotRequestIDs(self) -> List[str]:
         """
@@ -1274,7 +1264,7 @@ class AWSProvisioner(AbstractProvisioner):
         return allTemplateIDs
 
     @awsRetry
-    def _get_worker_launch_template(self, instance_type: str, preemptable: bool = False, backoff: float = 1.0) -> str:
+    def _get_worker_launch_template(self, instance_type: str, preemptible: bool = False, backoff: float = 1.0) -> str:
         """
         Get a launch template for instances with the given parameters. Only one
         such launch template will be created, no matter how many times the
@@ -1285,7 +1275,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
 
         :param backoff: How long to wait if it seems like we aren't reading our
                         own writes before trying again.
@@ -1293,7 +1283,7 @@ class AWSProvisioner(AbstractProvisioner):
         :return: The ID of the template.
         """
 
-        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
+        lt_name = self._name_worker_launch_template(instance_type, preemptible=preemptible)
 
         # How do we match the right templates?
         filters = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
@@ -1308,45 +1298,45 @@ class AWSProvisioner(AbstractProvisioner):
         elif len(templates) == 0:
             # Template doesn't exist so we can create it.
             try:
-                return self._create_worker_launch_template(instance_type, preemptable=preemptable)
+                return self._create_worker_launch_template(instance_type, preemptible=preemptible)
             except ClientError as e:
                 if get_error_code(e) == 'InvalidLaunchTemplateName.AlreadyExistsException':
                     # Someone got to it before us (or we couldn't read our own
                     # writes). Recurse to try again, because now it exists.
                     logger.info('Waiting %f seconds for template %s to be available', backoff, lt_name)
                     time.sleep(backoff)
-                    return self._get_worker_launch_template(instance_type, preemptable=preemptable, backoff=backoff*2)
+                    return self._get_worker_launch_template(instance_type, preemptible=preemptible, backoff=backoff*2)
                 else:
                     raise
         else:
             # There must be exactly one template
             return templates[0]
 
-    def _name_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+    def _name_worker_launch_template(self, instance_type: str, preemptible: bool = False) -> str:
         """
         Get the name we should use for the launch template with the given parameters.
 
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
         """
 
         # The name has the cluster name in it
         lt_name = f'{self.clusterName}-lt-{instance_type}'
-        if preemptable:
+        if preemptible:
             lt_name += '-spot'
 
         return lt_name
 
-    def _create_worker_launch_template(self, instance_type: str, preemptable: bool = False) -> str:
+    def _create_worker_launch_template(self, instance_type: str, preemptible: bool = False) -> str:
         """
         Create the launch template for launching worker instances for the cluster.
 
         :param instance_type: Type of node to use in the template. May be overridden
                               by an ASG that uses the template.
 
-        :param preemptable: When the node comes up, does it think it is a spot instance?
+        :param preemptible: When the node comes up, does it think it is a spot instance?
 
         :return: The ID of the template created.
         """
@@ -1359,9 +1349,9 @@ class AWSProvisioner(AbstractProvisioner):
         bdms = self._getBoto3BlockDeviceMappings(type_info, rootVolSize=rootVolSize)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData = self._getIgnitionUserData('worker', keyPath, preemptable)
+        userData = self._getIgnitionUserData('worker', keyPath, preemptible, self._architecture)
 
-        lt_name = self._name_worker_launch_template(instance_type, preemptable=preemptable)
+        lt_name = self._name_worker_launch_template(instance_type, preemptible=preemptible)
 
         # But really we find it by tag
         tags = dict(self._tags)
@@ -1500,8 +1490,7 @@ class AWSProvisioner(AbstractProvisioner):
         marker = None
         while True:
             result = requestor_callable(marker=marker)
-            for p in getattr(result, result_attribute_name):
-                yield p
+            yield from getattr(result, result_attribute_name)
             if result.is_truncated == 'true':
                 marker = result.marker
             else:
@@ -1524,10 +1513,8 @@ class AWSProvisioner(AbstractProvisioner):
         paginator = client.get_paginator(op_name)
 
         for page in paginator.paginate(**kwargs):
-            # Invoke it and go through the pages
-            for item in page.get(result_attribute_name, []):
-                # Yield each returned item
-                yield item
+            # Invoke it and go through the pages, yielding from them
+            yield from page.get(result_attribute_name, [])
 
     @awsRetry
     def _getRoleNames(self) -> List[str]:
@@ -1702,7 +1689,6 @@ class AWSProvisioner(AbstractProvisioner):
         except BotoServerError as e:
             if e.status == 409 and e.error_code == 'EntityAlreadyExists':
                 logger.debug('IAM role already exists. Reusing.')
-                pass
             else:
                 raise
 
@@ -1790,6 +1776,4 @@ class AWSProvisioner(AbstractProvisioner):
                 iam.add_role_to_instance_profile(profile.instance_profile_name, iamRoleName)
                 logger.debug("Associated role %s with profile", iamRoleName)
 
-
         return profile_arn
-

@@ -1,0 +1,71 @@
+# This is a v3 compose file
+services:
+  slurmmaster:
+        image: rancavil/slurm-master:19.05.5-1
+        hostname: slurmmaster
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+
+        environment:
+                - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/admin/.local/bin
+        ports:
+                - 6817:6817
+                - 6818:6818
+                - 6819:6819
+        deploy:
+          resources:
+            limits:
+              memory: 2G
+
+  slurmnode1:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode1
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+        environment:
+                - SLURM_NODENAME=slurmnode1
+        links:
+                - slurmmaster
+        deploy:
+          resources:
+            limits:
+              memory: 2G
+
+  slurmnode2:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode2
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+        environment:
+                - SLURM_NODENAME=slurmnode2
+        links:
+                - slurmmaster
+        deploy:
+          resources:
+            limits:
+              memory: 2G
+
+  slurmnode3:
+        image: rancavil/slurm-node:19.05.5-1
+        hostname: slurmnode3
+        user: admin
+        volumes:
+                - shared-vol:/home/admin
+                - ${PWD}/slurm.conf:/etc/slurm-llnl/slurm.conf
+        environment:
+                - SLURM_NODENAME=slurmnode3
+        links:
+                - slurmmaster
+        deploy:
+          resources:
+            limits:
+              memory: 2G
+
+volumes:
+        shared-vol:

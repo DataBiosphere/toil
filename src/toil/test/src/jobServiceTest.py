@@ -21,12 +21,14 @@ import traceback
 from threading import Event, Thread
 from unittest import skipIf
 
+import pytest
+
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+from toil.exceptions import FailedJobsException
 from toil.job import Job
-from toil.leader import DeadlockException, FailedJobsException
+from toil.leader import DeadlockException
 from toil.lib.retry import retry_flaky_test
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEqual(int(open(outFile, 'r').readline()), messageInt)
+                self.assertEqual(int(open(outFile).readline()), messageInt)
             finally:
                 os.remove(outFile)
 
@@ -99,7 +101,7 @@ class JobServiceTest(ToilTest):
             # This should pass, as adequate services available
             self.runToil(makeWorkflow(), maxServiceJobs=3)
             # Check we get expected output
-            assert open(outFile, 'r').read() == "woot1 woot2 woot3"
+            assert open(outFile).read() == "woot1 woot2 woot3"
         finally:
             os.remove(outFile)
 
@@ -129,13 +131,14 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
+                self.assertEqual(list(map(int, open(outFile).readlines())), messages)
             finally:
                 os.remove(outFile)
 
     @slow
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
-    @retry_flaky_test()
+    @retry_flaky_test(prepare=[ToilTest.tearDown, ToilTest.setUp])
+    @pytest.mark.timeout(1200)
     def testServiceParallelRecursive(self, checkpoint=True):
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
@@ -154,7 +157,7 @@ class JobServiceTest(ToilTest):
 
                 # Check output
                 for (messages, outFile) in zip(messageBundles, outFiles):
-                    self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
+                    self.assertEqual(list(map(int, open(outFile).readlines())), messages)
             finally:
                 list(map(os.remove, outFiles))
 
@@ -182,6 +185,14 @@ class JobServiceTest(ToilTest):
                     self.fail() #Exceeded a reasonable number of restarts
                 totalTrys += 1
                 options.restart = True
+
+class PerfectServiceTest(JobServiceTest):
+    def runToil(self, rootJob, retryCount=1, badWorker=0, badWorkedFailInterval=1000, maxServiceJobs=sys.maxsize, deadlockWait=60):
+        """
+        Let us run all the tests in the other service test class, but without worker failures.
+        """
+        super().runToil(rootJob, retryCount, badWorker, badWorkedFailInterval, maxServiceJobs, deadlockWait)
+
 
 def serviceTest(job, outFile, messageInt):
     """
@@ -251,8 +262,8 @@ class ToyService(Job.Service):
         self.error = Event()
         # Note that service jobs are special and do not necessarily have job.jobStoreID.
         # So we don't associate these files with this job.
-        inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
-        outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
+        inJobStoreID = job.fileStore.jobStore.get_empty_file_store_id()
+        outJobStoreID = job.fileStore.jobStore.get_empty_file_store_id()
         self.serviceThread = Thread(target=self.serviceWorker,
                                     args=(job.fileStore.jobStore, self.terminate, self.error,
                                           inJobStoreID, outJobStoreID,
@@ -281,9 +292,9 @@ class ToyService(Job.Service):
 
                 # Try reading a line from the input file
                 try:
-                    with jobStore.readFileStream(inJobStoreID) as fH:
-                        fH = codecs.getreader('utf-8')(fH)
-                        line = fH.readline()
+                    with jobStore.read_file_stream(inJobStoreID) as f:
+                        f = codecs.getreader('utf-8')(f)
+                        line = f.readline()
                 except:
                     logger.debug("Something went wrong reading a line: %s", traceback.format_exc())
                     raise
@@ -300,10 +311,8 @@ class ToyService(Job.Service):
                     continue
 
                 # Write out the resulting read integer and the message
-                with jobStore.updateFileStream(outJobStoreID) as fH:
-                    fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
-
-                logger.debug("Service worker did useful work")
+                with jobStore.update_file_stream(outJobStoreID) as f:
+                    f.write((f"{inputInt} {messageInt}\n").encode())
         except:
             logger.debug("Error in service worker: %s", traceback.format_exc())
             error.set()
@@ -321,7 +330,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
     # Write the integer into the file
     logger.debug("Writing key to inJobStoreFileID")
-    with job.fileStore.jobStore.updateFileStream(inJobStoreFileID) as fH:
+    with job.fileStore.jobStore.update_file_stream(inJobStoreFileID) as fH:
         fH.write(("%s\n" % key).encode('utf-8'))
 
     logger.debug("Trying to read key and message from outJobStoreFileID")
@@ -329,7 +338,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         time.sleep(0.2) #Avoid thrashing
 
         # Try reading an integer from the input file and writing out the message
-        with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
+        with job.fileStore.jobStore.read_file_stream(outJobStoreFileID) as fH:
             fH = codecs.getreader('utf-8')(fH)
             line = fH.readline()
 
@@ -340,7 +349,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         key2, message = tokens
 
         if int(key2) == key:
-            logger.debug("Matched key's: %s, writing message: %s with randInt: %s" % (key, int(message) - randInt, randInt))
+            logger.debug(f"Matched key's: {key}, writing message: {int(message) - randInt} with randInt: {randInt}")
             with open(outFile, 'a') as fH:
                 fH.write("%s\n" % (int(message) - randInt))
             return

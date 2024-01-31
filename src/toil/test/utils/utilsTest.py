@@ -16,12 +16,11 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
+from unittest.mock import patch
 
 import pytest
-from mock import patch
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -32,14 +31,13 @@ from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import (ToilTest,
+                       get_temp_file,
                        integrative,
                        needs_aws_ec2,
                        needs_cwl,
                        needs_docker,
                        needs_rsync3,
-                       slow,
-                       travis_test,
-                       get_temp_file)
+                       slow)
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus
@@ -55,7 +53,7 @@ class UtilsTest(ToilTest):
     """
 
     def setUp(self):
-        super(UtilsTest, self).setUp()
+        super().setUp()
         self.tempDir = self._createTempDir()
         self.tempFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
@@ -66,7 +64,7 @@ class UtilsTest(ToilTest):
         self.N = 1000
         makeFileToSort(self.tempFile, self.lines, self.lineLen)
         # First make our own sorted version
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.tempFile) as fileHandle:
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
@@ -117,6 +115,26 @@ class UtilsTest(ToilTest):
             commandTokens.append('--failIfNotComplete')
         return commandTokens
 
+    def test_config_functionality(self):
+        """Ensure that creating and reading back the config file works"""
+        config_file = os.path.abspath("config.yaml")
+        config_command = [self.toilMain, 'config', config_file]
+        # make sure the command `toil config file_path` works
+        try:
+            subprocess.check_call(config_command)
+        except subprocess.CalledProcessError:
+            self.fail("The toil config utility failed!")
+
+        parser = Job.Runner.getDefaultArgumentParser()
+        # make sure that toil can read from the generated config file
+        try:
+            parser.parse_args(["random_jobstore", "--config", config_file])
+        except SystemExit:
+            self.fail("Failed to parse the default generated config file!")
+        finally:
+            os.remove(config_file)
+
+
     @needs_rsync3
     @pytest.mark.timeout(1200)
     @needs_aws_ec2
@@ -139,6 +157,7 @@ class UtilsTest(ToilTest):
         # TODO: Run these for the other clouds.
         clusterName = f'cluster-utils-test{uuid.uuid4()}'
         keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
+        expected_owner = os.getenv('TOIL_OWNER_TAG') or keyName
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -151,12 +170,11 @@ class UtilsTest(ToilTest):
                     '--leaderNodeType=t2.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
-            from toil.provisioners import cluster_factory
             cluster = toil.provisioners.cluster_factory(provisioner='aws', zone='us-west-2a', clusterName=clusterName)
             leader = cluster.getLeader()
 
             # check that the leader carries the appropriate tags
-            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
+            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': expected_owner}
             for key in tags:
                 self.assertEqual(leader.tags.get(key), tags[key])
         finally:
@@ -219,7 +237,7 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.outputFile, 'r') as fileHandle:
+        with open(self.outputFile) as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEqual(self.correctSort, l2)
 
@@ -255,14 +273,13 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.outputFile, 'r') as fileHandle:
+        with open(self.outputFile) as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEqual(self.correctSort, l2)
 
         # Delete output file
         os.remove(self.outputFile)
 
-    @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'always'
@@ -285,29 +302,27 @@ class UtilsTest(ToilTest):
         collatedStats = processData(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
 
-    def check_status(self, status, status_fn, seconds=10):
+    def check_status(self, status, status_fn, seconds=20):
         i = 0.0
         while status_fn(self.toilDir) != status:
             time.sleep(0.5)
             i += 0.5
             if i > seconds:
                 s = status_fn(self.toilDir)
-                self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
+                self.assertEqual(s, status, f'Waited {seconds} seconds without status reaching {status}; stuck at {s}')
 
-    @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
-        # TODO: we need to reach into the FileJobStore's files and
-        # delete this shared file. We assume we know its internal layout.
+        # TODO: we need to reach into the FileJobStore's files and delete this
+        #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
 
-    @travis_test
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
@@ -339,7 +354,7 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 

@@ -14,7 +14,6 @@
 import fnmatch
 import os
 import resource
-
 from typing import List, Tuple
 
 
@@ -43,7 +42,7 @@ def glob(glob_pattern: str, directoryname: str) -> List[str]:
     the glob_pattern and returns a list=[].
 
     :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
+    :param glob_pattern: A string like ``*.txt``, which would find all text files.
     :return: A list=[] of absolute filepaths matching the glob pattern.
     """
     matches = []

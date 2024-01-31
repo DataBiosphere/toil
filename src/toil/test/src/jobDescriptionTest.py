@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import os
-from argparse import ArgumentParser
+
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job, JobDescription, TemporaryID
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 
 
 class JobDescriptionTest(ToilTest):
@@ -36,7 +37,7 @@ class JobDescriptionTest(ToilTest):
         self.toil._jobStore.destroy()
         self.assertFalse(os.path.exists(self.jobStorePath))
         super().tearDown()
-    @travis_test
+
     def testJobDescription(self):
         """
         Tests the public interface of a JobDescription.
@@ -46,9 +47,9 @@ class JobDescriptionTest(ToilTest):
         memory = 2^32
         disk = 2^32
         cores = "1"
-        preemptable = 1
+        preemptible = 1
 
-        j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
+        j = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                            jobName='testJobGraph', unitName='noName')
 
         #Check attributes
@@ -56,26 +57,22 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.memory, memory)
         self.assertEqual(j.disk, disk)
         self.assertEqual(j.cores, int(cores))
-        self.assertEqual(j.preemptable, bool(preemptable))
+        self.assertEqual(j.preemptible, bool(preemptible))
         self.assertEqual(type(j.jobStoreID), TemporaryID)
         self.assertEqual(list(j.successorsAndServiceHosts()), [])
         self.assertEqual(list(j.allSuccessors()), [])
         self.assertEqual(list(j.serviceHostIDsInBatches()), [])
         self.assertEqual(list(j.services), [])
         self.assertEqual(list(j.nextSuccessors()), [])
-        self.assertEqual(sum((len(level) for level in j.stack)), 0)
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
 
         #Check equals function (should be based on object identity and not contents)
-        j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptable": preemptable},
+        j2 = JobDescription(command=command, requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                             jobName='testJobGraph', unitName='noName')
         self.assertNotEqual(j, j2)
-
         ###TODO test other functionality
 
-
-    @travis_test
     def testJobDescriptionSequencing(self):
         j = JobDescription(command='command', requirements={},  jobName='unimportant')
 

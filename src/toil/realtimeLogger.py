@@ -19,11 +19,10 @@ import os
 import os.path
 import socketserver as SocketServer
 import threading
-
 from types import TracebackType
-from typing import Any, Optional, Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, Type
 
-from toil.batchSystems.options import getPublicIP
+from toil.lib.misc import get_public_ip
 from toil.statsAndLogging import set_log_level
 
 if TYPE_CHECKING:
@@ -66,7 +65,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
                 record.args = tuple(record.args)
         except:
             # Complain someone is sending us bad logging data
-            logging.error("Malformed log message from {}".format(self.client_address[0]))
+            logging.error(f"Malformed log message from {self.client_address[0]}")
         else:
             # Log level filtering should have been done on the remote end. The handle() method
             # skips it on this end.
@@ -79,29 +78,29 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
 
     They have to fit in a single UDP datagram, so don't try to log more than 64kb at once.
     """
+
     def makePickle(self, record: logging.LogRecord) -> bytes:
-        """
-        Actually, encode the record as bare JSON instead.
-        """
+        """Actually, encode the record as bare JSON instead."""
         return json.dumps(record.__dict__).encode('utf-8')
 
 
 class RealtimeLoggerMetaclass(type):
     """
-    Metaclass for RealtimeLogger that lets you do things like RealtimeLogger.warning(),
-    RealtimeLogger.info(), etc.
+    Metaclass for RealtimeLogger that lets add logging methods.
+
+    Like RealtimeLogger.warning(), RealtimeLogger.info(), etc.
     """
+
     def __getattr__(self, name: str) -> Any:
-        """
-        If a real attribute can't be found, try one of the logging methods on the actual logger
-        object.
-        """
+        """Fallback to attributes on the logger."""
         return getattr(self.getLogger(), name)
 
 
 class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     """
-    Provides a logger that logs over UDP to the leader. To use in a Toil job, do:
+    Provide a logger that logs over UDP to the leader.
+
+    To use in a Toil job, do:
 
     >>> from toil.realtimeLogger import RealtimeLogger
     >>> RealtimeLogger.info("This logging message goes straight to the leader")
@@ -149,7 +148,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                     cls.serverThread.start()
 
                     # Set options for logging in the environment so they get sent out to jobs
-                    ip = getPublicIP()
+                    ip = get_public_ip()
                     port = cls.loggingServer.server_address[1]
 
                     def _setEnv(name: str, value: str) -> None:
@@ -167,11 +166,10 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
 
     @classmethod
     def _stopLeader(cls) -> None:
-        """
-        Stop the server on the leader.
-        """
+        """Stop the server on the leader."""
         with cls.lock:
-            assert cls.initialized > 0
+            if cls.initialized == 0:
+                raise RuntimeError("Can't stop the server on the leader as the leader was never initialized.")
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:
@@ -222,7 +220,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
 
     def __init__(self, batchSystem: 'AbstractBatchSystem', level: str = defaultLevel):
         """
-        A context manager that starts up the UDP server.
+        Create a context manager that starts up the UDP server.
 
         Should only be invoked on the leader. Python logging should have already been configured.
         This method takes an optional log level, as a string level name, from the set supported

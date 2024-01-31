@@ -20,13 +20,12 @@ from contextlib import contextmanager
 from inspect import getsource
 from io import BytesIO
 from textwrap import dedent
+from unittest.mock import MagicMock, patch
 from zipfile import ZipFile
-
-from mock import MagicMock, patch
 
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest
 from toil.version import exactPython
 
 
@@ -52,23 +51,16 @@ def tempFileContaining(content, suffix=''):
 
 
 class ResourceTest(ToilTest):
-    """
-    Test module descriptors and resources derived from them.
-    """
-
-    @travis_test
+    """Test module descriptors and resources derived from them."""
     def testStandAlone(self):
-        self._testExternal(moduleName='userScript', pyFiles=('userScript.py',
-                                                             'helper.py'))
+        self._testExternal(moduleName='userScript', pyFiles=('userScript.py', 'helper.py'))
 
-    @travis_test
     def testPackage(self):
         self._testExternal(moduleName='foo.userScript', pyFiles=('foo/__init__.py',
                                                                  'foo/userScript.py',
                                                                  'foo/bar/__init__.py',
                                                                  'foo/bar/helper.py'))
 
-    @travis_test
     def testVirtualEnv(self):
         self._testExternal(moduleName='foo.userScript',
                            virtualenv=True,
@@ -80,7 +72,6 @@ class ResourceTest(ToilTest):
                                     'de/__init__.py',
                                     'de/pen/__init__.py'))
 
-    @travis_test
     def testStandAloneInPackage(self):
         self.assertRaises(ResourceException,
                           self._testExternal,
@@ -126,7 +117,6 @@ class ResourceTest(ToilTest):
             if oldPrefix:
                 sys.prefix = oldPrefix
 
-    @travis_test
     def testBuiltIn(self):
         # Create a ModuleDescriptor for the module containing ModuleDescriptor, i.e. toil.resource
         module_name = ModuleDescriptor.__module__
@@ -155,15 +145,15 @@ class ResourceTest(ToilTest):
         resource = module.saveAsResourceTo(jobStore)
         # Ensure that the URL generation method is actually called, ...
         jobStore.getSharedPublicUrl.assert_called_once_with(sharedFileName=resource.pathHash)
-        # ... and that ensure that writeSharedFileStream is called.
-        jobStore.writeSharedFileStream.assert_called_once_with(sharedFileName=resource.pathHash,
-                                                               isProtected=False)
+        # ... and that ensure that write_shared_file_stream is called.
+        jobStore.write_shared_file_stream.assert_called_once_with(shared_file_name=resource.pathHash,
+                                                                  encrypted=False)
         # Now it gets a bit complicated: Ensure that the context manager returned by the
-        # jobStore's writeSharedFileStream() method is entered and that the file handle yielded
+        # jobStore's write_shared_file_stream() method is entered and that the file handle yielded
         # by the context manager is written to once with the zipped source tree from which
-        # 'toil.resource' was orginally imported. Keep the zipped tree around such that we can
+        # 'toil.resource' was originally imported. Keep the zipped tree around such that we can
         # mock the download later.
-        file_handle = jobStore.writeSharedFileStream.return_value.__enter__.return_value
+        file_handle = jobStore.write_shared_file_stream.return_value.__enter__.return_value
         # The first 0 index selects the first call of write(), the second 0 selects positional
         # instead of keyword arguments, and the third 0 selects the first positional, i.e. the
         # contents. This is a bit brittle since it assumes that all the data is written in a
@@ -209,7 +199,6 @@ class ResourceTest(ToilTest):
         finally:
             Resource.cleanSystem()
 
-    @travis_test
     def testNonPyStandAlone(self):
         """
         Asserts that Toil enforces the user script to have a .py or .pyc extension because that's
@@ -220,7 +209,7 @@ class ResourceTest(ToilTest):
         """
 
         def script():
-            import argparse
+            from configargparse import ArgumentParser
 
             from toil.common import Toil
             from toil.job import Job
@@ -229,7 +218,7 @@ class ResourceTest(ToilTest):
                 pass
 
             if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
+                parser = ArgumentParser()
                 Job.Runner.addToilOptions(parser)
                 options = parser.parse_args()
                 job = Job.wrapFn(fn, memory='10M', cores=0.1, disk='10M')

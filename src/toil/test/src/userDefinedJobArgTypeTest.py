@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from toil.job import Job
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class UserDefinedJobArgTypeTest(ToilTest):
@@ -28,13 +28,12 @@ class UserDefinedJobArgTypeTest(ToilTest):
     """
 
     def setUp(self):
-        super(UserDefinedJobArgTypeTest, self).setUp()
+        super().setUp()
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
         options.foo = Foo()
         self.options = options
 
-    @travis_test
     def testJobFunction(self):
         """Test with first job being a function"""
         Job.Runner.startToil(Job.wrapJobFn(jobFunction, 0, Foo()), self.options)
@@ -44,12 +43,10 @@ class UserDefinedJobArgTypeTest(ToilTest):
         """Test with first job being an instance of a class"""
         Job.Runner.startToil(JobClass(0, Foo()), self.options)
 
-    @travis_test
     def testJobFunctionFromMain(self):
         """Test with first job being a function defined in __main__"""
         self._testFromMain()
 
-    @travis_test
     def testJobClassFromMain(self):
         """Test with first job being an instance of a class defined in __main__"""
         self._testFromMain()
@@ -62,7 +59,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
 
 class JobClass(Job):
     def __init__(self, level, foo):
-        Job.__init__(self, memory=100000, cores=2, disk="300M")
+        Job.__init__(self, memory=100000, cores=1, disk="300M")
         self.level = level
         self.foo = foo
 
@@ -79,9 +76,9 @@ def jobFunction(job, level, foo):
         job.addChild(JobClass(level + 1, Foo()))
 
 
-class Foo(object):
+class Foo:
     def __init__(self):
-        super(Foo, self).__init__()
+        super().__init__()
         self.original_id = id(self)
 
     def assertIsCopy(self):

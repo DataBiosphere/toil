@@ -17,12 +17,12 @@ overhead = 0
 
 
 # noinspection PyUnusedLocal
-def encrypt(message, keyPath):
+def encrypt(message: bytes, keyPath: str) -> bytes:
     _bail()
 
 
 # noinspection PyUnusedLocal
-def decrypt(ciphertext, keyPath):
+def decrypt(ciphertext: bytes, keyPath: str) -> bytes:
     _bail()
 
 

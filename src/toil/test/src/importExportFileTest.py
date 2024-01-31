@@ -18,15 +18,15 @@ import stat
 import uuid
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 
 class ImportExportFileTest(ToilTest):
     def setUp(self):
-        super(ImportExportFileTest, self).setUp()
+        super().setUp()
         self.tmp_dir = self._createTempDir()
         self.output_file_path = f'{self.tmp_dir}/out'
         self.message_portion_1 = 'What do you get when you cross a seal and a polar bear?'
@@ -60,13 +60,13 @@ class ImportExportFileTest(ToilTest):
             else:
                 # TODO: We're hackily updating this file without using the
                 #  correct FileStore interface. User code should not do this!
-                with toil._jobStore.updateFileStream(self.trigger_file_id) as f:
+                with toil._jobStore.update_file_stream(self.trigger_file_id) as f:
                     f.write(('Time to freak out!' if fail else 'Keep calm and carry on.').encode('utf-8'))
 
                 workflow_final_output_file_id = toil.restart()
 
             toil.exportFile(workflow_final_output_file_id, f'file://{self.output_file_path}')
-            with open(self.output_file_path, 'r') as f:
+            with open(self.output_file_path) as f:
                 self.assertEqual(f.read(), f'{self.message_portion_1}{self.message_portion_2}')
 
     def _run_import_export_workflow(self, restart):
@@ -115,7 +115,7 @@ class ImportExportFileTest(ToilTest):
 
                 file_id = toil.importFile(os.path.relpath(file_path))
                 toil.exportFile(file_id, os.path.relpath(self.output_file_path))
-                with open(self.output_file_path, 'r') as f:
+                with open(self.output_file_path) as f:
                     self.assertEqual(f.read(), relative_path_data)
 
             with self.subTest('Test local importFile accepts a shared_file_name.'):
@@ -124,7 +124,7 @@ class ImportExportFileTest(ToilTest):
                 file_path = self.create_file(content='why')
                 shared_file_name = 'users_should_probably_not_be_allowed_to_make_shared_files.bad'
                 toil.importFile(f'file://{file_path}', sharedFileName=shared_file_name)
-                with toil._jobStore.readSharedFileStream(shared_file_name, encoding='utf-8') as f:
+                with toil._jobStore.read_shared_file_stream(shared_file_name, encoding='utf-8') as f:
                     self.assertEqual(f.read(), 'why')
 
 
@@ -144,5 +144,5 @@ class RestartingJob(Job):
             with file_store.readGlobalFileStream(self.msg_portion_file_id, encoding='utf-8') as readable:
                 # combine readable.read() (the original message 1) with message 2
                 # this will be the final output of the workflow
-                writable.write(f'{readable.read()}{self.message_portion_2}'.encode('utf-8'))
+                writable.write(f'{readable.read()}{self.message_portion_2}'.encode())
                 return output_file_id

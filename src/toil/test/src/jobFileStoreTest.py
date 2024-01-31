@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import codecs
 import errno
 import logging
 import os
@@ -20,8 +19,7 @@ import random
 from toil.common import Toil
 from toil.fileStores import FileID
 from toil.job import Job
-from toil.lib.retry import retry_flaky_test
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
@@ -34,21 +32,17 @@ class JobFileStoreTest(ToilTest):
     """
     Tests testing the methods defined in :class:toil.fileStores.abstractFileStore.AbstractFileStore.
     """
-
-    @travis_test
     def testCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
-    @travis_test
     def testNonCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.disableCaching = True
+        options.caching = False
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
-    @travis_test
     def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
                           testNo=2):
         """
@@ -106,10 +100,10 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
                 local_path = job.fileStore.getLocalTempFileName() if random.random() > 0.5 else None
                 cache = random.random() > 0.5
 
-                tempFile = job.fileStore.readGlobalFile(fileStoreID, 
+                tempFile = job.fileStore.readGlobalFile(fileStoreID,
                                                         local_path,
                                                         cache=cache)
-                with open(tempFile, 'r') as fH:
+                with open(tempFile) as fH:
                     string = fH.readline()
                 logging.info("Downloaded %s to local path %s with cache %s and got %s with %d letters",
                               fileStoreID, local_path, cache, tempFile, len(string))
@@ -187,7 +181,7 @@ def fileStoreChild(job, testID1, testID2):
 
     localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "childTemp.txt")
     job.fileStore.readGlobalFile(testID2, localFilePath)
-    with open(localFilePath, 'r') as f:
+    with open(localFilePath) as f:
         assert(f.read() == streamingFileStoreString)
 
     job.fileStore.deleteLocalFile(testID2)

@@ -17,8 +17,8 @@ import uuid
 from typing import Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
-from toil.lib.aws.utils import create_s3_bucket
-from toil.lib.ec2 import establish_boto3_session
+from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ class S3Test(ToilTest):
 
     @classmethod
     def setUpClass(cls) -> None:
-        super(S3Test, cls).setUpClass()
+        super().setUpClass()
         session = establish_boto3_session(region_name="us-east-1")
         cls.s3_resource = session.resource("s3", region_name="us-east-1")
         cls.bucket = None
@@ -54,7 +54,21 @@ class S3Test(ToilTest):
             bucket_tagging.put(
                 Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
             )
-        self.assertTrue(AWSJobStore.getBucketRegion, "us-east-1")
+        self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
+
+        # Make sure all the bucket location getting strategies work on a bucket we created
+        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {1}), "us-east-1")
+        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {2}), "us-east-1")
+        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {3}), "us-east-1")
+
+    def test_get_bucket_location_public_bucket(self) -> None:
+        """
+        Test getting buket location for a bucket we don't own.
+        """
+
+        bucket_name = 'spacenet-dataset'
+        # This bucket happens to live in us-east-1
+        self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 
     @classmethod
     def tearDownClass(cls) -> None:

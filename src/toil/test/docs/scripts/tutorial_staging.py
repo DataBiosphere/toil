@@ -2,11 +2,12 @@ import os
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 class HelloWorld(Job):
     def __init__(self, id):
-        Job.__init__(self,  memory="2G", cores=2, disk="3G")
+        Job.__init__(self)
         self.inputFileID = id
 
     def run(self, fileStore):
@@ -16,8 +17,10 @@ class HelloWorld(Job):
         return outputFileID
 
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_staging")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

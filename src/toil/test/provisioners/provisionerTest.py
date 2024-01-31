@@ -15,9 +15,8 @@ import logging
 
 import pytest
 
-from toil.test import ToilTest
-
 from toil.provisioners import parse_node_types
+from toil.test import ToilTest
 
 log = logging.getLogger(__name__)
 

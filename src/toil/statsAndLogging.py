@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gzip
+import io
 import json
 import logging
 import os
 import time
-
-from argparse import ArgumentParser
-from threading import Event, Thread
+from argparse import ArgumentParser, Namespace
 from logging.handlers import RotatingFileHandler
-from typing import List, Any, Optional, Union, TextIO, BinaryIO, Callable, TYPE_CHECKING
+from threading import Event, Thread
+from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
@@ -50,7 +50,7 @@ class StatsAndLogging:
         self._worker.start()
 
     @classmethod
-    def formatLogStream(cls, stream: Union[TextIO, BinaryIO], job_name: Optional[str] = None) -> str:
+    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], stream_name: str) -> str:
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -63,7 +63,7 @@ class StatsAndLogging:
 
         :param stream: The stream of text or bytes to print for the user.
         """
-        lines = [f'Log from job "{job_name}" follows:', '=========>']
+        lines = [f'{stream_name} follows:', '=========>']
 
         for line in stream:
             if isinstance(line, bytes):
@@ -76,13 +76,13 @@ class StatsAndLogging:
 
 
     @classmethod
-    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[TextIO, BinaryIO], method: Callable[[str], None] = logger.debug,
+    def logWithFormatting(cls, stream_name: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
                             message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
 
-        # Format and log the logs, identifying the job with its job store ID.
-        method(cls.formatLogStream(jobLogs, jobStoreID))
+        # Format and log the logs, identifying the stream with the given name.
+        method(cls.formatLogStream(jobLogs, stream_name))
 
     @classmethod
     def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
@@ -96,7 +96,7 @@ class StatsAndLogging:
             logName = ('failed_' if failed else '') + logName
             counter = 0
             while True:
-                suffix = str(counter).zfill(3) + logExtension
+                suffix = '_' + str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
                 #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
                 if len(fullName) >= 255:
@@ -118,6 +118,9 @@ class StatsAndLogging:
         else:
             # we don't have anywhere to write the logs, return now
             return
+
+        # Make sure the destination exists
+        os.makedirs(path, exist_ok=True)
 
         fullName = createName(path, mainFileName, extension, failed)
         with writeFn(fullName, 'wb') as f:
@@ -144,21 +147,47 @@ class StatsAndLogging:
         startTime = time.time()
         startClock = get_total_cpu_time()
 
-        def callback(fileHandle: Union[BinaryIO, TextIO]) -> None:
+        def callback(fileHandle: Union[IO[bytes], IO[str]]) -> None:
             statsStr = fileHandle.read()
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
             stats = json.loads(statsStr, object_hook=Expando)
+            if not stats:
+                return
+
             try:
-                logs = stats.workers.logsToMaster
+                # Handle all the log_to_leader messages
+                logs = stats.workers.logs_to_leader
             except AttributeError:
-                # To be expected if there were no calls to logToMaster()
+                # To be expected if there were no calls to log_to_leader()
                 pass
             else:
                 for message in logs:
                     logger.log(int(message.level),
                                'Got message from job at time %s: %s',
                                time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+
+            try:
+                # Handle all the user-level text streams reported back (command output, etc.)
+                user_logs = stats.workers.logging_user_streams
+            except AttributeError:
+                # To be expected if there were no calls to log_user_stream()
+                pass
+            else:
+                for stream_entry in user_logs:
+                    try:
+                        # Unpack the stream name and text.
+                        name, text = stream_entry.name, stream_entry.text
+                    except AttributeError:
+                        # Doesn't have a user-provided stream name and stream
+                        # text, so skip it.
+                        continue
+                    # Since this is sent as inline text we need to pretend to stream it.
+                    # TODO: Save these as individual files if they start to get too big?
+                    cls.logWithFormatting(name, io.StringIO(text), logger.info)
+                    # Save it as a log file, as if it were a Toil-level job.
+                    cls.writeLogFiles([name], [text], config=config)
+
             try:
                 logs = stats.logs
             except AttributeError:
@@ -167,22 +196,22 @@ class StatsAndLogging:
                 # we may have multiple jobs per worker
                 jobNames = logs.names
                 messages = logs.messages
-                cls.logWithFormatting(jobNames[0], messages,
+                cls.logWithFormatting(f'Log from job "{jobNames[0]}"', messages,
                                       message='Received Toil worker log. Disable debug level logging to hide this output')
                 cls.writeLogFiles(jobNames, messages, config=config)
 
         while True:
             # This is a indirect way of getting a message to the thread to exit
             if stop.is_set():
-                jobStore.readStatsAndLogging(callback)
+                jobStore.read_logs(callback)
                 break
-            if jobStore.readStatsAndLogging(callback) == 0:
+            if jobStore.read_logs(callback) == 0:
                 time.sleep(0.5)  # Avoid cycling too fast
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
                                total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
-        jobStore.writeStatsAndLogging(text)
+        jobStore.write_logs(text)
 
     def check(self) -> None:
         """
@@ -226,6 +255,8 @@ def add_logging_options(parser: ArgumentParser) -> None:
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
     group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
                        action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
+    # Maybe deprecate the above in favor of --logLevel?
+
     group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
                        help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
     group.add_argument("--logFile", dest="logFile", help="File to log in.")
@@ -245,7 +276,7 @@ def configure_root_logger() -> None:
     root_logger.setLevel(DEFAULT_LOGLEVEL)
 
 
-def log_to_file(log_file: str, log_rotation: bool) -> None:
+def log_to_file(log_file: Optional[str], log_rotation: bool) -> None:
     if log_file and log_file not in __loggingFiles:
         logger.debug(f"Logging to file '{log_file}'.")
         __loggingFiles.append(log_file)
@@ -257,7 +288,7 @@ def log_to_file(log_file: str, log_rotation: bool) -> None:
         root_logger.addHandler(handler)
 
 
-def set_logging_from_options(options: 'Config') -> None:
+def set_logging_from_options(options: Union["Config", Namespace]) -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
     set_log_level(options.logLevel)
@@ -286,7 +317,7 @@ def suppress_exotic_logging(local_logger: str) -> None:
     top_level_loggers: List[str] = []
 
     # Due to https://stackoverflow.com/questions/61683713
-    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress: # type: ignore
+    for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:
         if pkg_logger != local_logger:
             # many sub-loggers may exist, like "boto.a", "boto.b", "boto.c"; we only want the top_level: "boto"
             top_level_logger = pkg_logger.split('.')[0] if '.' in pkg_logger else pkg_logger

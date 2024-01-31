@@ -1,7 +1,10 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
-if __name__=="__main__":
+if __name__ == "__main__":
     # A
     A = Job()
     A.addChild(Job())
@@ -16,7 +19,9 @@ if __name__=="__main__":
     # With encapsulation A and its successor subgraph appear to be a single job, hence:
     A.addChild(B)
 
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+    jobstore: str = mkdtemp("tutorial_encapsulations2")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

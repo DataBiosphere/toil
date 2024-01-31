@@ -1,5 +1,6 @@
-import argparse
 import sys
+
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -18,7 +19,7 @@ def main():
         toil status --printLogs ./jobstore
 
     """
-    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser = ArgumentParser(description=main.__doc__)
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args(sys.argv[1:])
 
@@ -33,5 +34,5 @@ def explode(job):
     raise RuntimeError('Boom!')
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

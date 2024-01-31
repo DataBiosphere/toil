@@ -13,93 +13,77 @@
 # limitations under the License.
 import datetime
 import logging
-import os
-import socket
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
 from typing import List, Optional
-from urllib.error import URLError
-from urllib.request import urlopen
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import (get_aws_zone_from_boto,
+                          get_aws_zone_from_environment,
+                          get_aws_zone_from_environment_region,
+                          get_aws_zone_from_metadata)
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
-
-def running_on_ec2():
-    def file_begins_with(path, prefix):
-        with open(path) as f:
-            return f.read(len(prefix)) == prefix
-
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
-        return True
-    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
-    # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
-    try:
-        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
-        return True
-    except (URLError, socket.timeout):
-        return False
-
-def get_current_aws_region():
-    aws_zone = get_best_aws_zone()
-    return zone_to_region(aws_zone) if aws_zone else None
-
-
-def get_best_aws_zone(spotBid=None, nodeType=None, boto2_ec2=None, zone_options: List[str] = None) -> Optional[str]:
+def get_aws_zone_from_spot_market(spotBid: Optional[float], nodeType: Optional[str],
+                                  boto2_ec2: Optional["boto.connection.AWSAuthConnection"], zone_options: Optional[List[str]]) -> Optional[str]:
     """
-    Get the right AWS zone to use.
-    
-    Reports the TOIL_AWS_ZONE environment variable if set.
-    
-    Otherwise, if we are running on EC2, reports the zone we are running in.
-    
-    Otherwise, if a spot bid, node type, and Boto2 EC2 connection are
-    specified, picks a zone where instances are easy to buy from the zones in
-    the region of the Boto2 connection. These parameters must always be
-    specified together, or not at all.
-    
+    If a spot bid, node type, and Boto2 EC2 connection are specified, picks a
+    zone where instances are easy to buy from the zones in the region of the
+    Boto2 connection. These parameters must always be specified together, or
+    not at all.
+
     In this case, zone_options can be used to restrict to a subset of the zones
     in the region.
-    
-    Finally, if a default region is configured in Boto 2, chooses a zone in
-    that region.
-    
-    Returns None if no method can produce a zone to use.
     """
-    zone = os.environ.get('TOIL_AWS_ZONE', None)
-    if not zone and running_on_ec2():
-        try:
-            import boto
-            from boto.utils import get_instance_metadata
-            zone = get_instance_metadata()['placement']['availability-zone']
-        except (KeyError, ImportError):
-            pass
-    if not zone and spotBid:
+    if spotBid:
         # if spot bid is present, all the other parameters must be as well
         assert bool(spotBid) == bool(nodeType) == bool(boto2_ec2)
         # if the zone is unset and we are using the spot market, optimize our
         # choice based on the spot history
-        
+
         if zone_options is None:
             # We can use all the zones in the region
             zone_options = [z.name for z in boto2_ec2.get_all_zones()]
-        
-        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
-    if not zone:
-        try:
-            import boto
-            zone = boto.config.get('Boto', 'ec2_region_name')
-            if zone is not None:
-                zone += 'a'  # derive an availability zone in the region
-        except ImportError:
-            pass
 
-    return zone
+        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
+    else:
+        return None
+
+
+def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] = None,
+                      boto2_ec2: Optional["boto.connection.AWSAuthConnection"] = None, zone_options: Optional[List[str]] = None) -> Optional[str]:
+    """
+    Get the right AWS zone to use.
+
+    Reports the TOIL_AWS_ZONE environment variable if set.
+
+    Otherwise, if we are running on EC2 or ECS, reports the zone we are running
+    in.
+
+    Otherwise, if a spot bid, node type, and Boto2 EC2 connection are
+    specified, picks a zone where instances are easy to buy from the zones in
+    the region of the Boto2 connection. These parameters must always be
+    specified together, or not at all.
+
+    In this case, zone_options can be used to restrict to a subset of the zones
+    in the region.
+
+    Otherwise, if we have the TOIL_AWS_REGION variable set, chooses a zone in
+    that region.
+
+    Finally, if a default region is configured in Boto 2, chooses a zone in
+    that region.
+
+    Returns None if no method can produce a zone to use.
+    """
+    return get_aws_zone_from_environment() or \
+        get_aws_zone_from_metadata() or \
+        get_aws_zone_from_spot_market(spotBid, nodeType, boto2_ec2, zone_options) or \
+        get_aws_zone_from_environment_region() or \
+        get_aws_zone_from_boto()
 
 
 def choose_spot_zone(zones: List[str], bid: float, spot_history: List['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:
@@ -155,9 +139,11 @@ def choose_spot_zone(zones: List[str], bid: float, spot_history: List['boto.ec2.
 
 def optimize_spot_bid(boto2_ec2, instance_type, spot_bid, zone_options: List[str]):
     """
-    Check whether the bid is sane and makes an effort to place the instance in a sensible zone.
-    
-    :param zone_options: The collection of allowed zones to consider, within the region associated with the Boto2 connection.
+    Check whether the bid is in line with history and makes an effort to place
+    the instance in a sensible zone.
+
+    :param zone_options: The collection of allowed zones to consider, within
+        the region associated with the Boto2 connection.
     """
     spot_history = _get_spot_history(boto2_ec2, instance_type)
     if spot_history:

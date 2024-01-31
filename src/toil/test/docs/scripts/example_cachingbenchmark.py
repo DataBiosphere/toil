@@ -6,13 +6,13 @@ This workflow collects statistics about caching.
 
 Invoke like:
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py ./jobstore --realTimeLogging --logInfo --disableCaching
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching False
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo
 
-    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching True
+    python examples/example_cachingbenchmark.py aws:us-west-2:cachingjobstore --realTimeLogging --logInfo --disableCaching
 
 """
 
@@ -24,16 +24,18 @@ import socket
 import sys
 import time
 
+from configargparse import ArgumentParser
+
 from toil.common import Toil
 from toil.job import Job
 from toil.realtimeLogger import RealtimeLogger
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('--minSleep', type=int, default=1,
-        help="Minimum seconds to sleep")
+                        help="Minimum seconds to sleep")
 
     Job.Runner.addToilOptions(parser)
 
@@ -51,8 +53,8 @@ def main():
 def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
-        stream.write(('This is a test of the Toil file caching system. ' +
-            'Had this been an actual file, its contents would have been more interesting.').encode('utf-8'))
+        stream.write(b"This is a test of the Toil file caching system. "
+                     b"Had this been an actual file, its contents would have been more interesting.")
 
     child_rvs = []
     for i in range(100):
@@ -61,6 +63,7 @@ def root(job, options):
 
     # Collect all their views into a report
     return job.addFollowOnJobFn(report, child_rvs).rv()
+
 
 def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
 
@@ -80,11 +83,11 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
     # Check what machine we are
     hostname = socket.gethostname()
 
-    RealtimeLogger.info('Job {} on host {} sees file at device {} inode {}'.format(number, hostname, stats.st_dev, stats.st_ino))
+    RealtimeLogger.info(f'Job {number} on host {hostname} sees file at device {stats.st_dev} inode {stats.st_ino}')
 
     # Return a tuple representing our view of the file.
     # Drop hostname since hostnames are unique per pod.
-    return (stats.st_dev, stats.st_ino)
+    return stats.st_dev, stats.st_ino
 
 
 def report(job, views):
@@ -93,13 +96,13 @@ def report(job, views):
     for v in views:
         counts[v] += 1
 
-    report = ['{} distinct views, most frequent:'.format(len(counts))]
+    report = [f'{len(counts)} distinct views, most frequent:']
 
     for view, count in counts.most_common(10):
-        report.append('{}: {}'.format(view, count))
+        report.append(f'{view}: {count}')
 
     return '\n'.join(report)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

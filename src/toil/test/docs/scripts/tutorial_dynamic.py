@@ -1,5 +1,8 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def binaryStringFn(job, depth, message=""):
@@ -7,10 +10,13 @@ def binaryStringFn(job, depth, message=""):
         job.addChildJobFn(binaryStringFn, depth-1, message + "0")
         job.addChildJobFn(binaryStringFn, depth-1, message + "1")
     else:
-        job.log("Binary string: {}".format(message))
+        job.log(f"Binary string: {message}")
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_dynamic")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

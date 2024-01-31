@@ -1,7 +1,10 @@
 import errno
 import logging
 import os
+import tempfile
+import uuid
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from toil.lib.threading import ExceptionalThread
 
@@ -76,7 +79,7 @@ class WritablePipe(ABC):
         binary and text mode output.
 
         :param file readable: the file object representing the readable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
@@ -99,7 +102,7 @@ class WritablePipe(ABC):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(WritablePipe, self).__init__()
+        super().__init__()
         self.encoding = encoding
         self.errors = errors
         self.readable_fh = None
@@ -115,9 +118,9 @@ class WritablePipe(ABC):
         return self.writable
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        # Closeing the writable end will send EOF to the readable and cause the reader thread
+        # Closing the writable end will send EOF to the readable and cause the reader thread
         # to finish.
-        # TODO: Can close() fail? If so, whould we try and clean up after the reader?
+        # TODO: Can close() fail? If so, would we try and clean up after the reader?
         self.writable.close()
         try:
             if self.thread is not None:
@@ -208,7 +211,7 @@ class ReadablePipe(ABC):
         binary and text mode input.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
@@ -216,7 +219,7 @@ class ReadablePipe(ABC):
         try:
             with os.fdopen(self.writable_fh, 'wb') as writable:
                 self.writeTo(writable)
-        except IOError as e:
+        except OSError as e:
             # The other side of the pipe may have been closed by the
             # reading thread, which is OK.
             if e.errno != errno.EPIPE:
@@ -232,7 +235,7 @@ class ReadablePipe(ABC):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(ReadablePipe, self).__init__()
+        super().__init__()
         self.encoding = encoding
         self.errors = errors
         self.writable_fh = None
@@ -286,14 +289,14 @@ class ReadableTransformingPipe(ReadablePipe):
     The :meth:`.transform` method runs in its own thread, and should move data
     chunk by chunk instead of all at once. It should finish normally if it
     encounters either an EOF on the readable, or a :class:`BrokenPipeError` on
-    the writable. This means tat it should make sure to actually catch a
+    the writable. This means that it should make sure to actually catch a
     :class:`BrokenPipeError` when writing.
 
     See also: :class:`toil.lib.misc.WriteWatchingStream`.
 
     """
 
-    
+
     def __init__(self, source, encoding=None, errors=None):
         """
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
@@ -302,7 +305,7 @@ class ReadableTransformingPipe(ReadablePipe):
         :param str errors: an optional string that specifies how encoding errors are to be handled. Errors
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
         """
-        super(ReadableTransformingPipe, self).__init__(encoding=encoding, errors=errors)
+        super().__init__(encoding=encoding, errors=errors)
         self.source = source
 
     @abstractmethod
@@ -313,9 +316,75 @@ class ReadableTransformingPipe(ReadablePipe):
         :param file readable: the input stream file object to transform.
 
         :param file writable: the file object representing the writable end of the pipe. Do not
-        explicitly invoke the close() method of the object, that will be done automatically.
+            explicitly invoke the close() method of the object, that will be done automatically.
         """
         raise NotImplementedError()
 
     def writeTo(self, writable):
         self.transform(self.source, writable)
+
+class JobStoreUnavailableException(RuntimeError):
+    """
+    Raised when a particular type of job store is requested but can't be used.
+    """
+
+def generate_locator(
+    job_store_type: str,
+    local_suggestion: Optional[str] = None,
+    decoration: Optional[str] = None
+) -> str:
+    """
+    Generate a random locator for a job store of the given type. Raises an
+    JobStoreUnavailableException if that job store cannot be used.
+
+    :param job_store_type: Registry name of the job store to use.
+    :param local_suggestion: Path to a nonexistent local directory suitable for
+        use as a file job store.
+    :param decoration: Extra string to add to the job store locator, if
+        convenient.
+
+    :return str: Job store locator for a usable job store.
+    """
+
+    # Prepare decoration for splicing into strings
+    decoration = ('-' + decoration) if decoration else ''
+
+    try:
+        if job_store_type == "google":
+            # Make sure we have the Google job store
+            from toil.jobStores.googleJobStore import GoogleJobStore  # noqa
+
+            # Look for a project
+            project = os.getenv("TOIL_GOOGLE_PROJECTID")
+            project_part = (":" + project) if project else ""
+
+            # Roll a random bucket name, possibly in the project.
+            return f"google{project_part}:toil{decoration}-{str(uuid.uuid4())}"
+        elif job_store_type == "aws":
+            # Make sure we have AWS
+            from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
+            # Find a region
+            from toil.lib.aws import get_current_aws_region
+
+            region = get_current_aws_region()
+
+            if not region:
+                # We can't generate an AWS job store without a region
+                raise JobStoreUnavailableException(f"{job_store_type} job store can't be made without a region")
+
+            # Roll a random name
+            return f"aws:{region}:toil{decoration}-{str(uuid.uuid4())}"
+        elif job_store_type == "file":
+            if local_suggestion:
+                # Just use the given local directory.
+                return local_suggestion
+            else:
+                # Pick a temp path
+                return os.path.join(tempfile.gettempdir(), 'toil-' + str(uuid.uuid4()) + decoration)
+        else:
+            raise JobStoreUnavailableException(f"{job_store_type} job store isn't known")
+    except ImportError:
+        raise JobStoreUnavailableException(f"libraries for {job_store_type} job store are not installed")
+
+
+

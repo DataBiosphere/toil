@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 
-os.environ['MYPYPATH'] = 'contrib/typeshed'
+os.environ['MYPYPATH'] = 'contrib/mypy-stubs'
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
@@ -20,28 +20,19 @@ def main():
     for d in ['dashboard', 'docker', 'docs', 'src']:
         all_files_to_check += glob(glob_pattern='*.py', directoryname=os.path.join(pkg_root, d))
 
-    # TODO: Remove these paths as typing is added and mypy conflicts are addressed
+    # TODO: Remove these paths as typing is added and mypy conflicts are addressed.
+    # These are handled as path prefixes.
     ignore_paths = [os.path.abspath(f) for f in [
+        'docs/_build',
         'docker/Dockerfile.py',
         'docs/conf.py',
         'docs/vendor/sphinxcontrib/fulltoc.py',
         'docs/vendor/sphinxcontrib/__init__.py',
         'src/toil/job.py',
         'src/toil/leader.py',
-        'src/toil/common.py',
         'src/toil/__init__.py',
-        'src/toil/resource.py',
         'src/toil/deferred.py',
         'src/toil/version.py',
-        'src/toil/wdl/utils.py',
-        'src/toil/wdl/wdl_synthesis.py',
-        'src/toil/wdl/wdl_analysis.py',
-        'src/toil/wdl/wdl_functions.py',
-        'src/toil/wdl/toilwdl.py',
-        'src/toil/wdl/versions/draft2.py',
-        'src/toil/wdl/versions/v1.py',
-        'src/toil/wdl/versions/dev.py',
-        'src/toil/provisioners/clusterScaler.py',
         'src/toil/provisioners/abstractProvisioner.py',
         'src/toil/provisioners/gceProvisioner.py',
         'src/toil/provisioners/__init__.py',
@@ -52,9 +43,6 @@ def main():
         'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/abstractBatchSystem.py',
-        'src/toil/batchSystems/parasol.py',
-        'src/toil/batchSystems/kubernetes.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
@@ -68,9 +56,6 @@ def main():
         'src/toil/batchSystems/mesos/conftest.py',
         'src/toil/batchSystems/mesos/__init__.py',
         'src/toil/batchSystems/mesos/test/__init__.py',
-        'src/toil/cwl/conftest.py',
-        'src/toil/cwl/__init__.py',
-        'src/toil/cwl/cwltoil.py',
         'src/toil/fileStores/cachingFileStore.py',
         'src/toil/jobStores/utils.py',
         'src/toil/jobStores/conftest.py',
@@ -97,19 +82,27 @@ def main():
         'src/toil/lib/encryption/conftest.py',
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/__init__.py',
+        'src/toil/server/utils.py',
+        'src/toil/test',
+        'src/toil/utils/toilStats.py'
     ]]
+
+    def ignore(file_path):
+        """
+        Return True if a file should be ignored.
+        """
+        for prefix in ignore_paths:
+            if file_path.startswith(prefix):
+                return True
+        return False
 
     filtered_files_to_check = []
     for file_path in all_files_to_check:
-        if file_path not in ignore_paths and 'src/toil/test' not in file_path:
+        if not ignore(file_path):
             filtered_files_to_check.append(file_path)
-    # follow-imports type checks pypi projects we don't control, so we skip it; why is this their default?
-    args = ['mypy', '--follow-imports=skip'] + filtered_files_to_check
-    p = subprocess.run(args=args, stdout=subprocess.PIPE)
-    result = p.stdout.decode()
-    print(result)
-    if 'Success: no issues found' not in result:
-        exit(1)
+    args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
+    p = subprocess.run(args=args)
+    exit(p.returncode)
 
 
 if __name__ == '__main__':

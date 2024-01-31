@@ -11,27 +11,44 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
-from pkg_resources import get_distribution, DistributionNotFound
+import sys
+from functools import lru_cache
+
+from importlib.metadata import version, PackageNotFoundError
 from toil.version import cwltool_version
 
-logger = logging.getLogger(__name__)
 
-
+@lru_cache(maxsize=None)
 def check_cwltool_version() -> None:
     """
-    Check if the installed cwltool version matches Toil's expected version. A
-    warning is printed if the versions differ.
+    Check if the installed cwltool version matches Toil's expected version.
+
+    A warning is printed to standard error if the versions differ. We do not
+    assume that logging is set up already. Safe to call repeatedly; only one
+    warning will be printed.
     """
+
     try:
-        installed_version = get_distribution("cwltool").version
+        # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
+        # See https://github.com/pypa/setuptools/issues/3772
+        from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
+    except ImportError:
+        # It's not clear that this exception is really part fo the public API, so fake it.
+        class InvalidVersion(Exception):  # type: ignore
+            pass
+
+    try:
+        installed_version = version("cwltool")
 
         if installed_version != cwltool_version:
-            logger.warning(f"You are using cwltool version {installed_version}, which might not be compatible with "
-                           f"version {cwltool_version} used by Toil. You should consider running 'pip install cwltool=="
-                           f"{cwltool_version}' to match Toil's cwltool version.")
-    except DistributionNotFound:
-        logger.warning("cwltool is not installed.")
-
-
-check_cwltool_version()
+            sys.stderr.write(
+                f"WARNING: You are using cwltool version {installed_version}, which is "
+                f"not the version Toil is tested against. To install the correct cwltool "
+                f"for Toil, do:\n\n\tpip install cwltool=={cwltool_version}\n\n"
+            )
+    except InvalidVersion:
+        # cwltool installation can't be inspected
+        pass
+    except PackageNotFoundError:
+        # cwltool is not installed
+        pass

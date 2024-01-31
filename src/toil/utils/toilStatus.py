@@ -15,22 +15,22 @@
 import logging
 import os
 import sys
-from functools import reduce
+from typing import Any, Dict, List, Optional, Set
 
+from toil.bus import replay_message_bus
 from toil.common import Config, Toil, parser_with_common_options
-from toil.job import Job, JobException, ServiceJobDescription
+from toil.job import JobDescription, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)
 from toil.statsAndLogging import StatsAndLogging, set_logging_from_options
-
-from typing import List, Dict, Set, Any, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class ToilStatus:
     """Tool for reporting on job status."""
-    def __init__(self, jobStoreName: str, specifiedJobs: Optional[List[Job]] = None):
+
+    def __init__(self, jobStoreName: str, specifiedJobs: Optional[List[str]] = None):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
@@ -41,28 +41,38 @@ class ToilStatus:
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
+        self.message_bus_path = self.jobStore.config.write_messages
     def print_dot_chart(self) -> None:
         """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
         print("# This graph was created from job-store: %s" % self.jobStoreName)
 
         # Make job IDs to node names map
-        jobsToNodeNames = dict(enumerate(map(lambda job: job.jobStoreID, self.jobsToReport)))
+        jobsToNodeNames: Dict[str, str] = dict(
+            map(lambda job: (str(job.jobStoreID), job.jobName), self.jobsToReport)
+        )
 
         # Print the nodes
         for job in set(self.jobsToReport):
-            print('%s [label="%s %s"];' % (
-                jobsToNodeNames[job.jobStoreID], job.jobName, job.jobStoreID))
+            print(
+                '{} [label="{} {}"];'.format(
+                    jobsToNodeNames[str(job.jobStoreID)], job.jobName, job.jobStoreID
+                )
+            )
 
         # Print the edges
         for job in set(self.jobsToReport):
-            for level, jobList in enumerate(job.stack):
-                for childJob in jobList:
-                    # Check, b/c successor may be finished / not in the set of jobs
-                    if childJob.jobStoreID in jobsToNodeNames:
-                        print('%s -> %s [label="%i"];' % (
-                            jobsToNodeNames[job.jobStoreID],
-                            jobsToNodeNames[childJob.jobStoreID], level))
+            for level, childJob in job.successors_by_phase():
+                # Check, b/c successor may be finished / not in the set of jobs
+                if childJob in jobsToNodeNames:
+                    print(
+                        '%s -> %s [label="%i"];'
+                        % (
+                            jobsToNodeNames[str(job.jobStoreID)],
+                            jobsToNodeNames[childJob],
+                            level,
+                        )
+                    )
         print("}")
 
     def printJobLog(self) -> None:
@@ -72,7 +82,7 @@ class ToilStatus:
                 with job.getLogFileHandle(self.jobStore) as fH:
                     # TODO: This looks intended to be machine-readable, but the format is
                     #  unspecified and no escaping is done. But keep these tags around.
-                    print(StatsAndLogging.formatLogStream(fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
+                    print(StatsAndLogging.formatLogStream(fH, stream_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
             else:
                 print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
@@ -80,15 +90,16 @@ class ToilStatus:
         """Takes a list of jobs, and prints their successors."""
         for job in self.jobsToReport:
             children = "CHILDREN_OF_JOB:%s " % job
-            for level, jobList in enumerate(job.stack):
-                for childJob in jobList:
-                    children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
+            for level, childJob in job.successors_by_phase():
+                children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
     def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
         """Prints a job's ID, log file, remaining tries, and other properties."""
         for job in self.jobsToReport:
-            lf = lambda x: "%s:%s" % (x, str(x in properties))
+
+            def lf(x: str) -> str:
+                return f"{x}:{str(x in properties)}"
             print("\t".join(("JOB:%s" % job,
                              "LOG_FILE:%s" % job.logJobStoreFileID,
                              "TRYS_REMAINING:%i" % job.remainingTryCount,
@@ -106,16 +117,16 @@ class ToilStatus:
         hasChildren = []
         readyToRun = []
         zombies = []
-        hasLogFile = []
+        hasLogFile: List[JobDescription] = []
         hasServices = []
-        services = []
+        services: List[ServiceJobDescription] = []
         properties = set()
 
         for job in self.jobsToReport:
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = reduce(lambda x, y: x + y, list(map(len, job.stack)) + [0])
+            childNumber = len(list(job.allSuccessors()))
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")
@@ -147,7 +158,7 @@ class ToilStatus:
     @staticmethod
     def getPIDStatus(jobStoreName: str) -> str:
         """
-        Determine the status of a process with a particular pid.
+        Determine the status of a process with a particular local pid.
 
         Checks to see if a process exists or not.
 
@@ -162,14 +173,13 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('pid.log') as pidFile:
-                pid = int(pidFile.read())
-                try:
-                    os.kill(pid, 0)  # Does not kill process when 0 is passed.
-                except OSError:  # Process not found, must be done.
-                    return 'COMPLETED'
-                else:
-                    return 'RUNNING'
+            pid = jobstore.read_leader_pid()
+            try:
+                os.kill(pid, 0)  # Does not kill process when 0 is passed.
+            except OSError:  # Process not found, must be done.
+                return 'COMPLETED'
+            else:
+                return 'RUNNING'
         except NoSuchFileException:
             pass
         return 'QUEUED'
@@ -196,19 +206,39 @@ class ToilStatus:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('succeeded.log') as successful:
+            with jobstore.read_shared_file_stream('succeeded.log') as successful:
                 pass
             return 'COMPLETED'
         except NoSuchFileException:
             try:
-                with jobstore.readSharedFileStream('failed.log') as failed:
+                with jobstore.read_shared_file_stream('failed.log') as failed:
                     pass
                 return 'ERROR'
             except NoSuchFileException:
                 pass
         return 'RUNNING'
 
-    def fetchRootJob(self) -> Job:
+    def print_bus_messages(self) -> None:
+        """
+        Goes through bus messages, returns a list of tuples which have correspondence between
+        PID on assigned batch system and
+
+        Prints a list of the currently running jobs
+        """
+
+        print("\nMessage bus path: ", self.message_bus_path)
+        if self.message_bus_path is not None:
+            if os.path.exists(self.message_bus_path):
+                replayed_messages = replay_message_bus(self.message_bus_path)
+                for key in replayed_messages:
+                    if replayed_messages[key].exit_code != 0:
+                        print(replayed_messages[key])
+            else:
+                print("Message bus file is missing!")
+
+        return None
+
+    def fetchRootJob(self) -> JobDescription:
         """
         Fetches the root job from the jobStore that provides context for all other jobs.
 
@@ -220,12 +250,12 @@ class ToilStatus:
         :raises JobException: if the root job does not exist.
         """
         try:
-            return self.jobStore.loadRootJob()
+            return self.jobStore.load_root_job()
         except JobException:
             print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
             raise
 
-    def fetchUserJobs(self, jobs: List[Job]) -> List[Job]:
+    def fetchUserJobs(self, jobs: List[str]) -> List[JobDescription]:
         """
         Takes a user input array of jobs, verifies that they are in the jobStore
         and returns the array of jobsToReport.
@@ -236,20 +266,25 @@ class ToilStatus:
         jobsToReport = []
         for jobID in jobs:
             try:
-                jobsToReport.append(self.jobStore.load(jobID))
+                jobsToReport.append(self.jobStore.load_job(jobID))
             except JobException:
                 print('The job %s could not be found.' % jobID, file=sys.stderr)
                 raise
         return jobsToReport
 
-    def traverseJobGraph(self, rootJob: Job, jobsToReport: Optional[List[Job]] = None, 
-                    foundJobStoreIDs: Optional[Set[int]] = None) -> List[Job]:
+    def traverseJobGraph(
+        self,
+        rootJob: JobDescription,
+        jobsToReport: Optional[List[JobDescription]] = None,
+        foundJobStoreIDs: Optional[Set[str]] = None,
+    ) -> List[JobDescription]:
         """
         Find all current jobs in the jobStore and return them as an Array.
 
-        :param jobNode rootJob: The root job of the workflow.
+        :param rootJob: The root job of the workflow.
         :param list jobsToReport: A list of jobNodes to be added to and returned.
-        :param set foundJobStoreIDs: A set of jobStoreIDs used to keep track of jobStoreIDs encountered in traversal.
+        :param set foundJobStoreIDs: A set of jobStoreIDs used to keep track of
+            jobStoreIDs encountered in traversal.
         :returns jobsToReport: The list of jobs currently in the job graph.
         """
         if jobsToReport is None:
@@ -258,32 +293,31 @@ class ToilStatus:
         if foundJobStoreIDs is None:
             foundJobStoreIDs = set()
 
-        if rootJob.jobStoreID in foundJobStoreIDs:
+        if str(rootJob.jobStoreID) in foundJobStoreIDs:
             return jobsToReport
 
-        foundJobStoreIDs.add(rootJob.jobStoreID)
+        foundJobStoreIDs.add(str(rootJob.jobStoreID))
         jobsToReport.append(rootJob)
         # Traverse jobs in stack
-        for jobs in rootJob.stack:
-            for successorJobStoreID in jobs:
-                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
-                    self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+        for successorJobStoreID in rootJob.allSuccessors():
+            if successorJobStoreID not in foundJobStoreIDs and self.jobStore.job_exists(successorJobStoreID):
+                self.traverseJobGraph(self.jobStore.load_job(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
             for serviceJobStoreID in jobs:
-                if self.jobStore.exists(serviceJobStoreID):
+                if self.jobStore.job_exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
                         raise RuntimeError('Service job was unexpectedly found while traversing ')
                     foundJobStoreIDs.add(serviceJobStoreID)
-                    jobsToReport.append(self.jobStore.load(serviceJobStoreID))
+                    jobsToReport.append(self.jobStore.load_job(serviceJobStoreID))
 
         return jobsToReport
 
 
 def main() -> None:
     """Reports the state of a Toil workflow."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil status")
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                         default=False)
@@ -313,6 +347,8 @@ def main() -> None:
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
+    parser.add_argument("--printStatus", action="store_true",
+                        help="Determine which jobs are currently running and the associated batch system ID")
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -361,7 +397,8 @@ def main() -> None:
               'and %i jobs with log files currently in %s.' %
               (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
                len(hasServices), len(services), len(hasLogFile), status.jobStore))
-
+    if options.printStatus:
+        status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)

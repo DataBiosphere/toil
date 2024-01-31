@@ -13,33 +13,45 @@
 # limitations under the License.
 import base64
 import bz2
-import errno
 import logging
 import os
-import socket
 import types
 from ssl import SSLError
-from typing import Optional
+from typing import Optional, cast
 
-from boto.exception import (
-    BotoServerError,
-    SDBResponseError,
-    S3ResponseError
-)
 from boto3.s3.transfer import TransferConfig
+from boto.exception import SDBResponseError
+from botocore.client import Config
 from botocore.exceptions import ClientError
+from mypy_boto3_s3 import S3Client, S3ServiceResource
 
+from toil.lib.aws import session
+from toil.lib.aws.utils import connection_reset, get_bucket_region
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    old_retry,
-    retry,
-    ErrorCondition
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            ErrorCondition,
+                            get_error_code,
+                            get_error_message,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 logger = logging.getLogger(__name__)
 
+# Make one botocore Config object for setting up S3 to talk to the exact region
+# we told it to talk to, so that we don't keep making new objects that look
+# like distinct memoization keys. We need to set the addressing style to path
+# so that we talk to region-specific DNS names and not per-bucket DNS names. We
+# also need to set a special flag to make sure we don't use the generic
+# s3.amazonaws.com for us-east-1, or else we might not actually end up talking
+# to us-east-1 when a bucket is there.
+DIAL_SPECIFIC_REGION_CONFIG = Config(s3={
+    'addressing_style': 'path',
+    'us_east_1_regional_endpoint': 'regional'
+})
 
-class SDBHelper(object):
+class SDBHelper:
     """
     A mixin with methods for storing limited amounts of binary data in an SDB item
 
@@ -117,7 +129,7 @@ class SDBHelper(object):
         """
         Turn a bytestring, or None, into SimpleDB attributes.
         """
-        if binary is None: return {u'numChunks': 0}
+        if binary is None: return {'numChunks': 0}
         assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
@@ -132,7 +144,7 @@ class SDBHelper(object):
         n = cls.maxValueSize
         chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
         attributes = {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
-        attributes.update({u'numChunks': len(attributes)})
+        attributes.update({'numChunks': len(attributes)})
         return attributes
 
     @classmethod
@@ -150,7 +162,7 @@ class SDBHelper(object):
         Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
         this method could be used to detect the presence/absence of an item in SDB.
         """
-        return u'numChunks'
+        return 'numChunks'
 
     @classmethod
     def attributesToBinary(cls, attributes):
@@ -160,7 +172,7 @@ class SDBHelper(object):
         """
         chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
         chunks.sort()
-        numChunks = int(attributes[u'numChunks'])
+        numChunks = int(attributes['numChunks'])
         if numChunks:
             serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
@@ -169,7 +181,7 @@ class SDBHelper(object):
             elif compressed[0] == b'U'[0]:
                 binary = compressed[1:]
             else:
-                raise RuntimeError('Unexpected prefix {}'.format(compressed[0]))
+                raise RuntimeError(f'Unexpected prefix {compressed[0]}')
         else:
             binary = None
         return binary, numChunks
@@ -268,12 +280,17 @@ def uploadFile(readable,
     info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
     return info.get('VersionId', None)
 
+class ServerSideCopyProhibitedError(RuntimeError):
+    """
+    Raised when AWS refuses to perform a server-side copy between S3 keys, and
+    insists that you pay to download and upload the data yourself instead.
+    """
 
 @retry(errors=[ErrorCondition(
     error=ClientError,
     error_codes=[404, 500, 502, 503, 504]
 )])
-def copyKeyMultipart(resource,
+def copyKeyMultipart(resource: S3ServiceResource,
                      srcBucketName: str,
                      srcKeyName: str,
                      srcKeyVersion: str,
@@ -288,7 +305,22 @@ def copyKeyMultipart(resource,
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
 
-    :param S3.Resource resource: boto3 resource
+    This function will always do a fast, server-side copy, at least
+    until/unless <https://github.com/boto/boto3/issues/3270> is fixed. In some
+    situations, a fast, server-side copy is not actually possible. For example,
+    when residing in an AWS VPC with an S3 VPC Endpoint configured, copying
+    from a bucket in another region to a bucket in your own region cannot be
+    performed server-side. This is because the VPC Endpoint S3 API servers
+    refuse to perform server-side copies between regions, the source region's
+    API servers refuse to initiate the copy and refer you to the destination
+    bucket's region's API servers, and the VPC routing tables are configured to
+    redirect all access to the current region's S3 API servers to the S3
+    Endpoint API servers instead.
+
+    If a fast server-side copy is not actually possible, a
+    ServerSideCopyProhibitedError will be raised.
+
+    :param resource: boto3 resource
     :param str srcBucketName: The name of the bucket to be copied from.
     :param str srcKeyName: The name of the key to be copied from.
     :param str srcKeyVersion: The version of the key to be copied from.
@@ -308,6 +340,20 @@ def copyKeyMultipart(resource,
     if srcKeyVersion is not None:
         copySource['VersionId'] = compat_bytes(srcKeyVersion)
 
+    # Get a client to the source region, which may not be the same as the one
+    # this resource is connected to. We should probably talk to it for source
+    # object metadata. And we really want it to talk to the source region and
+    # not wherever the bucket virtual hostnames go.
+    source_region = get_bucket_region(srcBucketName)
+    source_client = cast(
+        S3Client,
+        session.client(
+            's3',
+            region_name=source_region,
+            config=DIAL_SPECIFIC_REGION_CONFIG
+        )
+    )
+
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
     # to ensure we only provide the parameters when they are actually
@@ -322,7 +368,26 @@ def copyKeyMultipart(resource,
                                    'CopySourceSSECustomerKey': copySourceSseKey})
     copyEncryptionArgs.update(destEncryptionArgs)
 
-    dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
+    try:
+        # Kick off a server-side copy operation
+        dstObject.copy(copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs)
+    except ClientError as e:
+        if get_error_code(e) == 'AccessDenied' and 'cross-region' in get_error_message(e):
+            # We have this problem: <https://aws.amazon.com/premiumsupport/knowledge-center/s3-troubleshoot-copy-between-buckets/#Cross-Region_request_issues_with_VPC_endpoints_for_Amazon_S3>
+            # The Internet and AWS docs say that we just can't do a
+            # cross-region CopyObject from inside a VPC with an endpoint. The
+            # AGC team suggested we try doing the copy by talking to the
+            # source region instead, but that does not actually work; if we
+            # hack up botocore enough for it to actually send the request to
+            # the source region's API servers, they reject it and tell us to
+            # talk to the destination region's API servers instead. Which we
+            # can't reach.
+            logger.error('Amazon is refusing to perform a server-side copy of %s: %s', copySource, e)
+            raise ServerSideCopyProhibitedError()
+        else:
+            # Some other ClientError happened
+            raise
+
 
     # Wait until the object exists before calling head_object
     object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
@@ -365,20 +430,11 @@ def monkeyPatchSdbConnection(sdb):
     """
     sdb.put_attributes = types.MethodType(_put_attributes_using_post, sdb)
 
-
-default_delays = (0, 1, 1, 4, 16, 64)
-default_timeout = 300
-
-
-def connection_reset(e):
-    # For some reason we get 'error: [Errno 104] Connection reset by peer' where the
-    # English description suggests that errno is 54 (ECONNRESET) while the actual
-    # errno is listed as 104. To be safe, we check for both:
-    return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
-
-
 def sdb_unavailable(e):
-    return isinstance(e, BotoServerError) and e.status in (500, 503)
+    # Since we're checking against a collection here we absolutely need an
+    # integer status code. This is probably a BotoServerError, but other 500s
+    # and 503s probably ought to be retried too.
+    return get_error_status(e) in (500, 503)
 
 
 def no_such_sdb_domain(e):
@@ -399,46 +455,6 @@ def retryable_sdb_errors(e):
             or retryable_ssl_error(e))
 
 
-def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
-    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
-# https://github.com/boto/botocore/blob/49f87350d54f55b687969ec8bf204df785975077/botocore/retries/standard.py#L316
-THROTTLED_ERROR_CODES = [
-        'Throttling',
-        'ThrottlingException',
-        'ThrottledException',
-        'RequestThrottledException',
-        'TooManyRequestsException',
-        'ProvisionedThroughputExceededException',
-        'TransactionInProgressException',
-        'RequestLimitExceeded',
-        'BandwidthLimitExceeded',
-        'LimitExceededException',
-        'RequestThrottled',
-        'SlowDown',
-        'PriorRequestNotComplete',
-        'EC2ThrottledException',
-]
-
-
-# TODO: Replace with: @retry and ErrorCondition
-def retryable_s3_errors(e):
-    return    (connection_reset(e)
-            or (isinstance(e, BotoServerError) and e.status in (429, 500))
-            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
-            # boto3 errors
-            or (isinstance(e, S3ResponseError) and e.error_code in THROTTLED_ERROR_CODES)
-            or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
-            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
-            or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
-
-
-def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
+def retry_sdb(delays=DEFAULT_DELAYS, timeout=DEFAULT_TIMEOUT, predicate=retryable_sdb_errors):
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-
-def region_to_bucket_location(region):
-    return '' if region == 'us-east-1' else region
-
-
-def bucket_location_to_region(location):
-    return "us-east-1" if location == "" or location is None else location

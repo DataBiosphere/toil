@@ -20,35 +20,32 @@ import unittest
 import pytest
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
-from toil.leader import FailedJobsException
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, get_temp_file, slow
 
 logger = logging.getLogger(__name__)
 
-class JobTest(ToilTest):
-    """
-    Tests testing the job class
-    """
 
+class JobTest(ToilTest):
+    """Tests the job class."""
     @classmethod
     def setUpClass(cls):
-        super(JobTest, cls).setUpClass()
+        super().setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
     @slow
     def testStatic(self):
         r"""
-        Create a DAG of jobs non-dynamically and run it. DAG is:
+        Create a DAG of jobs non-dynamically and run it. DAG is::
 
-        A -> F
-        \-------
-        B -> D  \
-         \       \
-          ------- C -> E
+            A -> F
+            \-------
+            B -> D  \
+             \       \
+              ------- C -> E
 
-        Follow on is marked by ->
+        Follow on is marked by ``->``
         """
         outFile = get_temp_file(rootDir=self._createTempDir())
         try:
@@ -78,22 +75,21 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
+            self.assertEqual(open(outFile).readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
 
-    @travis_test
     def testStatic2(self):
         r"""
-        Create a DAG of jobs non-dynamically and run it. DAG is:
+        Create a DAG of jobs non-dynamically and run it. DAG is::
 
-        A -> F
-        \-------
-        B -> D  \
-         \       \
-          ------- C -> E
+            A -> F
+            \-------
+            B -> D  \
+             \       \
+              ------- C -> E
 
-        Follow on is marked by ->
+        Follow on is marked by ``->``
         """
         outFile = get_temp_file(rootDir=self._createTempDir())
         try:
@@ -119,7 +115,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile).readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -138,8 +134,7 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
-    @travis_test
-    @pytest.mark.timeout(30)
+    @pytest.mark.timeout(300)
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
@@ -173,7 +168,6 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
-    @travis_test
     def testDeadlockDetection(self):
         """
         Randomly generate job graphs with various types of cycle in them and
@@ -275,7 +269,7 @@ class JobTest(ToilTest):
         identifies leaf vertices incorrectly
 
         Test verification of new checkpoint jobs being leaf verticies,
-        starting with the following baseline workflow:
+        starting with the following baseline workflow::
 
             Parent
               |
@@ -297,7 +291,7 @@ class JobTest(ToilTest):
                               omits the workflow root job
 
         Test verification of a new checkpoint job being leaf vertex,
-        starting with a baseline workflow of a single, root job:
+        starting with a baseline workflow of a single, root job::
 
             Root # Checkpoint=True
 
@@ -405,6 +399,9 @@ class JobTest(ToilTest):
             options.retryCount = 1
             options.badWorker = 0.25
             options.badWorkerFailInterval = 0.01
+            # Because we're going to be killing the services all the time for
+            # restarts, make sure they are paying attention.
+            options.servicePollingInterval = 1
 
             # Now actually run the workflow
             try:
@@ -433,7 +430,7 @@ class JobTest(ToilTest):
             # so we can check they are compatible with the relationships defined by the job DAG.
             ordering = None
             for i in range(nodeNumber):
-                with open(os.path.join(tempDir, str(i)), 'r') as fH:
+                with open(os.path.join(tempDir, str(i))) as fH:
                     ordering = list(map(int, fH.readline().split()))
                     self.assertEqual(int(ordering[-1]), i)
                     for j in ordering[:-1]:
@@ -462,7 +459,7 @@ class JobTest(ToilTest):
         # Pick number of total edges to create
         edgeNumber = random.choice(range(nodeNumber - 1, 1 + (nodeNumber * (nodeNumber - 1) // 2)))
         # Make a spanning tree of edges so that nodes are connected
-        edges = set([(random.choice(range(i)), i) for i in range(1, nodeNumber)])
+        edges = {(random.choice(range(i)), i) for i in range(1, nodeNumber)}
         # Add extra random edges until there are edgeNumber edges
         while len(edges) < edgeNumber:
             edges.add(JobTest.getRandomEdge(nodeNumber))
@@ -564,7 +561,8 @@ class JobTest(ToilTest):
         def makeJob(string):
             promises = []
             job = Job.wrapFn(fn2Test, promises, string,
-                             None if outPath is None else os.path.join(outPath, string))
+                             None if outPath is None else os.path.join(outPath, string),
+                             cores=0.1, memory="0.5G", disk="0.1G")
             jobsToPromisesMap[job] = promises
             return job
 
@@ -583,7 +581,7 @@ class JobTest(ToilTest):
             predecessors[jobs[tNode]].append(jobs[fNode])
 
         # Map of jobs to return values
-        jobsToRvs = dict([(job, job.addService(TrivialService(job.rv())) if addServices else job.rv()) for job in jobs])
+        jobsToRvs = {job: job.addService(TrivialService(job.rv(), cores=0.1, memory="0.5G", disk="0.1G")) if addServices else job.rv() for job in jobs}
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(predecessors[job]))
@@ -625,7 +623,7 @@ class JobTest(ToilTest):
         return True
 
 def simpleJobFn(job, value):
-    job.fileStore.logToMaster(value)
+    job.fileStore.log_to_leader(value)
 
 def fn1Test(string, outputFile):
     """
@@ -685,7 +683,7 @@ def child(job):
     assert job.cores is not None
     assert job.disk is not None
     assert job.memory is not None
-    assert job.preemptable is not None
+    assert job.preemptible is not None
 
 
 def errorChild(job):

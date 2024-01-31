@@ -36,16 +36,41 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``TOIL_WORKDIR`` and the  ``--workDir`` command    |
 |                                  | line option.                                       |
 +----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR            | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This directory must exist on |
+|                                  | each worker node and may be set to a different     |
+|                                  | value on each worker. The ``--coordinationDir``    |
+|                                  | command line option overrides this.                |
++----------------------------------+----------------------------------------------------+
+| TOIL_COORDINATION_DIR_OVERRIDE   | An absolute path to a directory where Toil will    |
+|                                  | write its lock files. This overrides               |
+|                                  | ``TOIL_COORDINATION_DIR`` and the                  |
+|                                  | ``--coordinationDir`` command    line option.      |
++----------------------------------+----------------------------------------------------+
+| TOIL_BATCH_LOGS_DIR              | A directory to save batch system logs into, where  |
+|                                  | the leader can access them. The ``--batchLogsDir`` |
+|                                  | option overrides this. Only works for grid engine  |
+|                                  | batch systems such as gridengine, htcondor,        |
+|                                  | torque, slurm, and lsf.                            |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
-|                                  | /tmp in the workers, to allow for shared caching.  |
+|                                  | the Toil work directory in the workers, to allow   |
+|                                  | for shared caching. Will be created if it doesn't  |
+|                                  | already exist.                                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |
 +----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_SERVICE_ACCOUNT  | A service account name to apply when creating      |
+|                                  | Kubernetes pods.                                   |
++----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_POD_TIMEOUT      | Seconds to wait for a scheduled Kubernetes pod to  |
+|                                  | start running.                                     |
++----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
 |                                  | to utilize kubernetes watch stream feature         |
-|                                  | intead of polling for running jobs. Default        |
+|                                  | instead of polling for running jobs. Default       |
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
@@ -76,8 +101,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | used with the Kubernetes batch system, if the      |
 |                                  | credentials allow access to S3 and SimpleDB.       |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AWS_ZONE                    | The EC2 zone to provision nodes in if using        |
-|                                  | Toil's provisioner.                                |
+| TOIL_AWS_ZONE                    | Zone to use when using AWS. Also determines region.|
+|                                  | Overrides TOIL_AWS_REGION.                         |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_REGION                  | Region to use when using AWS.                      |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_AMI                     | ID of the AMI to use in node provisioning. If in   |
 |                                  | doubt, don't set this variable.                    |
@@ -92,12 +119,28 @@ There are several environment variables that affect the way Toil runs.
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
 +----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_QUEUE             | Name or ARN of an AWS Batch Queue to use with the  |
+|                                  | AWS Batch batch system.                            |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_BATCH_JOB_ROLE_ARN      | ARN of an IAM role to run AWS Batch jobs as with   |
+|                                  | the AWS Batch batch system. If the jobs are not    |
+|                                  | run with an IAM role or on machines that have      |
+|                                  | access to S3 and SimpleDB, the AWS job store will  |
+|                                  | not be usable.                                     |
++----------------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
 |                                  | Google job store names for tests or CWL workflows. |
 +----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |
+|                                  | There is no default value for this variable.       |
+|                                  | If neither ``--export`` nor ``--export-file`` is   |
+|                                  | in the argument list, ``--export=ALL`` will be     |
+|                                  | provided.                                          |
++----------------------------------+----------------------------------------------------+
+| TOIL_SLURM_PE                    | Name of the slurm partition to use for parallel    |
+|                                  | jobs.                                              |
 |                                  | There is no default value for this variable.       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_GRIDENGINE_ARGS             | Arguments for qsub for the gridengine batch        |
@@ -165,10 +208,26 @@ There are several environment variables that affect the way Toil runs.
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
 +----------------------------------+----------------------------------------------------+
+| TOIL_WES_BROKER_URL              | An optional broker URL to use to communicate       |
+|                                  | between the WES server and Celery task queue. If   |
+|                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
+|                                  | used.                                              |
++----------------------------------+----------------------------------------------------+
+| TOIL_WES_JOB_STORE_TYPE          | Type of job store to use by default for workflows  |
+|                                  | run via the WES server. Can be ``file``, ``aws``,  |
+|                                  | or ``google``.                                     |
++----------------------------------+----------------------------------------------------+
 | TOIL_OWNER_TAG                   | This will tag cloud resources with a tag reading:  |
-|                                  | "Owner: $TOIL_OWNER_TAG".  Currently only on AWS   |
-|                                  | buckets, this is an internal UCSC flag to stop a   |
-|                                  | bot we have that terminates untagged resources.    |
+|                                  | "Owner: $TOIL_OWNER_TAG". This is used internally  |
+|                                  | at UCSC to stop a bot we have that terminates      |
+|                                  | untagged resources.                                |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_PROFILE                 | The name of an AWS profile to run TOIL with.       |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_TAGS                    | This will tag cloud resources with any arbitrary   |
+|                                  | tags given in a JSON format. These are overwritten |
+|                                  | in favor of CLI options when using launch cluster. |
+|                                  | For information on valid AWS tags, see `AWS Tags`_.|
 +----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
@@ -178,5 +237,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | the workers. If not set, Toil will use the number  |
 |                                  | of job threads.                                    |
 +----------------------------------+----------------------------------------------------+
+| GUNICORN_CMD_ARGS                | Specify additional Gunicorn configurations for the |
+|                                  | Toil WES server. See `Gunicorn settings`_.         |
++----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
+.. _Gunicorn settings: https://docs.gunicorn.org/en/stable/settings.html#settings
+.. _AWS Tags: https://docs.aws.amazon.com/general/latest/gr/aws_tagging.html

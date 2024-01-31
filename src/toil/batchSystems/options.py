@@ -10,149 +10,138 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-import socket
-from argparse import ArgumentParser, _ArgumentGroup
-from contextlib import closing
-from typing import Callable, Union
 
-from toil.batchSystems.registry import (
-    BATCH_SYSTEM_FACTORY_REGISTRY,
-    BATCH_SYSTEMS,
-    DEFAULT_BATCH_SYSTEM,
-)
+import logging
+import sys
+from argparse import ArgumentParser, _ArgumentGroup
+from typing import Any, Callable, List, Optional, TypeVar, Union
+
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    from typing_extensions import Protocol
+
+from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
+                                        get_batch_system,
+                                        get_batch_systems)
 from toil.lib.threading import cpu_count
 
+logger = logging.getLogger(__name__)
 
-def getPublicIP() -> str:
-    """Get the IP that this machine uses to contact the internet.
+class OptionSetter(Protocol):
+    """
+    Protocol for the setOption function we get to let us set up CLI options for
+    each batch system.
 
-    If behind a NAT, this will still be this computer's IP, and not the router's."""
-    try:
-        # Try to get the internet-facing IP by attempting a connection
-        # to a non-existent server and reading what IP was used.
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
-            # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
-            # there is guaranteed to be no one listening on the other
-            # end (and we won't accidentally DOS anyone).
-            sock.connect(('203.0.113.1', 1))
-            ip = sock.getsockname()[0]
-        return ip
-    except:
-        # Something went terribly wrong. Just give loopback rather
-        # than killing everything, because this is often called just
-        # to provide a default argument
-        return '127.0.0.1'
+    Actual functionality is defined in the Config class.
+    """
 
+    OptionType = TypeVar('OptionType')
+    def __call__(
+        self,
+        option_name: str,
+        parsing_function: Optional[Callable[[Any], OptionType]] = None,
+        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
+        default: Optional[OptionType] = None,
+        env: Optional[List[str]] = None,
+        old_names: Optional[List[str]] = None
+    ) -> bool:
+        ...
 
-def add_parasol_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--parasolCommand", dest="parasolCommand", default='parasol',
-                        help="The name or path of the parasol program. Will be looked up on PATH "
-                             "unless it starts with a slash.  (default: %(default)s).")
-    parser.add_argument("--parasolMaxBatches", dest="parasolMaxBatches", default=1000,
-                        help="Maximum number of job batches the Parasol batch is allowed to create. One batch is "
-                             "created for jobs with a a unique set of resource requirements.  (default: %(default)s).")
-
-
-def add_single_machine_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--scale", dest="scale", default=1,
-                        help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
-                             "Used in the single_machine batch system.  (default: %(default)s).")
-
-    link_imports = parser.add_mutually_exclusive_group()
-    link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
-                         "Specifying this option instead copies the files into the job store, which may protect "
-                         "them from being modified externally.  When not specified and as long as caching is enabled, "
-                         "Toil will protect the file automatically by changing the permissions to read-only.")
-    link_imports.add_argument("--linkImports", dest="linkImports", action='store_true', help=link_imports_help)
-    link_imports.add_argument("--noLinkImports", dest="linkImports", action='store_false', help=link_imports_help)
-    link_imports.set_defaults(linkImports=True)
-
-    move_exports = parser.add_mutually_exclusive_group()
-    move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
-                         'output directory, and a symlink to the moved exported file is created at the initial '
-                         'location.  Specifying this option instead copies the files into the output directory.  '
-                         'Applies to filesystem-based job stores only.')
-    move_exports.add_argument("--moveExports", dest="moveExports", action='store_true', help=move_exports_help)
-    move_exports.add_argument("--noMoveExports", dest="moveExports", action='store_false', help=move_exports_help)
-    move_exports.set_defaults(moveExports=False)
-
-
-def add_mesos_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--mesosMaster", dest="mesosMasterAddress", default=f'{getPublicIP()}:5050',
-                        help="The host and port of the Mesos master separated by colon.  (default: %(default)s)")
-
-
-def add_kubernetes_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    parser.add_argument("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
-                        help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
-                             "(default: %(default)s)")
-
-def add_slurm_options(parser: Union[ArgumentParser, _ArgumentGroup]):
-    allocate_mem = parser.add_mutually_exclusive_group()
-    allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
-                         "on SLURM since some system servers may reject any job request that "
-                         "explicitly specifies the memory allocation.  The default is to always allocate memory.")
-    allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
-    allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
-    allocate_mem.set_defaults(allocate_mem=True)
-
-def set_batchsystem_options(batch_system: str, set_option: Callable) -> None:
-    batch_system_factory = BATCH_SYSTEM_FACTORY_REGISTRY[batch_system]()
-    batch_system_factory.setOptions(set_option)
+def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSetter) -> None:
+    """
+    Call set_option for all the options for the given named batch system, or
+    all batch systems if no name is provided.
+    """
+    if batch_system is not None:
+        # Use this batch system
+        batch_system_type = get_batch_system(batch_system)
+        batch_system_type.setOptions(set_option)
+    else:
+        for name in get_batch_systems():
+            # All the batch systems are responsible for setting their own options
+            # with their setOptions() class methods.
+            try:
+                batch_system_type = get_batch_system(name)
+            except ImportError:
+                # Skip anything we can't import
+                continue
+            # Ask the batch system to tell us all its options.
+            batch_system_type.setOptions(set_option)
+    # Options shared between multiple batch systems
+    set_option("disableAutoDeployment")
+    # Make limits maximum if set to 0
+    set_option("max_jobs")
+    set_option("max_local_jobs")
+    set_option("manualMemArgs")
+    set_option("run_local_jobs_on_workers")
+    set_option("statePollingWait")
+    set_option("batch_logs_dir")
 
 
 def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-    # TODO: Only add options for the system the user is specifying?
+    from toil.options.common import SYS_MAX_SIZE
+
+    # Do the global cross-batch-system arguments
     parser.add_argument(
         "--batchSystem",
         dest="batchSystem",
         default=DEFAULT_BATCH_SYSTEM,
-        choices=BATCH_SYSTEMS,
+        choices=get_batch_systems(),
         help=f"The type of batch system to run the job(s) with, currently can be one "
-        f"of {', '.join(BATCH_SYSTEMS)}. default={DEFAULT_BATCH_SYSTEM}",
+        f"of {', '.join(get_batch_systems())}. Default = {DEFAULT_BATCH_SYSTEM}",
     )
     parser.add_argument(
         "--disableHotDeployment",
         dest="disableAutoDeployment",
+        default=False,
         action="store_true",
-        default=None,
         help="Hot-deployment was renamed to auto-deployment.  Option now redirects to "
-        "--disableAutoDeployment.  Left in for backwards compatibility.",
+        "--disableAutoDeployment. Left in for backwards compatibility.",
     )
     parser.add_argument(
         "--disableAutoDeployment",
         dest="disableAutoDeployment",
-        action="store_true",
-        default=None,
-        help="Should auto-deployment of the user script be deactivated? If True, the user "
-        "script/package should be present at the same location on all workers.  Default = False.",
+        default=False,
+        help="Should auto-deployment of Toil Python workflows be deactivated? If True, the workflow's "
+        "Python code should be present at the same location on all workers. Default = False.",
+    )
+    parser.add_argument(
+        "--maxJobs",
+        dest="max_jobs",
+        default=SYS_MAX_SIZE, # This is *basically* unlimited and saves a lot of Optional[]
+        type=lambda x: int(x) or SYS_MAX_SIZE,
+        help="Specifies the maximum number of jobs to submit to the "
+             "backing scheduler at once. Not supported on Mesos or "
+             "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
     )
     parser.add_argument(
         "--maxLocalJobs",
-        default=cpu_count(),
-        help=f"For batch systems that support a local queue for housekeeping jobs "
-        f"(Mesos, GridEngine, htcondor, lsf, slurm, torque).  Specifies the maximum "
-        f"number of these housekeeping jobs to run on the local system.  The default "
-        f"(equal to the number of cores) is a maximum of {cpu_count()} concurrent "
-        f"local housekeeping jobs.",
+        dest="max_local_jobs",
+        default=None,
+        type=lambda x: int(x) or 0,
+        help=f"Specifies the maximum number of housekeeping jobs to "
+             f"run sumultaneously on the local system. Use 0 for "
+             f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
     )
     parser.add_argument(
         "--manualMemArgs",
         default=False,
-        action="store_true",
         dest="manualMemArgs",
+        action="store_true",
         help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to the qsub "
         "call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply alternative arguments.  "
         "Requires that TOIL_GRIDGENGINE_ARGS be set.",
     )
     parser.add_argument(
+        "--runLocalJobsOnWorkers",
         "--runCwlInternalJobsOnWorkers",
-        dest="runCwlInternalJobsOnWorkers",
+        dest="run_local_jobs_on_workers",
+        default=False,
         action="store_true",
-        default=None,
-        help="Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-        "instead of the primary node. If false (default), then all such jobs are run on "
-        "the primary node. Setting this to true can speed up the pipeline for very large "
+        help="Whether to run jobs marked as local (e.g. CWLScatter) on the worker nodes "
+        "instead of the leader node. If false (default), then all such jobs are run on "
+        "the leader node. Setting this to true can speed up CWL pipelines for very large "
         "workflows with many sub-workflows and/or scatters, provided that the worker "
         "pool is large enough.",
     )
@@ -160,48 +149,41 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "--coalesceStatusCalls",
         dest="coalesceStatusCalls",
         action="store_true",
-        default=None,
+        default=True,
         help=(
-            "Coalese status calls to prevent the batch system from being overloaded. "
-            "Currently only supported for LSF. "
-            "default=false"
+            "Ask for job statuses from the batch system in a batch. Deprecated; now always "
+            "enabled where supported."
         ),
     )
+    parser.add_argument(
+        "--statePollingWait",
+        dest="statePollingWait",
+        type=int,
+        default=None,
+        help="Time, in seconds, to wait before doing a scheduler query for job state.  "
+             "Return cached results if within the waiting period. Only works for grid "
+             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+    )
+    parser.add_argument(
+        "--batchLogsDir",
+        dest="batch_logs_dir",
+        default=None,
+        env_var="TOIL_BATCH_LOGS_DIR",
+        help="Directory to tell the backing batch system to log into. Should be available "
+             "on both the leader and the workers, if the backing batch system writes logs "
+             "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
+             "the Toil work directory will be used. Only works for grid engine batch "
+             "systems such as gridengine, htcondor, torque, slurm, and lsf."
+    )
 
-    add_parasol_options(parser)
-    add_single_machine_options(parser)
-    add_mesos_options(parser)
-    add_slurm_options(parser)
-    add_kubernetes_options(parser)
-
-
-def set_batchsystem_config_defaults(config) -> None:
-    """
-    Set default options for builtin batch systems. This is required if a Config
-    object is not constructed from an Options object.
-    """
-    config.batchSystem = "single_machine"
-    config.disableAutoDeployment = False
-    config.environment = {}
-    config.statePollingWait = None
-    config.maxLocalJobs = cpu_count()
-    config.manualMemArgs = False
-    config.coalesceStatusCalls = False
-
-    # parasol
-    config.parasolCommand = 'parasol'
-    config.parasolMaxBatches = 10000
-
-    # single machine
-    config.scale = 1
-    config.linkImports = False
-    config.moveExports = False
-
-    # mesos
-    config.mesosMasterAddress = f'{getPublicIP()}:5050'
-
-    # SLURM
-    config.allocate_mem = True
-
-    # Kubernetes
-    config.kubernetesHostPath = None
+    for name in get_batch_systems():
+        # All the batch systems are responsible for adding their own options
+        # with the add_options class method.
+        try:
+            batch_system_type = get_batch_system(name)
+        except ImportError:
+            # Skip anything we can't import
+            continue
+        # Ask the batch system to create its options in the parser
+        logger.debug('Add options for %s batch system', name)
+        batch_system_type.add_options(parser)

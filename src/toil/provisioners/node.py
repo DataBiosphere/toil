@@ -29,18 +29,21 @@ logger = logging.getLogger(__name__)
 class Node:
     maxWaitTime = 7 * 60
 
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptible, tags=None, use_private_ip=None):
         self.publicIP = publicIP
         self.privateIP = privateIP
-        self.effectiveIP = self.publicIP or self.privateIP
+        if use_private_ip:
+            self.effectiveIP = self.privateIP #or self.publicIP?
+        else:
+            self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
         self.launchTime = launchTime
         self.nodeType = nodeType
-        self.preemptable = preemptable
+        self.preemptible = preemptible
         self.tags = tags
 
     def __str__(self):
-        return "%s at %s" % (self.name, self.effectiveIP)
+        return f"{self.name} at {self.effectiveIP}"
 
     def __repr__(self):
         return str(self)
@@ -48,7 +51,7 @@ class Node:
     def __hash__(self):
         return hash(self.effectiveIP)
 
-    def remainingBillingInterval(self):
+    def remainingBillingInterval(self) -> float:
         """
         If the node has a launch time, this function returns a floating point value
         between 0 and 1.0 representing how far we are into the
@@ -101,7 +104,7 @@ class Node:
             except Exception as e:
                 logger.debug("Rsync to new node failed, trying again. Error message: %s" % e)
                 time.sleep(10 * retry)
-        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP))
+        raise RuntimeError(f"Failed to inject file {fromFile} to {role} with ip {self.effectiveIP}")
 
     def extractFile(self, fromFile, toFile, role):
         """
@@ -115,7 +118,7 @@ class Node:
             except Exception as e:
                 logger.debug("Rsync from new node failed, trying again. Error message: %s" % e)
                 time.sleep(10 * retry)
-        raise RuntimeError("Failed to extract file %s from %s with ip %s" % (fromFile, role, self.effectiveIP))
+        raise RuntimeError(f"Failed to extract file {fromFile} from {role} with ip {self.effectiveIP}")
 
     def _waitForSSHKeys(self, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
@@ -131,7 +134,7 @@ class Node:
                                     "https://toil.readthedocs.io/en/latest/running/cloud/cloud.html."
                                     if last_error and 'Permission denied' in last_error else ""))
             try:
-                logger.info('Attempting to establish SSH connection...')
+                logger.info('Attempting to establish SSH connection to %s@%s...', keyName, self.effectiveIP)
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
             except RuntimeError as err:
                 last_error = str(err)
@@ -202,7 +205,7 @@ class Node:
                 s.connect((self.effectiveIP, 22))
                 logger.debug('...ssh port open')
                 return i
-            except socket.error:
+            except OSError:
                 pass
             finally:
                 s.close()
@@ -252,7 +255,7 @@ class Node:
             commandTokens.extend(sshOptions)
         # specify host
         user = kwargs.pop('user', 'core')  # CHANGED: Is this needed?
-        commandTokens.append('%s@%s' % (user, str(self.effectiveIP)))
+        commandTokens.append(f'{user}@{str(self.effectiveIP)}')
 
         inputString = kwargs.pop('input', None)
         if inputString is not None:
@@ -296,7 +299,7 @@ class Node:
         for i in args:
             if i.startswith(":") and not hostInserted:
                 user = kwargs.pop('user', 'core')  # CHANGED: Is this needed?
-                i = ("%s@%s" % (user, self.effectiveIP)) + i
+                i = (f"{user}@{self.effectiveIP}") + i
                 hostInserted = True
             elif i.startswith(":") and hostInserted:
                 raise ValueError("Cannot rsync between two remote hosts")

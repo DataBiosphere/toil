@@ -22,17 +22,23 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(jobstore_option=True)
+    parser = parser_with_common_options(jobstore_option=True, prog="toil clean")
 
     options = parser.parse_args()
     set_logging_from_options(options)
     try:
         jobstore = Toil.getJobStore(options.jobStore)
-        jobstore.resume()
+        try:
+            # TODO: We need to resume successfully to delete encrypted AWS job
+            # stores supposedly. We should avoid needing this.
+            # See https://github.com/DataBiosphere/toil/issues/1041
+            jobstore.resume()
+        except NoSuchJobStoreException:
+            logger.warning("Job store does not appear to exist. Deleting anyway.")
+        except:
+            logger.exception("Job store appears to be in a bad state. Deleting anyway.")
         jobstore.destroy()
         logger.info(f"Successfully deleted the job store: {options.jobStore}")
-    except NoSuchJobStoreException:
-        logger.info(f"Failed to delete the job store: {options.jobStore} is non-existent.")
     except:
-        logger.info(f"Failed to delete the job store: {options.jobStore}")
+        logger.critical(f"Failed to delete the job store: {options.jobStore}")
         raise

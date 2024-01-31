@@ -14,17 +14,12 @@
 import os
 
 from toil.job import Job
-from toil.test import get_temp_file
-from toil.test import ToilTest, travis_test
+from toil.test import ToilTest, get_temp_file
 from toil.test.src.jobTest import fn1Test
 
 
 class JobEncapsulationTest(ToilTest):
-    """
-    Tests testing the EncapsulationJob class
-    """
-
-    @travis_test
+    """Tests testing the EncapsulationJob class."""
     def testEncapsulation(self):
         """
         Tests the Job.encapsulation method, which uses the EncapsulationJob
@@ -47,11 +42,10 @@ class JobEncapsulationTest(ToilTest):
             # Run the workflow, the return value being the number of failed jobs
             Job.Runner.startToil(a, options)
             # Check output
-            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile).readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
-    @travis_test
     def testAddChildEncapsulate(self):
         """
         Make sure that the encapsulate child does not have two parents

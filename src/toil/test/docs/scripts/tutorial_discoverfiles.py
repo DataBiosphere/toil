@@ -7,13 +7,15 @@ from toil.job import Job
 
 class discoverFiles(Job):
     """Views files at a specified path using ls."""
+
     def __init__(self, path, *args, **kwargs):
         self.path = path
-        super(discoverFiles, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def run(self, fileStore):
         if os.path.exists(self.path):
             subprocess.check_call(["ls", self.path])
+
 
 def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
@@ -31,6 +33,7 @@ def main():
             toil.start(job1)
         else:
             toil.restart()
+
 
 if __name__ == '__main__':
     main()

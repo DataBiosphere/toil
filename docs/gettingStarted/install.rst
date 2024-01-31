@@ -17,25 +17,19 @@ below.
 Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently supports Python 2.7, 3.5, and 3.6, and requires a virtualenv to be active to install.
+It is recommended to install Toil into a virtual environment. This is useful
+for automatically deploying Python workflows, and is the only supported way to
+install Toil for Toil development.
 
 If not already present, please install the latest Python ``virtualenv`` using pip_::
 
-    $ sudo pip install virtualenv
+    $ pip install --user virtualenv
 
-And create a virtual environment called ``venv`` in your home directory::
+And create a virtual environment called ``venv`` somewhere convenient, usch as under ``~``::
 
-    $ virtualenv ~/venv
+    $ python -m virtualenv ~/venv
 
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
-
-If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv
-package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using ::
-
-    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
-    $ tar xvfz virtualenv-15.1.0.tar.gz
-    $ cd virtualenv-15.1.0
-    $ python virtualenv.py ~/venv
 
 Now that you've created your virtualenv, activate your virtual environment::
 
@@ -44,52 +38,28 @@ Now that you've created your virtualenv, activate your virtual environment::
 Basic Installation
 ------------------
 
-If you need only the basic version of Toil, it can be easily installed using pip::
+If all you want to do is run workflows, you can install Toil with frontends for CWL and WDL like this::
+
+    $ pip install toil[cwl,wdl]
+
+If you need only the basic version of Toil for Python workflows, it can be installed like this::
 
     $ pip install toil
 
 Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
-(If you need any of the extra features don't do this yet and instead skip to the next section.)
+(If you need any more extra features, such as AWS support, don't do this yet and instead see :ref:`extras`.)
 
 .. _extras:
 
 Installing Toil with Extra Features
 -----------------------------------
 
-.. _python-dev:
-.. topic:: Python headers and static libraries
-
-   Needed for the ``mesos``, ``aws``, ``google``, and ``encryption`` extras.
-
-   On Ubuntu::
-
-      $ sudo apt-get install build-essential python-dev
-
-   On macOS::
-
-      $ xcode-select --install
-
-.. _libffi-dev:
-.. topic:: Encryption specific headers and library
-
-   Needed for the ``encryption`` extra.
-
-   On Ubuntu::
-
-      $ sudo apt-get install libssl-dev libffi-dev
-
-   On macOS::
-
-      $ brew install libssl libffi
-
-   Or see `Cryptography`_ for other systems.
-
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
 install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run ::
 
-    $ pip install toil[aws,mesos,google,encryption,cwl]
+    $ pip install toil[aws,google,mesos,encryption,cwl,wdl,kubernetes,server]
 
 or ::
 
@@ -151,13 +121,52 @@ Here's what each extra provides:
 |                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
+| ``kubernetes`` | Provides support for running workflows written using a     |
+|                | `Kubernetes`_ cluster.                                     |
++----------------+------------------------------------------------------------+
+| ``server``     | Provides support for Toil server mode, including support   |
+|                | for the GA4GH `Workflow Execution Service`_ API.           |
++----------------+------------------------------------------------------------+
+
+Some extras can't install without additional dependencies. If you need any of these extras, make sure to install their dependencies first!
+
+.. _python-dev:
+.. topic:: Python headers and static libraries
+
+   Needed for the ``mesos``, ``aws``, ``google``, and ``encryption`` extras.
+
+   On Ubuntu::
+
+      $ sudo apt-get install build-essential python-dev
+
+   On macOS::
+
+      $ xcode-select --install
+
+.. _libffi-dev:
+.. topic:: Encryption specific headers and library
+
+   Needed for the ``encryption`` extra.
+
+   On Ubuntu::
+
+      $ sudo apt-get install libssl-dev libffi-dev
+
+   On macOS::
+
+      $ brew install libssl libffi
+
+   Or see `Cryptography`_ for other systems.
+
 
 .. _AWS: https://aws.amazon.com/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
+.. _Workflow Execution Service: https://ga4gh.github.io/workflow-execution-service-schemas/docs/
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
+.. _Kubernetes: https://kubernetes.io/docs/concepts/overview/
 
 .. _buildFromSource:
 

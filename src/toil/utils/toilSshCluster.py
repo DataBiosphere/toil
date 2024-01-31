@@ -15,17 +15,17 @@
 import argparse
 import logging
 import sys
+from typing import List
 
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory
 from toil.statsAndLogging import set_logging_from_options
-from typing import List
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil ssh-cluster")
     parser.add_argument("--insecure", action='store_true',
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',

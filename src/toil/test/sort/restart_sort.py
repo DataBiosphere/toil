@@ -20,7 +20,8 @@ import codecs
 import os
 import random
 import shutil
-from argparse import ArgumentParser
+
+from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
@@ -41,7 +42,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
                              inputFile, N, 'root',
                              downCheckpoints,
                              options = options,
-                             preemptable=True,
+                             preemptible=True,
                              memory=sortMemory).rv()
 
 
@@ -75,11 +76,11 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
         result = job.addFollowOnJobFn(up,
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, path + '/0',
                                                       downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptable=True, memory=options.sortMemory).rv(),
+                                                      preemptible=True, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, path + '/1',
                                                       downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptable=True, memory=options.mergeMemory).rv(),
-                                    path + '/up', preemptable=True, options=options, memory=options.sortMemory).rv()
+                                                      preemptible=True, memory=options.mergeMemory).rv(),
+                                    path + '/up', preemptible=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         RealtimeLogger.critical("Sorting file: %s of size: %s"
@@ -120,7 +121,7 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
 
 def sort(file):
     """Sorts the given file."""
-    with open(file, 'r') as f:
+    with open(file) as f:
         lines = f.readlines()
 
     lines.sort()
@@ -152,7 +153,7 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd):
     Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
     """
-    with open(inputFile, 'r') as fileHandle:
+    with open(inputFile) as fileHandle:
         fileHandle.seek(fileStart)
         data = fileHandle.read(fileEnd - fileStart)
         assert len(data) == fileEnd - fileStart
@@ -164,7 +165,7 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    with open(file, 'r') as f:
+    with open(file) as f:
         midPoint = (fileStart + fileEnd) // 2
         assert midPoint >= fileStart
         f.seek(midPoint)

@@ -16,8 +16,7 @@ import os
 
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
-from toil.test import get_temp_file
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, get_temp_file, slow
 
 
 @slow
@@ -62,16 +61,16 @@ class ToilContextManagerTest(ToilTest):
 
 class HelloWorld(Job):
     def __init__(self):
-        Job.__init__(self, memory=100000, cores=2, disk='1M')
+        Job.__init__(self, memory=100000, disk='1M')
 
     def run(self, fileStore):
-        fileID = self.addChildJobFn(childFn, cores=1, memory='1M', disk='1M').rv()
+        fileID = self.addChildJobFn(childFn, memory='1M', disk='1M').rv()
         return self.addFollowOn(FollowOn(fileID)).rv()
 
 
 def childFn(job):
     with job.fileStore.writeGlobalFileStream() as (fH, fileID):
-        fH.write("Hello, World!".encode('utf-8'))
+        fH.write(b"Hello, World!")
         return fileID
 
 

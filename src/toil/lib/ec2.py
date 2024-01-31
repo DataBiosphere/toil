@@ -1,29 +1,22 @@
-import boto3
-import os
-import urllib.request
-import json
 import logging
-import re
 import time
-from operator import attrgetter
-from typing import Any, Dict, Iterable, List, Union, Optional
-
 from base64 import b64encode
+from operator import attrgetter
+from typing import Dict, Iterable, List, Optional, Union
+
+from boto3.resources.base import ServiceResource
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
-from boto3 import Session
-from boto3.resources.base import ServiceResource
 from botocore.client import BaseClient
-from botocore.credentials import JSONFileCache
-from botocore.session import get_session
 
-
+from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (get_error_code,
+from toil.lib.retry import (ErrorCondition,
+                            get_error_code,
                             get_error_message,
                             old_retry,
-                            retry,
-                            ErrorCondition)
+                            retry)
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -34,8 +27,7 @@ class UserError(RuntimeError):
     def __init__(self, message=None, cause=None):
         if (message is None) == (cause is None):
             raise RuntimeError("Must pass either message or cause.")
-        super(
-            UserError, self).__init__(
+        super().__init__(
             message if cause is None else cause.message)
 
 
@@ -67,28 +59,10 @@ def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found
 
 class UnexpectedResourceState(Exception):
     def __init__(self, resource, to_state, state):
-        super(UnexpectedResourceState, self).__init__(
+        super().__init__(
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
-
-def establish_boto3_session(region_name: Optional[str] = None) -> Session:
-    """
-    This is the One True Place where Boto3 sessions should be established, and
-    prepares them with the necessary credential caching.
-
-    :param region_name: If given, the session will be associated with the given AWS region.
-    """
-
-    # Make sure to use credential caching when talking to Amazon via boto3
-    # See https://github.com/boto/botocore/pull/1338/
-    # And https://github.com/boto/botocore/commit/2dae76f52ae63db3304b5933730ea5efaaaf2bfc
-
-    botocore_session = get_session()
-    botocore_session.get_component('credential_provider').get_provider(
-        'assume-role').cache = JSONFileCache()
-    return Session(botocore_session=botocore_session, region_name=region_name)
-
-
+            
 def wait_transition(resource, from_states, to_state,
                     state_getter=attrgetter('state')):
     """
@@ -129,11 +103,13 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
             if i.state == 'pending':
                 pending_ids.add(i.id)
             elif i.state == 'running':
-                assert i.id not in running_ids
+                if i.id in running_ids:
+                    raise RuntimeError("An instance was already added to the list of running instance IDs. Maybe there is a duplicate.")
                 running_ids.add(i.id)
                 yield i
             else:
-                assert i.id not in other_ids
+                if i.id in other_ids:
+                    raise RuntimeError("An instance was already added to the list of other instances. Maybe there is a duplicate.")
                 other_ids.add(i.id)
                 yield i
         logger.info('%i instance(s) pending, %i running, %i other.',
@@ -156,10 +132,10 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     :param requests: The requests to wait on.
 
     :param timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
-    timeout occurs, the remaining open requests will be cancelled.
+        timeout occurs, the remaining open requests will be cancelled.
 
     :param tentative: if True, give up on a spot request at the earliest indication of it
-    not being fulfilled immediately
+        not being fulfilled immediately
 
     """
 
@@ -192,11 +168,13 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
                             'Request %s entered status %s indicating that it will not be '
                             'fulfilled anytime soon.', r.id, r.status.code)
                 elif r.state == 'active':
-                    assert r.id not in active_ids
+                    if r.id in active_ids:
+                        raise RuntimeError("A request was already added to the list of active requests. Maybe there are duplicate requests.")
                     active_ids.add(r.id)
                     batch.append(r)
                 else:
-                    assert r.id not in other_ids
+                    if r.id in other_ids:
+                        raise RuntimeError("A request was already added to the list of other IDs. Maybe there are duplicate requests.")
                     other_ids.add(r.id)
                     batch.append(r)
             if batch:
@@ -320,12 +298,6 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
     logger.debug("Checking for instance profile %s...", instance_profile_name)
     iam_client.get_instance_profile(InstanceProfileName=instance_profile_name)
     logger.debug("Instance profile found")
-
-def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
-    """
-    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
-    """
-    return [{'Key': k, 'Value': v} for k, v in tags.items()]
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
@@ -544,71 +516,3 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
 
     # Don't prune the ASG because MinSize and MaxSize are required and may be 0.
     autoscaling_client.create_auto_scaling_group(**asg)
-
-
-def get_flatcar_ami(ec2_client: BaseClient) -> str:
-    """
-    Retrieve the flatcar AMI image to use as the base for all Toil autoscaling instances.
-
-    AMI must be available to the user on AWS (attempting to launch will return a 403 otherwise).
-
-    Priority is:
-      1. User specified AMI via TOIL_AWS_AMI
-      2. Official AMI from stable.release.flatcar-linux.net
-      3. Search the AWS Marketplace
-
-    If all of these sources fail, we raise an error to complain.
-    """
-    # Take a user override
-    ami = os.environ.get('TOIL_AWS_AMI')
-    if not ami:
-        logger.debug("No AMI found in TOIL_AWS_AMI; checking Flatcar release feed")
-        ami = official_flatcar_ami_release(ec2_client=ec2_client)
-    if not ami:
-        logger.warning("No available AMI found in Flatcar release feed; checking marketplace")
-        ami = aws_marketplace_flatcar_ami_search(ec2_client=ec2_client)
-    if not ami:
-        logger.critical("No available AMI found in marketplace")
-        raise RuntimeError('Unable to fetch the latest flatcar image.')
-    logger.info("Selected Flatcar AMI: %s", ami)
-    return ami
-
-
-@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def official_flatcar_ami_release(ec2_client: BaseClient) -> Optional[str]:
-    """Check stable.release.flatcar-linux.net for the latest flatcar AMI.  Verify it's on AWS."""
-    # Flatcar images only live for 9 months.
-    # Rather than hardcode a list of AMIs by region that will die, we use
-    # their JSON feed of the current ones.
-    JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
-    region = ec2_client._client_config.region_name
-    feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
-
-    try:
-        for ami_record in feed['amis']:
-            # Scan the list of regions
-            if ami_record['name'] == region:
-                # When we find ours, return the AMI ID
-                ami = ami_record['hvm']
-                # verify it exists on AWS
-                response = ec2_client.describe_images(Filters=[{'Name': 'image-id', 'Values': [ami]}])
-                if len(response['Images']) == 1 and response['Images'][0]['State'] == 'available':
-                    return ami
-        # We didn't find it
-        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have an image for region {region}')
-    except KeyError:
-        # We didn't see a field we need
-        logger.warning(f'Flatcar image feed at {JSON_FEED_URL} does not have expected format')
-
-
-@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
-def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient) -> Optional[str]:
-    """Query AWS for all AMI names matching 'Flatcar-stable-*' and return the most recent one."""
-    response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],
-                                                Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
-    latest: dict = {'CreationDate': '0lder than atoms.'}
-    for image in response['Images']:
-        if image["Architecture"] == "x86_64" and image["State"] == "available":
-            if image['CreationDate'] > latest['CreationDate']:
-                latest = image
-    return latest.get('ImageId', None)

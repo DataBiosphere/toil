@@ -16,14 +16,16 @@ import logging
 import os
 import random
 import sys
-import tempfile
 from uuid import uuid4
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
-from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file
+from toil.lib.io import (AtomicFileCreate,
+                         atomic_install,
+                         atomic_tmp_file,
+                         mkdtemp)
 from toil.lib.misc import CalledProcessErrorStderr, call_command
-from toil.test import ToilTest, slow, travis_test
+from toil.test import ToilTest, slow
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -35,10 +37,9 @@ class MiscTests(ToilTest):
     file, and that don't logically fit in with any of the other test suites.
     """
     def setUp(self):
-        super(MiscTests, self).setUp()
+        super().setUp()
         self.testDir = self._createTempDir()
 
-    @travis_test
     def testIDStability(self):
         prevNodeID = None
         for i in range(10, 1):
@@ -64,7 +65,7 @@ class MiscTests(ToilTest):
         files = {}
         # Create a random directory structure
         for i in range(0,10):
-            directories.append(tempfile.mkdtemp(dir=random.choice(directories), prefix='test'))
+            directories.append(mkdtemp(dir=random.choice(directories), prefix='test'))
         # Create 50 random file entries in different locations in the directories. 75% of the time
         # these are fresh files of size [1, 10] MB and 25% of the time they are hard links to old
         # files.
@@ -85,7 +86,7 @@ class MiscTests(ToilTest):
                 files[fileName] = 'Link to %s' % linkSrc
 
         computedDirectorySize = getDirSizeRecursively(self.testDir)
-        totalExpectedSize = sum([x for x in list(files.values()) if isinstance(x, int)])
+        totalExpectedSize = sum(x for x in list(files.values()) if isinstance(x, int))
         self.assertGreaterEqual(computedDirectorySize, totalExpectedSize)
 
     @staticmethod
@@ -142,29 +143,24 @@ class MiscTests(ToilTest):
             call_command(["cat", "/dev/Frankenheimer"])
 
 class TestPanic(ToilTest):
-
-    @travis_test
     def test_panic_by_hand(self):
         try:
             self.try_and_panic_by_hand()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_panic(self):
         try:
             self.try_and_panic()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_panic_with_secondary(self):
         try:
             self.try_and_panic_with_secondary()
         except:
             self.__assert_raised_exception_is_primary()
 
-    @travis_test
     def test_nested_panic(self):
         try:
             self.try_and_nested_panic_with_secondary()

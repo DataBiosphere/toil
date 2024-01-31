@@ -7,12 +7,13 @@ Running in the Cloud
 Toil supports Amazon Web Services (AWS) and Google Compute Engine (GCE) in the cloud and has autoscaling capabilities
 that can adapt to the size of your workflow, whether your workflow requires 10 instances or 20,000.
 
-Toil does this by creating a virtual cluster with `Apache Mesos`_.  `Apache Mesos`_ requires a leader node to coordinate
-the workflow, and worker nodes to execute the various tasks within the workflow.  As the workflow runs, Toil will
-"autoscale", creating and terminating workers as needed to meet the demands of the workflow.
+Toil does this by creating a virtual cluster running `Kubernetes`_.  Kubernetes requires a leader node to coordinate
+the workflow, and worker nodes to execute the various tasks within the workflow. As the workflow runs, Kubernetes will
+"autoscale", creating and terminating workers as needed to meet the demands of the workflow. Historically, Toil has
+spun up clusters with `Apache Mesos`_, but it is no longer recommended.
 
-Once a user is familiar with the basics of running toil locally (specifying a :ref:`jobStore <jobStoreOverview>`, and
-how to write a toil script), they can move on to the guides below to learn how to translate these workflows into cloud
+Once a user is familiar with the basics of running Toil locally (specifying a :ref:`jobStore <jobStoreOverview>`, and
+how to write a workflow), they can move on to the guides below to learn how to translate these workflows into cloud
 ready workflows.
 
 .. _cloudProvisioning:
@@ -25,12 +26,13 @@ distributed over several nodes. The provisioner also has the ability to automati
 the cluster to handle dynamic changes in computational demand (autoscaling).  Currently we have working provisioners
 with AWS and GCE (Azure support has been deprecated).
 
-Toil uses `Apache Mesos`_ as the :ref:`batchSystemOverview`.
+Toil uses `Kubernetes`_ as the :ref:`batchSystemOverview`.
 
 See here for instructions for :ref:`runningAWS`.
 
 See here for instructions for :ref:`runningGCE`.
 
+.. _Kubernetes: https://kubernetes.io/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 
 .. _cloudJobStore:

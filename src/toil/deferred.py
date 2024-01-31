@@ -14,13 +14,13 @@
 import fcntl
 import logging
 import os
-import shutil
 import tempfile
 from collections import namedtuple
 from contextlib import contextmanager
 
 import dill
 
+from toil.lib.io import robust_rmtree
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
@@ -64,12 +64,12 @@ class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name
         return function(*args, **kwargs)
 
     def __str__(self):
-        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
+        return f'{self.__class__.__name__}({self.name}, ...)'
 
     __repr__ = __str__
 
 
-class DeferredFunctionManager(object):
+class DeferredFunctionManager:
     """
     Implements a deferred function system. Each Toil worker will have an
     instance of this class. When a job is executed, it will happen inside a
@@ -101,7 +101,7 @@ class DeferredFunctionManager(object):
     # And a suffix to distinguish in-progress from completed files
     WIP_SUFFIX = '.tmp'
 
-    def __init__(self, stateDirBase):
+    def __init__(self, stateDirBase: str) -> None:
         """
         Create a new DeferredFunctionManager, sharing state with other
         instances in other processes using the given shared state directory.
@@ -129,9 +129,9 @@ class DeferredFunctionManager(object):
         # Lock the state file. The lock will automatically go away if our process does.
         try:
             fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except IOError as e:
+        except OSError as e:
             # Someone else might have locked it even though they should not have.
-            raise RuntimeError("Could not lock deferred function state file %s: %s" % (self.stateFileName, str(e)))
+            raise RuntimeError(f"Could not lock deferred function state file {self.stateFileName}: {str(e)}")
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
@@ -142,7 +142,7 @@ class DeferredFunctionManager(object):
         self.stateFileOut = os.fdopen(self.stateFD, 'wb')
         self.stateFileIn = open(self.stateFileName, 'rb')
 
-        logger.debug("Running for file %s" % self.stateFileName)
+        logger.debug("Opened with own state file %s" % self.stateFileName)
 
     def __del__(self):
         """
@@ -150,7 +150,7 @@ class DeferredFunctionManager(object):
         manage have all been executed, and none are currently recorded.
         """
 
-        logger.debug("Deleting %s" % self.stateFileName)
+        logger.debug("Removing own state file %s" % self.stateFileName)
 
         # Hide the state from other processes
         if os.path.exists(self.stateFileName):
@@ -193,7 +193,7 @@ class DeferredFunctionManager(object):
             self._runOrphanedDeferredFunctions()
 
     @classmethod
-    def cleanupWorker(cls, stateDirBase):
+    def cleanupWorker(cls, stateDirBase: str) -> None:
         """
         Called by the batch system when it shuts down the node, after all
         workers are done, if the batch system supports worker cleanup. Checks
@@ -210,11 +210,11 @@ class DeferredFunctionManager(object):
         # Close all the files in there.
         del cleaner
 
-        # Clean up the directory we have been using.
-        # It might not be empty if .tmp files escaped: nobody can tell they
-        # aren't just waiting to be locked.
-        shutil.rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
-
+        try:
+            robust_rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
+        except OSError as err:
+            logger.exception(err)
+            # we tried, lets move on
 
 
     def _runDeferredFunction(self, deferredFunction):
@@ -272,6 +272,7 @@ class DeferredFunctionManager(object):
         """
 
         logger.debug("Running orphaned deferred functions")
+        states_handled = 0
 
         # Track whether we found any work to do.
         # We will keep looping as long as there is work to do.
@@ -299,6 +300,10 @@ class DeferredFunctionManager(object):
                     # So skip it.
                     continue
 
+                # We need to make sure that we don't hold two
+                # DeferredFunctionManagers at once! So make sure to del yours
+                # when you are done with it. TODO: Make it a singleton!
+
                 fd = None
 
                 try:
@@ -314,7 +319,7 @@ class DeferredFunctionManager(object):
 
                 try:
                     fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except IOError:
+                except OSError:
                     # File is still locked by someone else.
                     # Look at the next file instead
                     continue
@@ -327,6 +332,7 @@ class DeferredFunctionManager(object):
                 # Actually run all the stored deferred functions
                 fileObj = os.fdopen(fd, 'rb')
                 self._runAllDeferredFunctions(fileObj)
+                states_handled += 1
 
                 try:
                     # Ok we are done with this file. Get rid of it so nobody else does it.
@@ -341,3 +347,5 @@ class DeferredFunctionManager(object):
                 # Now close it. This closes the backing file descriptor. See
                 # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
+
+        logger.debug("Ran orphaned deferred functions from %d abandoned state files", states_handled)

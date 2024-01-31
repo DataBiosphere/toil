@@ -1,12 +1,18 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def helloWorld(job, message):
-    job.log("Hello world, I have a message: {}".format(message))
+    job.log(f"Hello world, I have a message: {message}")
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_jobfunctions")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

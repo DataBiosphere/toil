@@ -1,9 +1,11 @@
+import os
+
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 class DemoService(Job.Service):
-
     def start(self, fileStore):
         # Start up a database/service here
         # Return a value that enables another process to connect to the database
@@ -18,18 +20,24 @@ class DemoService(Job.Service):
         # Cleanup the database here
         pass
 
+
 j = Job()
 s = DemoService()
 loginCredentialsPromise = j.addService(s)
+
 
 def dbFn(loginCredentials):
     # Use the login credentials returned from the service's start method to connect to the service
     pass
 
+
 j.addChildFn(dbFn, loginCredentialsPromise)
 
-if __name__=="__main__":
-    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+
+if __name__ == "__main__":
+    jobstore: str = mkdtemp("tutorial_services")
+    os.rmdir(jobstore)
+    options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
     options.clean = "always"
 

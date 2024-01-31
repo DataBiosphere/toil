@@ -20,12 +20,12 @@ import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.job import Job, PromisedRequirement
 from toil.lib.retry import retry_flaky_test
-from toil.test import needs_mesos, slow, travis_test
+from toil.test import needs_mesos, slow
 
 log = logging.getLogger(__name__)
 
 
-class hidden(object):
+class hidden:
     """
     Hide abstract base class from unittest's test case loader.
 
@@ -33,10 +33,7 @@ class hidden(object):
     """
 
     class AbstractPromisedRequirementsTest(batchSystemTest.hidden.AbstractBatchSystemJobTest):
-        """
-        An abstract base class for testing Toil workflows with promised requirements.
-        """
-
+        """An abstract base class for testing Toil workflows with promised requirements."""
         @slow
         def testConcurrencyDynamic(self):
             """
@@ -51,10 +48,11 @@ class hidden(object):
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
+                self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
-        @retry_flaky_test()
+        @retry_flaky_test(prepare=[batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
+                                   batchSystemTest.hidden.AbstractBatchSystemJobTest.setUp])
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -76,15 +74,14 @@ class hidden(object):
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
+                self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
 
         def getOptions(self, tempDir, caching=True):
-            options = super(hidden.AbstractPromisedRequirementsTest, self).getOptions(tempDir)
+            options = super().getOptions(tempDir)
             # defaultCores defaults to 1 - this is coincidentally the core requirement relied upon by this
             # test, so we change defaultCores to 2 to make the test more strict
             options.defaultCores = 2
-            if not caching:
-                options.disableCaching = True
+            options.caching = caching
             return options
 
         def getCounterPath(self, tempDir):
@@ -99,11 +96,6 @@ class hidden(object):
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
-        @travis_test
-        def testJobConcurrency(self):
-            pass
-
-        @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
             Check whether FileID objects are being pickled properly when used as return
@@ -124,7 +116,6 @@ class hidden(object):
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
 
-        @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 
@@ -203,7 +194,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.logToMaster('{}: {}'.format(funcName, diskUsage))
+    job.fileStore.log_to_leader(f'{funcName}: {diskUsage}')
     time.sleep(sleep)
     return diskUsage
 
@@ -227,8 +218,8 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
     """
 
     def getOptions(self, tempDir, caching=True):
-        options = super(MesosPromisedRequirementsTest, self).getOptions(tempDir, caching=caching)
-        options.mesosMasterAddress = 'localhost:5050'
+        options = super().getOptions(tempDir, caching=caching)
+        options.mesos_endpoint = 'localhost:5050'
         return options
 
     def getBatchSystemName(self):

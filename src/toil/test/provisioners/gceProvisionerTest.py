@@ -22,7 +22,8 @@ import pytest
 from toil.test import (ToilTest,
                        integrative,
                        needs_fetchable_appliance,
-                       needs_google,
+                       needs_google_project,
+                       needs_google_storage,
                        slow,
                        timeLimit)
 from toil.version import exactPython
@@ -30,7 +31,8 @@ from toil.version import exactPython
 log = logging.getLogger(__name__)
 
 
-@needs_google
+@needs_google_project
+@needs_google_storage
 @integrative
 @needs_fetchable_appliance
 @slow
@@ -67,8 +69,8 @@ class AbstractGCEAutoscaleTest(ToilTest):
         subprocess.check_call(callCommand)
 
     def __init__(self, methodName):
-        super(AbstractGCEAutoscaleTest, self).__init__(methodName=methodName)
-        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google or ssh with SA account
+        super().__init__(methodName=methodName)
+        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google_project or ssh with SA account
         self.keyName = os.getenv('TOIL_GOOGLE_KEYNAME')
         # TODO: remove this when switching to google jobstore
         self.botoDir = os.getenv('TOIL_BOTO_DIR')
@@ -83,10 +85,10 @@ class AbstractGCEAutoscaleTest(ToilTest):
         self.spotBid = 0.15
 
     def setUp(self):
-        super(AbstractGCEAutoscaleTest, self).setUp()
+        super().setUp()
 
     def tearDown(self):
-        super(AbstractGCEAutoscaleTest, self).tearDown()
+        super().tearDown()
         self.destroyClusterUtil()
         self.cleanJobStoreUtil()
 
@@ -117,7 +119,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, preemptableJobs=False):
+    def _test(self, preemptibleJobs=False):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
@@ -134,12 +136,6 @@ class AbstractGCEAutoscaleTest(ToilTest):
                         '--python', exactPython, '/home/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
-        self.sshUtil(upgrade_command)
-
-        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
-        self.sshUtil(yaml_command)
-
         self._getScript()
 
         toilOptions = [self.jobStore,
@@ -154,8 +150,8 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=%s' % ",".join(self.numWorkers)])
-        if preemptableJobs:
-            toilOptions.extend(['--defaultPreemptable'])
+        if preemptibleJobs:
+            toilOptions.extend(['--defaultPreemptible'])
 
         self._runScript(toilOptions)
 
@@ -179,13 +175,13 @@ class AbstractGCEAutoscaleTest(ToilTest):
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
-        super(GCEAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
 
     def setUp(self):
-        super(GCEAutoscaleTest, self).setUp()
-        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
+        super().setUp()
+        self.jobStore = f'google:{self.projectID}:autoscale-{uuid4()}'
 
     def _getScript(self):
         # TODO: Isn't this the key file?
@@ -210,20 +206,22 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     # TODO: aren't these checks inherited?
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testAutoScale(self):
         self.instanceTypes = ["n1-standard-2"]
         self.numWorkers = ['2']
         self._test()
 
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
         # Some spot workers have a stopped state after being started, strangely.
         # This could be the natural preemption process, but it seems too rapid.
         self.numWorkers = ['3'] # Try 3 to account for a stopped node.
-        self._test(preemptableJobs=True)
+        self._test(preemptibleJobs=True)
 
 
 @pytest.mark.timeout(1600)
@@ -232,7 +230,7 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
     """
     def __init__(self, name):
-        super(GCEStaticAutoscaleTest, self).__init__(name)
+        super().__init__(name)
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
@@ -267,12 +265,12 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
 class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
-        super(GCEAutoscaleTestMultipleNodeTypes, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
-        super(GCEAutoscaleTestMultipleNodeTypes, self).setUp()
-        self.jobStore = 'google:%s:multinode-%s' % (self.projectID, uuid4())
+        super().setUp()
+        self.jobStore = f'google:{self.projectID}:multinode-{uuid4()}'
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -293,7 +291,8 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         self.sshUtil(runCommand)
 
     @integrative
-    @needs_google
+    @needs_google_project
+    @needs_google_storage
     def testAutoScale(self):
         self.instanceTypes = ["n1-standard-2", "n1-standard-4"]
         self.numWorkers = ['2','1']
@@ -306,17 +305,17 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     """
 
     def __init__(self, name):
-        super(GCERestartTest, self).__init__(name)
+        super().__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
 
     def setUp(self):
-        super(GCERestartTest, self).setUp()
+        super().setUp()
         self.instanceTypes = ['n1-standard-1']
         self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
         # TODO: replace this with a google job store
         zone = 'us-west-2'
-        self.jobStore = 'google:%s:restart-%s' % (self.projectID, uuid4())
+        self.jobStore = f'google:{self.projectID}:restart-{uuid4()}'
 
     def _getScript(self):
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/provisioners/restartScript.py'),

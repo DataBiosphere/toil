@@ -14,16 +14,47 @@
 import logging
 import os
 
-from toil.lib.ec2 import (get_flatcar_ami,
-                          official_flatcar_ami_release,
-                          aws_marketplace_flatcar_ami_search,
-                          establish_boto3_session)
-from toil.test import ToilTest, needs_aws_ec2
+import pytest
+
+from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
+                              feed_flatcar_ami_release,
+                              flatcar_release_feed_amis,
+                              get_flatcar_ami)
+from toil.lib.aws.session import establish_boto3_session
+from toil.test import ToilTest, needs_aws_ec2, needs_online
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+@needs_online
+class FlatcarFeedTest(ToilTest):
+    """Test accessing the Flatcar AMI release feed, independent of the AWS API"""
 
+    # Note that we need to support getting an empty list back, because
+    # sometimes the Flatcar feeds are just down, and we can't fail CI at those
+    # times.
+
+    def test_parse_archive_feed(self):
+        """Make sure we can get a Flatcar release from the Internet Archive."""
+        amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'archive'))
+        for ami in amis:
+            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
+            self.assertTrue(ami.startswith('ami-'))
+            
+    def test_parse_beta_feed(self):
+        """Make sure we can get a Flatcar release from the beta channel."""
+        amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'beta'))
+        for ami in amis:
+            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
+            self.assertTrue(ami.startswith('ami-'))
+    
+    def test_parse_stable_feed(self):
+        """Make sure we can get a Flatcar release from the stable channel."""
+        amis = list(flatcar_release_feed_amis('us-west-2', 'amd64', 'stable'))
+        for ami in amis:
+            self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
+            self.assertTrue(ami.startswith('ami-'))
+            
 @needs_aws_ec2
 class AMITest(ToilTest):
     @classmethod
@@ -43,8 +74,8 @@ class AMITest(ToilTest):
             self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami.startswith('ami-'))
 
-        with self.subTest('Test official_flatcar_ami_release() returns an AMI-looking AMI.'):
-            ami = official_flatcar_ami_release(self.ec2_client)
+        with self.subTest('Test feed_flatcar_ami_release() returns an AMI-looking AMI.'):
+            ami = feed_flatcar_ami_release(self.ec2_client, source='archive')
             self.assertTrue(ami is None or len(ami) == len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami is None or ami.startswith('ami-'))
 
@@ -52,3 +83,14 @@ class AMITest(ToilTest):
             ami = aws_marketplace_flatcar_ami_search(self.ec2_client)
             self.assertEqual(len(ami), len('ami-02b46c73fed689d1c'))
             self.assertTrue(ami.startswith('ami-'))
+
+    # TODO: This will fail until https://github.com/flatcar/Flatcar/issues/962 is fixed
+    @pytest.mark.xfail
+    def test_fetch_arm_flatcar(self):
+        """Test flatcar AMI finder architecture parameter."""
+        amis = set()
+        for arch in ['amd64', 'arm64']:
+            ami = get_flatcar_ami(self.ec2_client, architecture=arch)
+            self.assertTrue(ami.startswith('ami-'))
+            amis.add(ami)
+        self.assertTrue(len(amis) == 2)

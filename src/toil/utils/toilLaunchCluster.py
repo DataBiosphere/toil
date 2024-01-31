@@ -12,14 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Launches a toil leader instance with the specified provisioner."""
+
 import logging
 import os
+from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.provisioners import parse_node_types, check_valid_node_types, cluster_factory
+from toil.lib.aws import build_tag_dict_from_env
+from toil.provisioners import (check_valid_node_types,
+                               cluster_factory,
+                               parse_node_types)
 from toil.statsAndLogging import set_logging_from_options
-from typing import List, Dict, Union, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +37,19 @@ def create_tags_dict(tags: List[str]) -> Dict[str, str]:
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil launch-cluster")
     parser.add_argument("-T", "--clusterType", dest="clusterType",
-                        choices=['mesos', 'kubernetes'], default='mesos',
+                        choices=['mesos', 'kubernetes'],
+                        default=None,  # TODO: change default to "kubernetes" when we are ready.
                         help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
-                        help="Non-preemptable node type to use for the cluster leader.")
+                        help="Non-preemptible node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
                         help="On AWS, the name of the AWS key pair to include on the instance."
                         " On Google/GCE, this is the ssh key pair.")
     parser.add_argument("--owner", dest='owner',
                         help="The owner tag for all instances. If not given, the value in"
-                        " --keyPairName will be used if given.")
+                        "TOIL_OWNER_TAG will be used, or else the value of --keyPairName.")
     parser.add_argument("--boto", dest='botoPath',
                         help="The path to the boto credentials directory. This is transferred "
                         "to all nodes in order to access the AWS jobStore from non-AWS instances.")
@@ -59,15 +64,20 @@ def main() -> None:
                              "      \"Name\": clusterName,\n"
                              "      \"Owner\": IAM username\n"
                              " }. ")
+
+    parser.add_argument("--network",
+                        help="GCE cloud network to use. default: 'default'")
     parser.add_argument("--vpcSubnet",
                         help="VPC subnet ID to launch cluster leader in. Uses default subnet "
                         "if not specified. This subnet needs to have auto assign IPs turned on.")
+    parser.add_argument("--use_private_ip", dest="use_private_ip", action='store_true', default=False,
+                        help="if specified, ignore the public ip of the nodes")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
                         help="Specifies a list of comma-separated node types, each of which is "
                              "composed of slash-separated instance types, and an optional spot "
-                             "bid set off by a colon, making the node type preemptable. Instance "
+                             "bid set off by a colon, making the node type preemptible. Instance "
                              "types may appear in multiple node types, and the same node type "
-                             "may appear as both preemptable and non-preemptable.\n"
+                             "may appear as both preemptible and non-preemptible.\n"
                              "Valid argument specifying two node types:\n"
                              "\tc5.4xlarge/c5a.4xlarge:0.42,t2.large\n"
                              "Node types:\n"
@@ -104,9 +114,11 @@ def main() -> None:
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
+    #TODO Set Aws Profile in CLI options
     options = parser.parse_args()
     set_logging_from_options(options)
-    tags = create_tags_dict(options.tags) if options.tags else dict()
+
+    tags = create_tags_dict(options.tags) if options.tags else build_tag_dict_from_env()
 
     # Get worker node types
     worker_node_types = parse_node_types(options.nodeTypes)
@@ -140,7 +152,7 @@ def main() -> None:
                     # Provision fixed nodes
                     nodeCounts.append(int(spec))
 
-    owner = options.owner or options.keyPairName or 'toil'
+    owner = options.owner or os.getenv('TOIL_OWNER_TAG') or options.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
     options.zone = options.zone or os.environ.get(f'TOIL_{options.provisioner.upper()}_ZONE')
@@ -148,6 +160,17 @@ def main() -> None:
     if not options.zone:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
+
+    if options.clusterType == "mesos":
+        logger.warning('You are using a Mesos cluster, which is no longer recommended as Toil is '
+                       'transitioning to Kubernetes-based clusters. Consider switching to '
+                       '--clusterType=kubernetes instead.')
+
+    if options.clusterType is None:
+        logger.warning('Argument --clusterType is not set... using "mesos". '
+                       'In future versions of Toil, the default cluster scheduler will be '
+                       'set to "kubernetes" if the cluster type is not specified.')
+        options.clusterType = "mesos"
 
     logger.info('Creating cluster %s...', options.clusterName)
 
@@ -163,6 +186,7 @@ def main() -> None:
                           keyName=options.keyPairName,
                           botoPath=options.botoPath,
                           userTags=tags,
+                          network=options.network,
                           vpcSubnet=options.vpcSubnet,
                           awsEc2ProfileArn=options.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=options.awsEc2ExtraSecurityGroupIds)
@@ -180,10 +204,10 @@ def main() -> None:
 
             if wanted[1] is None:
                 # Make non-spot instances
-                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=False)
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptible=False)
             else:
                 # We have a spot bid
-                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptable=True,
+                cluster.addNodes(nodeTypes=wanted[0], numNodes=spec, preemptible=True,
                                  spotBid=wanted[1])
 
         elif isinstance(spec, tuple):
@@ -202,10 +226,10 @@ def main() -> None:
             if wanted[1] is None:
                 # Make non-spot instances
                 cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                        preemptable=False)
+                                        preemptible=False)
             else:
                 # Bid at the given price.
                 cluster.addManagedNodes(nodeTypes=wanted[0], minNodes=min_count, maxNodes=max_count,
-                                        preemptable=True, spotBid=wanted[1])
+                                        preemptible=True, spotBid=wanted[1])
 
     logger.info('Cluster created successfully.')

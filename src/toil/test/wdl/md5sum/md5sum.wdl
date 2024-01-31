@@ -1,3 +1,5 @@
+# Note that this is a draft-WDL file; we don't have input sections, or output
+# sections on the workflow.
 task md5 {
   File inputFile
 
