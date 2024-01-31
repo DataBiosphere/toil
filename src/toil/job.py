@@ -45,6 +45,7 @@ from typing import (TYPE_CHECKING,
 
 from configargparse import ArgParser
 
+from toil.bus import Names
 from toil.lib.compatibility import deprecated
 
 if sys.version_info >= (3, 8):
@@ -710,7 +711,6 @@ class Requirer:
             parts = ['no requirements']
         return ', '.join(parts)
 
-
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a Job.
@@ -811,14 +811,17 @@ class JobDescription(Requirer):
         # them behind if we die right after saving the JobDescription.
         #
         # This will be empty at all times except when a new version of a job is
-        # in the process of being committed. 
+        # in the process of being committed.
         self.filesToDelete = []
 
-        # Holds JobStore Job IDs of the jobs that have been chained into this
+        # Holds job names and IDs of the jobs that have been chained into this
         # job, and which should be deleted when this job finally is deleted
         # (but not before). The successor relationships with them will have
-        # been cut, so we need to hold onto them somehow.
-        self.merged_jobs = []
+        # been cut, so we need to hold onto them somehow. Includes each
+        # chained-in job with its original ID, and also this job's ID with its
+        # original names, or is empty if no chaining has happened.
+        # The first job in the chain comes first in the list.
+        self._merged_job_names: List[Names] = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -867,9 +870,26 @@ class JobDescription(Requirer):
         # And we log who made the version (by PID)
         self._job_version_writer = 0
 
-        # Human-readable names of jobs that were run as part of this job's
-        # invocation, starting with this job
-        self.chainedJobs = []
+    def get_names(self) -> Names:
+        """
+        Get the names and ID of this job as a named tuple.
+        """
+        return Names(self.jobName, self.unitName, self.displayName, self.displayName, str(self.jobStoreID))
+
+    def get_chain(self) -> List[Names]:
+        """
+        Get all the jobs that executed in this job's chain, in order.
+
+        For each job, produces a named tuple with its various names and its
+        original job store ID. The jobs in the chain are in execution order.
+        
+        If the job hasn't run yet or it didn't chain, produces a one-item list.
+        """
+        if len(self._merged_job_names) == 0:
+            # We haven't merged so we're just ourselves.
+            return [self.get_names()]
+        else:
+            return list(self._merged_job_names)
 
     def serviceHostIDsInBatches(self) -> Iterator[List[str]]:
         """
@@ -1045,8 +1065,23 @@ class JobDescription(Requirer):
         self.successor_phases = old_phases + self.successor_phases
 
         # When deleting, we need to delete the files for our old ID, and also
-        # anything that needed to be deleted for the job we are replacing.
-        self.merged_jobs += [self.jobStoreID] + other.merged_jobs
+        # anything that needed to be deleted for the job we are replacing. And
+        # we need to keep track of all the names of jobs involved for logging.
+        
+        # We need first the job we are merging into if nothing has merged into
+        # it yet, then anything that already merged into it (including it),
+        # then us if nothing has yet merged into us, then anything that merged
+        # into us (inclusing us)
+        _merged_job_names = []
+        if len(other._merged_job_names) == 0:
+            _merged_job_names.append(other.get_names())
+        _merged_job_names += other._merged_job_names
+        if len(self._merged_job_names) == 0:
+            _merged_job_names.append(self.get_names())
+        _merged_job_names += self._merged_job_names
+        self._merged_job_names = _merged_job_names
+        
+        # Now steal its ID.
         self.jobStoreID = other.jobStoreID
 
         if len(other.filesToDelete) > 0:
@@ -1262,26 +1297,6 @@ class JobDescription(Requirer):
         self._job_version += 1
         self._job_version_writer = os.getpid()
         logger.debug("New job version: %s", self)
-
-    def get_job_kind(self) -> str:
-        """
-        Return an identifying string for the job.
-
-        The result may contain spaces.
-
-        Returns: Either the unit name, job name, or display name, which identifies
-                 the kind of job it is to toil.
-                 Otherwise "Unknown Job" in case no identifier is available
-        """
-        if self.unitName:
-            return self.unitName
-        elif self.jobName:
-            return self.jobName
-        elif self.displayName:
-            return self.displayName
-        else:
-            return "Unknown Job"
-
 
 class ServiceJobDescription(JobDescription):
     """A description of a job that hosts a service."""
@@ -1690,7 +1705,7 @@ class Job:
         return self._description.hasChild(followOnJob.jobStoreID)
 
     def addService(
-        self, service: "Service", parentService: Optional["Service"] = None
+        self, service: "Job.Service", parentService: Optional["Job.Service"] = None
     ) -> "Promise":
         """
         Add a service.
@@ -1737,7 +1752,7 @@ class Job:
         # Return the promise for the service's startup result
         return hostingJob.rv()
 
-    def hasService(self, service: "Service") -> bool:
+    def hasService(self, service: "Job.Service") -> bool:
         """Return True if the given Service is a service of this job, and False otherwise."""
         return service.hostID is None or self._description.hasServiceHostJob(service.hostID)
 
@@ -1820,8 +1835,8 @@ class Job:
         return self._tempDir
 
     def log(self, text: str, level=logging.INFO) -> None:
-        """Log using :func:`fileStore.logToMaster`."""
-        self._fileStore.logToMaster(text, level)
+        """Log using :func:`fileStore.log_to_leader`."""
+        self._fileStore.log_to_leader(text, level)
 
     @staticmethod
     def wrapFn(fn, *args, **kwargs) -> "FunctionWrappingJob":
@@ -2606,7 +2621,7 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
 
-        logger.info("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
+        logger.debug("Saving graph of %d jobs, %d non-service, %d new", len(allJobs), len(ordering), len(fakeToReal))
 
         # Make sure we're the root
         if ordering[-1] != self:
@@ -2626,17 +2641,17 @@ class Job:
             self._fulfillPromises(returnValues, jobStore)
 
         for job in ordering:
-            logger.info("Processing job %s", job.description)
+            logger.debug("Processing job %s", job.description)
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
-                    logger.info("Processing service %s", serviceID)
+                    logger.debug("Processing service %s", serviceID)
                     if serviceID in self._registry:
                         # It's a new service
 
                         # Find the actual job
                         serviceJob = self._registry[serviceID]
-                        logger.info("Saving service %s", serviceJob.description)
+                        logger.debug("Saving service %s", serviceJob.description)
                         # Pickle the service body, which triggers all the promise stuff
                         serviceJob.saveBody(jobStore)
             if job != self or saveSelf:

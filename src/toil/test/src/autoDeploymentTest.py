@@ -207,28 +207,28 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def testDeferralWithConcurrentEncapsulation(self):
         """
-        Ensure that the following DAG succeeds:
+        Ensure that the following DAG succeeds::
 
-                      ┌───────────┐
-                      │ Root (W1) │
-                      └───────────┘
-                            │
-                 ┌──────────┴─────────┐
-                 ▼                    ▼
-        ┌────────────────┐ ┌────────────────────┐
-        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════╗
-        └────────────────┘ └────────────────────┘               ║
-                                      │                         ║
-                                      ▼                         ▼
-                            ┌───────────────────┐      ┌────────────────┐
-                            │ Encapsulated (W3) │      │ Follow-on (W6) │
-                            └───────────────────┘      └────────────────┘
-                                      │                         │
-                              ┌───────┴────────┐                │
-                              ▼                ▼                ▼
-                      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-                      │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
-                      └──────────────┘ └──────────────┘ └──────────────┘
+                          ┌───────────┐
+                          │ Root (W1) │
+                          └───────────┘
+                                │
+                     ┌──────────┴─────────┐
+                     ▼                    ▼
+            ┌────────────────┐ ┌────────────────────┐
+            │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════╗
+            └────────────────┘ └────────────────────┘               ║
+                                          │                         ║
+                                          ▼                         ▼
+                                ┌───────────────────┐      ┌────────────────┐
+                                │ Encapsulated (W3) │      │ Follow-on (W6) │
+                                └───────────────────┘      └────────────────┘
+                                          │                         │
+                                  ┌───────┴────────┐                │
+                                  ▼                ▼                ▼
+                          ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                          │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
+                          └──────────────┘ └──────────────┘ └──────────────┘
 
         The Wn numbers denote the worker processes that a particular job is run in. `Deferring`
         adds a deferred function and then runs for a long time. The deferred function will be
@@ -313,28 +313,28 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def testDeferralWithFailureAndEncapsulation(self):
         """
-        Ensure that the following DAG succeeds:
+        Ensure that the following DAG succeeds::
 
-                      ┌───────────┐
-                      │ Root (W1) │
-                      └───────────┘
-                            │
-                 ┌──────────┴─────────┐
-                 ▼                    ▼
-        ┌────────────────┐ ┌────────────────────┐
-        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════════════╗
-        └────────────────┘ └────────────────────┘                       ║
-                                      │                                 ║
-                                      ▼                                 ▼
-                            ┌───────────────────┐              ┌────────────────┐
-                            │ Encapsulated (W3) │════════════╗ │ Follow-on (W7) │
-                            └───────────────────┘            ║ └────────────────┘
-                                      │                      ║
-                               ┌──────┴──────┐               ║
-                               ▼             ▼               ▼
-                        ┌────────────┐┌────────────┐ ┌──────────────┐
-                        │ Dummy (W4) ││ Dummy (W5) │ │ Trigger (W6) │
-                        └────────────┘└────────────┘ └──────────────┘
+                          ┌───────────┐
+                          │ Root (W1) │
+                          └───────────┘
+                                │
+                     ┌──────────┴─────────┐
+                     ▼                    ▼
+            ┌────────────────┐ ┌────────────────────┐
+            │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════════════╗
+            └────────────────┘ └────────────────────┘                       ║
+                                          │                                 ║
+                                          ▼                                 ▼
+                                ┌───────────────────┐              ┌────────────────┐
+                                │ Encapsulated (W3) │════════════╗ │ Follow-on (W7) │
+                                └───────────────────┘            ║ └────────────────┘
+                                          │                      ║
+                                   ┌──────┴──────┐               ║
+                                   ▼             ▼               ▼
+                            ┌────────────┐┌────────────┐ ┌──────────────┐
+                            │ Dummy (W4) ││ Dummy (W5) │ │ Trigger (W6) │
+                            └────────────┘└────────────┘ └──────────────┘
 
         `Trigger` causes `Deferring` to crash. `Follow-on` runs next, detects `Deferring`'s
         left-overs and runs the deferred function. `Follow-on` is an instance of `Job` and the

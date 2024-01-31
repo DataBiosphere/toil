@@ -23,6 +23,7 @@ import tempfile
 import time
 import uuid
 import warnings
+from io import StringIO
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -580,21 +581,22 @@ def generate_config(filepath: str) -> None:
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
             f.write("config_version: 1.0\n")
-            yaml = YAML(typ=['rt', 'string'])
+            yaml = YAML(typ='rt')
             for data in all_data:
                 if "config_version" in data:
                     del data["config_version"]
-                for line in yaml.dump_to_string(data).split("\n"):  # type: ignore[attr-defined]
-                    if line:
-                        f.write("#")
-                    f.write(line)
-                    f.write("\n")
+                with StringIO() as data_string:
+                    yaml.dump(data, data_string)
+                    for line in data_string.readline():
+                        if line:
+                            f.write("#")
+                        f.write(f"{line}\n")
 
 
 def parser_with_common_options(
-        provisioner_options: bool = False, jobstore_option: bool = True
+        provisioner_options: bool = False, jobstore_option: bool = True, prog: Optional[str] = None
 ) -> ArgParser:
-    parser = ArgParser(prog="Toil", formatter_class=ArgumentDefaultsHelpFormatter)
+    parser = ArgParser(prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
     if provisioner_options:
         add_provisioner_options(parser)
@@ -1261,12 +1263,6 @@ class Toil(ContextManager["Toil"]):
                  deleted.
         """
 
-        if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
-            # Slurm has been observed providing this variable but not keeping
-            # the directory live as long as we run for.
-            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!',
-                           os.environ['XDG_RUNTIME_DIR'])
-
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it
         # succeeds.
@@ -1299,7 +1295,7 @@ class Toil(ContextManager["Toil"]):
         return coordination_dir
 
     @staticmethod
-    def _get_workflow_path_component(workflow_id: str) -> str:
+    def get_workflow_path_component(workflow_id: str) -> str:
         """
         Get a safe filesystem path component for a workflow.
 
@@ -1308,7 +1304,7 @@ class Toil(ContextManager["Toil"]):
 
         :param workflow_id: The ID of the current Toil workflow.
         """
-        return str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
+        return "toilwf-" + str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
 
     @classmethod
     def getLocalWorkflowDir(
@@ -1325,7 +1321,7 @@ class Toil(ContextManager["Toil"]):
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, cls._get_workflow_path_component(workflowID))
+        workflowDir: str = os.path.join(base, cls.get_workflow_path_component(workflowID))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -1367,7 +1363,7 @@ class Toil(ContextManager["Toil"]):
         base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
 
         # Make a per-workflow and node subdirectory
-        subdir = os.path.join(base, cls._get_workflow_path_component(workflow_id))
+        subdir = os.path.join(base, cls.get_workflow_path_component(workflow_id))
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
@@ -1626,10 +1622,7 @@ def getDirSizeRecursively(dirPath: str) -> int:
     internally, and a (possibly 0) lower bound on the size of the directory
     will be returned.
 
-    The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
-    --block-size=1 because Apple can't handle it.
-
-    :param str dirPath: A valid path to a directory or file.
+    :param dirPath: A valid path to a directory or file.
     :return: Total size, in bytes, of the file or directory at dirPath.
     """
 
@@ -1639,12 +1632,22 @@ def getDirSizeRecursively(dirPath: str) -> int:
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
 
+    dirPath = os.path.abspath(dirPath)
     try:
         return int(subprocess.check_output(['du', '-s', dirPath],
                                            env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
-    except subprocess.CalledProcessError:
-        # Something was inaccessible or went away
-        return 0
+        # The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
+        # --block-size=1 because Apple can't handle it.
+    except (OSError, subprocess.CalledProcessError):
+        # Fallback to pure Python implementation, useful for when kernel limits
+        # to argument list size are hit, etc..
+        total_size: int = 0
+        if os.path.isfile(dirPath):
+            return os.lstat(dirPath).st_blocks * 512
+        for dir_path, dir_names, filenames in os.walk(dirPath):
+            for name in filenames:
+                total_size += os.lstat(os.path.join(dir_path, name)).st_blocks * 512
+        return total_size
 
 
 def getFileSystemSize(dirPath: str) -> Tuple[int, int]:

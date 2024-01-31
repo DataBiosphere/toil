@@ -1,5 +1,4 @@
-mock>=4.0.3,<6
-pytest>=6.2.1,<8
+pytest>=6.2.1,<9
 pytest-cov>=2.12.1,<5
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
@@ -16,8 +15,8 @@ types-requests
 types-setuptools
 types-boto
 types-pytz
-flake8>=3.8.4,<7
-flake8-bugbear>=20.11.1,<24
+flake8>=3.8.4,<8
+flake8-bugbear>=20.11.1,<25
 black
 isort
 pydocstyle

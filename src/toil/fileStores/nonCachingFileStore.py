@@ -121,11 +121,11 @@ class NonCachingFileStore(AbstractFileStore):
             disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
                           f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
             if disk > jobReqs:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)
             else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()
@@ -362,7 +362,10 @@ class NonCachingFileStore(AbstractFileStore):
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
-        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        try:
+            (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        except Exception as e:
+            raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
         with open(fd, 'wb') as fH:
             # Write data
             dill.dump(jobState, fH)

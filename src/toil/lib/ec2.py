@@ -132,10 +132,10 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     :param requests: The requests to wait on.
 
     :param timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
-    timeout occurs, the remaining open requests will be cancelled.
+        timeout occurs, the remaining open requests will be cancelled.
 
     :param tentative: if True, give up on a spot request at the earliest indication of it
-    not being fulfilled immediately
+        not being fulfilled immediately
 
     """
 

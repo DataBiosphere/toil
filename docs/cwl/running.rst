@@ -1,17 +1,13 @@
-.. _cwl:
+.. _runCwl:
 
-CWL in Toil
-===========
+Running CWL Workflows
+=====================
 
-The Common Workflow Language (CWL) is an emerging standard for writing workflows
-that are portable across multiple workflow engines and platforms.
-Toil has full support for the CWL v1.0, v1.1, and v1.2 standards.
+The `toil-cwl-runner` command provides CWL parsing functionality using cwltool, and leverages the job-scheduling and
+batch system support of Toil. You can use it to run CWL workflows locally or in the cloud.
 
 Running CWL Locally
 -------------------
-
-The `toil-cwl-runner` command provides cwl-parsing functionality using cwltool, and leverages the job-scheduling and
-batch system support of Toil.
 
 To run in local batch mode, provide the CWL file and the input object file::
 
@@ -84,9 +80,9 @@ reference ``$(runtime.tmpdir)`` in CWL tools and workflows.
 written. References to these and other output types will be in the JSON object
 printed to the stdout stream after workflow execution.
 
-``--logFile``: Path to the main logfile with logs from all jobs.
+``--logFile``: Path to the main logfile.
 
-``--writeLogs``: Directory where all job logs will be stored.
+``--writeLogs``: Directory where job logs will be stored. At ``DEBUG`` log level, this will contain logs for each Toil job run, as well as ``stdout``/``stderr`` logs for each CWL ``CommandLineTool`` that didn't use the ``stdout``/``stderr`` directives to redirect output.
 
 ``--retryCount``: How many times to retry each Toil job.
 
@@ -115,9 +111,9 @@ To run a CWL workflow in AWS with toil see :ref:`awscwl`.
 Running CWL within Toil Scripts
 ------------------------------------
 
-A CWL workflow can be run indirectly in a native Toil script. However, this is not the :ref:`standard <cwl>` way to run
+A CWL workflow can be run from a Toil Python workflow. However, this is not the :ref:`standard <cwl>` way to run
 CWL workflows with Toil and doing so comes at the cost of job efficiency. For some use cases, such as running one process on
-multiple files, it may be useful. For example, if you want to run a CWL workflow with 3 YML files specifying different
+multiple files, it may be useful. For example, if you want to run a CWL workflow with 3 different input files specifying different
 samples inputs, it could look something like:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_cwlexample.py
@@ -185,7 +181,7 @@ You can get run statistics broken down by CWL file. This only works once the wor
 
     $ toil stats /path/to/jobstore
 
-The output will contain CPU, memory, and walltime information for all CWL job types:
+The output will contain CPU, memory, and walltime information for all CWL job types. Note that the job names you get will look different from those in this old example run.
 ::
 
     <hostname> 2018-10-15 12:06:19,003 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
@@ -237,13 +233,16 @@ The output will contain CPU, memory, and walltime information for all CWL job ty
 
 **Understanding toil log files**
 
-There is a `worker_log.txt` file for each job, this file is written to while the job is running, and deleted after the job finishes. The contents are printed to the main log file and transferred to a log file in the `--logDir` folder once the job is completed successfully.
+There is a `worker_log.txt` file for each Toil job. This file is written to while the job is running, and uploaded at the end if the job finishes or if running at debug log level. If uploaded, the contents are printed to the main log file and transferred to a log file in the `--logDir` folder.
 
 The new log file will be named something like:
 ::
 
-    file:<path to cwl tool>.cwl_<job ID>.log
+    CWLJob_<name of the CWL job>_<attempt number>.log
 
-    file:---home-johnsoni-pipeline_1.1.14-ACCESS--Pipeline-cwl_tools-marianas-ProcessLoopUMIFastq.cwl_I-O-jobfGsQQw000.log
+Standard output/error files will be named like:
+::
 
-This is the toil job command with spaces replaced by dashes.
+    <name of the CWL job>.stdout_<attempt number>.log
+
+If you have a workflow ``revsort.cwl`` which has a step ``rev`` which calls the tool ``revtool.cwl``, the CWL job name ends up being all those parts strung together with ``.``: ``revsort.cwl.rev.revtool.cwl``.

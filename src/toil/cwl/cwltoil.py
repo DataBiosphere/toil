@@ -34,27 +34,25 @@ import stat
 import sys
 import textwrap
 import uuid
-from tempfile import NamedTemporaryFile, gettempdir
+from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
-from typing import (
-    IO,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Mapping,
-    MutableMapping,
-    MutableSequence,
-    Optional,
-    TextIO,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-    Sequence,
-)
+from typing import (IO,
+                    Any,
+                    Callable,
+                    Dict,
+                    Iterator,
+                    List,
+                    Mapping,
+                    MutableMapping,
+                    MutableSequence,
+                    Optional,
+                    Sequence,
+                    TextIO,
+                    Tuple,
+                    Type,
+                    TypeVar,
+                    Union,
+                    cast)
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -68,36 +66,30 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
-from configargparse import ArgParser, SUPPRESS, Namespace
+from configargparse import SUPPRESS, ArgParser, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper
-from cwltool.process import (
-    Process,
-    add_sizes,
-    compute_checksums,
-    fill_in_defaults,
-    shortname,
-)
+from cwltool.process import (Process,
+                             add_sizes,
+                             compute_checksums,
+                             fill_in_defaults,
+                             shortname)
 from cwltool.secrets import SecretStore
-from cwltool.software_requirements import (
-    DependenciesConfiguration,
-    get_container_from_software_requirements,
-)
+from cwltool.software_requirements import (DependenciesConfiguration,
+                                           get_container_from_software_requirements)
 from cwltool.stdfsaccess import StdFsAccess, abspath
-from cwltool.utils import (
-    CWLObjectType,
-    CWLOutputType,
-    DirectoryType,
-    adjustDirObjs,
-    aslist,
-    downloadHttpFile,
-    get_listing,
-    normalizeFilesDirs,
-    visit_class,
-)
+from cwltool.utils import (CWLObjectType,
+                           CWLOutputType,
+                           DirectoryType,
+                           adjustDirObjs,
+                           aslist,
+                           downloadHttpFile,
+                           get_listing,
+                           normalizeFilesDirs,
+                           visit_class)
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
@@ -110,18 +102,17 @@ from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 
 check_cwltool_version()
-from toil.cwl.utils import (
-    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-    download_structure,
-    get_from_structure,
-    visit_cwl_class_and_reduce,
-)
+from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+                            download_structure,
+                            get_from_structure,
+                            visit_cwl_class_and_reduce)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchFileException
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
@@ -721,22 +712,22 @@ class ToilPathMapper(PathMapper):
         :param obj: The CWL File or Directory to process
 
         :param stagedir: The base path for target paths to be generated under,
-        except when a File or Directory has an overriding parent directory in
-        dirname
+            except when a File or Directory has an overriding parent directory in
+            dirname
 
         :param basedir: The directory from which relative paths should be
-        resolved; used as the base directory for the StdFsAccess that generated
-        the listing being processed.
+            resolved; used as the base directory for the StdFsAccess that generated
+            the listing being processed.
 
         :param copy: If set, use writable types for Files and Directories.
 
         :param staged: Starts as True at the top of the recursion. Set to False
-        when entering a directory that we can actually download, so we don't
-        stage files and subdirectories separately from the directory as a
-        whole. Controls the staged flag on generated mappings, and therefore
-        whether files and directories are actually placed at their mapped-to
-        target locations. If stage_listing is True, we will leave this True
-        throughout and stage everything.
+            when entering a directory that we can actually download, so we don't
+            stage files and subdirectories separately from the directory as a
+            whole. Controls the staged flag on generated mappings, and therefore
+            whether files and directories are actually placed at their mapped-to
+            target locations. If stage_listing is True, we will leave this True
+            throughout and stage everything.
 
         Produces one MapperEnt for every unique location for a File or
         Directory. These MapperEnt objects are instructions to cwltool's
@@ -1540,8 +1531,8 @@ def toil_get_file(
     :param streaming_allowed: If streaming is allowed
 
     :param pipe_threads: List of threads responsible for streaming the data
-    and open file descriptors corresponding to those files. Caller is responsible
-    to close the file descriptors (to break the pipes) and join the threads
+        and open file descriptors corresponding to those files. Caller is responsible
+        to close the file descriptors (to break the pipes) and join the threads
     """
     pipe_threads_real = pipe_threads or []
     # We can't use urlparse here because we need to handle the '_:' scheme and
@@ -1719,6 +1710,7 @@ def import_files(
     skip_broken: bool = False,
     skip_remote: bool = False,
     bypass_file_store: bool = False,
+    log_level: int = logging.DEBUG
 ) -> None:
     """
     Prepare all files and directories.
@@ -1740,32 +1732,41 @@ def import_files(
     Also does some miscelaneous normalization.
 
     :param import_function: The function used to upload a URI and get a
-    Toil FileID for it.
+        Toil FileID for it.
 
     :param fs_access: the CWL FS access object we use to access the filesystem
-    to find files to import. Needs to support the URI schemes used.
+        to find files to import. Needs to support the URI schemes used.
 
     :param fileindex: Forward map to fill in from file URI to Toil storage
-    location, used by write_file to deduplicate writes.
+        location, used by write_file to deduplicate writes.
 
     :param existing: Reverse map to fill in from Toil storage location to file
-    URI. Not read from.
+        URI. Not read from.
 
     :param cwl_object: CWL tool (or workflow order) we are importing files for
 
     :param skip_broken: If True, when files can't be imported because they e.g.
-    don't exist, leave their locations alone rather than failing with an error.
+        don't exist, leave their locations alone rather than failing with an error.
 
     :param skp_remote: If True, leave remote URIs in place instead of importing
-    files.
+        files.
 
     :param bypass_file_store: If True, leave file:// URIs in place instead of
-    importing files and directories.
+        importing files and directories.
+
+    :param log_level: Log imported files at the given level.
     """
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
     logger.debug("Importing files in %s", cwl_object)
+
+    def import_and_log(url: str) -> FileID:
+        """
+        Upload a file and log that we are doing so.
+        """
+        logger.log(log_level, "Loading %s...", url)
+        return import_function(url)
 
     # We need to upload all files to the Toil filestore, and encode structure
     # recursively into all Directories' locations. But we cannot safely alter
@@ -1865,7 +1866,7 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_function, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
+                import_and_log, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
             )
 
             # Make a record for this file under its name
@@ -1977,7 +1978,7 @@ def upload_file(
 
     Uploads local files to the Toil file store, and sets their location to a
     reference to the toil file store.
-    
+
     Unless skip_remote is set, downloads remote files into the file store and
     sets their locations to references into the file store as well.
     """
@@ -2116,12 +2117,15 @@ def toilStageFiles(
     cwljob: Union[CWLObjectType, List[CWLObjectType]],
     outdir: str,
     destBucket: Union[str, None] = None,
+    log_level: int = logging.DEBUG
 ) -> None:
     """
     Copy input files out of the global file store and update location and path.
 
     :param destBucket: If set, export to this base URL instead of to the local
            filesystem.
+
+    :param log_level: Log each file transfered at the given level.
     """
 
     def _collectDirEntries(
@@ -2161,7 +2165,6 @@ def toilStageFiles(
         stage_listing=True,
     )
     for _, p in pm.items():
-        logger.debug("Staging output: %s", p)
         if p.staged:
             # We're supposed to copy/expose something.
             # Note that we have to handle writable versions of everything
@@ -2213,14 +2216,19 @@ def toilStageFiles(
 
                     if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
-                        destUrl = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        # TODO: Do we need to urlencode the parts before sending them to S3?
+                        dest_url = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        logger.log(log_level, "Saving %s...", dest_url)
                         toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
-                            destUrl,
+                            dest_url,
                         )
                     # TODO: can a toildir: "file" get here?
             else:
-                # We are saving to the filesystem so we only really need export_file for actual files.
+                # We are saving to the filesystem.
+                dest_url = "file://" + quote(p.target)
+
+                # We only really need export_file for actual files.
                 if not os.path.exists(p.target) and p.type in [
                     "Directory",
                     "WritableDirectory",
@@ -2229,6 +2237,7 @@ def toilStageFiles(
                 if p.type in ["File", "WritableFile"]:
                     if p.resolved.startswith("/"):
                         # Probably staging and bypassing file store. Just copy.
+                        logger.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         shutil.copyfile(p.resolved, p.target)
                     else:
@@ -2241,16 +2250,18 @@ def toilStageFiles(
                             )
 
                         # Actually export from the file store
+                        logger.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
                         toil.export_file(
                             FileID.unpack(uri[len("toilfile:") :]),
-                            "file://" + p.target,
+                            dest_url,
                         )
                 if p.type in [
                     "CreateFile",
                     "CreateWritableFile",
                 ]:
                     # We just need to make a file with particular contents
+                    logger.log(log_level, "Saving %s...", dest_url)
                     os.makedirs(os.path.dirname(p.target), exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
@@ -2594,6 +2605,13 @@ class CWLJob(CWLNamedJob):
                 streaming_allowed=runtime_context.streaming_allowed,
             )
 
+        # Collect standard output and standard error somewhere if they don't go to files.
+        # We need to keep two FDs to these because cwltool will close what we give it.
+        default_stdout = TemporaryFile()
+        runtime_context.default_stdout = os.fdopen(os.dup(default_stdout.fileno()), 'wb')
+        default_stderr = TemporaryFile()
+        runtime_context.default_stderr = os.fdopen(os.dup(default_stderr.fileno()), 'wb')
+
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
 
@@ -2616,6 +2634,16 @@ class CWLJob(CWLNamedJob):
             os.close(fd)
             t.join()
 
+        # Log any output/error data
+        default_stdout.seek(0, os.SEEK_END)
+        if default_stdout.tell() > 0:
+            default_stdout.seek(0)
+            file_store.log_user_stream(self.description.unitName + '.stdout', default_stdout)
+        default_stderr.seek(0, os.SEEK_END)
+        if default_stderr.tell():
+            default_stderr.seek(0)
+            file_store.log_user_stream(self.description.unitName + '.stderr', default_stderr)
+
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
 
@@ -2634,6 +2662,8 @@ class CWLJob(CWLNamedJob):
         )
 
         logger.debug("Emitting output: %s", output)
+
+        file_store.log_to_leader(f"CWL step complete: {runtime_context.name}")
 
         # metadata[process_uuid] = {
         #     'started_at': started_at,
@@ -3290,8 +3320,8 @@ def scan_for_unsupported_requirements(
     :param tool: The CWL tool to check for unsupported requirements.
 
     :param bypass_file_store: True if the Toil file store is not being used to
-    transport files between nodes, and raw origin node file:// URIs are exposed
-    to tools instead.
+        transport files between nodes, and raw origin node file:// URIs are exposed
+        to tools instead.
 
     """
 
@@ -3328,24 +3358,31 @@ def determine_load_listing(
     DIRECTORY_NAME is any variable name) set to one of the following three
     options:
 
-        no_listing: DIRECTORY_NAME.listing will be undefined.
-            e.g. inputs.DIRECTORY_NAME.listing == unspecified
+    1. no_listing: DIRECTORY_NAME.listing will be undefined.
+        e.g.
 
-        shallow_listing: DIRECTORY_NAME.listing will return a list one level
-                         deep of DIRECTORY_NAME's contents.
-            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
-                 inputs.DIRECTORY_NAME.listing[0].listing == undefined
-                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+            inputs.DIRECTORY_NAME.listing == unspecified
 
-        deep_listing: DIRECTORY_NAME.listing will return a list of the entire
-                      contents of DIRECTORY_NAME.
-            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
-                 inputs.DIRECTORY_NAME.listing[0].listing == [items
-                      in subdirectory if it exists and is the first item listed]
-                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+    2. shallow_listing: DIRECTORY_NAME.listing will return a list one level
+        deep of DIRECTORY_NAME's contents.
+        e.g.
 
-    See: https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
-         https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
+            inputs.DIRECTORY_NAME.listing == [items in directory]
+             inputs.DIRECTORY_NAME.listing[0].listing == undefined
+             inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+    3. deep_listing: DIRECTORY_NAME.listing will return a list of the entire
+        contents of DIRECTORY_NAME.
+        e.g.
+
+            inputs.DIRECTORY_NAME.listing == [items in directory]
+            inputs.DIRECTORY_NAME.listing[0].listing == [items in subdirectory
+            if it exists and is the first item listed]
+            inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+    See
+    https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
+    and https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
 
     DIRECTORY_NAME.listing should be determined first from loadListing.
     If that's not specified, from LoadListingRequirement.
@@ -3547,7 +3584,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         dependencies_configuration = DependenciesConfiguration(options)
         job_script_provider = dependencies_configuration
 
-    options.default_container = None
     runtime_context = cwltool.context.RuntimeContext(vars(options))
     runtime_context.toplevel = True  # enable discovery of secondaryFiles
     runtime_context.find_default_container = functools.partial(
@@ -3763,6 +3799,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Import all the input files, some of which may be missing optional
             # files.
+            logger.info("Importing input files...")
             fs_access = ToilFsAccess(options.basedir)
             import_files(
                 file_import_function,
@@ -3773,10 +3810,12 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 skip_broken=True,
                 skip_remote=options.reference_inputs,
                 bypass_file_store=options.bypass_file_store,
+                log_level=logging.INFO,
             )
             # Import all the files associated with tools (binaries, etc.).
             # Not sure why you would have an optional secondary file here, but
             # the spec probably needs us to support them.
+            logger.info("Importing tool-associated files...")
             visitSteps(
                 tool,
                 functools.partial(
@@ -3788,6 +3827,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     skip_broken=True,
                     skip_remote=options.reference_inputs,
                     bypass_file_store=options.bypass_file_store,
+                    log_level=logging.INFO,
                 ),
             )
 
@@ -3800,7 +3840,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # were required.
                 rm_unprocessed_secondary_files(param_value)
 
-            logger.debug("tool %s", tool)
+            logger.info("Creating root job")
+            logger.debug("Root tool: %s", tool)
             try:
                 wf1, _ = makeJob(
                     tool=tool,
@@ -3813,6 +3854,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 logging.error(err)
                 return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
             wf1.cwljob = initialized_job_order
+            logger.info("Starting workflow")
             try:
                 outobj = toil.start(wf1)
             except FailedJobsException as err:
@@ -3828,13 +3870,20 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         # Now the workflow has completed. We need to make sure the outputs (and
         # inputs) end up where the user wants them to be.
-
+        logger.info("Collecting workflow outputs...")
         outobj = resolve_dict_w_promises(outobj)
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
         # options.destBucket's value will be None.
-        toilStageFiles(toil, outobj, outdir, destBucket=options.destBucket)
+        toilStageFiles(
+            toil,
+            outobj,
+            outdir,
+            destBucket=options.destBucket,
+            log_level=logging.INFO
+        )
+        logger.info("Stored workflow outputs")
 
         if runtime_context.research_obj is not None:
             cwltool.cwlprov.writablebagfile.create_job(
@@ -3872,6 +3921,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             )
 
         if not options.destBucket and options.compute_checksum:
+            logger.info("Computing output file checksums...")
             visit_class(
                 outobj,
                 ("File",),
@@ -3880,6 +3930,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
         visit_class(outobj, ("File",), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4, default=str))
+        stdout.write("\n")
+        logger.info("CWL run complete!")
 
     return 0
 

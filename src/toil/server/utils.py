@@ -193,7 +193,7 @@ class AbstractStateStore:
     This is a key-value store, with keys namespaced by workflow ID. Concurrent
     access from multiple threads or processes is safe and globally consistent.
 
-    Keys and workflow IDs are restricted to [-a-zA-Z0-9_], because backends may
+    Keys and workflow IDs are restricted to ``[-a-zA-Z0-9_]``, because backends may
     use them as path or URL components.
 
     Key values are either a string, or None if the key is not set.
