@@ -691,8 +691,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
     misc_options.add_argument('--statusWait', dest='statusWait', type=int, default=3600, metavar="INT",
                               help="Seconds to wait between reports of running jobs.")
-    misc_options.add_argument('--disableProgress', dest='disableProgress', type=convert_bool, default=False,
-                              metavar="BOOL",
+    misc_options.add_argument('--disableProgress', dest='disableProgress', action="store_true", default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
 
     # Debug options
