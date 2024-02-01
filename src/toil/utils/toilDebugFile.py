@@ -17,11 +17,11 @@ import logging
 import os.path
 import sys
 from typing import Optional
-from distutils.util import strtobool
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.resources import glob
+from toil.lib.conversions import strtobool
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
