@@ -2,13 +2,12 @@ import os
 from argparse import ArgumentParser, Action, _AppendAction
 from typing import Any, Optional, Union, Type, Callable, List, Dict, TYPE_CHECKING
 
-from distutils.util import strtobool
 from configargparse import SUPPRESS
 import logging
 
 from ruamel.yaml import YAML
 
-from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.conversions import bytes2human, human2bytes, strtobool
 
 from toil.batchSystems.options import add_all_batchsystem_options
 from toil.provisioners import parse_node_types
