@@ -477,23 +477,16 @@ class FileJobStore(AbstractJobStore):
         if not basename:
             basename = 'stream'
         absPath = self._get_unique_file_path(basename, job_id, cleanup)
-        logger.debug("Got unique file path %s", absPath)
         relPath = self._get_file_id_from_path(absPath)
-        logger.debug("From path got ID %s", relPath)
 
         with open(absPath, 'wb' if encoding == None else 'wt', encoding=encoding, errors=errors) as f:
             # Don't yield while holding an open file descriptor to the temp
             # file. That can result in temp files still being open when we try
             # to clean ourselves up, somehow, for certain workloads.
-            if not os.path.exists(absPath):
-                raise RuntimeError(f"Cannot see open file on disk: {absPath}")
             yield f, relPath
 
     def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None):
-        logger.debug("Find file ID for %s", basename)
         with self.write_file_stream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
-            logger.debug("Found ID %s, make sure it exists", jobStoreFileID)
-            self._check_job_store_file_id(jobStoreFileID)
             return jobStoreFileID
 
     def update_file(self, file_id, local_path):
@@ -908,8 +901,6 @@ class FileJobStore(AbstractJobStore):
 
         # We just make the file IDs paths under the job store overall.
         absPath = os.path.join(self.jobStoreDir, unquote(jobStoreFileID))
-
-        logger.debug("From ID %s got path %s", jobStoreFileID, absPath)
 
         # Don't validate here, we are called by the validation logic
 

@@ -1684,7 +1684,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
-            
+
             def hacky_dedent(text: str) -> str:
                 """
                 Guess what result we would have gotten if we dedented the
@@ -1702,7 +1702,7 @@ class WDLTaskJob(WDLBaseJob):
 
                 # But this can still leave dedenting to do. Find the first
                 # not-all-whitespace line and get its leading whitespace.
-                to_strip: Optional[str] = None
+                to_strip: Opt
                 for line in text.split("\n"):
                     if len(line.strip()) > 0:
                         # This is the first not-all-whitespace line.
