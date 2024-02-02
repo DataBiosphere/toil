@@ -142,7 +142,7 @@ class DebugJobTest(ToilTest):
                 os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
                 "--retryCount=0",
                 "--logCritical",
-                "--disableProgress=True",
+                "--disableProgress",
                 job_store
             ], stderr=subprocess.DEVNULL)
             raise RuntimeError("Failing workflow succeeded!")

@@ -2,13 +2,12 @@ import os
 from argparse import ArgumentParser, Action, _AppendAction
 from typing import Any, Optional, Union, Type, Callable, List, Dict, TYPE_CHECKING
 
-from distutils.util import strtobool
 from configargparse import SUPPRESS
 import logging
 
 from ruamel.yaml import YAML
 
-from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.conversions import bytes2human, human2bytes, strtobool
 
 from toil.batchSystems.options import add_all_batchsystem_options
 from toil.provisioners import parse_node_types
@@ -692,8 +691,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
     misc_options.add_argument('--statusWait', dest='statusWait', type=int, default=3600, metavar="INT",
                               help="Seconds to wait between reports of running jobs.")
-    misc_options.add_argument('--disableProgress', dest='disableProgress', type=convert_bool, default=False,
-                              metavar="BOOL",
+    misc_options.add_argument('--disableProgress', dest='disableProgress', action="store_true", default=False,
                               help="Disables the progress bar shown when standard error is a terminal.")
 
     # Debug options

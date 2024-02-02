@@ -128,3 +128,22 @@ def hms_duration_to_seconds(hms: str) -> float:
     seconds += float(vals_to_convert[2]) 
 
     return seconds
+
+
+def strtobool(val: str) -> bool:
+    """
+    Make a human-readable string into a bool.
+    
+    Convert a string along the lines of "y", "1", "ON", "TrUe", or
+    "Yes" to True, and the corresponding false-ish values to False.
+    """
+    # We only track prefixes, so "y" covers "y", "yes",
+    # and "yeah no" and makes them all True.
+    TABLE = {True: ["1", "on", "y", "t"], False: ["0", "off", "n", "f"]}
+    lowered = val.lower()
+    for result, prefixes in TABLE.items():
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                return result
+    raise ValueError(f"Cannot convert \"{val}\" to a bool")
+
