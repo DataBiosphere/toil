@@ -1702,7 +1702,7 @@ class WDLTaskJob(WDLBaseJob):
 
                 # But this can still leave dedenting to do. Find the first
                 # not-all-whitespace line and get its leading whitespace.
-                to_strip: Opt
+                to_strip: Optional[str] = None
                 for line in text.split("\n"):
                     if len(line.strip()) > 0:
                         # This is the first not-all-whitespace line.
