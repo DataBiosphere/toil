@@ -286,8 +286,6 @@ class Config:
 
             1. options object under option_name
             2. options object under old_names
-            3. environment variables in env
-            4. provided default value
 
             Selected option value is run through parsing_funtion if it is set.
             Then the parsed value is run through check_function to check it for
@@ -402,6 +400,14 @@ class Config:
         set_option("badWorker")
         set_option("badWorkerFailInterval")
         set_option("logLevel")
+
+        # Apply overrides as highest priority
+        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        if os.getenv('TOIL_WORKDIR_OVERRIDE') is not None:
+            self.workDir = os.getenv('TOIL_WORKDIR_OVERRIDE')
+        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        if os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') is not None:
+            self.workDir = os.getenv('TOIL_COORDINATION_DIR_OVERRIDE')
 
         self.check_configuration_consistency()
 
