@@ -1721,6 +1721,18 @@ class WDLTaskJob(WDLBaseJob):
                     if size > 0:
                         # Send the whole error stream.
                         file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug("MiniWDL already logged standard error")
+                        else:
+                            # At debug level, MiniWDL itself logs command error lines.
+                            # But otherwise we just dump into StatsAndLogging;
+                            # we also want the messages in the job log that
+                            # gets printed at the end of the workflow. So log
+                            # the error log ourselves.
+                            logger.error("====TASK ERROR LOG====")
+                            for line in open(host_stderr_txt, 'r', errors="replace"):
+                                logger.error("> %s", line.rstrip('\n'))
+                            logger.error("====TASK ERROR LOG====")
 
                 if os.path.exists(host_stdout_txt):
                     size = os.path.getsize(host_stdout_txt)
