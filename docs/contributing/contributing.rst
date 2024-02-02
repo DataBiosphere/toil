@@ -66,7 +66,7 @@ Often it is simpler to use pytest directly, instead of calling the ``make`` wrap
 This usually works as expected, but some tests need some manual preparation. To run a specific test with pytest,
 use the following::
 
-    python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
+    python3 -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
 
 For more information, see the `pytest documentation`_.
 

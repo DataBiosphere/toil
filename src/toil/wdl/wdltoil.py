@@ -1539,17 +1539,25 @@ class WDLTaskJob(WDLBaseJob):
 
             # Prepare to use Singularity. We will need plenty of space to
             # download images.
-            if 'SINGULARITY_CACHEDIR' not in os.environ:
-                # Cache Singularity's layers somehwere known to have space, not in home
-                os.environ['SINGULARITY_CACHEDIR'] = os.path.join(file_store.workflow_dir, 'singularity_cache')
+            # Default the Singularity and MiniWDL cache directories. This sets the cache to the same place as
+            # Singularity/MiniWDL's default cache directory
+            # With launch-cluster, the singularity and miniwdl cache is set to /var/lib/toil in abstractProvisioner.py
+            # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
+            # filename is the same
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
+            miniwdl_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
+
+            # Cache Singularity's layers somewhere known to have space
+            os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
+
             # Make sure it exists.
             os.makedirs(os.environ['SINGULARITY_CACHEDIR'], exist_ok=True)
 
-            if 'MINIWDL__SINGULARITY__IMAGE_CACHE' not in os.environ:
-                # Cache Singularity images for the workflow on this machine.
-                # Since MiniWDL does only within-process synchronization for pulls,
-                # we also will need to pre-pull one image into here at a time.
-                os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.path.join(file_store.workflow_dir, 'miniwdl_sif_cache')
+            # Cache Singularity images for the workflow on this machine.
+            # Since MiniWDL does only within-process synchronization for pulls,
+            # we also will need to pre-pull one image into here at a time.
+            os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.environ.get("MINIWDL__SINGULARITY__IMAGE_CACHE", miniwdl_cache)
+
             # Make sure it exists.
             os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
 
