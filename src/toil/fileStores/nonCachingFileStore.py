@@ -35,13 +35,12 @@ from typing import (IO,
 
 import dill
 
-from toil.common import getDirSizeRecursively, getFileSystemSize
+from toil.common import getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
-from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists

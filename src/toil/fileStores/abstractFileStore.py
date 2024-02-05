@@ -37,11 +37,12 @@ from typing import (IO,
 
 import dill
 
-from toil.common import Toil, cacheDirName
+from toil.common import Toil, cacheDirName, getDirSizeRecursively
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
+from toil.lib.conversions import bytes2human
 from toil.lib.io import WriteWatchingStream, mkdtemp
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,7 @@ class AbstractFileStore(ABC):
         # the accessed files of failed jobs.
         self._accessLog: List[Tuple[str, ...]] = []
         # Holds total bytes of observed disk usage for the last job run under open()
-        self._job_used_disk: Optional[int] = None
+        self._job_disk_used: Optional[int] = None
 
     @staticmethod
     def createFileStore(
@@ -203,15 +204,15 @@ class AbstractFileStore(ABC):
 
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
-            self._job_used_disk = getDirSizeRecursively(self.localTempDir)
+            self._job_disk_used = getDirSizeRecursively(self.localTempDir)
 
             # Report disk usage
             percent: float = 0.0
             if job_requested_disk and job_requested_disk > 0:
-                percent = float(self._job_used_disk) / job_requested_disk * 100
-            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(self._job_used_disk)}B [{self._job_used_disk}B] used, "
+                percent = float(self._job_disk_used) / job_requested_disk * 100
+            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(self._job_disk_used)}B [{self._job_disk_used}B] used, "
                                f"{bytes2human(job_requested_disk)}B [{job_requested_disk}B] requested).")
-            if self._job_used_disk > job_requested_disk:
+            if self._job_disk_used > job_requested_disk:
                 self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
                                  f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
                                  level=logging.WARNING)

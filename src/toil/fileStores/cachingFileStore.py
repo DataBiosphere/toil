@@ -32,13 +32,12 @@ from typing import (Any,
                     Sequence,
                     Tuple)
 
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
+from toil.common import cacheDirName, getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
-from toil.lib.conversions import bytes2human
 from toil.lib.io import (atomic_copy,
                          atomic_copyobj,
                          make_public_dir,
