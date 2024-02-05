@@ -184,66 +184,39 @@ def sprintTag(
         ]:
             worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
-    if "time" in options.categories:
+
+    REPORT_FUNCTIONS = {
+        "time": lambda t, width: reportTime(t, options, field=width),
+        "clock": lambda t, width: reportTime(t, options, field=width),
+        "wait": lambda t, width: reportTime(t, options, field=width),
+        "memory": lambda t, width: reportMemory(t, options, field=width)
+    }
+    TITLES = {
+        "time": "Real Time",
+        "clock": "CPU Clock",
+        "wait": "CPU Wait",
+        "memory": "Memory"
+    }
+
+    for category in TITLES.keys():
+        if category not in options.categories:
+            continue
+
         header += "| %*s " % (
-            columnWidths.title("time"),
-            decorateTitle("time", "Real Time", options),
+            columnWidths.title(category),
+            decorateTitle(category, TITLES[category], options),
         )
-        sub_header += decorateSubHeader("time", columnWidths, options)
+        sub_header += decorateSubHeader(category, columnWidths, options)
         tag_str += " | "
         for t, width in [
-            (tag.min_time, columnWidths.getWidth("time", "min")),
-            (tag.median_time, columnWidths.getWidth("time", "med")),
-            (tag.average_time, columnWidths.getWidth("time", "ave")),
-            (tag.max_time, columnWidths.getWidth("time", "max")),
-            (tag.total_time, columnWidths.getWidth("time", "total")),
+            (getattr(tag, "min_" + category), columnWidths.getWidth(category, "min")),
+            (getattr(tag, "median_" + category), columnWidths.getWidth(category, "med")),
+            (getattr(tag, "average_" + category), columnWidths.getWidth(category, "ave")),
+            (getattr(tag, "max_" + category), columnWidths.getWidth(category, "max")),
+            (getattr(tag, "total_" + category), columnWidths.getWidth(category, "total")),
         ]:
-            tag_str += reportTime(t, options, field=width)
-    if "clock" in options.categories:
-        header += "| %*s " % (
-            columnWidths.title("clock"),
-            decorateTitle("time", "CPU Clock", options),
-        )
-        sub_header += decorateSubHeader("clock", columnWidths, options)
-        tag_str += " | "
-        for t, width in [
-            (tag.min_clock, columnWidths.getWidth("clock", "min")),
-            (tag.median_clock, columnWidths.getWidth("clock", "med")),
-            (tag.average_clock, columnWidths.getWidth("clock", "ave")),
-            (tag.max_clock, columnWidths.getWidth("clock", "max")),
-            (tag.total_clock, columnWidths.getWidth("clock", "total")),
-        ]:
-            tag_str += reportTime(t, options, field=width)
-    if "wait" in options.categories:
-        header += "| %*s " % (
-            columnWidths.title("wait"),
-            decorateTitle("wait", "CPU Wait", options),
-        )
-        sub_header += decorateSubHeader("wait", columnWidths, options)
-        tag_str += " | "
-        for t, width in [
-            (tag.min_wait, columnWidths.getWidth("wait", "min")),
-            (tag.median_wait, columnWidths.getWidth("wait", "med")),
-            (tag.average_wait, columnWidths.getWidth("wait", "ave")),
-            (tag.max_wait, columnWidths.getWidth("wait", "max")),
-            (tag.total_wait, columnWidths.getWidth("wait", "total")),
-        ]:
-            tag_str += reportTime(t, options, field=width)
-    if "memory" in options.categories:
-        header += "| %*s " % (
-            columnWidths.title("memory"),
-            decorateTitle("memory", "Memory", options),
-        )
-        sub_header += decorateSubHeader("memory", columnWidths, options)
-        tag_str += " | "
-        for t, width in [
-            (tag.min_memory, columnWidths.getWidth("memory", "min")),
-            (tag.median_memory, columnWidths.getWidth("memory", "med")),
-            (tag.average_memory, columnWidths.getWidth("memory", "ave")),
-            (tag.max_memory, columnWidths.getWidth("memory", "max")),
-            (tag.total_memory, columnWidths.getWidth("memory", "total")),
-        ]:
-            tag_str += reportMemory(t, options, field=width)
+            tag_str += REPORT_FUNCTIONS[category](t, width)
+
     out_str += header + "\n"
     out_str += sub_header + "\n"
     out_str += tag_str + "\n"
