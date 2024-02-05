@@ -26,6 +26,10 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
+CATEGORIES = ["time", "clock", "wait", "memory", "disk"]
+TIME_CATEGORIES = {"time", "clock", "wait"}
+SPACE_CATEGORIES = {"memory", "disk"}
+COMPUTED_CATEGORIES = {"wait"}
 
 class ColumnWidths:
     """
@@ -33,7 +37,7 @@ class ColumnWidths:
     """
 
     def __init__(self) -> None:
-        self.categories = ["time", "clock", "wait", "memory"]
+        self.categories = CATEGORIES
         self.fields_count = ["count", "min", "med", "ave", "max", "total"]
         self.fields = ["min", "med", "ave", "max", "total"]
         self.data: Dict[str, int] = {}
@@ -67,7 +71,7 @@ def padStr(s: str, field: Optional[int] = None) -> str:
         return " " * (field - len(s)) + s
 
 
-def prettyMemory(k: float, field: Optional[int] = None, isBytes: bool = False) -> str:
+def prettySpace(k: float, field: Optional[int] = None, isBytes: bool = False) -> str:
     """Given input k as kibibytes, return a nicely formatted string."""
     if isBytes:
         k /= 1024
@@ -138,12 +142,12 @@ def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str
     return "%.2f" % t
 
 
-def reportMemory(
+def reportSpace(
     k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False
 ) -> str:
     """Given k kibibytes, report back the correct format as string."""
     if options.pretty:
-        return prettyMemory(int(k), field=field, isBytes=isBytes)
+        return prettySpace(int(k), field=field, isBytes=isBytes)
     else:
         if isBytes:
             k /= 1024.0
@@ -189,16 +193,18 @@ def sprintTag(
         "time": lambda t, width: reportTime(t, options, field=width),
         "clock": lambda t, width: reportTime(t, options, field=width),
         "wait": lambda t, width: reportTime(t, options, field=width),
-        "memory": lambda t, width: reportMemory(t, options, field=width)
+        "memory": lambda t, width: reportSpace(t, options, field=width),
+        "disk": lambda t, width: reportSpace(t, options, field=width)
     }
     TITLES = {
         "time": "Real Time",
         "clock": "CPU Clock",
         "wait": "CPU Wait",
-        "memory": "Memory"
+        "memory": "Memory",
+        "disk": "Disk"
     }
 
-    for category in TITLES.keys():
+    for category in CATEGORIES:
         if category not in options.categories:
             continue
 
@@ -285,10 +291,7 @@ def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     }
     sortField = longforms[options.sortField]
     if (
-        options.sortCategory == "time"
-        or options.sortCategory == "clock"
-        or options.sortCategory == "wait"
-        or options.sortCategory == "memory"
+        options.sortCategory in CATEGORIES
     ):
         return sorted(
             jobTypes,
@@ -323,7 +326,7 @@ def reportPrettyData(
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
         reportNumber(n=get(root, "default_cores")),
-        reportMemory(get(root, "default_memory"), options, isBytes=True),
+        reportSpace(get(root, "default_memory"), options, isBytes=True),
         reportNumber(n=get(root, "max_cores")),
     )
     out_str += "Total Clock: {}  Total Runtime: {}\n".format(
@@ -357,6 +360,7 @@ def computeColumnWidths(
 
 def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
     """Update the column width attributes for this tag's fields."""
+    # TODO: Deduplicate with actual printing code!
     longforms = {
         "med": "median",
         "ave": "average",
@@ -364,16 +368,16 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
         "total": "total",
         "max": "max",
     }
-    for category in ["time", "clock", "wait", "memory"]:
+    for category in CATEGORIES:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
                 t = getattr(tag, f"{longforms[field]}_{category}")
-                if category in ["time", "clock", "wait"]:
+                if category in TIME_CATEGORIES:
                     s = reportTime(
                         t, options, field=cw.getWidth(category, field)
                     ).strip()
-                else:
-                    s = reportMemory(
+                elif category in SPACE_CATEGORIES:
+                    s = reportSpace(
                         t, options, field=cw.getWidth(category, field), isBytes=True
                     ).strip()
                 if len(s) >= cw.getWidth(category, field):
@@ -381,7 +385,7 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
                     cw.setWidth(category, field, len(s) + 1)
 
 
-def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
+def buildElement(element: Expando, items: List[Job], item_name: str) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
@@ -390,67 +394,47 @@ def buildElement(element: Expando, items: List[Job], itemName: str) -> Expando:
         else:
             return float(i)
 
-    totalCores = 0
 
-    itemTimes = []
-    itemClocks = []
-    itemMemory = []
-    itemCores = []
+    # Make lists of all values for all items in each category, plus requested cores.
+    item_values = {category: [] for category in (CATEGORIES + ["cores"])}
 
     for item in items:
         # If something lacks an entry, assume it used none of that thing.
         # This avoids crashing when jobs e.g. aren't done.
-        itemTimes.append(assertNonnegative(float(item.get("time", 0)), "time"))
-        itemClocks.append(assertNonnegative(float(item.get("clock", 0)), "clock"))
-        itemMemory.append(assertNonnegative(float(item.get("memory", 0)), "memory"))
-        totalCores += assertNonnegative(
-            float(item.get("requested_cores", 0)), "requested_cores"
-        )
-        itemCores.append(assertNonnegative(float(item.get("requested_cores", 0)), "cores"))
+        for category, values in item_values.items():
+            if category in COMPUTED_CATEGORIES:
+                continue
+            category_key = category if category != "cores" else "requested_cores"
+            category_value = assertNonnegative(float(item.get(category_key, 0)), category)
+            values.append(category_value)
 
-    assert len(itemClocks) == len(itemTimes) == len(itemMemory)
+    for index in range(0, len(item_values[CATEGORIES[0]])):
+        # For each item, compute the computed categories
+        item_values["wait"].append(item_values["time"][index] * item_values["cores"][index] - item_values["clock"][index])
 
-    itemWaits = []
-    for index in range(0, len(itemTimes)):
-        itemWaits.append(itemTimes[index] * itemCores[index] - itemClocks[index])
+    for category, values in item_values.items():
+        values.sort()
 
-    itemWaits.sort()
-    itemTimes.sort()
-    itemClocks.sort()
-    itemMemory.sort()
+    if len(item_values[CATEGORIES[0]]) == 0:
+        # Nothing actually there so make a 0 value
+        for k, v in item_values.items():
+            v.append(0)
 
-    if len(itemTimes) == 0:
-        itemTimes.append(0)
-        itemClocks.append(0)
-        itemWaits.append(0)
-        itemMemory.append(0)
-
-    element[itemName] = Expando(
+    item_element = Expando(
         total_number=float(len(items)),
-        total_time=float(sum(itemTimes)),
-        median_time=float(itemTimes[len(itemTimes) // 2]),
-        average_time=float(sum(itemTimes) / len(itemTimes)),
-        min_time=float(min(itemTimes)),
-        max_time=float(max(itemTimes)),
-        total_clock=float(sum(itemClocks)),
-        median_clock=float(itemClocks[len(itemClocks) // 2]),
-        average_clock=float(sum(itemClocks) / len(itemClocks)),
-        min_clock=float(min(itemClocks)),
-        max_clock=float(max(itemClocks)),
-        total_wait=float(sum(itemWaits)),
-        median_wait=float(itemWaits[len(itemWaits) // 2]),
-        average_wait=float(sum(itemWaits) / len(itemWaits)),
-        min_wait=float(min(itemWaits)),
-        max_wait=float(max(itemWaits)),
-        total_memory=float(sum(itemMemory)),
-        median_memory=float(itemMemory[len(itemMemory) // 2]),
-        average_memory=float(sum(itemMemory) / len(itemMemory)),
-        min_memory=float(min(itemMemory)),
-        max_memory=float(max(itemMemory)),
-        total_cores=totalCores,
-        name=itemName,
+        name=item_name
     )
-    return element[itemName]
+
+    for category, values in item_values.items():
+        item_element["total_" + category] = float(sum(values))
+        item_element["median_" + category] = float(values[len(values) // 2])
+        item_element["average_" + category] = float(sum(values) / len(values))
+        item_element["min_" + category] = float(min(values))
+        item_element["max_" + category] = float(max(values))
+
+    element[item_name] = item_element
+
+    return item_element
 
 
 def createSummary(
