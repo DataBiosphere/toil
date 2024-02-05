@@ -286,8 +286,6 @@ class Config:
 
             1. options object under option_name
             2. options object under old_names
-            3. environment variables in env
-            4. provided default value
 
             Selected option value is run through parsing_funtion if it is set.
             Then the parsed value is run through check_function to check it for
@@ -402,6 +400,14 @@ class Config:
         set_option("badWorker")
         set_option("badWorkerFailInterval")
         set_option("logLevel")
+
+        # Apply overrides as highest priority
+        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        if os.getenv('TOIL_WORKDIR_OVERRIDE') is not None:
+            self.workDir = os.getenv('TOIL_WORKDIR_OVERRIDE')
+        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        if os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') is not None:
+            self.workDir = os.getenv('TOIL_COORDINATION_DIR_OVERRIDE')
 
         self.check_configuration_consistency()
 
@@ -1262,12 +1268,6 @@ class Toil(ContextManager["Toil"]):
                  POSIX filesystem that allows directories containing open files to be
                  deleted.
         """
-
-        if 'XDG_RUNTIME_DIR' in os.environ and not os.path.exists(os.environ['XDG_RUNTIME_DIR']):
-            # Slurm has been observed providing this variable but not keeping
-            # the directory live as long as we run for.
-            logger.warning('XDG_RUNTIME_DIR is set to nonexistent directory %s; your environment may be out of spec!',
-                           os.environ['XDG_RUNTIME_DIR'])
 
         # Go get a coordination directory, using a lot of short-circuiting of
         # or and the fact that and returns its second argument when it

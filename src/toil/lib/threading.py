@@ -109,9 +109,12 @@ def cpu_count() -> int:
         return cast(int, cached)
 
     # Get the fallback answer of all the CPUs on the machine
-    total_machine_size = cast(int, psutil.cpu_count(logical=True))
+    psutil_cpu_count = cast(Optional[int], psutil.cpu_count(logical=True))
+    if psutil_cpu_count is None:
+        logger.debug('Could not retrieve the logical CPU count.')
 
-    logger.debug('Total machine size: %d cores', total_machine_size)
+    total_machine_size: Union[float, int] = psutil_cpu_count if psutil_cpu_count is not None else float('inf')
+    logger.debug('Total machine size: %s core(s)', total_machine_size)
 
     # cgroups may limit the size
     cgroup_size: Union[float, int] = float('inf')
@@ -151,13 +154,13 @@ def cpu_count() -> int:
             if quota == -1:
                 # But the quota can be -1 for unset.
                 # Assume we can use the whole machine.
-                return total_machine_size
+                cgroup_size = float('inf')
+            else:
+                # The thread count is how many multiples of a wall clock period we
+                # can burn in that period.
+                cgroup_size = int(math.ceil(float(quota)/float(period)))
 
-            # The thread count is how many multiples of a wall clock period we
-            # can burn in that period.
-            cgroup_size = int(math.ceil(float(quota)/float(period)))
-
-            logger.debug('Control group size in cores: %d', cgroup_size)
+            logger.debug('Control group size in cores: %s', cgroup_size)
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
         logger.debug('Could not inspect cgroup: %s', traceback.format_exc())
@@ -175,9 +178,16 @@ def cpu_count() -> int:
     else:
         logger.debug('CPU affinity not available')
 
-    # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
-    result = cast(int, max(1, min(min(affinity_size, cgroup_size), total_machine_size)))
-    logger.debug('cpu_count: %s', str(result))
+    limit: Union[float, int] = float('inf')
+    # Apply all the limits to take the smallest
+    limit = min(limit, total_machine_size)
+    limit = min(limit, cgroup_size)
+    limit = min(limit, affinity_size)
+    if limit < 1 or limit == float('inf'):
+        # Fall back to 1 if we can't get a size
+        limit = 1
+    result = int(limit)
+    logger.debug('cpu_count: %s', result)
     # Make sure to remember it for the next call
     setattr(cpu_count, 'result', result)
     return result

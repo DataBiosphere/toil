@@ -147,7 +147,7 @@ all you need to do is specify the prefix for the job store name.
 
 To run the sort example :ref:`sort example <sortExample>` with the AWS job store you would type ::
 
-    $ python sort.py aws:us-west-2:my-aws-sort-jobstore
+    $ python3 sort.py aws:us-west-2:my-aws-sort-jobstore
 
 .. _installProvisioner:
 
@@ -360,7 +360,7 @@ are good to start running workflows. ::
 
 Now we can run the workflow: ::
 
-    $ python sort.py \
+    $ python3 sort.py \
             --batchSystem kubernetes \
             aws:<region>:<job-store-name>
 
@@ -430,7 +430,7 @@ If a job is not specified to be preemptible, the job will not run on preemptible
 are available, unless the workflow is run with the ``--defaultPreemptible`` flag. The ``--defaultPreemptible`` flag will allow
 jobs without an explicit ``preemptible`` requirement to run on preemptible machines. For example::
 
-    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+    $ python3 /root/sort.py aws:us-west-2:<my-jobstore-name> \
           --batchSystem kubernetes \
           --defaultPreemptible
 
@@ -506,7 +506,7 @@ non-preemptible nodes of that type were specified in ``--nodeTypes``.
 
 #. Run the workflow with in-workflow autoscaling, specifying a provisioner and node types and counts as workflow arguments: ::
 
-    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
+    $ python3 /root/sort.py aws:us-west-2:<my-jobstore-name> \
           --provisioner aws \
           --nodeTypes c3.large \
           --maxNodes 2 \
