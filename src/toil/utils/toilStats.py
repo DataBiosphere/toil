@@ -26,10 +26,24 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
+# These categories of stat will be reported
 CATEGORIES = ["time", "clock", "wait", "memory", "disk"]
+# Of those, these are in time
 TIME_CATEGORIES = {"time", "clock", "wait"}
+# And these are in space
 SPACE_CATEGORIES = {"memory", "disk"}
+# And of the space ones, these are stored in bytes. The others are stored in KiB.
+BYTES_CATEGORIES = {"disk"}
+# These categories aren't stored and need to be computed
 COMPUTED_CATEGORIES = {"wait"}
+
+LONG_FORMS = {
+    "med": "median",
+    "ave": "average",
+    "min": "min",
+    "total": "total",
+    "max": "max",
+}
 
 class ColumnWidths:
     """
@@ -189,13 +203,6 @@ def sprintTag(
             worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
 
-    REPORT_FUNCTIONS = {
-        "time": lambda t, width: reportTime(t, options, field=width),
-        "clock": lambda t, width: reportTime(t, options, field=width),
-        "wait": lambda t, width: reportTime(t, options, field=width),
-        "memory": lambda t, width: reportSpace(t, options, field=width),
-        "disk": lambda t, width: reportSpace(t, options, field=width)
-    }
     TITLES = {
         "time": "Real Time",
         "clock": "CPU Clock",
@@ -214,14 +221,21 @@ def sprintTag(
         )
         sub_header += decorateSubHeader(category, columnWidths, options)
         tag_str += " | "
-        for t, width in [
-            (getattr(tag, "min_" + category), columnWidths.getWidth(category, "min")),
-            (getattr(tag, "median_" + category), columnWidths.getWidth(category, "med")),
-            (getattr(tag, "average_" + category), columnWidths.getWidth(category, "ave")),
-            (getattr(tag, "max_" + category), columnWidths.getWidth(category, "max")),
-            (getattr(tag, "total_" + category), columnWidths.getWidth(category, "total")),
-        ]:
-            tag_str += REPORT_FUNCTIONS[category](t, width)
+
+        for field in ["min", "med", "ave", "max", "total"]:
+            t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
+            width = columnWidths.getWidth(category, field)
+            if category in TIME_CATEGORIES:
+                s = reportTime(
+                    t, options, field=width
+                )
+            elif category in SPACE_CATEGORIES:
+                s = reportSpace(
+                    t, options, field=width, isBytes=(category in BYTES_CATEGORIES)
+                )
+            else:
+                raise RuntimeError(f"Unknown category {category}")
+            tag_str += s
 
     out_str += header + "\n"
     out_str += sub_header + "\n"
@@ -282,14 +296,7 @@ def get(tree: Expando, name: str) -> float:
 
 def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     """Return a jobTypes all sorted."""
-    longforms = {
-        "med": "median",
-        "ave": "average",
-        "min": "min",
-        "total": "total",
-        "max": "max",
-    }
-    sortField = longforms[options.sortField]
+    sortField = LONG_FORMS[options.sortField]
     if (
         options.sortCategory in CATEGORIES
     ):
@@ -326,6 +333,7 @@ def reportPrettyData(
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
         reportNumber(n=get(root, "default_cores")),
+        # Although per-job memory usage is in KiB, our default is stored in bytes.
         reportSpace(get(root, "default_memory"), options, isBytes=True),
         reportNumber(n=get(root, "max_cores")),
     )
@@ -361,25 +369,21 @@ def computeColumnWidths(
 def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
     """Update the column width attributes for this tag's fields."""
     # TODO: Deduplicate with actual printing code!
-    longforms = {
-        "med": "median",
-        "ave": "average",
-        "min": "min",
-        "total": "total",
-        "max": "max",
-    }
     for category in CATEGORIES:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
-                t = getattr(tag, f"{longforms[field]}_{category}")
+                t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
+                width = cw.getWidth(category, field)
                 if category in TIME_CATEGORIES:
                     s = reportTime(
-                        t, options, field=cw.getWidth(category, field)
+                        t, options, field=width
                     ).strip()
                 elif category in SPACE_CATEGORIES:
                     s = reportSpace(
-                        t, options, field=cw.getWidth(category, field), isBytes=True
+                        t, options, field=width, isBytes=(category in BYTES_CATEGORIES)
                     ).strip()
+                else:
+                    raise RuntimeError(f"Unknown category {category}")
                 if len(s) >= cw.getWidth(category, field):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
@@ -547,8 +551,7 @@ def reportData(tree: Expando, options: Namespace) -> None:
     print(out_str)
 
 
-category_choices = ["time", "clock", "wait", "memory"]
-sort_category_choices = ["time", "clock", "wait", "memory", "alpha", "count"]
+sort_category_choices = CATEGORIES + ["alpha", "count"]
 sort_field_choices = ["min", "med", "ave", "max", "total"]
 
 
@@ -578,9 +581,9 @@ def add_stats_options(parser: ArgumentParser) -> None:
     )
     parser.add_argument(
         "--categories",
-        default=",".join(category_choices),
+        default=",".join(CATEGORIES),
         type=str,
-        help=f"Comma separated list of any of the following: {category_choices}.",
+        help=f"Comma separated list of any of the following: {CATEGORIES}.",
     )
     parser.add_argument(
         "--sortCategory",
@@ -603,7 +606,7 @@ def main() -> None:
     options = parser.parse_args()
 
     for c in options.categories.split(","):
-        if c.strip() not in category_choices:
+        if c.strip() not in CATEGORIES:
             raise ValueError(f"{c} not in {category_choices}!")
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
