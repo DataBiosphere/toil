@@ -389,7 +389,7 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
                     cw.setWidth(category, field, len(s) + 1)
 
 
-def buildElement(element: Expando, items: List[Job], item_name: str) -> Expando:
+def buildElement(element: Expando, items: List[Job], item_name: str, defaults: dict[str, float]) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
@@ -397,7 +397,6 @@ def buildElement(element: Expando, items: List[Job], item_name: str) -> Expando:
             raise RuntimeError("Negative value %s reported for %s" % (i, name))
         else:
             return float(i)
-
 
     # Make lists of all values for all items in each category, plus requested cores.
     item_values = {category: [] for category in (CATEGORIES + ["cores"])}
@@ -409,7 +408,7 @@ def buildElement(element: Expando, items: List[Job], item_name: str) -> Expando:
             if category in COMPUTED_CATEGORIES:
                 continue
             category_key = category if category != "cores" else "requested_cores"
-            category_value = assertNonnegative(float(item.get(category_key, 0)), category)
+            category_value = assertNonnegative(float(item.get(category_key, defaults[category])), category)
             values.append(category_value)
 
     for index in range(0, len(item_values[CATEGORIES[0]])):
@@ -516,9 +515,13 @@ def processData(config: Config, stats: Expando) -> Expando:
         except TypeError:
             return []
 
-    buildElement(collatedStatsTag, worker, "worker")
+    # Work out what usage to assume for things that didn't report
+    defaults = {category: 0 for category in CATEGORIES}
+    defaults["cores"] = config.defaultCores
+
+    buildElement(collatedStatsTag, worker, "worker", defaults)
     createSummary(
-        buildElement(collatedStatsTag, jobs, "jobs"),
+        buildElement(collatedStatsTag, jobs, "jobs", defaults),
         getattr(stats, "workers", []),
         "worker",
         fn4,
@@ -531,7 +534,7 @@ def processData(config: Config, stats: Expando) -> Expando:
     collatedStatsTag.job_types = jobTypesTag
     for jobName in jobNames:
         jobTypes = [job for job in jobs if job.class_name == jobName]
-        buildElement(jobTypesTag, jobTypes, jobName)
+        buildElement(jobTypesTag, jobTypes, jobName, defaults)
     collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
 
