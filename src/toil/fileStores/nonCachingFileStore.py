@@ -102,7 +102,6 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
-        jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
         self._removeDeadJobs(self.coordination_dir)
@@ -116,16 +115,6 @@ class NonCachingFileStore(AbstractFileStore):
             with super().open(job):
                 yield
         finally:
-            disk = getDirSizeRecursively(self.localTempDir)
-            percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
-            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                          f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
-            if disk > jobReqs:
-                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
-                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
-                                 level=logging.WARNING)
-            else:
-                self.log_to_leader(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()

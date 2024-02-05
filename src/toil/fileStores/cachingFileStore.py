@@ -1041,7 +1041,8 @@ class CachingFileStore(AbstractFileStore):
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.coordination_dir, self.con)
-        # Get the requirements for the job.
+        # Get the disk requirement for the job, which we will use to know if we
+        # have filled the cache or not.
         self.jobDiskBytes = job.disk
 
         logger.debug('Actually running job (%s) with ID (%s) which wants %d of our %d bytes.',
@@ -1055,22 +1056,6 @@ class CachingFileStore(AbstractFileStore):
             with super().open(job):
                 yield
         finally:
-            # See how much disk space is used at the end of the job.
-            # Not a real peak disk usage, but close enough to be useful for warning the user.
-            # TODO: Push this logic into the abstract file store
-            disk: int = getDirSizeRecursively(self.localTempDir)
-            percent: float = 0.0
-            if self.jobDiskBytes and self.jobDiskBytes > 0:
-                percent = float(disk) / self.jobDiskBytes * 100
-            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                               f"{bytes2human(self.jobDiskBytes)}B [{self.jobDiskBytes}B] requested).")
-            if disk > self.jobDiskBytes:
-                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
-                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
-                                 level=logging.WARNING)
-            else:
-                self.log_to_leader(disk_usage, level=logging.DEBUG)
-
             # Go back up to the per-worker local temp directory.
             os.chdir(startingDir)
             self.cleanupInProgress = True
