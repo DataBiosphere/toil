@@ -2802,7 +2802,8 @@ class Job:
                     clock=str(totalCpuTime - startClock),
                     class_name=self._jobName(),
                     memory=str(totalMemoryUsage),
-                    requested_cores=str(self.cores)
+                    requested_cores=str(self.cores),
+                    disk=str(fileStore.get_disk_usage())
                 )
             )
 
