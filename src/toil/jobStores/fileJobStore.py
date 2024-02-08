@@ -920,7 +920,7 @@ class FileJobStore(AbstractJobStore):
         :raise NoSuchFileException: if the file with ID jobStoreFileID does
                                     not exist or is not a file
         """
-        if not self.file_exists(unquote(jobStoreFileID)):
+        if not self.file_exists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
 
     def _get_arbitrary_jobs_dir_for_name(self, jobNameSlug):
