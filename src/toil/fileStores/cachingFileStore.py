@@ -1095,7 +1095,7 @@ class CachingFileStore(AbstractFileStore):
         # Create an empty file to get an ID.
         # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
-        fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
+        fileID = self.jobStore.get_empty_file_store_id(creatorID, cleanup, os.path.basename(localFileName))
         # Work out who we are
         with self.as_process() as me:
 

@@ -1685,11 +1685,42 @@ class WDLTaskJob(WDLBaseJob):
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
 
-            # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
-            dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
+            def hacky_dedent(text: str) -> str:
+                """
+                Guess what result we would have gotten if we dedented the
+                command before substituting placeholder expressions, given the
+                command after substituting placeholder expressions. Workaround
+                for mimicking MiniWDL making us also suffer from
+                <https://github.com/chanzuckerberg/miniwdl/issues/674>.
+                """
+
+                # First just run MiniWDL's dedent
+                # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
+                dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
+
+                text = dedent(text)[1]
+
+                # But this can still leave dedenting to do. Find the first
+                # not-all-whitespace line and get its leading whitespace.
+                to_strip: Optional[str] = None
+                for line in text.split("\n"):
+                    if len(line.strip()) > 0:
+                        # This is the first not-all-whitespace line.
+                        # Drop the leading whitespace.
+                        rest = line.lstrip()
+                        # Grab the part that gets removed by lstrip
+                        to_strip = line[0:(len(line) - len(rest))]
+                        break
+                if to_strip is None or len(to_strip) == 0:
+                    # Nothing to cut
+                    return text
+
+                # Cut to_strip off each line that it appears at the start of.
+                return "\n".join((line.removeprefix(to_strip) for line in text.split("\n")))
+
 
             # Work out the command string, and unwrap it
-            command_string: str = dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)[1]
+            command_string: str = hacky_dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)
 
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
@@ -1721,6 +1752,18 @@ class WDLTaskJob(WDLBaseJob):
                     if size > 0:
                         # Send the whole error stream.
                         file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                        if logger.isEnabledFor(logging.DEBUG):
+                            logger.debug("MiniWDL already logged standard error")
+                        else:
+                            # At debug level, MiniWDL itself logs command error lines.
+                            # But otherwise we just dump into StatsAndLogging;
+                            # we also want the messages in the job log that
+                            # gets printed at the end of the workflow. So log
+                            # the error log ourselves.
+                            logger.error("====TASK ERROR LOG====")
+                            for line in open(host_stderr_txt, 'r', errors="replace"):
+                                logger.error("> %s", line.rstrip('\n'))
+                            logger.error("====TASK ERROR LOG====")
 
                 if os.path.exists(host_stdout_txt):
                     size = os.path.getsize(host_stdout_txt)
