@@ -13,6 +13,8 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     suppress_help = SUPPRESS if suppress else None
     # include arg names without a wdl specifier if suppress is False
     # this is to avoid possible duplicate options in custom toil scripts, ex outputFile can be a common argument name
+    # TODO: Why do we even need them at all in other Toil scripts? Do we have to worry about dest= collisions?
+    # TODO: Can the better option name be first?
     output_dialect_arguments = ["--wdlOutputDialect"] + (["--outputDialect"] if not suppress else [])
     parser.add_argument(*output_dialect_arguments, dest="output_dialect", type=str, default='cromwell',
                         choices=['cromwell', 'miniwdl'],
@@ -30,3 +32,6 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     reference_inputs_arguments = ["--wdlReferenceInputs"] + (["--referenceInputs"] if not suppress else [])
     parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type=bool, default=False,
                         help=suppress_help or "Pass input files by URL")
+    container_arguments = ["--wdlContainer"] + (["--container"] if not suppress else [])
+    parser.add_argument(*container_arguments, dest="container", type=str, choices=["singularity", "docker", "auto"], default="auto",
+                        help=suppress_help or "Container engine to use to run WDL tasks")
