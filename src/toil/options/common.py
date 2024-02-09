@@ -594,12 +594,12 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
         title="Toil log management options.",
         description="Options for how Toil should manage its logs."
     )
-    log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=64000, type=h2b,
+    log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=100 * 1024 * 1024, type=h2b,
                              action=make_open_interval_action(1),
                              help=f"The maximum size of a job log file to keep (in bytes), log files larger than "
                                   f"this will be truncated to the last X bytes. Setting this option to zero will "
                                   f"prevent any truncation. Setting this option to a negative value will truncate "
-                                  f"from the beginning.  Default={bytes2human(64000)}")
+                                  f"from the beginning.  Default={bytes2human(100 * 1024 * 1024)}")
     log_options.add_argument("--writeLogs", dest="writeLogs", nargs='?', action='store', default=None,
                              const=os.getcwd(), metavar="OPT_PATH",
                              help="Write worker logs received by the leader into their own files at the specified "
