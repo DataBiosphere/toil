@@ -65,6 +65,10 @@ input JSON file, for compatibility with other WDL runners.
 ``cromwell`` to just return the workflow's output values as JSON or ``miniwdl``
 to nest that under an ``outputs`` key and includes a ``dir`` key.
 
+``--container``: Specifies the container engine to use to run tasks. By default
+this is ``auto``, which tries Singularity if it is installed and Docker if it
+isn't. Can also be set to ``docker`` or ``singularity`` explicitly.
+
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.
 
