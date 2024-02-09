@@ -13,7 +13,7 @@ cwltest>=2.2.20211116163652
 mypy==1.8.0
 types-requests
 types-setuptools
-types-boto<2.49.18.20240205
+types-boto<2.49.18.20240206
 types-pytz
 flake8>=3.8.4,<8
 flake8-bugbear>=20.11.1,<25
