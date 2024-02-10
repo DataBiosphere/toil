@@ -168,7 +168,7 @@ levels in toil are based on priority from the logging module:
                         log files larger than this will be truncated to the last
                         X bytes. Setting this option to zero will prevent any
                         truncation. Setting this option to a negative value will
-                        truncate from the beginning. Default=62.5KiB
+                        truncate from the beginning. Default=100MiB
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
   --log-dir DIRPATH
                         For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
