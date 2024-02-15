@@ -37,10 +37,9 @@ We can run an example workflow and record stats::
 
 Where ``discoverfiles.py`` is the following:
 
-.. literalinclude:: ../../../src/toil/test/docs/scripts/tutorial_discoverfiles.py
+.. literalinclude:: ../../../src/toil/test/docs/scripts/tutorial_stats.py
 
 Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
-Running this workflow file should record three job names: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
 
 Displaying Stats
 ~~~~~~~~~~~~~~~~
@@ -54,32 +53,38 @@ This should output something like the following::
     Batch System: single_machine
     Default Cores: 1  Default Memory: 2097152KiB
     Max Cores: unlimited
-    Total CPU Time: 0.54 core·s  Overall Runtime: 2.02 s
+    Total CPU Time: 56.34 core·s  Overall Runtime: 16.14 s
     Worker
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
-            1 |     0.05    0.05    0.05    0.05    0.05 |     0.04    0.04    0.04    0.04    0.04 |     0.02    0.02    0.02    0.02    0.02 |  90016Ki 90016Ki 90016Ki 90016Ki  90016Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            4 |     0.35   10.80    8.21   10.90   32.83 |     0.33   10.38   13.47   41.71   53.90 |   -30.80    0.40   -5.27    9.33  -21.06 |  175968Ki 179968Ki 179104Ki 180608Ki 716416Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
     Job
      Worker Jobs  |     min    med    ave    max
-                  |       3      3      3      3
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
-            3 |     0.01    0.01    0.01    0.02    0.04 |     0.01    0.01    0.01    0.01    0.03 |     0.00    0.00    0.00    0.01    0.01 |  89488Ki 89792Ki 89754Ki 89984Ki 269264Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     discoverFiles
+                  |       4      4      4      4
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            4 |     0.34   10.80    8.20   10.90   32.82 |     0.33   10.38   13.47   41.71   53.88 |     0.01    1.90    2.91    9.33   11.64 |  175968Ki 179968Ki 179044Ki 180368Ki 716176Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+     doNothing
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
-            1 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |     0.00    0.00    0.00    0.00    0.00 |  89984Ki 89984Ki 89984Ki 89984Ki  89984Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     userFiles
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            1 |     0.34    0.34    0.34    0.34    0.34 |     0.33    0.33    0.33    0.33    0.33 |     0.01    0.01    0.01    0.01    0.01 |  175968Ki 175968Ki 175968Ki 175968Ki 175968Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+     efficientJob
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
-            1 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |     0.00    0.00    0.00    0.00    0.00 |  89792Ki 89792Ki 89792Ki 89792Ki  89792Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     sysFiles
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            1 |    10.77   10.77   10.77   10.77   10.77 |    10.38   10.38   10.38   10.38   10.38 |     0.40    0.40    0.40    0.40    0.40 |  179872Ki 179872Ki 179872Ki 179872Ki 179872Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+     inefficientJob
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
-            1 |     0.02    0.02    0.02    0.02    0.02 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |  89488Ki 89488Ki 89488Ki 89488Ki  89488Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            1 |    10.80   10.80   10.80   10.80   10.80 |     1.47    1.47    1.47    1.47    1.47 |     9.33    9.33    9.33    9.33    9.33 |  180368Ki 180368Ki 180368Ki 180368Ki 180368Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+     multithreadedJob
+        Total Cores: 4.0
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            1 |    10.90   10.90   10.90   10.90   10.90 |    41.71   41.71   41.71   41.71   41.71 |     1.90    1.90    1.90    1.90    1.90 |  179968Ki 179968Ki 179968Ki 179968Ki 179968Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+
         
 There are three parts to this report.
 
@@ -91,7 +96,7 @@ At the top is a section with overall summary statistics for the run::
     Batch System: single_machine
     Default Cores: 1  Default Memory: 2097152KiB
     Max Cores: unlimited
-    Total CPU Time: 0.54 core·s  Overall Runtime: 2.02 s
+    Total CPU Time: 56.34 core·s  Overall Runtime: 16.14 s
 
 This lists some important the settings for the Toil batch system that actually executed jobs, and also the overall CPU time used in the workflow process, and the overall wall-clock runtime of the workflow as measured by the leader..
 
