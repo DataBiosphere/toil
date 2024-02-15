@@ -1221,10 +1221,10 @@ class WDLBaseJob(Job):
     can be added onto any job before it is saved, and will be applied as long
     as the job's run method calls postprocess().
 
-    Also responsible for remembering the execution directory.
+    Also responsible for remembering the Toil WDL configuration keys and values.
     """
 
-    def __init__(self, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Make a WDL-related job.
 
@@ -1250,8 +1250,10 @@ class WDLBaseJob(Job):
         # may have coalesced postprocessing steps deferred by several levels of
         # jobs returning other jobs' promised RVs.
         self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
+        
+        self._wdl_options = wdl_options if wdl_options is not None else {}
 
-        self._execution_dir = execution_dir
+        assert self._wdl_options.get("container") is not None
 
     # TODO: We're not allowed by MyPy to override a method and widen the return
     # type, so this has to be Any.
@@ -1541,7 +1543,7 @@ class WDLTaskJob(WDLBaseJob):
             # resources.
             # TODO: What if the runtime section says we need a lot of disk to
             # hold the large files that the inputs section is going to write???
-            rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators)
+            rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
             # Run that as a child
             self.addChild(rescheduled)
 
@@ -1553,8 +1555,7 @@ class WDLTaskJob(WDLBaseJob):
 
         # If we get here we have all the resources we need, so run the task
 
-        if shutil.which('singularity'):
-
+        if shutil.which('singularity') and self._wdl_options.get("container") in ["singularity", "auto"]:
             # Prepare to use Singularity. We will need plenty of space to
             # download images.
             # Default the Singularity and MiniWDL cache directories. This sets the cache to the same place as
@@ -1581,15 +1582,18 @@ class WDLTaskJob(WDLBaseJob):
 
             # Run containers with Singularity
             TaskContainerImplementation: Type[TaskContainer]  = SingularityContainer
-        else:
+        elif self._wdl_options.get("container") in ["docker", "auto"]:
             # Run containers with Docker
+            # TODO: Poll if it is available and don't just try and fail.
             TaskContainerImplementation = SwarmContainer
             if runtime_accelerators:
                 # Complain to the user that this is unlikely to work.
-                logger.warning("Running job that needs accelerators with Docker, because "
-                               "Singularity is not available. Accelerator and GPU support "
+                logger.warning("Running job that needs accelerators with Docker. "
+                               "Accelerator and GPU support "
                                "is not yet implemented in the MiniWDL Docker "
                                "containerization implementation.")
+        else:
+            raise RuntimeError(f"Could not find a working container engine to use; told to use {self._wdl_options.get('container')}")
 
         # Set up the MiniWDL container running stuff
         miniwdl_logger = logging.getLogger("MiniWDLContainers")
@@ -1848,11 +1852,11 @@ class WDLWorkflowNodeJob(WDLBaseJob):
     Job that evaluates a WDL workflow node.
     """
 
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Make a new job to run a workflow node to completion.
         """
-        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, execution_dir=execution_dir, **kwargs)
+        super().__init__(unitName=node.workflow_node_id, displayName=node.workflow_node_id, wdl_options=wdl_options or {}, **kwargs)
 
         self._node = node
         self._prev_node_results = prev_node_results
@@ -1873,7 +1877,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
         with monkeypatch_coerce(standard_library):
             if isinstance(self._node, WDL.Tree.Decl):
                 # This is a variable assignment
@@ -1901,11 +1905,11 @@ class WDLWorkflowNodeJob(WDLBaseJob):
 
                 if isinstance(self._node.callee, WDL.Tree.Workflow):
                     # This is a call of a workflow
-                    subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}', self._execution_dir)
+                    subjob: WDLBaseJob = WDLWorkflowJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}', wdl_options=self._wdl_options)
                     self.addChild(subjob)
                 elif isinstance(self._node.callee, WDL.Tree.Task):
                     # This is a call of a task
-                    subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}')
+                    subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}', wdl_options=self._wdl_options)
                     self.addChild(subjob)
                 else:
                     raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))
@@ -1916,14 +1920,14 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 self.defer_postprocessing(subjob)
                 return subjob.rv()
             elif isinstance(self._node, WDL.Tree.Scatter):
-                subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace, self._task_path, self._execution_dir)
+                subjob = WDLScatterJob(self._node, [incoming_bindings], self._namespace, self._task_path, wdl_options=self._wdl_options)
                 self.addChild(subjob)
                 # Scatters don't really make a namespace, just kind of a scope?
                 # TODO: Let stuff leave scope!
                 self.defer_postprocessing(subjob)
                 return subjob.rv()
             elif isinstance(self._node, WDL.Tree.Conditional):
-                subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace, self._task_path, self._execution_dir)
+                subjob = WDLConditionalJob(self._node, [incoming_bindings], self._namespace, self._task_path, wdl_options=self._wdl_options)
                 self.addChild(subjob)
                 # Conditionals don't really make a namespace, just kind of a scope?
                 # TODO: Let stuff leave scope!
@@ -1939,11 +1943,11 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
     workflows or tasks or sections.
     """
 
-    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Make a new job to run a list of workflow nodes to completion.
         """
-        super().__init__(unitName=nodes[0].workflow_node_id + '+', displayName=nodes[0].workflow_node_id + '+', execution_dir=execution_dir, **kwargs)
+        super().__init__(unitName=nodes[0].workflow_node_id + '+', displayName=nodes[0].workflow_node_id + '+', wdl_options=wdl_options, **kwargs)
 
         self._nodes = nodes
         self._prev_node_results = prev_node_results
@@ -1963,7 +1967,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
 
         with monkeypatch_coerce(standard_library):
             for node in self._nodes:
@@ -2143,12 +2147,12 @@ class WDLSectionJob(WDLBaseJob):
     Job that can create more graph for a section of the wrokflow.
     """
 
-    def __init__(self, namespace: str, task_path: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Make a WDLSectionJob where the interior runs in the given namespace,
         starting with the root workflow.
         """
-        super().__init__(execution_dir, **kwargs)
+        super().__init__(wdl_options=wdl_options, **kwargs)
         self._namespace = namespace
         self._task_path = task_path
 
@@ -2303,10 +2307,10 @@ class WDLSectionJob(WDLBaseJob):
 
             if len(node_ids) == 1:
                 # Make a one-node job
-                job: WDLBaseJob = WDLWorkflowNodeJob(section_graph.get(node_ids[0]), rvs, self._namespace, task_path, self._execution_dir)
+                job: WDLBaseJob = WDLWorkflowNodeJob(section_graph.get(node_ids[0]), rvs, self._namespace, task_path, wdl_options=self._wdl_options)
             else:
                 # Make a multi-node job
-                job = WDLWorkflowNodeListJob([section_graph.get(node_id) for node_id in node_ids], rvs, self._namespace, self._execution_dir)
+                job = WDLWorkflowNodeListJob([section_graph.get(node_id) for node_id in node_ids], rvs, self._namespace, wdl_options=self._wdl_options)
             for prev_job in prev_jobs:
                 # Connect up the happens-after relationships to make sure the
                 # return values are available.
@@ -2336,7 +2340,7 @@ class WDLSectionJob(WDLBaseJob):
             leaf_rvs.append(environment)
             # And to fill in bindings from code not executed in this instantiation
             # with Null, and filter out stuff that should leave scope.
-            sink = WDLCombineBindingsJob(leaf_rvs)
+            sink = WDLCombineBindingsJob(leaf_rvs, wdl_options=self._wdl_options)
             # It runs inside us
             self.addChild(sink)
             for leaf_job in toil_leaves.values():
@@ -2403,11 +2407,11 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL scatter. The scatter itself and the contents live in the given namespace.
         """
-        super().__init__(namespace, task_path, **kwargs, unitName=scatter.workflow_node_id, displayName=scatter.workflow_node_id, execution_dir=execution_dir)
+        super().__init__(namespace, task_path, **kwargs, unitName=scatter.workflow_node_id, displayName=scatter.workflow_node_id, wdl_options=wdl_options)
 
         # Because we need to return the return value of the workflow, we need
         # to return a Toil promise for the last/sink job in the workflow's
@@ -2473,7 +2477,7 @@ class WDLScatterJob(WDLSectionJob):
         # of maybe-optional values. Each body execution will define names it
         # doesn't make as nulls, so we don't have to worry about
         # totally-missing names.
-        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings)
+        gather_job = WDLArrayBindingsJob([j.rv() for j in scatter_jobs], bindings, wdl_options=self._wdl_options)
         self.addChild(gather_job)
         for j in scatter_jobs:
             j.addFollowOn(gather_job)
@@ -2542,11 +2546,11 @@ class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL conditional. The conditional itself and its contents live in the given namespace.
         """
-        super().__init__(namespace, task_path, **kwargs, unitName=conditional.workflow_node_id, displayName=conditional.workflow_node_id, execution_dir=execution_dir)
+        super().__init__(namespace, task_path, **kwargs, unitName=conditional.workflow_node_id, displayName=conditional.workflow_node_id, wdl_options=wdl_options)
 
         # Once again we need to ship the whole body template to be instantiated
         # into Toil jobs only if it will actually run.
@@ -2594,7 +2598,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], namespace: str, task_path: str, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -2602,7 +2606,7 @@ class WDLWorkflowJob(WDLSectionJob):
         :param namespace: the namespace that the workflow's *contents* will be
                in. Caller has already added the workflow's own name.
         """
-        super().__init__(namespace, task_path, execution_dir, **kwargs)
+        super().__init__(namespace, task_path, wdl_options=wdl_options, **kwargs)
 
         # Because we need to return the return value of the workflow, we need
         # to return a Toil promise for the last/sink job in the workflow's
@@ -2632,7 +2636,7 @@ class WDLWorkflowJob(WDLSectionJob):
         # For a task we only see the insode-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
 
         if self._workflow.inputs:
             with monkeypatch_coerce(standard_library):
@@ -2646,7 +2650,7 @@ class WDLWorkflowJob(WDLSectionJob):
         if self._workflow.outputs != []:  # Compare against empty list as None means there should be outputs
             # Either the output section is declared and nonempty or it is not declared
             # Add evaluating the outputs after the sink
-            outputs_job = WDLOutputsJob(self._workflow, sink.rv(), self._execution_dir)
+            outputs_job = WDLOutputsJob(self._workflow, sink.rv(), wdl_options=self._wdl_options)
             sink.addFollowOn(outputs_job)
             # Caller is responsible for making sure namespaces are applied
             self.defer_postprocessing(outputs_job)
@@ -2661,11 +2665,11 @@ class WDLOutputsJob(WDLBaseJob):
 
     Returns an environment with just the outputs bound, in no namespace.
     """
-    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], execution_dir: Optional[str] = None, **kwargs: Any):
+    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
         """
-        super().__init__(execution_dir, **kwargs)
+        super().__init__(wdl_options=wdl_options, **kwargs)
 
         self._bindings = bindings
         self._workflow = workflow
@@ -2695,7 +2699,7 @@ class WDLOutputsJob(WDLBaseJob):
         else:
             # Output section is declared and is nonempty, so evaluate normally
             # Evaluate all the outputs in the normal, non-task-outputs library context
-            standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._execution_dir)
+            standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
             # Combine the bindings from the previous job
             output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
         return self.postprocess(output_bindings)
@@ -2707,13 +2711,13 @@ class WDLRootJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, execution_dir: Optional[str] = None, **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
 
         # The root workflow names the root namespace and task path.
-        super().__init__(workflow.name, workflow.name, execution_dir, **kwargs)
+        super().__init__(workflow.name, workflow.name, wdl_options=wdl_options, **kwargs)
 
         self._workflow = workflow
         self._inputs = inputs
@@ -2727,7 +2731,7 @@ class WDLRootJob(WDLSectionJob):
 
         # Run the workflow. We rely in this to handle entering the input
         # namespace if needed, or handling free-floating inputs.
-        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._namespace, self._task_path, self._execution_dir)
+        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
         workflow_job.then_namespace(self._namespace)
         self.addChild(workflow_job)
         self.defer_postprocessing(workflow_job)
@@ -2850,8 +2854,17 @@ def main() -> None:
 
             # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
 
+            # Get the execution directory
+            execution_dir = os.getcwd()
+
+            # Configure workflow interpreter options
+            wdl_options: Dict[str, str] = {}
+            wdl_options["execution_dir"] = execution_dir
+            wdl_options["container"] = options.container
+            assert wdl_options.get("container") is not None
+
             # Run the workflow and get its outputs namespaced with the workflow name.
-            root_job = WDLRootJob(document.workflow, input_bindings, execution_dir)
+            root_job = WDLRootJob(document.workflow, input_bindings, wdl_options=wdl_options)
             output_bindings = toil.start(root_job)
         if not isinstance(output_bindings, WDL.Env.Bindings):
             raise RuntimeError("The output of the WDL job is not a binding.")
