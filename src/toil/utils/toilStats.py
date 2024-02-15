@@ -102,46 +102,54 @@ def padStr(s: str, field: Optional[int] = None) -> str:
         return " " * (field - len(s)) + s
 
 
-def prettySpace(k: float, field: Optional[int] = None) -> str:
+def prettySpace(k: float, field: Optional[int] = None, alone: bool = False) -> str:
     """Given input k as kibibytes, return a nicely formatted string."""
+    # If we don't have a header to say bytes, include the B.
+    trailer = "B" if alone else ""
     if k < 1024:
-        return padStr("%gKi" % k, field)
+        return padStr("%gKi%s" % (k, trailer), field)
     if k < (1024 * 1024):
-        return padStr("%.1fMi" % (k / 1024.0), field)
+        return padStr("%.1fMi%s" % (k / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024):
-        return padStr("%.1fGi" % (k / 1024.0 / 1024.0), field)
+        return padStr("%.1fGi%s" % (k / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fTi" % (k / 1024.0 / 1024.0 / 1024.0), field)
+        return padStr("%.1fTi%s" % (k / 1024.0 / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fPi" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0), field)
+        return padStr("%.1fPi%s" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
 
 
-def prettyTime(t: float, field: Optional[int] = None) -> str:
-    """Given input t as seconds, return a nicely formatted string."""
+def prettyTime(t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
+    """
+    Given input t as seconds, return a nicely formatted string.
+    """
+    assert unit in ("s", "core-s")
+    # Qualify our CPU times as CPU time if we aren't in a table that does that
+    unit_str = reportUnit(unit) if alone else "s"
+
     from math import floor
 
     pluralDict = {True: "s", False: ""}
     if t < 120:
-        return padStr("%ds" % t, field)
+        return padStr("%d%s" % (t, unit_str), field)
     if t < 120 * 60:
         m = floor(t / 60.0)
         s = t % 60
-        return padStr("%dm%ds" % (m, s), field)
+        return padStr("%dm%d%s" % (m, s, unit_str), field)
     if t < 25 * 60 * 60:
         h = floor(t / 60.0 / 60.0)
         m = floor((t - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
-        return padStr("%dh%gm%ds" % (h, m, s), field)
+        return padStr("%dh%gm%d%s" % (h, m, s, unit_str), field)
     if t < 7 * 24 * 60 * 60:
         d = floor(t / 24.0 / 60.0 / 60.0)
         h = floor((t - (d * 24.0 * 60.0 * 60.0)) / 60.0 / 60.0)
         m = floor((t - (d * 24.0 * 60.0 * 60.0) - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
         dPlural = pluralDict[d > 1]
-        return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
+        return padStr("%dday%s%dh%dm%d%s" % (d, dPlural, h, m, s, unit_str), field)
     w = floor(t / 7.0 / 24.0 / 60.0 / 60.0)
     d = floor((t - (w * 7 * 24 * 60 * 60)) / 24.0 / 60.0 / 60.0)
     h = floor(
@@ -159,15 +167,22 @@ def prettyTime(t: float, field: Optional[int] = None) -> str:
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
-    return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d, dPlural, h, m, s), field)
+    return padStr("%dweek%s%dday%s%dh%dm%d%s" % (w, wPlural, d, dPlural, h, m, s, unit_str), field)
 
+def reportUnit(unit: str) -> str:
+    """
+    Format a unit name for display.
+    """
+    if unit == "core-s":
+        return "core·s"
+    return unit
 
 def reportTime(t: float, options: Namespace, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
     """Given t seconds, report back the correct format as string."""
     assert unit in ("s", "core-s")
     if options.pretty:
-        return prettyTime(t, field=field)
-    unit_text = f" {unit}" if alone else ""
+        return prettyTime(t, field=field, unit=unit, alone=alone)
+    unit_text = f" {reportUnit(unit)}" if alone else ""
     if field is not None:
         assert field >= len(unit_text)
         return "%*.2f%s" % (field - len(unit_text), t, unit_text)
@@ -175,7 +190,7 @@ def reportTime(t: float, options: Namespace, field: Optional[int] = None, unit: 
 
 
 def reportSpace(
-    k: float, options: Namespace, field: Optional[int] = None, unit: str = "KiB"
+        k: float, options: Namespace, field: Optional[int] = None, unit: str = "KiB", alone: bool = False
 ) -> str:
     """
     Given k kibibytes, report back the correct format as string.
@@ -187,12 +202,15 @@ def reportSpace(
         unit = "KiB"
     assert unit == "KiB"
     if options.pretty:
-        return prettySpace(int(k), field=field)
+        return prettySpace(int(k), field=field, alone=alone)
     else:
+        # If we don't have a heading to say bytes, include the B
+        trailer = "KiB" if alone else "Ki"
         if field is not None:
-            return "%*dKi" % (field - 2, k)  # -1 for the "K"
+            assert field >= len(trailer)
+            return "%*d%s" % (field - len(trailer), k, trailer)
         else:
-            return "%dKi" % int(k)
+            return "%d%s" % (int(k), trailer)
 
 
 def reportNumber(n: float, field: Optional[int] = None) -> str:
@@ -211,11 +229,10 @@ def report(v: float, category: str, options: Namespace, field: Optional[int] = N
     unit = CATEGORY_UNITS.get(category)
     if unit in ("s", "core-s"):
         # This is time.
-        # Times might or might not need units depending on if they are printed alone.
         return reportTime(v, options, field=field, unit=unit, alone=alone)
     elif unit in ("B", "KiB"):
-        # This is space. It always gets a unit printed.
-        return reportSpace(v, options, field=field, unit=unit)
+        # This is space.
+        return reportSpace(v, options, field=field, unit=unit, alone=alone)
     else:
         raise ValueError(f"Unimplemented unit {unit} for category {category}")
 
@@ -279,7 +296,14 @@ def decorateTitle(category: str, title: str, options: Namespace) -> str:
     unit = CATEGORY_UNITS.get(category)
     if unit in ("s", "core-s") and not options.pretty:
         # This is a time and we won't write it out as text, so add a unit.
-        title = f"{title} ({unit})"
+        title = f"{title} ({reportUnit(unit)})"
+    elif unit == "core-s" and options.pretty:
+        # This is a core-second category and we won't be putting the core unit
+        # in the value, so note that here.
+        title = f"{title} (core)"
+    elif unit in ("B", "KiB"):
+        # The Ki part will appear in the cell so we need a B
+        title = f"{title} (B)"
     if category.lower() == options.sortCategory:
         return "%s*" % title
     else:
@@ -369,7 +393,7 @@ def reportPrettyData(
     out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
         reportNumber(n=get(root, "default_cores")),
         # Although per-job memory usage is in KiB, our default is stored in bytes.
-        reportSpace(get(root, "default_memory"), options, unit="B"),
+        reportSpace(get(root, "default_memory"), options, unit="B", alone=True),
         reportNumber(n=get(root, "max_cores")),
     )
     out_str += "Total Clock: {}  Total Runtime: {}\n".format(
