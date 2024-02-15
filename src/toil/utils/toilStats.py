@@ -14,13 +14,14 @@
 """Reports statistical data about a given Toil workflow."""
 import json
 import logging
+import sys
 from argparse import ArgumentParser, Namespace
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, TextIO
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job
-from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
 from toil.lib.expando import Expando
 from toil.statsAndLogging import set_logging_from_options
 
@@ -659,14 +660,19 @@ def main() -> None:
     options = parser.parse_args()
 
     for c in options.categories.split(","):
-        if c.strip() not in CATEGORIES:
-            raise ValueError(f"{c} not in {category_choices}!")
+        if c.strip().lower() not in CATEGORIES:
+            logger.critical("Cannot use category %s, options are: %s", c.strip().lower(), CATEGORIES)
+            sys.exit(1)
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
     set_logging_from_options(options)
     config = Config()
     config.setOptions(options)
-    jobStore = Toil.resumeJobStore(config.jobStore)
+    try:
+        jobStore = Toil.resumeJobStore(config.jobStore)
+    except NoSuchJobStoreException:
+        logger.critical("The job store %s does not exist", config.jobStore)
+        sys.exit(1)
     stats = get_stats(jobStore)
     collatedStatsTag = process_data(jobStore.config, stats)
     report_data(collatedStatsTag, options)

@@ -6,7 +6,7 @@ Running in AWS
 
 Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web
 Services (AWS) is currently the best-supported solution. Toil provides the
-:ref:`clusterRef` to conveniently create AWS clusters, connect to the leader
+:ref:`clusterUtils` to conveniently create AWS clusters, connect to the leader
 of the cluster, and then launch a workflow. The leader handles distributing
 the jobs over the worker nodes and autoscaling to optimize costs.
 
