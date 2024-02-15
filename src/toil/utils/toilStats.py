@@ -28,15 +28,32 @@ logger = logging.getLogger(__name__)
 
 # These categories of stat will be reported
 CATEGORIES = ["time", "clock", "wait", "memory", "disk"]
+# These are the units they are stored in
+CATEGORY_UNITS = {
+    "time": "s",
+    "clock": "core-s",
+    "wait": "core-s",
+    "memory": "KiB",
+    "disk": "B"
+}
+# These are what we call them to the user
+TITLES = {
+    "time": "Real Time",
+    "clock": "CPU Clock",
+    "wait": "CPU Wait",
+    "memory": "Memory",
+    "disk": "Disk"
+}
+
 # Of those, these are in time
 TIME_CATEGORIES = {"time", "clock", "wait"}
 # And these are in space
 SPACE_CATEGORIES = {"memory", "disk"}
-# And of the space ones, these are stored in bytes. The others are stored in KiB.
-BYTES_CATEGORIES = {"disk"}
 # These categories aren't stored and need to be computed
 COMPUTED_CATEGORIES = {"wait"}
 
+# The different kinds of summaries have both short and long names, and we need
+# to convert between them.
 LONG_FORMS = {
     "med": "median",
     "ave": "average",
@@ -85,10 +102,8 @@ def padStr(s: str, field: Optional[int] = None) -> str:
         return " " * (field - len(s)) + s
 
 
-def prettySpace(k: float, field: Optional[int] = None, isBytes: bool = False) -> str:
+def prettySpace(k: float, field: Optional[int] = None) -> str:
     """Given input k as kibibytes, return a nicely formatted string."""
-    if isBytes:
-        k /= 1024
     if k < 1024:
         return padStr("%gKi" % k, field)
     if k < (1024 * 1024):
@@ -147,24 +162,33 @@ def prettyTime(t: float, field: Optional[int] = None) -> str:
     return padStr("%dweek%s%dday%s%dh%dm%ds" % (w, wPlural, d, dPlural, h, m, s), field)
 
 
-def reportTime(t: float, options: Namespace, field: Optional[int] = None) -> str:
+def reportTime(t: float, options: Namespace, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
     """Given t seconds, report back the correct format as string."""
+    assert unit in ("s", "core-s")
     if options.pretty:
         return prettyTime(t, field=field)
-    elif field is not None:
-        return "%*.2f" % (field, t)
-    return "%.2f" % t
+    unit_text = f" {unit}" if alone else ""
+    if field is not None:
+        assert field >= len(unit_text)
+        return "%*.2f%s" % (field - len(unit_text), t, unit_text)
+    return "%.2f%s" % (t, unit_text)
 
 
 def reportSpace(
-    k: float, options: Namespace, field: Optional[int] = None, isBytes: bool = False
+    k: float, options: Namespace, field: Optional[int] = None, unit: str = "KiB"
 ) -> str:
-    """Given k kibibytes, report back the correct format as string."""
+    """
+    Given k kibibytes, report back the correct format as string.
+
+    If unit is set to B, convert to KiB first.
+    """
+    if unit == "B":
+        k /= 1024.0
+        unit = "KiB"
+    assert unit == "KiB"
     if options.pretty:
-        return prettySpace(int(k), field=field, isBytes=isBytes)
+        return prettySpace(int(k), field=field)
     else:
-        if isBytes:
-            k /= 1024.0
         if field is not None:
             return "%*dKi" % (field - 2, k)  # -1 for the "K"
         else:
@@ -175,6 +199,25 @@ def reportNumber(n: float, field: Optional[int] = None) -> str:
     """Given n an integer, report back the correct format as string."""
     return "%*g" % (field, n) if field else "%g" % n
 
+def report(v: float, category: str, options: Namespace, field: Optional[int] = None, alone=False) -> str:
+    """
+    Report a value of the given category formatted as a string.
+
+    Uses the given field width if set.
+
+    If alone is set, the field is being formatted outside a table and might need a unit.
+    """
+
+    unit = CATEGORY_UNITS.get(category)
+    if unit in ("s", "core-s"):
+        # This is time.
+        # Times might or might not need units depending on if they are printed alone.
+        return reportTime(v, options, field=field, unit=unit, alone=alone)
+    elif unit in ("B", "KiB"):
+        # This is space. It always gets a unit printed.
+        return reportSpace(v, options, field=field, unit=unit)
+    else:
+        raise ValueError(f"Unimplemented unit {unit} for category {category}")
 
 def sprintTag(
     key: str,
@@ -203,14 +246,6 @@ def sprintTag(
             worker_str += reportNumber(n=t, field=7)
         out_str += worker_str + "\n"
 
-    TITLES = {
-        "time": "Real Time",
-        "clock": "CPU Clock",
-        "wait": "CPU Wait",
-        "memory": "Memory",
-        "disk": "Disk"
-    }
-
     for category in CATEGORIES:
         if category not in options.categories:
             continue
@@ -225,16 +260,7 @@ def sprintTag(
         for field in ["min", "med", "ave", "max", "total"]:
             t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
             width = columnWidths.getWidth(category, field)
-            if category in TIME_CATEGORIES:
-                s = reportTime(
-                    t, options, field=width
-                )
-            elif category in SPACE_CATEGORIES:
-                s = reportSpace(
-                    t, options, field=width, isBytes=(category in BYTES_CATEGORIES)
-                )
-            else:
-                raise RuntimeError(f"Unknown category {category}")
+            s = report(t, category, options, field=width)
             tag_str += s
 
     out_str += header + "\n"
@@ -244,7 +270,16 @@ def sprintTag(
 
 
 def decorateTitle(category: str, title: str, options: Namespace) -> str:
-    """Add a marker to TITLE if the TITLE is sorted on."""
+    """
+    Add extra parts to the category titles.
+
+    Add units to title if they won't appear in the formatted values.
+    Add a marker to TITLE if the TITLE is sorted on.
+    """
+    unit = CATEGORY_UNITS.get(category)
+    if unit in ("s", "core-s") and not options.pretty:
+        # This is a time and we won't write it out as text, so add a unit.
+        title = f"{title} ({unit})"
     if category.lower() == options.sortCategory:
         return "%s*" % title
     else:
@@ -334,12 +369,12 @@ def reportPrettyData(
     out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
         reportNumber(n=get(root, "default_cores")),
         # Although per-job memory usage is in KiB, our default is stored in bytes.
-        reportSpace(get(root, "default_memory"), options, isBytes=True),
+        reportSpace(get(root, "default_memory"), options, unit="B"),
         reportNumber(n=get(root, "max_cores")),
     )
     out_str += "Total Clock: {}  Total Runtime: {}\n".format(
-        reportTime(get(root, "total_clock"), options),
-        reportTime(get(root, "total_run_time"), options),
+        report(get(root, "total_clock"), "clock", options, alone=True),
+        report(get(root, "total_run_time"), "time", options, alone=True),
     )
     job_types = sortJobs(job_types, options)
     columnWidths = computeColumnWidths(job_types, worker, job, options)
@@ -374,16 +409,7 @@ def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None
             for field in ["min", "med", "ave", "max", "total"]:
                 t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
                 width = cw.getWidth(category, field)
-                if category in TIME_CATEGORIES:
-                    s = reportTime(
-                        t, options, field=width
-                    ).strip()
-                elif category in SPACE_CATEGORIES:
-                    s = reportSpace(
-                        t, options, field=width, isBytes=(category in BYTES_CATEGORIES)
-                    ).strip()
-                else:
-                    raise RuntimeError(f"Unknown category {category}")
+                s = report(t, category, options, field=width).strip()
                 if len(s) >= cw.getWidth(category, field):
                     # this string is larger than max, width must be increased
                     cw.setWidth(category, field, len(s) + 1)
