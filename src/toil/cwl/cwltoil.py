@@ -2620,29 +2620,40 @@ class CWLJob(CWLNamedJob):
         logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
         runtime_context.name = self.description.unitName
-        output, status = ToilSingleJobExecutor().execute(
-            process=self.cwltool,
-            job_order_object=cwljob,
-            runtime_context=runtime_context,
-            logger=cwllogger,
-        )
-        ended_at = datetime.datetime.now()  # noqa F841
+
+        status = "did_not_run"
+        try:
+            output, status = ToilSingleJobExecutor().execute(
+                process=self.cwltool,
+                job_order_object=cwljob,
+                runtime_context=runtime_context,
+                logger=cwllogger,
+            )
+        finally:
+            ended_at = datetime.datetime.now()  # noqa F841
+
+            # Log any output/error data
+            default_stdout.seek(0, os.SEEK_END)
+            if default_stdout.tell() > 0:
+                default_stdout.seek(0)
+                file_store.log_user_stream(self.description.unitName + '.stdout', default_stdout)
+                if status != "success":
+                    default_stdout.seek(0)
+                    logger.error("Failed command standard output:\n%s", default_stdout.read().decode("utf-8", errors="replace"))
+            default_stderr.seek(0, os.SEEK_END)
+            if default_stderr.tell():
+                default_stderr.seek(0)
+                file_store.log_user_stream(self.description.unitName + '.stderr', default_stderr)
+                if status != "success":
+                    default_stderr.seek(0)
+                    logger.error("Failed command standard error:\n%s", default_stderr.read().decode("utf-8", errors="replace"))
+
         if status != "success":
             raise cwl_utils.errors.WorkflowException(status)
 
         for t, fd in pipe_threads:
             os.close(fd)
             t.join()
-
-        # Log any output/error data
-        default_stdout.seek(0, os.SEEK_END)
-        if default_stdout.tell() > 0:
-            default_stdout.seek(0)
-            file_store.log_user_stream(self.description.unitName + '.stdout', default_stdout)
-        default_stderr.seek(0, os.SEEK_END)
-        if default_stderr.tell():
-            default_stderr.seek(0)
-            file_store.log_user_stream(self.description.unitName + '.stderr', default_stderr)
 
         # Get ahold of the filesystem
         fs_access = runtime_context.make_fs_access(runtime_context.basedir)
