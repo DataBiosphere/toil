@@ -225,7 +225,9 @@ def report_number(n: Union[int, float, None], field: Optional[int] = None, nan_v
     if n is None or math.isnan(n):
         return pad_str(nan_value, field=field)
     else:
-        return "%*g" % (field, n) if field else "%g" % n
+        # Make sure not to format with too much precision for the field size;
+        # leave room for . and the spacing to the previous field.
+        return "%*.*g" % (field, field - 2, n) if field else "%g" % n
 
 def report(v: float, category: str, options: Namespace, field: Optional[int] = None, alone=False) -> str:
     """
@@ -393,8 +395,8 @@ def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
 
 def report_pretty_data(
     root: Expando,
-    worker: List[Job],
-    job: List[Job],
+    worker: Expando,
+    job: Expando,
     job_types: List[Any],
     options: Namespace,
 ) -> str:
@@ -406,7 +408,7 @@ def report_pretty_data(
         report_space(get(root, "default_memory"), options, unit="B", alone=True),
         report_number(n=get(root, "max_cores"), nan_value="unlimited"),
     )
-    out_str += "Total CPU Time: {}  Overall Runtime: {}\n".format(
+    out_str += "Local CPU Time: {}  Overall Runtime: {}\n".format(
         report(get(root, "total_clock"), "clock", options, alone=True),
         report(get(root, "total_run_time"), "time", options, alone=True),
     )
@@ -424,7 +426,7 @@ def report_pretty_data(
 
 
 def compute_column_widths(
-    job_types: List[Any], worker: List[Job], job: List[Job], options: Expando
+    job_types: List[Any], worker: Expando, job: Expando, options: Namespace
 ) -> ColumnWidths:
     """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
@@ -435,7 +437,7 @@ def compute_column_widths(
     return cw
 
 
-def update_column_widths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
+def update_column_widths(tag: Expando, cw: ColumnWidths, options: Namespace) -> None:
     """Update the column width attributes for this tag's fields."""
     # TODO: Deduplicate with actual printing code!
     for category in CATEGORIES:
@@ -502,11 +504,22 @@ def build_element(element: Expando, items: List[Job], item_name: str, defaults: 
 
 def create_summary(
     element: Expando,
-    containingItems: List[Job],
+    containingItems: List[Expando],
     containingItemName: str,
-    getFn: Callable[[Job], List[Optional[Job]]],
+    count_contained: Callable[[Expando], int],
 ) -> None:
-    itemCounts = [len(getFn(containingItem)) for containingItem in containingItems]
+    """
+    Figure out how many jobs (or contained items) ran on each worker (or containing item).
+
+    Stick a bunch of xxx_number_per_xxx stats into element to describe this.
+
+    :param count_contained: function that maps from containing item to number of contained items.
+    """
+
+    # TODO: this still thinks like the old XML stats, even though now the
+    # worker records no longer actually contain the job records.
+
+    itemCounts = [count_contained(containingItem) for containingItem in containingItems]
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
@@ -521,7 +534,11 @@ def create_summary(
 
 
 def get_stats(jobStore: AbstractJobStore) -> Expando:
-    """Collect and return the stats and config data."""
+    """
+    Sum together all the stats information in the job store.
+
+    Produces  one object containing lists of the values from all the summed objects.
+    """
 
     def aggregate_stats(fileHandle: TextIO, aggregateObject: Expando) -> None:
         try:
@@ -573,12 +590,6 @@ def process_data(config: Config, stats: Expando) -> Expando:
     jobs = [_f for _f in getattr(stats, "jobs", []) if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
-    def fn4(job: Job) -> List[Optional[Job]]:
-        try:
-            return list(jobs)
-        except TypeError:
-            return []
-
     # Work out what usage to assume for things that didn't report
     defaults = {category: 0 for category in CATEGORIES}
     defaults["cores"] = config.defaultCores
@@ -588,7 +599,7 @@ def process_data(config: Config, stats: Expando) -> Expando:
         build_element(collatedStatsTag, jobs, "jobs", defaults),
         getattr(stats, "workers", []),
         "worker",
-        fn4,
+        lambda worker: getattr(worker, "jobs_run", 0)
     )
     # Get info for each job
     jobNames = set()

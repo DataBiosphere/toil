@@ -3,7 +3,7 @@
 Toil Utilities
 --------------
 
-Toil includes some utilities for inspecting or manipulating workflows during and after their execution. (THere are additional :ref:`clusterUtils` available for working with Toil-managed clusters in the cloud.) 
+Toil includes some utilities for inspecting or manipulating workflows during and after their execution. (There are additional :ref:`clusterUtils` available for working with Toil-managed clusters in the cloud.) 
 
 The generic ``toil`` subcommand utilities are:
 
@@ -50,41 +50,6 @@ To see the runtime and resources used for each job when it was run, type ::
 
 This should output something like the following::
 
-    Batch System: single_machine
-    Default Cores: 1  Default Memory: 2097152KiB
-    Max Cores: unlimited
-    Total CPU Time: 56.34 core·s  Overall Runtime: 16.14 s
-    Worker
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            4 |     0.35   10.80    8.21   10.90   32.83 |     0.33   10.38   13.47   41.71   53.90 |   -30.80    0.40   -5.27    9.33  -21.06 |  175968Ki 179968Ki 179104Ki 180608Ki 716416Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-    Job
-     Worker Jobs  |     min    med    ave    max
-                  |       4      4      4      4
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            4 |     0.34   10.80    8.20   10.90   32.82 |     0.33   10.38   13.47   41.71   53.88 |     0.01    1.90    2.91    9.33   11.64 |  175968Ki 179968Ki 179044Ki 180368Ki 716176Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     doNothing
-        Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            1 |     0.34    0.34    0.34    0.34    0.34 |     0.33    0.33    0.33    0.33    0.33 |     0.01    0.01    0.01    0.01    0.01 |  175968Ki 175968Ki 175968Ki 175968Ki 175968Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     efficientJob
-        Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            1 |    10.77   10.77   10.77   10.77   10.77 |    10.38   10.38   10.38   10.38   10.38 |     0.40    0.40    0.40    0.40    0.40 |  179872Ki 179872Ki 179872Ki 179872Ki 179872Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     inefficientJob
-        Total Cores: 1.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            1 |    10.80   10.80   10.80   10.80   10.80 |     1.47    1.47    1.47    1.47    1.47 |     9.33    9.33    9.33    9.33    9.33 |  180368Ki 180368Ki 180368Ki 180368Ki 180368Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-     multithreadedJob
-        Total Cores: 4.0
-        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
-            1 |    10.90   10.90   10.90   10.90   10.90 |    41.71   41.71   41.71   41.71   41.71 |     1.90    1.90    1.90    1.90    1.90 |  179968Ki 179968Ki 179968Ki 179968Ki 179968Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
-
         
 There are three parts to this report.
 
@@ -96,10 +61,27 @@ At the top is a section with overall summary statistics for the run::
     Batch System: single_machine
     Default Cores: 1  Default Memory: 2097152KiB
     Max Cores: unlimited
-    Total CPU Time: 56.34 core·s  Overall Runtime: 16.14 s
+    Local CPU Time: 56.34 core·s  Overall Runtime: 16.14 s
 
-This lists some important the settings for the Toil batch system that actually executed jobs, and also the overall CPU time used in the workflow process, and the overall wall-clock runtime of the workflow as measured by the leader..
+This lists some important the settings for the Toil batch system that actually executed jobs. It also lists:
 
+* The CPU time used on the local machine, in core seconds. This includes time used by the Toil leader itself (excluding some startup time), and time used by jobs that run under the leader (which, for the ``single_machine`` batch system, is all jobs). It does **not** include CPU used by jobs that ran on other machines.
+
+* The overall wall-clock runtime of the workflow in seconds, as measured by the leader.
+
+These latter two numbers don't count some startup/shutdown time spent loading and saving files, so you still may want to use the ``time`` shell built-in to time your Toil runs overall.
+
+Worker Summary
+~~~~~~~~~~~~~~
+
+After the overall summary, there is a section with statistics about the Toil worker processes, which Toil used to execute your workflow's jobs::
+
+    Worker
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
+            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
+            4 |     0.35   10.80    8.21   10.90   32.83 |     0.33   10.38   13.47   41.71   53.90 |   -30.80    0.40   -5.27    9.33  -21.06 |  175968Ki 179968Ki 179104Ki 180608Ki 716416Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+
+This shows that, to run this workflow, Toil had to submit 4 Toil worker processes to the backing scheduler. (In this case, it ran them all on the local machine.). 
 
 Example Cleanup
 ~~~~~~~~~~~~~~~
