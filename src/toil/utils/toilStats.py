@@ -74,27 +74,27 @@ class ColumnWidths:
         self.data: Dict[str, int] = {}
         for category in self.categories:
             for field in self.fields_count:
-                self.setWidth(category, field, 8)
+                self.set_width(category, field, 8)
 
     def title(self, category: str) -> int:
         """Return the total printed length of this category item."""
-        return sum(self.getWidth(category, x) for x in self.fields)
+        return sum(self.get_width(category, x) for x in self.fields)
 
-    def getWidth(self, category: str, field: str) -> int:
+    def get_width(self, category: str, field: str) -> int:
         category = category.lower()
         return self.data[f"{category}_{field}"]
 
-    def setWidth(self, category: str, field: str, width: int) -> None:
+    def set_width(self, category: str, field: str, width: int) -> None:
         category = category.lower()
         self.data[f"{category}_{field}"] = width
 
     def report(self) -> None:
         for c in self.categories:
             for f in self.fields:
-                print("%s %s %d" % (c, f, self.getWidth(c, f)))
+                print("%s %s %d" % (c, f, self.get_width(c, f)))
 
 
-def padStr(s: str, field: Optional[int] = None) -> str:
+def pad_str(s: str, field: Optional[int] = None) -> str:
     """Pad the beginning of a string with spaces, if necessary."""
     if field is None or len(s) >= field:
         return s
@@ -102,54 +102,54 @@ def padStr(s: str, field: Optional[int] = None) -> str:
         return " " * (field - len(s)) + s
 
 
-def prettySpace(k: float, field: Optional[int] = None, alone: bool = False) -> str:
+def pretty_space(k: float, field: Optional[int] = None, alone: bool = False) -> str:
     """Given input k as kibibytes, return a nicely formatted string."""
     # If we don't have a header to say bytes, include the B.
     trailer = "B" if alone else ""
     if k < 1024:
-        return padStr("%gKi%s" % (k, trailer), field)
+        return pad_str("%gKi%s" % (k, trailer), field)
     if k < (1024 * 1024):
-        return padStr("%.1fMi%s" % (k / 1024.0, trailer), field)
+        return pad_str("%.1fMi%s" % (k / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024):
-        return padStr("%.1fGi%s" % (k / 1024.0 / 1024.0, trailer), field)
+        return pad_str("%.1fGi%s" % (k / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fTi%s" % (k / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str("%.1fTi%s" % (k / 1024.0 / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return padStr("%.1fPi%s" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str("%.1fPi%s" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
 
 
-def prettyTime(t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
+def pretty_time(t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
     """
     Given input t as seconds, return a nicely formatted string.
     """
     assert unit in ("s", "core-s")
     # Qualify our CPU times as CPU time if we aren't in a table that does that
-    unit_str = reportUnit(unit) if alone else "s"
+    unit_str = report_unit(unit) if alone else "s"
 
     from math import floor
 
     pluralDict = {True: "s", False: ""}
     if t < 120:
-        return padStr("%d%s" % (t, unit_str), field)
+        return pad_str("%d%s" % (t, unit_str), field)
     if t < 120 * 60:
         m = floor(t / 60.0)
         s = t % 60
-        return padStr("%dm%d%s" % (m, s, unit_str), field)
+        return pad_str("%dm%d%s" % (m, s, unit_str), field)
     if t < 25 * 60 * 60:
         h = floor(t / 60.0 / 60.0)
         m = floor((t - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
-        return padStr("%dh%gm%d%s" % (h, m, s, unit_str), field)
+        return pad_str("%dh%gm%d%s" % (h, m, s, unit_str), field)
     if t < 7 * 24 * 60 * 60:
         d = floor(t / 24.0 / 60.0 / 60.0)
         h = floor((t - (d * 24.0 * 60.0 * 60.0)) / 60.0 / 60.0)
         m = floor((t - (d * 24.0 * 60.0 * 60.0) - (h * 60.0 * 60.0)) / 60.0)
         s = t % 60
         dPlural = pluralDict[d > 1]
-        return padStr("%dday%s%dh%dm%d%s" % (d, dPlural, h, m, s, unit_str), field)
+        return pad_str("%dday%s%dh%dm%d%s" % (d, dPlural, h, m, s, unit_str), field)
     w = floor(t / 7.0 / 24.0 / 60.0 / 60.0)
     d = floor((t - (w * 7 * 24 * 60 * 60)) / 24.0 / 60.0 / 60.0)
     h = floor(
@@ -167,9 +167,9 @@ def prettyTime(t: float, field: Optional[int] = None, unit: str = "s", alone: bo
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
-    return padStr("%dweek%s%dday%s%dh%dm%d%s" % (w, wPlural, d, dPlural, h, m, s, unit_str), field)
+    return pad_str("%dweek%s%dday%s%dh%dm%d%s" % (w, wPlural, d, dPlural, h, m, s, unit_str), field)
 
-def reportUnit(unit: str) -> str:
+def report_unit(unit: str) -> str:
     """
     Format a unit name for display.
     """
@@ -177,19 +177,19 @@ def reportUnit(unit: str) -> str:
         return "core·s"
     return unit
 
-def reportTime(t: float, options: Namespace, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
+def report_time(t: float, options: Namespace, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
     """Given t seconds, report back the correct format as string."""
     assert unit in ("s", "core-s")
     if options.pretty:
-        return prettyTime(t, field=field, unit=unit, alone=alone)
-    unit_text = f" {reportUnit(unit)}" if alone else ""
+        return pretty_time(t, field=field, unit=unit, alone=alone)
+    unit_text = f" {report_unit(unit)}" if alone else ""
     if field is not None:
         assert field >= len(unit_text)
         return "%*.2f%s" % (field - len(unit_text), t, unit_text)
     return "%.2f%s" % (t, unit_text)
 
 
-def reportSpace(
+def report_space(
         k: float, options: Namespace, field: Optional[int] = None, unit: str = "KiB", alone: bool = False
 ) -> str:
     """
@@ -202,7 +202,7 @@ def reportSpace(
         unit = "KiB"
     assert unit == "KiB"
     if options.pretty:
-        return prettySpace(int(k), field=field, alone=alone)
+        return pretty_space(int(k), field=field, alone=alone)
     else:
         # If we don't have a heading to say bytes, include the B
         trailer = "KiB" if alone else "Ki"
@@ -213,7 +213,7 @@ def reportSpace(
             return "%d%s" % (int(k), trailer)
 
 
-def reportNumber(n: float, field: Optional[int] = None) -> str:
+def report_number(n: float, field: Optional[int] = None) -> str:
     """Given n an integer, report back the correct format as string."""
     return "%*g" % (field, n) if field else "%g" % n
 
@@ -229,14 +229,14 @@ def report(v: float, category: str, options: Namespace, field: Optional[int] = N
     unit = CATEGORY_UNITS.get(category)
     if unit in ("s", "core-s"):
         # This is time.
-        return reportTime(v, options, field=field, unit=unit, alone=alone)
+        return report_time(v, options, field=field, unit=unit, alone=alone)
     elif unit in ("B", "KiB"):
         # This is space.
-        return reportSpace(v, options, field=field, unit=unit, alone=alone)
+        return report_space(v, options, field=field, unit=unit, alone=alone)
     else:
         raise ValueError(f"Unimplemented unit {unit} for category {category}")
 
-def sprintTag(
+def sprint_tag(
     key: str,
     tag: Expando,
     options: Namespace,
@@ -245,9 +245,9 @@ def sprintTag(
     """Generate a pretty-print ready string from a JTTag()."""
     if columnWidths is None:
         columnWidths = ColumnWidths()
-    header = "  %7s " % decorateTitle("count", "Count", options)
+    header = "  %7s " % decorate_title("count", "Count", options)
     sub_header = "  %7s " % "n"
-    tag_str = f"  {reportNumber(n=tag.total_number, field=7)}"
+    tag_str = f"  {report_number(n=tag.total_number, field=7)}"
     out_str = ""
     if key == "job":
         out_str += " {:<12} | {:>7}{:>7}{:>7}{:>7}\n".format(
@@ -260,7 +260,7 @@ def sprintTag(
             tag.average_number_per_worker,
             tag.max_number_per_worker,
         ]:
-            worker_str += reportNumber(n=t, field=7)
+            worker_str += report_number(n=t, field=7)
         out_str += worker_str + "\n"
 
     for category in CATEGORIES:
@@ -269,14 +269,14 @@ def sprintTag(
 
         header += "| %*s " % (
             columnWidths.title(category),
-            decorateTitle(category, TITLES[category], options),
+            decorate_title(category, TITLES[category], options),
         )
-        sub_header += decorateSubHeader(category, columnWidths, options)
+        sub_header += decorate_subheader(category, columnWidths, options)
         tag_str += " | "
 
         for field in ["min", "med", "ave", "max", "total"]:
             t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
-            width = columnWidths.getWidth(category, field)
+            width = columnWidths.get_width(category, field)
             s = report(t, category, options, field=width)
             tag_str += s
 
@@ -286,7 +286,7 @@ def sprintTag(
     return out_str
 
 
-def decorateTitle(category: str, title: str, options: Namespace) -> str:
+def decorate_title(category: str, title: str, options: Namespace) -> str:
     """
     Add extra parts to the category titles.
 
@@ -296,7 +296,7 @@ def decorateTitle(category: str, title: str, options: Namespace) -> str:
     unit = CATEGORY_UNITS.get(category)
     if unit in ("s", "core-s") and not options.pretty:
         # This is a time and we won't write it out as text, so add a unit.
-        title = f"{title} ({reportUnit(unit)})"
+        title = f"{title} ({report_unit(unit)})"
     elif unit == "core-s" and options.pretty:
         # This is a core-second category and we won't be putting the core unit
         # in the value, so note that here.
@@ -310,32 +310,32 @@ def decorateTitle(category: str, title: str, options: Namespace) -> str:
         return title
 
 
-def decorateSubHeader(
+def decorate_subheader(
     category: str, columnWidths: ColumnWidths, options: Namespace
 ) -> str:
     """Add a marker to the correct field if the TITLE is sorted on."""
     if category != options.sortCategory:
         s = "| %*s%*s%*s%*s%*s " % (
-            columnWidths.getWidth(category, "min"),
+            columnWidths.get_width(category, "min"),
             "min",
-            columnWidths.getWidth(category, "med"),
+            columnWidths.get_width(category, "med"),
             "med",
-            columnWidths.getWidth(category, "ave"),
+            columnWidths.get_width(category, "ave"),
             "ave",
-            columnWidths.getWidth(category, "max"),
+            columnWidths.get_width(category, "max"),
             "max",
-            columnWidths.getWidth(category, "total"),
+            columnWidths.get_width(category, "total"),
             "total",
         )
         return s
     else:
         s = "| "
         for field, width in [
-            ("min", columnWidths.getWidth(category, "min")),
-            ("med", columnWidths.getWidth(category, "med")),
-            ("ave", columnWidths.getWidth(category, "ave")),
-            ("max", columnWidths.getWidth(category, "max")),
-            ("total", columnWidths.getWidth(category, "total")),
+            ("min", columnWidths.get_width(category, "min")),
+            ("med", columnWidths.get_width(category, "med")),
+            ("ave", columnWidths.get_width(category, "ave")),
+            ("max", columnWidths.get_width(category, "max")),
+            ("total", columnWidths.get_width(category, "total")),
         ]:
             if options.sortField == field:
                 s += "%*s*" % (width - 1, field)
@@ -353,7 +353,7 @@ def get(tree: Expando, name: str) -> float:
         return float("nan")
 
 
-def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
+def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     """Return a jobTypes all sorted."""
     sortField = LONG_FORMS[options.sortField]
     if (
@@ -381,7 +381,7 @@ def sortJobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     assert False
 
 
-def reportPrettyData(
+def report_pretty_data(
     root: Expando,
     worker: List[Job],
     job: List[Job],
@@ -391,55 +391,55 @@ def reportPrettyData(
     """Print the important bits out."""
     out_str = "Batch System: %s\n" % root.batch_system
     out_str += "Default Cores: %s  Default Memory: %s\n" "Max Cores: %s\n" % (
-        reportNumber(n=get(root, "default_cores")),
+        report_number(n=get(root, "default_cores")),
         # Although per-job memory usage is in KiB, our default is stored in bytes.
-        reportSpace(get(root, "default_memory"), options, unit="B", alone=True),
-        reportNumber(n=get(root, "max_cores")),
+        report_space(get(root, "default_memory"), options, unit="B", alone=True),
+        report_number(n=get(root, "max_cores")),
     )
     out_str += "Total Clock: {}  Total Runtime: {}\n".format(
         report(get(root, "total_clock"), "clock", options, alone=True),
         report(get(root, "total_run_time"), "time", options, alone=True),
     )
-    job_types = sortJobs(job_types, options)
-    columnWidths = computeColumnWidths(job_types, worker, job, options)
+    job_types = sort_jobs(job_types, options)
+    columnWidths = compute_column_widths(job_types, worker, job, options)
     out_str += "Worker\n"
-    out_str += sprintTag("worker", worker, options, columnWidths=columnWidths)
+    out_str += sprint_tag("worker", worker, options, columnWidths=columnWidths)
     out_str += "Job\n"
-    out_str += sprintTag("job", job, options, columnWidths=columnWidths)
+    out_str += sprint_tag("job", job, options, columnWidths=columnWidths)
     for t in job_types:
         out_str += f" {t.name}\n"
         out_str += f"    Total Cores: {t.total_cores}\n"
-        out_str += sprintTag(t.name, t, options, columnWidths=columnWidths)
+        out_str += sprint_tag(t.name, t, options, columnWidths=columnWidths)
     return out_str
 
 
-def computeColumnWidths(
+def compute_column_widths(
     job_types: List[Any], worker: List[Job], job: List[Job], options: Expando
 ) -> ColumnWidths:
     """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
     for t in job_types:
-        updateColumnWidths(t, cw, options)
-    updateColumnWidths(worker, cw, options)
-    updateColumnWidths(job, cw, options)
+        update_column_widths(t, cw, options)
+    update_column_widths(worker, cw, options)
+    update_column_widths(job, cw, options)
     return cw
 
 
-def updateColumnWidths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
+def update_column_widths(tag: Expando, cw: ColumnWidths, options: Expando) -> None:
     """Update the column width attributes for this tag's fields."""
     # TODO: Deduplicate with actual printing code!
     for category in CATEGORIES:
         if category in options.categories:
             for field in ["min", "med", "ave", "max", "total"]:
                 t = getattr(tag, f"{LONG_FORMS[field]}_{category}")
-                width = cw.getWidth(category, field)
+                width = cw.get_width(category, field)
                 s = report(t, category, options, field=width).strip()
-                if len(s) >= cw.getWidth(category, field):
+                if len(s) >= cw.get_width(category, field):
                     # this string is larger than max, width must be increased
-                    cw.setWidth(category, field, len(s) + 1)
+                    cw.set_width(category, field, len(s) + 1)
 
 
-def buildElement(element: Expando, items: List[Job], item_name: str, defaults: dict[str, float]) -> Expando:
+def build_element(element: Expando, items: List[Job], item_name: str, defaults: dict[str, float]) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
@@ -490,7 +490,7 @@ def buildElement(element: Expando, items: List[Job], item_name: str, defaults: d
     return item_element
 
 
-def createSummary(
+def create_summary(
     element: Expando,
     containingItems: List[Job],
     containingItemName: str,
@@ -510,10 +510,10 @@ def createSummary(
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
 
-def getStats(jobStore: AbstractJobStore) -> Expando:
+def get_stats(jobStore: AbstractJobStore) -> Expando:
     """Collect and return the stats and config data."""
 
-    def aggregateStats(fileHandle: TextIO, aggregateObject: Expando) -> None:
+    def aggregate_stats(fileHandle: TextIO, aggregateObject: Expando) -> None:
         try:
             stats = json.load(fileHandle, object_hook=Expando)
             for key in list(stats.keys()):
@@ -528,12 +528,12 @@ def getStats(jobStore: AbstractJobStore) -> Expando:
             pass  # The file is corrupted.
 
     aggregateObject = Expando()
-    callBack = partial(aggregateStats, aggregateObject=aggregateObject)
+    callBack = partial(aggregate_stats, aggregateObject=aggregateObject)
     jobStore.read_logs(callBack, read_all=True)
     return aggregateObject
 
 
-def processData(config: Config, stats: Expando) -> Expando:
+def process_data(config: Config, stats: Expando) -> Expando:
     """
     Collate the stats and report
     """
@@ -569,9 +569,9 @@ def processData(config: Config, stats: Expando) -> Expando:
     defaults = {category: 0 for category in CATEGORIES}
     defaults["cores"] = config.defaultCores
 
-    buildElement(collatedStatsTag, worker, "worker", defaults)
-    createSummary(
-        buildElement(collatedStatsTag, jobs, "jobs", defaults),
+    build_element(collatedStatsTag, worker, "worker", defaults)
+    create_summary(
+        build_element(collatedStatsTag, jobs, "jobs", defaults),
         getattr(stats, "workers", []),
         "worker",
         fn4,
@@ -584,17 +584,17 @@ def processData(config: Config, stats: Expando) -> Expando:
     collatedStatsTag.job_types = jobTypesTag
     for jobName in jobNames:
         jobTypes = [job for job in jobs if job.class_name == jobName]
-        buildElement(jobTypesTag, jobTypes, jobName, defaults)
+        build_element(jobTypesTag, jobTypes, jobName, defaults)
     collatedStatsTag.name = "collatedStatsTag"
     return collatedStatsTag
 
 
-def reportData(tree: Expando, options: Namespace) -> None:
+def report_data(tree: Expando, options: Namespace) -> None:
     # Now dump it all out to file
     if options.raw:
         out_str = json.dumps(tree, indent=4, separators=(",", ": "))
     else:
-        out_str = reportPrettyData(
+        out_str = report_pretty_data(
             tree, tree.worker, tree.jobs, tree.job_types.values(), options
         )
     if options.outputFile is not None:
@@ -667,6 +667,6 @@ def main() -> None:
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
-    stats = getStats(jobStore)
-    collatedStatsTag = processData(jobStore.config, stats)
-    reportData(collatedStatsTag, options)
+    stats = get_stats(jobStore)
+    collatedStatsTag = process_data(jobStore.config, stats)
+    report_data(collatedStatsTag, options)
