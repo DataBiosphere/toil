@@ -19,7 +19,7 @@ For information on a specific utility, run it with the ``--help`` option::
 
     toil stats --help
 
-.. _cli_status:
+.. _cli_stats:
 
 Stats Command
 --------------
@@ -28,7 +28,10 @@ To use the stats command, a workflow must first be run using the ``--stats`` opt
 that toil does not delete the job store, no matter what other options are specified (i.e. normally the option
 ``--clean=always`` would delete the job store, but ``--stats`` will override this).
 
-An example of this would be running the following::
+Running an Example
+~~~~~~~~~~~~~~~~~~
+
+We can run an example workflow and record stats::
 
     python3 discoverfiles.py file:my-jobstore --stats
 
@@ -38,50 +41,69 @@ Where ``discoverfiles.py`` is the following:
 
 Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
 Running this workflow file should record three job names: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
+
+Displaying Stats
+~~~~~~~~~~~~~~~~
+
 To see the runtime and resources used for each job when it was run, type ::
 
     toil stats file:my-jobstore
 
-This should output the following:
-
-.. code-block::
+This should output something like the following::
 
     Batch System: single_machine
     Default Cores: 1  Default Memory: 2097152KiB
-    Max Cores: 9.22337e+18
-    Total Clock: 0.54 core·s  Total Runtime: 2.02 s
+    Max Cores: unlimited
+    Total CPU Time: 0.54 core·s  Overall Runtime: 2.02 s
     Worker
-        Count |                           Real Time (s)* |                       CPU Clock (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
             1 |     0.05    0.05    0.05    0.05    0.05 |     0.04    0.04    0.04    0.04    0.04 |     0.02    0.02    0.02    0.02    0.02 |  90016Ki 90016Ki 90016Ki 90016Ki  90016Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
     Job
      Worker Jobs  |     min    med    ave    max
                   |       3      3      3      3
-        Count |                           Real Time (s)* |                       CPU Clock (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
             3 |     0.01    0.01    0.01    0.02    0.04 |     0.01    0.01    0.01    0.01    0.03 |     0.00    0.00    0.00    0.01    0.01 |  89488Ki 89792Ki 89754Ki 89984Ki 269264Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
      discoverFiles
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                       CPU Clock (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
             1 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |     0.00    0.00    0.00    0.00    0.00 |  89984Ki 89984Ki 89984Ki 89984Ki  89984Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
      userFiles
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                       CPU Clock (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
             1 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |     0.00    0.00    0.00    0.00    0.00 |  89792Ki 89792Ki 89792Ki 89792Ki  89792Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
      sysFiles
         Total Cores: 1.0
-        Count |                           Real Time (s)* |                       CPU Clock (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
+        Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max    total |      min     med     ave     max   total
             1 |     0.02    0.02    0.02    0.02    0.02 |     0.01    0.01    0.01    0.01    0.01 |     0.01    0.01    0.01    0.01    0.01 |  89488Ki 89488Ki 89488Ki 89488Ki  89488Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
         
+There are three parts to this report.
 
-Once we're done, we can clean up the job store by running
+Overall Summary
+~~~~~~~~~~~~~~~
 
-::
+At the top is a section with overall summary statistics for the run::
+
+    Batch System: single_machine
+    Default Cores: 1  Default Memory: 2097152KiB
+    Max Cores: unlimited
+    Total CPU Time: 0.54 core·s  Overall Runtime: 2.02 s
+
+This lists some important the settings for the Toil batch system that actually executed jobs, and also the overall CPU time used in the workflow process, and the overall wall-clock runtime of the workflow as measured by the leader..
+
+
+Example Cleanup
+~~~~~~~~~~~~~~~
+
+Once we're done looking at the stats, we can clean up the job store by running::
 
    toil clean file:my-jobstore
+
+.. _cli_status:
 
 Status Command
 --------------

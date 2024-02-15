@@ -14,15 +14,17 @@
 """Reports statistical data about a given Toil workflow."""
 import json
 import logging
+import math
 import sys
 from argparse import ArgumentParser, Namespace
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, TextIO
+from typing import Any, Callable, Dict, List, Optional, TextIO, Union
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job
 from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
 from toil.lib.expando import Expando
+from toil.options.common import SYS_MAX_SIZE
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,7 @@ CATEGORY_UNITS = {
 # These are what we call them to the user
 TITLES = {
     "time": "Real Time",
-    "clock": "CPU Clock",
+    "clock": "CPU Time",
     "wait": "CPU Wait",
     "memory": "Memory",
     "disk": "Disk"
@@ -214,9 +216,16 @@ def report_space(
             return "%d%s" % (int(k), trailer)
 
 
-def report_number(n: float, field: Optional[int] = None) -> str:
-    """Given n an integer, report back the correct format as string."""
-    return "%*g" % (field, n) if field else "%g" % n
+def report_number(n: Union[int, float, None], field: Optional[int] = None, nan_value: str = "NaN") -> str:
+    """
+    Given a number, report back the correct format as string.
+    
+    If it is a NaN or None, use nan_value to represent it instead.
+    """
+    if n is None or math.isnan(n):
+        return pad_str(nan_value, field=field)
+    else:
+        return "%*g" % (field, n) if field else "%g" % n
 
 def report(v: float, category: str, options: Namespace, field: Optional[int] = None, alone=False) -> str:
     """
@@ -395,9 +404,9 @@ def report_pretty_data(
         report_number(n=get(root, "default_cores")),
         # Although per-job memory usage is in KiB, our default is stored in bytes.
         report_space(get(root, "default_memory"), options, unit="B", alone=True),
-        report_number(n=get(root, "max_cores")),
+        report_number(n=get(root, "max_cores"), nan_value="unlimited"),
     )
-    out_str += "Total Clock: {}  Total Runtime: {}\n".format(
+    out_str += "Total CPU Time: {}  Overall Runtime: {}\n".format(
         report(get(root, "total_clock"), "clock", options, alone=True),
         report(get(root, "total_run_time"), "time", options, alone=True),
     )
@@ -543,7 +552,11 @@ def process_data(config: Config, stats: Expando) -> Expando:
         stats.total_time = [0.0]
         stats.total_clock = [0.0]
 
+    # This is actually the sum of *overall* wall clock time as measured by the
+    # leader in each leader invocation, not a sum over jobs.
     stats.total_time = sum(float(number) for number in stats.total_time)
+    # And this is CPU clock as measured by the leader, so it will count time
+    # used in local jobs but not remote ones.
     stats.total_clock = sum(float(number) for number in stats.total_clock)
 
     collatedStatsTag = Expando(
@@ -552,7 +565,7 @@ def process_data(config: Config, stats: Expando) -> Expando:
         batch_system=config.batchSystem,
         default_memory=str(config.defaultMemory),
         default_cores=str(config.defaultCores),
-        max_cores=str(config.maxCores),
+        max_cores=str(config.maxCores if config.maxCores != SYS_MAX_SIZE else None),
     )
 
     # Add worker info
