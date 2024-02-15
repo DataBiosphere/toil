@@ -551,6 +551,18 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         on the local host.
         """
 
+        return self.devirtualze_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir) 
+
+    @staticmethod
+    def devirtualze_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str]) -> str:
+        """
+        Download or export a WDL virtualized filename/URL to the given directory.
+
+        Makes sure sibling files stay siblings and files with the same name don't clobber each other. Called from within this class for tasks, and statically at the end of the workflow for outputs.
+
+        Returns the local path to the file.
+        """
+
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
         if is_url(filename):
@@ -564,7 +576,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Use UUID as folder name rather than a new temp folder to reduce internal clutter.
                 # Put the UUID in the destination path in order for tasks to
                 # see where to put files depending on their parents.
-                dir_path = os.path.join(self._file_store.localTempDir, parent_id)
+                dir_path = os.path.join(dest_dir, parent_id)
 
             else:
                 # Parse the URL and extract the basename
@@ -574,7 +586,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # in, not relative to the thing.
                 parent_url = urljoin(filename, ".")
                 # Turn it into a string we can make a directory for
-                dir_path = os.path.join(self._file_store.localTempDir, quote(parent_url, safe=''))
+                dir_path = os.path.join(dest_dir, quote(parent_url, safe=''))
 
             if not os.path.exists(dir_path):
                 # Make sure the chosen directory exists
@@ -584,7 +596,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             if filename.startswith(TOIL_URI_SCHEME):
                 # Get a local path to the file
-                result = self._file_store.readGlobalFile(file_id, dest_path)
+                if isinstance(file_source, AbstractFileStore):
+                    # Read from the file store
+                    result = file_source.readGlobalFile(file_id, dest_path)
+                elif isinstance(file_source, Toil):
+                    # Read from the Toil context
+                    file_source.export_file(file_id, dest_path)
+                    result = dest_path
             else:
                 # Download to a local file with the right name and execute bit.
                 # Open it exclusively
@@ -600,8 +618,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # This is a local file
             # To support relative paths, join the execution dir and filename
             # if filename is already an abs path, join() will do nothing
-            if self._execution_dir is not None:
-                result = os.path.join(self._execution_dir, filename)
+            if execution_dir is not None:
+                result = os.path.join(execution_dir, filename)
             else:
                 result = filename
 
@@ -2775,6 +2793,9 @@ def main() -> None:
     # If we don't have a directory assigned, make one in the current directory.
     output_directory: str = options.output_directory if options.output_directory else mkdtemp(prefix='wdl-out-', dir=os.getcwd())
 
+    # Get the execution directory
+    execution_dir = os.getcwd()
+
     with Toil(options) as toil:
         if options.restart:
             output_bindings = toil.restart()
@@ -2855,38 +2876,7 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
-            if is_url(filename):
-                if filename.startswith(TOIL_URI_SCHEME):
-                    # This is a reference to the Toil filestore.
-                    # Deserialize the FileID and required basename
-                    file_id, parent_id, file_basename = unpack_toil_uri(filename)
-                else:
-                    # Parse the URL and extract the basename
-                    file_basename = os.path.basename(urlsplit(filename).path)
-
-                # Figure out where it should go.
-                # If a UUID is included, it will be omitted
-                # TODO: Deal with name collisions in the export directory
-                dest_name = os.path.join(output_directory, file_basename)
-
-                if filename.startswith(TOIL_URI_SCHEME):
-                    # Export the file
-                    toil.export_file(file_id, dest_name)
-                else:
-                    # Download to a local file with the right name and execute bit.
-                    # Open it exclusively
-                    with open(dest_name, 'xb') as dest_file:
-                        # And save to it
-                        size, executable = AbstractJobStore.read_from_url(filename, dest_file)
-                        if executable:
-                            # Set the execute bit in the file's permissions
-                            os.chmod(dest_name, os.stat(dest_name).st_mode | stat.S_IXUSR)
-
-                # And return where we put it
-                return dest_name
-            else:
-                # We already had a path
-                return filename
+            return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir) 
 
         # Make all the files local files
         output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
