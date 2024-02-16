@@ -291,8 +291,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
 
             # Make sure the job gets a signal before it disappears so that e.g.
-            # container cleanup finally blocks can run.
-            sbatch_line.append("--signal=TERM")
+            # container cleanup finally blocks can run. Ask for SIGINT so we
+            # can get the default Python KeyboardInterrupt which third-party
+            # code is likely to plan for.
+            sbatch_line.append("--signal=INT")
 
             if gpus:
                 sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
