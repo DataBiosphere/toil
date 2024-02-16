@@ -140,15 +140,66 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def _get_job_return_code(self, status: tuple) -> list:
             """
+            Given a Slurm return code, status pair, summarize them into a Toil return code.
+
+            The return code may have already been OR'd with the 128-offset
+            Slurm-reported signal.
+
+            Slurm will report return codes of 0 even if jobs time out instead
+            of succeeding:
+
+                2093597|TIMEOUT|0:0
+                2093597.batch|CANCELLED|0:15
+
+            So we guarantee here that, if the Slurm status string is not a
+            successful one as defined in
+            <https://slurm.schedmd.com/squeue.html#SECTION_JOB-STATE-CODES>, we
+            will not return a successful return code.
+
             Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
-            :param status: tuple containing the job's state and it's return code.
-            :return: the job's return code if it's completed, otherwise None.
+            :param status: tuple containing the job's state and it's return code from Slurm.
+            :return: the job's return code for Toil if it's completed, otherwise None.
             """
             state, rc = status
-            # If job is in a running state, set return code to None to indicate we don't have
-            # an update.
-            if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
-                rc = None
+
+            # If a job is in one of these states, Slurm can't run it anymore.
+            # We don't include states where the job is held or paused here;
+            # those mean it could run and needs to wait for someone to un-hold
+            # it, so Toil should wait for it.
+            #
+            # We map from each terminal state to the Toil-ontology exit reason.
+            TERMINAL_STATES: Dict[str, BatchJobExitReason] = {
+                "BOOT_FAIL": BatchJobExitReason.LOST,
+                "CANCELLED": BatchJobExitReason.KILLED,
+                "COMPLETED": BatchJobExitReason.FINISHED,
+                "DEADLINE": BatchJobExitReason.KILLED,
+                "FAILED": BatchJobExitReason.FAILED,
+                "NODE_FAIL": BatchJobExitReason.LOST,
+                "OUT_OF_MEMORY": BatchJobExitReason.MEMLIMIT,
+                "PREEMPTED": BatchJobExitReason.KILLED,
+                "TIMEOUT": BatchJobExitReason.KILLED
+            }
+
+            if state not in TERMINAL_STATES:
+                # Don't treat the job as exited yet
+                return None
+
+            exit_reason = TERMINAL_STATES[state]
+
+            if exit_reason == BatchJobExitReason.FINISHED:
+                # The only state that should produce a 0 ever is COMPLETED. So
+                # if the job is COMPLETED and the exit reason is thus FINISHED,
+                # pass along the code it has.
+                return rc
+
+            if rc == 0:
+                # The job claims to be in a state other than COMPLETED, but
+                # also to have not encountered a problem.
+                # Use the nonzero exit reason as the code instead.
+                # TODO: Pass along a code *and* an exit reason.
+                return exit_reason
+
+            # If the code is nonzero, pass it along.
             return rc
 
         def _getJobDetailsFromSacct(self, job_id_list: list) -> dict:
