@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
-    jobs: List[str]
+    jobs: List[MagicExpando]
 
 
 def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, config: Config) -> Optional[JobDescription]:
