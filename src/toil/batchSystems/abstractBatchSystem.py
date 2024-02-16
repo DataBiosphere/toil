@@ -59,6 +59,20 @@ class BatchJobExitReason(enum.IntEnum):
     MEMLIMIT: int = 6
     """Job hit batch system imposed memory limit."""
 
+    @classmethod
+    def to_string(cls, value: int) -> str:
+        """
+        Convert to human-readable string.
+
+        Given an int that may be or may be equal to a value from the enum,
+        produce the string value of its matching enum entry, or a stringified
+        int.
+        """
+        try:
+            return cls(value).name
+        except ValueError:
+            return str(value)
+
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: int
     exitStatus: int
