@@ -496,7 +496,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     ##########################################
     #Trapping where worker goes wrong
     ##########################################
-    except Exception as e: #Case that something goes wrong in worker
+    except BaseException as e: #Case that something goes wrong in worker, or we are asked to stop
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
