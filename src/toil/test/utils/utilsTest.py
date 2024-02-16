@@ -39,7 +39,7 @@ from toil.test import (ToilTest,
                        needs_rsync3,
                        slow)
 from toil.test.sort.sortTest import makeFileToSort
-from toil.utils.toilStats import getStats, processData
+from toil.utils.toilStats import get_stats, process_data
 from toil.utils.toilStatus import ToilStatus
 from toil.version import python
 
@@ -298,8 +298,8 @@ class UtilsTest(ToilTest):
         config = Config()
         config.setOptions(options)
         jobStore = Toil.resumeJobStore(config.jobStore)
-        stats = getStats(jobStore)
-        collatedStats = processData(jobStore.config, stats)
+        stats = get_stats(jobStore)
+        collatedStats = process_data(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
 
     def check_status(self, status, status_fn, seconds=20):
