@@ -16,9 +16,9 @@ import math
 import os
 from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
-from typing import Dict, List, Optional, TypeVar, Union
+from typing import Dict, List, Optional, Tuple, TypeVar, Union
 
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
@@ -96,12 +96,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.error("sbatch command failed")
                 raise e
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
             """
             Collect all job exit codes in a single call.
             :param batch_job_id_list: list of Job ID strings, where each string has the form
             "<job>[.<task>]".
-            :return: list of job exit codes, associated with the list of job IDs.
+            :return: list of job exit codes or exit code, exit reason pairs associated with the list of job IDs.
             """
             logger.debug("Getting exit codes for slurm jobs: %s", batch_job_id_list)
             # Convert batch_job_id_list to list of integer job IDs.
@@ -112,7 +112,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 exit_codes.append(self._get_job_return_code(status))
             return exit_codes
 
-        def getJobExitCode(self, batchJobID: str) -> int:
+        def getJobExitCode(self, batchJobID: str) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Get job exit code for given batch job ID.
             :param batchJobID: string of the form "<job>[.<task>]".
@@ -139,9 +139,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 status_dict = self._getJobDetailsFromScontrol(job_id_list)
             return status_dict
 
-        def _get_job_return_code(self, status: tuple) -> list:
+        def _get_job_return_code(self, status: tuple) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
-            Given a Slurm return code, status pair, summarize them into a Toil return code.
+            Given a Slurm return code, status pair, summarize them into a Toil return code, exit reason pair.
 
             The return code may have already been OR'd with the 128-offset
             Slurm-reported signal.
@@ -191,17 +191,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # The only state that should produce a 0 ever is COMPLETED. So
                 # if the job is COMPLETED and the exit reason is thus FINISHED,
                 # pass along the code it has.
-                return rc
+                return (rc, exit_reason)
 
             if rc == 0:
                 # The job claims to be in a state other than COMPLETED, but
-                # also to have not encountered a problem.
-                # Use the nonzero exit reason as the code instead.
-                # TODO: Pass along a code *and* an exit reason.
-                return exit_reason
+                # also to have not encountered a problem. Say the exit status
+                # is unavailable.
+                return (EXIT_STATUS_UNAVAILABLE_VALUE, exit_reason)
 
             # If the code is nonzero, pass it along.
-            return rc
+            return (rc, exit_reason)
 
         def _getJobDetailsFromSacct(self, job_id_list: list) -> dict:
             """
