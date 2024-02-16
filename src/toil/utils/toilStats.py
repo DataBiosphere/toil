@@ -374,19 +374,19 @@ def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
         return sorted(
             jobTypes,
             key=lambda tag: getattr(tag, "%s_%s" % (sortField, options.sortCategory)),
-            reverse=options.sortReverse,
+            reverse=options.sort == "decending",
         )
     elif options.sortCategory == "alpha":
         return sorted(
             jobTypes,
             key=lambda tag: tag.name,  # type: ignore
-            reverse=options.sortReverse,
+            reverse=options.sort == "decending",
         )
     elif options.sortCategory == "count":
         return sorted(
             jobTypes,
             key=lambda tag: tag.total_number,  # type: ignore
-            reverse=options.sortReverse,
+            reverse=options.sort == "decending",
         )
 
     # due to https://stackoverflow.com/questions/47149154
@@ -651,11 +651,10 @@ def add_stats_options(parser: ArgumentParser) -> None:
         help="if not raw, prettify the numbers to be human readable.",
     )
     parser.add_argument(
-        "--sortReverse",
-        "--reverseSort",
-        default=False,
-        action="store_true",
-        help="Reverse sort.",
+        "--sort",
+        default="decending",
+        choices=["ascending", "decending"],
+        help="Sort direction.",
     )
     parser.add_argument(
         "--categories",
@@ -667,13 +666,13 @@ def add_stats_options(parser: ArgumentParser) -> None:
         "--sortCategory",
         default="time",
         choices=sort_category_choices,
-        help=f"How to sort job categories.  Choices: {sort_category_choices}. Default: time.",
+        help=f"How to sort job categories.",
     )
     parser.add_argument(
         "--sortField",
         default="med",
         choices=sort_field_choices,
-        help=f"How to sort job fields.  Choices: {sort_field_choices}. Default: med.",
+        help=f"How to sort job fields.",
     )
 
 
