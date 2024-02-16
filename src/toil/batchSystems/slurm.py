@@ -18,6 +18,7 @@ from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
 from typing import Dict, List, Optional, TypeVar, Union
 
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
