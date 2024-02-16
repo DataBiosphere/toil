@@ -1,7 +1,7 @@
 .. _utils:
 
 Toil Utilities
---------------
+==============
 
 Toil includes some utilities for inspecting or manipulating workflows during and after their execution. (There are additional :ref:`clusterUtils` available for working with Toil-managed clusters in the cloud.) 
 
@@ -37,7 +37,7 @@ We can run an example workflow and record stats::
 
 Where ``discoverfiles.py`` is the following:
 
-.. literalinclude:: ../../../src/toil/test/docs/scripts/tutorial_stats.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_stats.py
 
 Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
 
@@ -84,6 +84,7 @@ This should output something like the following::
         Count |                           Real Time (s)* |                        CPU Time (core·s) |                        CPU Wait (core·s) |                                    Memory (B) |                                 Disk (B)
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |       min      med      ave      max    total |      min     med     ave     max   total
             1 |     0.33    0.33    0.33    0.33    0.33 |     0.33    0.33    0.33    0.33    0.33 |     0.01    0.01    0.01    0.01    0.01 |  177168Ki 177168Ki 177168Ki 177168Ki 177168Ki |      0Ki     0Ki     0Ki     0Ki     0Ki
+
 This report gives information on the resources used by your workflow. **Note that right now it does NOT track CPU and memory used inside Docker containers**, only Singularity containers.
 
 There are three parts to this report.

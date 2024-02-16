@@ -51,6 +51,7 @@ If using Toil for your research, please cite
 
    running/introduction
    running/cliOptions
+   running/utils
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments
