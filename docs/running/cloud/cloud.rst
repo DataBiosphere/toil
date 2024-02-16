@@ -35,6 +35,11 @@ See here for instructions for :ref:`runningGCE`.
 .. _Kubernetes: https://kubernetes.io/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 
+Toil offers a suite of commands for using the provisioners to manage clusters.
+
+.. toctree::
+    clusterUtils
+
 .. _cloudJobStore:
 
 Storage (Toil jobStore)
@@ -62,4 +67,3 @@ Cloud Platforms
     kubernetes
     amazon
     gce
-    clusterUtils

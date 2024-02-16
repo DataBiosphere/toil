@@ -38,7 +38,7 @@ The cluster utilities can be used for :ref:`runningGCE` and :ref:`runningAWS`.
 .. _launchCluster:
 
 Launch-Cluster Command
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
 added to the initial cluster by specifying the ``-w`` option.  An example would be ::
@@ -149,7 +149,7 @@ exist yet, Toil will create it for you.
 .. _sshCluster:
 
 Ssh-Cluster Command
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 Toil provides the ability to ssh into the leader of the cluster. This
 can be done as follows::
@@ -179,7 +179,7 @@ For an example usage, see :ref:`Autoscaling`.
 .. _rsyncCluster:
 
 Rsync-Cluster Command
----------------------
+~~~~~~~~~~~~~~~~~~~~~
 
 The most frequent use case for the ``rsync-cluster`` utility is deploying your
 workflow code to the Toil leader. Note that the syntax is the same as traditional
@@ -195,7 +195,7 @@ Here is an example of its usage::
 .. _destroyCluster:
 
 Destroy-Cluster Command
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
 launched using the :ref:`launchCluster` command. It ensures that all attached nodes, volumes,
