@@ -28,7 +28,8 @@ import enlighten
 from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchJobExitReason)
+                                                   BatchJobExitReason,
+                                                   EXIT_STATUS_UNAVAILABLE_VALUE)
 from toil.bus import (JobCompletedMessage,
                       JobFailedMessage,
                       JobIssuedMessage,
@@ -706,7 +707,8 @@ class Leader:
             if exitStatus == 0:
                 logger.debug('Job ended: %s', updatedJob)
             else:
-                logger.warning(f'Job failed with exit value {exitStatus}: {updatedJob}\n'
+                status_string = str(exitStatus) if exitStatus != EXIT_STATUS_UNAVAILABLE_VALUE else "<UNAVAILABLE>"
+                logger.warning(f'Job failed with exit value {status_string}: {updatedJob}\n'
                                f'Exit reason: {exitReason}')
                 if exitStatus == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # This is a CWL job informing us that the workflow is
