@@ -283,8 +283,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                           job_environment: Optional[Dict[str, str]],
                           gpus: Optional[int]) -> List[str]:
 
-            #  Returns the sbatch command line before the script to run
+            """
+            Returns the sbatch command line to run to queue the job.
+            """
+
+            # Start by naming the job
             sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
+
+            # Make sure the job gets a signal before it disappears so that e.g.
+            # container cleanup finally blocks can run.
+            sbatch_line.append("--signal=TERM")
+
             if gpus:
                 sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
             environment = {}
