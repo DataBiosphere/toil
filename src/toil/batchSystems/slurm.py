@@ -64,7 +64,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                               jobName: str,
                               job_environment: Optional[Dict[str, str]] = None,
                               gpus: Optional[int] = None) -> List[str]:
-            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment, gpus) + [f'--wrap={command}']
+            # Make sure to use exec so we can get Slurm's signals in the Toil
+            # worker instead of having an intervening Bash
+            return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment, gpus) + [f'--wrap=exec {command}']
 
         def submitJob(self, subLine):
             try:
@@ -283,8 +285,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                           job_environment: Optional[Dict[str, str]],
                           gpus: Optional[int]) -> List[str]:
 
-            #  Returns the sbatch command line before the script to run
+            """
+            Returns the sbatch command line to run to queue the job.
+            """
+
+            # Start by naming the job
             sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
+
+            # Make sure the job gets a signal before it disappears so that e.g.
+            # container cleanup finally blocks can run. Ask for SIGINT so we
+            # can get the default Python KeyboardInterrupt which third-party
+            # code is likely to plan for. Make sure to send it to the batch
+            # shell process with "B:", not to all the srun steps it launches
+            # (because there shouldn't be any). We cunningly replaced the batch
+            # shell process with the Toil worker process, so Toil should be
+            # able to get the signal.
+            #
+            # TODO: Add a way to detect when the job failed because it
+            # responded to this signal and use the right exit reason for it.
+            sbatch_line.append("--signal=B:INT@30")
+
             if gpus:
                 sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
             environment = {}
