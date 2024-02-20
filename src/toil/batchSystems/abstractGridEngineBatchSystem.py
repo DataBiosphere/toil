@@ -225,23 +225,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             return activity
 
         def _handle_job_status(
-            self, job_id: int, status: Union[int, None], activity: bool
+            self, job_id: int, status: Union[int, Tuple[int, Optional[BatchJobExitReason]], None], activity: bool
         ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
             """
             if status is not None:
+                if isinstance(status, int):
+                    code = status
+                    reason = None
+                else:
+                    code, reason = status
                 self.updatedJobsQueue.put(
                     UpdatedBatchJobInfo(
-                        jobID=job_id, exitStatus=status, exitReason=None, wallTime=None
-                    )
-                )
-                self.forgetJob(job_id)
-                return True
-            if status is not None and isinstance(status, BatchJobExitReason):
-                self.updatedJobsQueue.put(
-                    UpdatedBatchJobInfo(
-                        jobID=job_id, exitStatus=1, exitReason=status, wallTime=None
+                        jobID=job_id, exitStatus=code, exitReason=reason, wallTime=None
                     )
                 )
                 self.forgetJob(job_id)
@@ -279,9 +276,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 logger.error("GridEngine like batch system failure", exc_info=ex)
                 raise
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
             """
-            Returns exit codes for a list of jobs.
+            Returns exit codes and possibly exit reasons for a list of jobs, or None if they are running.
 
             Called by AbstractGridEngineWorker.checkOnJobs().
 
@@ -351,16 +348,19 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
         @abstractmethod
-        def getJobExitCode(self, batchJobID):
+        def getJobExitCode(self, batchJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
-            Returns job exit code or an instance of abstractBatchSystem.BatchJobExitReason.
-            if something else happened other than the job exiting.
-            Implementation-specific; called by AbstractGridEngineWorker.checkOnJobs()
+            Returns job exit code and possibly an instance of abstractBatchSystem.BatchJobExitReason.
+
+            Returns None if the job is still running.
+
+            If the job is not running but the exit code is not available, it
+            will be EXIT_STATUS_UNAVAILABLE_VALUE. Implementation-specific;
+            called by AbstractGridEngineWorker.checkOnJobs().
+
+            The exit code will only be 0 if the job affirmatively succeeded.
 
             :param string batchjobID: batch system job ID
-
-            :rtype: int|toil.batchSystems.abstractBatchSystem.BatchJobExitReason: exit code int
-                    or BatchJobExitReason if something else happened other than job exiting.
             """
             raise NotImplementedError()
 
