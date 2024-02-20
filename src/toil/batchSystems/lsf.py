@@ -25,12 +25,12 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
 
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
@@ -161,7 +161,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         status_resonse.append(None)
             return status_resonse
 
-        def getJobExitCode(self, lsfJobID):
+        def getJobExitCode(self, lsfJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             # the task is set as part of the job ID if using getBatchSystemID()
             if "NOT_SUBMITTED" in lsfJobID:
                 logger.error("bjobs detected job failed to submit")
@@ -186,7 +186,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             return self.fallbackGetJobExitCode(job)
 
-        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, None]:
+        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
@@ -224,7 +224,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         exit_info, job
                     )
                     if "TERM_MEMLIMIT" in exit_reason:
-                        return BatchJobExitReason.MEMLIMIT
+                        return (exit_code if exit_code != 0 else EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.MEMLIMIT)
                     return exit_code
                 if process_status == "RUN":
                     logger.debug(
@@ -237,7 +237,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
                 return self.getJobExitCodeBACCT(job)
 
-        def getJobExitCodeBACCT(self,job):
+        def getJobExitCodeBACCT(self,job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: "
                          "{}".format(job))
@@ -258,7 +258,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "running: {}".format(job))
             return None
 
-        def fallbackGetJobExitCode(self, job):
+        def fallbackGetJobExitCode(self, job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             args = ["bjobs", "-l", str(job)]
             logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
             stdout = call_command(args)
