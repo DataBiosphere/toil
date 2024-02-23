@@ -495,7 +495,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 if "disk" in job_stats:
                     max_bytes = max(max_bytes, int(job_stats.disk))
             statsDict.workers.disk = str(max_bytes)
-            # Count the jovs executed.
+            # Count the jobs executed.
             # TODO: toil stats could compute this but its parser is too general to hook into simply.
             statsDict.workers.jobs_run  = len(statsDict.jobs)
 
