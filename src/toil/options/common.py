@@ -733,4 +733,4 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # dest is set to enableCaching to not conflict with the current --caching destination
     caching.add_argument('--disableCaching', dest='enableCaching', action='store_false', help=SUPPRESS)
-    caching.set_defaults(disableCaching=None)
+    caching.set_defaults(enableCaching=None)
