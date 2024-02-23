@@ -1347,21 +1347,20 @@ class WDLBaseJob(Job):
 
         logger.debug("Assigned postprocessing steps from %s to %s", self, other)
 
-
-class WDLTaskJob(WDLBaseJob):
+class WDLTaskWrapperJob(WDLBaseJob):
     """
-    Job that runs a WDL task.
+    Job that determines the resources needed to run a WDL job.
 
     Responsible for evaluating the input declarations for unspecified inputs,
-    evaluating the runtime section, re-scheduling if resources are not
-    available, running any command, and evaluating the outputs.
+    evaluating the runtime section, and scheduling or chaining to the real WDL
+    job.
 
     All bindings are in terms of task-internal names.
     """
 
     def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], namespace: str, task_path: str, **kwargs: Any) -> None:
         """
-        Make a new job to run a task.
+        Make a new job to determine resources and run a task.
 
         :param namespace: The namespace that the task's *contents* exist in.
                The caller has alredy added the task's own name.
@@ -1369,13 +1368,9 @@ class WDLTaskJob(WDLBaseJob):
         :param task_path: Like the namespace, but including subscript numbers
                for scatters.
         """
+        super().__init__(unitName=task_path + ".inputs", displayName=namespace + ".inputs", local=True, **kwargs)
 
-        # This job should not be local because it represents a real workflow task.
-        # TODO: Instead of re-scheduling with more resources, add a local
-        # "wrapper" job like CWL uses to determine the actual requirements.
-        super().__init__(unitName=task_path, displayName=task_path, local=False, **kwargs)
-
-        logger.info("Preparing to run task %s as %s", task.name, namespace)
+        logger.info("Preparing to run task code for %s as %s", task.name, namespace)
 
         self._task = task
         self._prev_node_results = prev_node_results
@@ -1383,43 +1378,13 @@ class WDLTaskJob(WDLBaseJob):
         self._namespace = namespace
         self._task_path = task_path
 
-    def can_fake_root(self) -> bool:
-        """
-        Determine if --fakeroot is likely to work for Singularity.
-        """
-
-        # We need to have an entry for our user in /etc/subuid to grant us a range of UIDs to use, for fakeroot to work.
-        try:
-            subuid_file = open('/etc/subuid')
-        except OSError as e:
-            logger.warning('Cannot open /etc/subuid due to %s; assuming no subuids available', e)
-            return False
-        username = get_user_name()
-        for line in subuid_file:
-            if line.split(':')[0].strip() == username:
-                # We have a line assigning subuids
-                return True
-        # If there is no line, we have no subuids
-        logger.warning('No subuids are assigned to %s; cannot fake root.', username)
-        return False
-
-    def can_mount_proc(self) -> bool:
-        """
-        Determine if --containall will work for Singularity. On Kubernetes, this will result in operation not permitted
-        See: https://github.com/apptainer/singularity/issues/5857
-
-        So if Kubernetes is detected, return False
-        :return: bool
-        """
-        return "KUBERNETES_SERVICE_HOST" not in os.environ
-
-    @report_wdl_errors("run task")
+    @report_wdl_errors("evaluate task code")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
-        Actually run the task.
+        Evaluate inputs and runtime and schedule the task.
         """
         super().run(file_store)
-        logger.info("Running task %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
+        logger.info("Evaluating inputs and runtime for task %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
 
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
@@ -1429,19 +1394,20 @@ class WDLTaskJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store)
 
         if self._task.inputs:
-            logger.debug("Evaluating task inputs")
+            logger.debug("Evaluating task code")
             for input_decl in self._task.inputs:
                 # Evaluate all the inputs that aren't pre-set
                 bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
         for postinput_decl in self._task.postinputs:
-            # Evaluate all the postinput decls
+            # Evaluate all the postinput decls.
+            # We need these in order to evaluate the runtime.
+            # TODO: What if they wanted resources from the runtime?
             bindings = bindings.bind(postinput_decl.name, evaluate_defaultable_decl(postinput_decl, bindings, standard_library))
 
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
-        # Fill these in with not-None if we need to bump up our resources from what we have available.
-        # TODO: Can this break out into a function somehow?
+        # Fill these in with not-None if the workflow asks for each resource. 
         runtime_memory: Optional[int] = None
         runtime_cores: Optional[float] = None
         runtime_disk: Optional[int] = None
@@ -1449,21 +1415,14 @@ class WDLTaskJob(WDLBaseJob):
 
         if runtime_bindings.has_binding('cpu'):
             cpu_spec: int = runtime_bindings.resolve('cpu').value
-            if cpu_spec > self.cores:
-                # We need to get more cores
-                runtime_cores = float(cpu_spec)
-                logger.info('Need to reschedule to get %s cores; have %s', runtime_cores, self.cores)
+            runtime_cores = float(cpu_spec)
 
         if runtime_bindings.has_binding('memory'):
             # Get the memory requirement and convert to bytes
             memory_spec: Union[int, str] = runtime_bindings.resolve('memory').value
             if isinstance(memory_spec, str):
                 memory_spec = human2bytes(memory_spec)
-
-            if memory_spec > self.memory:
-                # We need to go get more memory
-                runtime_memory = memory_spec
-                logger.info('Need to reschedule to get %s memory; have %s', runtime_memory, self.memory)
+            runtime_memory = memory_spec
 
         if runtime_bindings.has_binding('disks'):
             # Miniwdl doesn't have this, but we need to be able to parse things like:
@@ -1499,9 +1458,7 @@ class WDLTaskJob(WDLBaseJob):
                 if spec_parts[2] == 'LOCAL':
                     logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
             total_bytes: float = convert_units(total_gb, 'GB')
-            if total_bytes > self.disk:
-                runtime_disk = int(total_bytes)
-                logger.info('Need to reschedule to get %s disk, have %s', runtime_disk, self.disk)
+            runtime_disk = int(total_bytes)
 
         if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
             # We want to have GPUs
@@ -1521,39 +1478,105 @@ class WDLTaskJob(WDLBaseJob):
                 accelerator_spec['brand'] = gpu_brand
 
             accelerator_requirement = parse_accelerator(accelerator_spec)
-            if not accelerators_fully_satisfy(self.accelerators, accelerator_requirement, ignore=['model']):
-                # We don't meet the accelerator requirement.
-                # We are loose on the model here since, really, we *should*
-                # have either no accelerators or the accelerators we asked for.
-                # If the batch system is ignoring the model, we don't want to
-                # loop forever trying for the right model.
-                # TODO: Change models overall to a hint???
-                runtime_accelerators = [accelerator_requirement]
-                logger.info('Need to reschedule to get %s accelerators, have %s', runtime_accelerators, self.accelerators)
+            runtime_accelerators = [accelerator_requirement]
 
-        if runtime_cores or runtime_memory or runtime_disk or runtime_accelerators:
-            # We need to reschedule.
-            logger.info('Rescheduling %s with more resources', self)
-            # Make the new copy of this job with more resources.
-            # TODO: We don't pass along the input or runtime bindings, so they
-            # need to get re-evaluated. If we did pass them, we'd have to make
-            # sure to upload local files made by WDL code in the inputs/runtime
-            # sections and pass along that environment. Right now we just
-            # re-evaluate that whole section once we have the requested
-            # resources.
-            # TODO: What if the runtime section says we need a lot of disk to
-            # hold the large files that the inputs section is going to write???
-            rescheduled = WDLTaskJob(self._task, self._prev_node_results, self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
-            # Run that as a child
-            self.addChild(rescheduled)
+        # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
+        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
+        # Run that as a child
+        self.addChild(run_job)
 
-            # Give it our postprocessing steps
-            self.defer_postprocessing(rescheduled)
+        # Give it our postprocessing steps
+        self.defer_postprocessing(run_job)
 
-            # And return its result.
-            return rescheduled.rv()
+        # And return its result.
+        return run_job.rv()
 
-        # If we get here we have all the resources we need, so run the task
+
+
+class WDLTaskJob(WDLBaseJob):
+    """
+    Job that runs a WDL task.
+
+    Responsible for re-evaluating input declarations for unspecified inputs,
+    evaluating the runtime section, re-scheduling if resources are not
+    available, running any command, and evaluating the outputs.
+
+    All bindings are in terms of task-internal names.
+    """
+
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], namespace: str, task_path: str, **kwargs: Any) -> None:
+        """
+        Make a new job to run a task.
+
+        :param namespace: The namespace that the task's *contents* exist in.
+               The caller has alredy added the task's own name.
+
+        :param task_path: Like the namespace, but including subscript numbers
+               for scatters.
+        """
+
+        # This job should not be local because it represents a real workflow task.
+        # TODO: Instead of re-scheduling with more resources, add a local
+        # "wrapper" job like CWL uses to determine the actual requirements.
+        super().__init__(unitName=task_path + ".command", displayName=namespace + ".command", local=False, **kwargs)
+
+        logger.info("Preparing to run task %s as %s", task.name, namespace)
+
+        self._task = task
+        self._task_internal_bindings = task_internal_bindings
+        self._runtime_bindings = runtime_bindings
+        self._task_id = task_id
+        self._namespace = namespace
+        self._task_path = task_path
+
+    def can_fake_root(self) -> bool:
+        """
+        Determine if --fakeroot is likely to work for Singularity.
+        """
+
+        # We need to have an entry for our user in /etc/subuid to grant us a range of UIDs to use, for fakeroot to work.
+        try:
+            subuid_file = open('/etc/subuid')
+        except OSError as e:
+            logger.warning('Cannot open /etc/subuid due to %s; assuming no subuids available', e)
+            return False
+        username = get_user_name()
+        for line in subuid_file:
+            if line.split(':')[0].strip() == username:
+                # We have a line assigning subuids
+                return True
+        # If there is no line, we have no subuids
+        logger.warning('No subuids are assigned to %s; cannot fake root.', username)
+        return False
+
+    def can_mount_proc(self) -> bool:
+        """
+        Determine if --containall will work for Singularity. On Kubernetes, this will result in operation not permitted
+        See: https://github.com/apptainer/singularity/issues/5857
+
+        So if Kubernetes is detected, return False
+        :return: bool
+        """
+        return "KUBERNETES_SERVICE_HOST" not in os.environ
+
+    @report_wdl_errors("run task command")
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Actually run the task.
+        """
+        super().run(file_store)
+        logger.info("Running task command for %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
+
+        # Set up the WDL standard library
+        # UUID to use for virtualizing files
+        standard_library = ToilWDLStdLibBase(file_store)
+
+        # Get the bindings from after the input section
+        bindings = unwrap(self._task_internal_bindings)
+        # And the bindings from evaluating the runtime section
+        runtime_bindings = unwrap(self._runtime_bindings)
+        
+        # We have all the resources we need, so run the task
 
         if shutil.which('singularity') and self._wdl_options.get("container") in ["singularity", "auto"]:
             # Prepare to use Singularity. We will need plenty of space to
@@ -1586,9 +1609,9 @@ class WDLTaskJob(WDLBaseJob):
             # Run containers with Docker
             # TODO: Poll if it is available and don't just try and fail.
             TaskContainerImplementation = SwarmContainer
-            if runtime_accelerators:
+            if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
                 # Complain to the user that this is unlikely to work.
-                logger.warning("Running job that needs accelerators with Docker. "
+                logger.warning("Running job that might need accelerators with Docker. "
                                "Accelerator and GPU support "
                                "is not yet implemented in the MiniWDL Docker "
                                "containerization implementation.")
@@ -1692,7 +1715,7 @@ class WDLTaskJob(WDLBaseJob):
                 task_container._run_invocation = patched_run_invocation #  type: ignore
 
             # Show the runtime info to the container
-            task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in runtime_bindings})
+            task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in devirtualize_files(runtime_bindings, standard_library)})
 
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
@@ -1773,7 +1796,7 @@ class WDLTaskJob(WDLBaseJob):
                     logger.error('Failed task left standard error at %s of %d bytes', host_stderr_txt, size)
                     if size > 0:
                         # Send the whole error stream.
-                        file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                        file_store.log_user_stream(self._task_path + '.stderr', open(host_stderr_txt, 'rb'))
                         if logger.isEnabledFor(logging.DEBUG):
                             logger.debug("MiniWDL already logged standard error")
                         else:
@@ -1794,7 +1817,7 @@ class WDLTaskJob(WDLBaseJob):
                         # Save the whole output stream.
                         # TODO: We can't tell if this was supposed to be
                         # captured. It might really be huge binary data.
-                        file_store.log_user_stream(self.description.displayName + '.stdout', open(host_stdout_txt, 'rb'))
+                        file_store.log_user_stream(self._task_path + '.stdout', open(host_stdout_txt, 'rb'))
 
                 # Keep crashing
                 raise
@@ -1825,14 +1848,14 @@ class WDLTaskJob(WDLBaseJob):
             logger.info('Unused standard error at %s of %d bytes', host_stderr_txt, size)
             if size > 0:
                 # Save the whole error stream because the workflow didn't capture it.
-                file_store.log_user_stream(self.description.displayName + '.stderr', open(host_stderr_txt, 'rb'))
+                file_store.log_user_stream(self._task_path + '.stderr', open(host_stderr_txt, 'rb'))
 
         if not outputs_library.stdout_used() and os.path.exists(host_stdout_txt):
             size = os.path.getsize(host_stdout_txt)
             logger.info('Unused standard output at %s of %d bytes', host_stdout_txt, size)
             if size > 0:
                 # Save the whole output stream because the workflow didn't capture it.
-                file_store.log_user_stream(self.description.displayName + '.stdout', open(host_stdout_txt, 'rb'))
+                file_store.log_user_stream(self._task_path + '.stdout', open(host_stdout_txt, 'rb'))
 
         # TODO: Check the output bindings against the types of the decls so we
         # can tell if we have a null in a value that is supposed to not be
@@ -1909,7 +1932,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                     self.addChild(subjob)
                 elif isinstance(self._node.callee, WDL.Tree.Task):
                     # This is a call of a task
-                    subjob = WDLTaskJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}', wdl_options=self._wdl_options)
+                    subjob = WDLTaskWrapperJob(self._node.callee, [input_bindings, passed_down_bindings], self._node.callee_id, f'{self._namespace}.{self._node.name}', f'{self._task_path}.{self._node.name}', wdl_options=self._wdl_options)
                     self.addChild(subjob)
                 else:
                     raise WDL.Error.InvalidType(self._node, "Cannot call a " + str(type(self._node.callee)))

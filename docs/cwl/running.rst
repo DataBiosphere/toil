@@ -181,55 +181,9 @@ You can get run statistics broken down by CWL file. This only works once the wor
 
     $ toil stats /path/to/jobstore
 
-The output will contain CPU, memory, and walltime information for all CWL job types. Note that the job names you get will look different from those in this old example run.
-::
+This will report resource usage information for all the CWL jobs executed by the workflow.
 
-    <hostname> 2018-10-15 12:06:19,003 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
-    <hostname> 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Parsed arguments
-    <hostname> 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Checking if we have files for toil
-    <hostname> 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Checked arguments
-    Batch System: lsf
-    Default Cores: 1  Default Memory: 10485760K
-    Max Cores: 9.22337e+18
-    Total Clock: 106608.01  Total Runtime: 86634.11
-    Worker
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-         1659 |     0.00    0.80  264.87 12595.59 439424.40 |     0.00    0.46   449.05 42240.74 744968.80 |  -35336.69     0.16   -184.17  4230.65 -305544.39 |      48K    223K   1020K  40235K 1692300K
-    Job
-     Worker Jobs  |     min    med    ave    max
-                  |    1077   1077   1077   1077
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-         1077 |     0.04    1.18  407.06 12593.43 438404.73 |     0.01    0.28   691.17 42240.35 744394.14 |  -35336.83     0.27   -284.11  4230.49 -305989.41 |     135K    268K   1633K  40235K 1759734K
-     ResolveIndirect
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-          205 |     0.04    0.07    0.16     2.29     31.95 |     0.01    0.02     0.02     0.14      3.60 |       0.02     0.05      0.14     2.28      28.35 |     190K    266K    256K    314K   52487K
-     CWLGather
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-           40 |     0.05    0.17    0.29     1.90     11.62 |     0.01    0.02     0.02     0.05      0.80 |       0.03     0.14      0.27     1.88      10.82 |     188K    265K    250K    316K   10039K
-     CWLWorkflow
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-          205 |     0.09    0.40    0.98    13.70    200.82 |     0.04    0.15     0.16     1.08     31.78 |       0.04     0.26      0.82    12.62     169.04 |     190K    270K    257K    316K   52826K
-     file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/group_waltz_files.cwl
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-           99 |     0.29    0.49    0.59     2.50     58.11 |     0.14    0.26     0.29     1.04     28.95 |       0.14     0.22      0.29     1.48      29.16 |     135K    135K    135K    136K   13459K
-     file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/make_sample_output_dirs.cwl
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-           11 |     0.34    0.52    0.74     2.63      8.18 |     0.20    0.30     0.41     1.17      4.54 |       0.14     0.20      0.33     1.45       3.65 |     136K    136K    136K    136K    1496K
-     file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/consolidate_files.cwl
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-            8 |     0.31    0.59    0.71     1.80      5.69 |     0.18    0.35     0.37     0.63      2.94 |       0.13     0.27      0.34     1.17       2.75 |     136K    136K    136K    136K    1091K
-     file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/bwa-mem/bwa-mem.cwl
-        Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
-            n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
-           22 |   895.76 3098.13 3587.34 12593.43  78921.51 |  2127.02 7910.31  8123.06 16959.13 178707.34 |  -11049.84 -3827.96  -4535.72    19.49  -99785.83 |    5659K   5950K   5854K   6128K  128807K
+See :ref:`cli_stats` for an explanation of what the different fields mean.
 
 **Understanding toil log files**
 

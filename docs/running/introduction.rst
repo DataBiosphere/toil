@@ -67,7 +67,7 @@ Provisioner
 
 The Toil provisioner provides a tool set for running a Toil workflow on a particular cloud platform.
 
-The :ref:`clusterRef` are command line tools used to provision nodes in your desired cloud platform.
+The :ref:`clusterUtils` are command line tools used to provision nodes in your desired cloud platform.
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
 For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`.

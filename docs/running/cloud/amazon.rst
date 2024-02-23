@@ -6,7 +6,7 @@ Running in AWS
 
 Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web
 Services (AWS) is currently the best-supported solution. Toil provides the
-:ref:`clusterRef` to conveniently create AWS clusters, connect to the leader
+:ref:`clusterUtils` to conveniently create AWS clusters, connect to the leader
 of the cluster, and then launch a workflow. The leader handles distributing
 the jobs over the worker nodes and autoscaling to optimize costs.
 
@@ -235,7 +235,7 @@ For more information on options try: ::
 
 Static Provisioning
 ^^^^^^^^^^^^^^^^^^^
-Toil can be used to manage a cluster in the cloud by using the :ref:`clusterRef`.
+Toil can be used to manage a cluster in the cloud by using the :ref:`clusterUtils`.
 The cluster utilities also make it easy to run a toil workflow directly on this
 cluster. We call this static provisioning because the size of the cluster does not
 change. This is in contrast with :ref:`Autoscaling`.

@@ -13,6 +13,8 @@
 # limitations under the License.
 import fnmatch
 import os
+import math
+import sys
 import resource
 from typing import List, Tuple
 
@@ -20,12 +22,17 @@ from typing import List, Tuple
 def get_total_cpu_time_and_memory_usage() -> Tuple[float, int]:
     """
     Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
-    itself and its single largest child.
+    itself and its single largest child (in kibibytes).
     """
     me = resource.getrusage(resource.RUSAGE_SELF)
     children = resource.getrusage(resource.RUSAGE_CHILDREN)
     total_cpu_time = me.ru_utime + me.ru_stime + children.ru_utime + children.ru_stime
     total_memory_usage = me.ru_maxrss + children.ru_maxrss
+    if sys.platform == "darwin":
+        # On Linux, getrusage works in "kilobytes" (really kibibytes), but on
+        # Mac it works in bytes. See
+        # <https://github.com/python/cpython/issues/74698>
+        total_memory_usage = int(math.ceil(total_memory_usage / 1024))
     return total_cpu_time, total_memory_usage
 
 

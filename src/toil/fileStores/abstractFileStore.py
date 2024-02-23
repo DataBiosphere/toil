@@ -37,11 +37,12 @@ from typing import (IO,
 
 import dill
 
-from toil.common import Toil, cacheDirName
+from toil.common import Toil, cacheDirName, getDirSizeRecursively
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
+from toil.lib.conversions import bytes2human
 from toil.lib.io import WriteWatchingStream, mkdtemp
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,8 @@ class AbstractFileStore(ABC):
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
         self._accessLog: List[Tuple[str, ...]] = []
+        # Holds total bytes of observed disk usage for the last job run under open()
+        self._job_disk_used: Optional[int] = None
 
     @staticmethod
     def createFileStore(
@@ -189,6 +192,7 @@ class AbstractFileStore(ABC):
         :param job: The job instance of the toil job to run.
         """
         failed = True
+        job_requested_disk = job.disk
         try:
             yield
             failed = False
@@ -197,6 +201,33 @@ class AbstractFileStore(ABC):
             # to appear as "another exception occurred" in the stack trace.
             if failed:
                 self._dumpAccessLogs()
+
+            # See how much disk space is used at the end of the job.
+            # Not a real peak disk usage, but close enough to be useful for warning the user.
+            self._job_disk_used = getDirSizeRecursively(self.localTempDir)
+
+            # Report disk usage
+            percent: float = 0.0
+            if job_requested_disk and job_requested_disk > 0:
+                percent = float(self._job_disk_used) / job_requested_disk * 100
+            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(self._job_disk_used)}B [{self._job_disk_used}B] used, "
+                               f"{bytes2human(job_requested_disk)}B [{job_requested_disk}B] requested).")
+            if self._job_disk_used > job_requested_disk:
+                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
+                                 level=logging.WARNING)
+            else:
+                self.log_to_leader(disk_usage, level=logging.DEBUG)
+
+    def get_disk_usage(self) -> Optional[int]:
+        """
+        Get the number of bytes of disk used by the last job run under open().
+
+        Disk usage is measured at the end of the job.
+        TODO: Sample periodically and record peak usage.
+        """
+        return self._job_disk_used
+
 
     # Functions related to temp files and directories
     def getLocalTempDir(self) -> str:

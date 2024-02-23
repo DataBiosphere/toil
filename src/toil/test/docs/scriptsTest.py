@@ -69,8 +69,8 @@ class ToilDocumentationTest(ToilTest):
     def testCwlexample(self):
         self.checkExitCode("tutorial_cwlexample.py")
 
-    def testDiscoverfiles(self):
-        self.checkExitCode("tutorial_discoverfiles.py")
+    def testStats(self):
+        self.checkExitCode("tutorial_stats.py")
 
     def testDynamic(self):
         self.checkExitCode("tutorial_dynamic.py")

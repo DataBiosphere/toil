@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
-    jobs: List[str]
+    jobs: List[MagicExpando]
 
 
 def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, config: Config) -> Optional[JobDescription]:
@@ -287,6 +287,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
     jobAttemptFailed = False
     failure_exit_code = 1
+    first_job_cores = None
     statsDict = StatsDict()  # type: ignore[no-untyped-call]
     statsDict.jobs = []
     statsDict.workers.logs_to_leader = []
@@ -362,6 +363,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         ##########################################
 
         if config.stats:
+            # Remember the cores from the first job, which is how many we have reserved for us.
+            statsDict.workers.requested_cores = jobDesc.cores
             startClock = get_total_cpu_time()
 
         startTime = time.time()
@@ -486,6 +489,16 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
+            # Say the worker used the max disk we saw from any job
+            max_bytes = 0
+            for job_stats in statsDict.jobs:
+                if "disk" in job_stats:
+                    max_bytes = max(max_bytes, int(job_stats.disk))
+            statsDict.workers.disk = str(max_bytes)
+            # Count the jobs executed.
+            # TODO: toil stats could compute this but its parser is too general to hook into simply.
+            statsDict.workers.jobs_run  = len(statsDict.jobs)
+
 
         # log the worker log path here so that if the file is truncated the path can still be found
         if redirectOutputToLogFile:

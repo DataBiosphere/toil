@@ -74,7 +74,7 @@ Here's what each extra provides:
 |                | will be skipped if not on a linux computer).               |
 +----------------+------------------------------------------------------------+
 | ``aws``        | Provides support for managing a cluster on Amazon Web      |
-|                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
+|                | Service (`AWS`_) using Toil's built in :ref:`clusterUtils`.|
 |                | Clusters can scale up and down automatically.              |
 |                | It also supports storing workflow state.                   |
 +----------------+------------------------------------------------------------+
