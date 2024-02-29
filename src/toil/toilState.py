@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import time
 from typing import Dict, Optional, Set
 
 from toil.bus import JobUpdatedMessage, MessageBus
@@ -183,11 +184,58 @@ class ToilState:
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
-            old_truth.check_new_version(new_truth)
+            old_truth.assert_is_not_newer_than(new_truth)
             old_truth.__dict__.update(new_truth.__dict__)
         else:
             # Just keep the new one
             self.__job_database[job_id] = new_truth
+
+    def reset_job_expecting_change(self, job_id: str, timeout: float) -> None:
+        """
+        Discard any local modifications to a JobDescription.
+
+        Will make modifications from other hosts visible.
+
+        Will wait for up to timeout seconds for a modification (or deletion)
+        from another host to actually be visible.
+
+        Returns True if an update was detected in time, and False otherwise.
+        """
+
+        start_time = time.time()
+        initially_known = job_id in self.__job_database
+        while True:
+            try:
+                new_truth = self.__job_store.load_job(job_id)
+            except NoSuchJobException:
+                # The job is gone now.
+                if job_id in self.__job_database:
+                    # So forget about it
+                    del self.__job_database[job_id]
+                    # TODO: Other collections may still reference it.
+                if initially_known:
+                    # Job was deleted, that's an update
+                    return True
+            else:
+                if job_id in self.__job_database:
+                    # We have an old version to compare against
+                    old_truth = self.__job_database[job_id]
+                    old_truth.assert_is_not_newer_than(new_truth)
+                    if old_truth.is_updated_by(new_truth):
+                        # Do the update
+                        old_truth.__dict__.update(new_truth.__dict__)
+                        return True
+                else:
+                    # Just keep the new one. That's an update.
+                    self.__job_database[job_id] = new_truth
+                    return True
+            # We looked but didn't get a good update
+            time_elapsed = time.time() - start_time
+            if time_elapsed >= timeout:
+                # We're out of time to check
+                return False
+            # Wait a little and poll again
+            time.sleep(min(timeout - time_elapsed, 0.1))
 
     # The next 3 functions provide tracking of how many successor jobs a given job
     # is waiting on, exposing only legit operations.

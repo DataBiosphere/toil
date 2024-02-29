@@ -58,6 +58,13 @@ class BatchJobExitReason(enum.IntEnum):
     """Internal error."""
     MEMLIMIT: int = 6
     """Job hit batch system imposed memory limit."""
+    MISSING: int = 7
+    """Job disappeared from the scheduler without actually stopping, so Toil killed it."""
+    MAXJOBDURATION: int = 8
+    """Job ran longer than --maxJobDuration, so Toil killed it."""
+    PARTITION: int = 9
+    """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
+
 
     @classmethod
     def to_string(cls, value: int) -> str:

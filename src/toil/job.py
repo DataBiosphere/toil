@@ -1092,12 +1092,27 @@ class JobDescription(Requirer):
         self._job_version = other._job_version
         self._job_version_writer = os.getpid()
 
-    def check_new_version(self, other: "JobDescription") -> None:
+    def assert_is_not_newer_than(self, other: "JobDescription") -> None:
         """
-        Make sure a prospective new version of the JobDescription is actually moving forward in time and not backward.
+        Make sure this JobDescription is not newer than a prospective new version of the JobDescription.
         """
         if other._job_version < self._job_version:
             raise RuntimeError(f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}")
+
+    def is_updated_by(self, other: "JobDescription") -> bool:
+        """
+        Return True if the passed JobDescription is a distinct, newer version of this one.
+        """
+
+        if self.jobStoreID != other.jobStoreID:
+            # Not the same job
+            return False
+
+        if self._job_version <= other._job_version:
+            # Version isn't strictly newer
+            return False
+
+        return True
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""

@@ -289,7 +289,11 @@ class Leader:
                 for job_id in self.toilState.totalFailedJobs:
                     # Refresh all the failed jobs to get e.g. the log file IDs that the workers wrote
                     self.toilState.reset_job(job_id)
-                    failed_jobs.append(self.toilState.get_job(job_id))
+                    try:
+                        failed_jobs.append(self.toilState.get_job(job_id))
+                    except NoSuchJobException:
+                        # Job actually finished and was removed
+                        pass
 
                 logger.info("Failed jobs at end of the run: %s", ' '.join(str(j) for j in failed_jobs))
                 raise FailedJobsException(self.jobStore, failed_jobs, exit_code=self.recommended_fail_exit_code)
@@ -551,6 +555,7 @@ class Leader:
                 for serviceID in serviceJobList:
                     if serviceID in self.toilState.service_to_client:
                         raise RuntimeError(f"The ready service ID: {serviceID} was already added.")
+                    # TODO: Why do we refresh here?
                     self.toilState.reset_job(serviceID)
                     serviceHost = self.toilState.get_job(serviceID)
                     self.toilState.service_to_client[serviceID] = readyJob.jobStoreID
@@ -1048,7 +1053,7 @@ class Leader:
             jobs = [job for job in jobs if job.preemptible == preemptible]
         return jobs
 
-    def killJobs(self, jobsToKill):
+    def killJobs(self, jobsToKill, exit_reason: BatchJobExitReason = BatchJobExitReason.KILLED):
         """
         Kills the given set of jobs and then sends them for processing.
 
@@ -1062,7 +1067,7 @@ class Leader:
             self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 # Reissue immediately, noting that we killed the job
-                willRerun = self.process_finished_job(jobBatchSystemID, 1, exit_reason=BatchJobExitReason.KILLED)
+                willRerun = self.process_finished_job(jobBatchSystemID, 1, exit_reason=exit_reason)
 
                 if willRerun:
                     # Compose a list of all the jobs that will run again
@@ -1092,7 +1097,7 @@ class Leader:
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
-            reissued = self.killJobs(jobsToKill)
+            reissued = self.killJobs(jobsToKill, exit_reson=BatchJobExitReason.MAXJOBDURATION)
             if len(jobsToKill) > 0:
                 # Summarize our actions
                 logger.info("Killed %d over long jobs and reissued %d of them", len(jobsToKill), len(reissued))
@@ -1130,7 +1135,7 @@ class Leader:
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
-        self.killJobs(jobsToKill)
+        self.killJobs(jobsToKill, exit_reason=BatchJobExitReason.MISSING)
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
@@ -1168,7 +1173,7 @@ class Leader:
                                          exit_reason: Optional[BatchJobExitReason] = None,
                                          batch_system_id: Optional[int] = None) -> bool:
         """
-        Process a finished JobDescription based upon its succees or failure.
+        Process a finished JobDescription based upon its success or failure.
 
         If wall-clock time is available, informs the cluster scaler about the
         job finishing.
@@ -1191,19 +1196,34 @@ class Leader:
             logger.debug("Job %s continues to exist (i.e. has more to do)", finished_job)
             try:
                 # Reload the job as modified by the worker
-                self.toilState.reset_job(job_store_id)
+                change_detected = self.toilState.reset_job_expecting_change(job_store_id, self.config.job_store_timeout)
                 replacement_job = self.toilState.get_job(job_store_id)
+                if not change_detected:
+                    logger.warning(
+                        'Job %s has no new version available '
+                        'after waiting %s seconds. Either worker updates to '
+                        'the job store are delayed longer than that, or the '
+                        'worker trying to run the job vanished.',
+                        replacement_job,
+                        self.config.job_store_timeout
+                    )
+                    if result_status == 0:
+                        # Make the job fail because we ran it and it finished
+                        # and we never heard back.
+                        logger.error(
+                            'Marking ostensibly successful job %s that did '
+                            'not report in to the job store in time as having '
+                            'been partitioned from us.',
+                            replacement_job
+                        )
+                        result_status = EXIT_STATUS_UNAVAILABLE_VALUE
+                        exit_reason = BatchJobExitReason.PARTITION
             except NoSuchJobException:
                 # We have a ghost job - the job has been deleted but a stale
                 # read from e.g. a non-POSIX-compliant filesystem gave us a
                 # false positive when we checked for its existence. Process the
                 # job from here as any other job removed from the job store.
-                # This is a hack until we can figure out how to actually always
-                # have a strongly-consistent communications channel. See
-                # https://github.com/BD2KGenomics/toil/issues/1091
-                logger.warning('Got a stale read for job %s; caught its '
-                'completion in time, but other jobs may try to run twice! Fix '
-                'the consistency of your job store storage!', finished_job)
+                logger.debug("Job %s is actually complete upon closer inspection", finished_job)
                 self.processRemovedJob(finished_job, result_status)
                 return False
             if replacement_job.logJobStoreFileID is not None:
