@@ -1202,8 +1202,9 @@ class Leader:
                     logger.warning(
                         'Job %s has no new version available '
                         'after waiting %s seconds. Either worker updates to '
-                        'the job store are delayed longer than that, or the '
-                        'worker trying to run the job vanished.',
+                        'the job store are delayed longer than your '
+                        '--jobStoreTimeout, or the worker trying to run the '
+                        'job vanished.',
                         replacement_job,
                         self.config.job_store_timeout
                     )
@@ -1212,8 +1213,9 @@ class Leader:
                         # and we never heard back.
                         logger.error(
                             'Marking ostensibly successful job %s that did '
-                            'not report in to the job store in time as having '
-                            'been partitioned from us.',
+                            'not report in to the job store before '
+                            '--jobStoreTimeout as having been partitioned '
+                            'from us.',
                             replacement_job
                         )
                         result_status = EXIT_STATUS_UNAVAILABLE_VALUE
