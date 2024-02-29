@@ -203,6 +203,7 @@ class ToilState:
         """
 
         start_time = time.time()
+        wait_time = 0.1
         initially_known = job_id in self.__job_database
         while True:
             try:
@@ -235,7 +236,9 @@ class ToilState:
                 # We're out of time to check
                 return False
             # Wait a little and poll again
-            time.sleep(min(timeout - time_elapsed, 0.1))
+            time.sleep(min(timeout - time_elapsed, wait_time))
+            # Using exponential backoff
+            wait_time *= 2
 
     # The next 3 functions provide tracking of how many successor jobs a given job
     # is waiting on, exposing only legit operations.
