@@ -1196,19 +1196,19 @@ class Leader:
             logger.debug("Job %s continues to exist (i.e. has more to do)", finished_job)
             try:
                 # Reload the job as modified by the worker
-                change_detected = self.toilState.reset_job_expecting_change(job_store_id, self.config.job_store_timeout)
-                replacement_job = self.toilState.get_job(job_store_id)
-                if not change_detected:
-                    logger.warning(
-                        'Job %s has no new version available '
-                        'after waiting %s seconds. Either worker updates to '
-                        'the job store are delayed longer than your '
-                        '--jobStoreTimeout, or the worker trying to run the '
-                        'job vanished.',
-                        replacement_job,
-                        self.config.job_store_timeout
-                    )
-                    if result_status == 0:
+                if result_status == 0:
+                    change_detected = self.toilState.reset_job_expecting_change(job_store_id, self.config.job_store_timeout)
+                    replacement_job = self.toilState.get_job(job_store_id)
+                    if not change_detected:
+                        logger.warning(
+                            'Job %s has no new version available '
+                            'after waiting %s seconds. Either worker updates to '
+                            'the job store are delayed longer than your '
+                            '--jobStoreTimeout, or the worker trying to run the '
+                            'job vanished.',
+                            replacement_job,
+                            self.config.job_store_timeout
+                        )
                         # Make the job fail because we ran it and it finished
                         # and we never heard back.
                         logger.error(
@@ -1220,6 +1220,26 @@ class Leader:
                         )
                         result_status = EXIT_STATUS_UNAVAILABLE_VALUE
                         exit_reason = BatchJobExitReason.PARTITION
+                else:
+                    # To pass the badWorker tests we need to retry fast when
+                    # a job fails.
+                    #
+                    # We don't care *so* much about whether we retry a failed
+                    # chained job from the top or from what it chained to; it
+                    # failed anyway.
+                    #
+                    # TODO: Should we relax the progress imperative in the
+                    # badWorker tests?
+                    change_detected = self.toilState.reset_job_expecting_change(job_store_id, 0)
+                    replacement_job = self.toilState.get_job(job_store_id)
+                    if not change_detected:
+                        logger.warning(
+                            'Failed job %s has no new version available immediately. '
+                            'The the worker trying to run the job may have vanished '
+                            'or never executed, or the scheduler may be faster '
+                            'than the filesystem. Not waiting!',
+                            replacement_job,
+                        )
             except NoSuchJobException:
                 # We have a ghost job - the job has been deleted but a stale
                 # read from e.g. a non-POSIX-compliant filesystem gave us a
