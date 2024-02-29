@@ -190,7 +190,7 @@ class ToilState:
             # Just keep the new one
             self.__job_database[job_id] = new_truth
 
-    def reset_job_expecting_change(self, job_id: str, timeout: float) -> None:
+    def reset_job_expecting_change(self, job_id: str, timeout: float) -> bool:
         """
         Discard any local modifications to a JobDescription.
 
