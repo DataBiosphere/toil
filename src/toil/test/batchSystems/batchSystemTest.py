@@ -894,7 +894,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
     def testServices(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logDebug = True
+        options.logLevel = "DEBUG"
         options.maxCores = 3
         self.assertTrue(options.maxCores <= SingleMachineBatchSystem.numCores)
         Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)
