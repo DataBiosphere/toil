@@ -1106,12 +1106,28 @@ class JobDescription(Requirer):
 
         if self.jobStoreID != other.jobStoreID:
             # Not the same job
-            logger.warning("Expected ID %s but found ID %s in job %s that ought to update job %s", self.jobStoreID, other.jobStoreID, other, self)
+            logger.warning(
+                "Found ID %s in job %s from PID %s but expected ID %s to "
+                "update job %s from PID %s",
+                other.jobStoreID,
+                other,
+                other._job_version_writer,
+                self.jobStoreID,
+                self,
+                self._job_version_writer
+            )
             return False
 
         if self._job_version >= other._job_version:
             # Version isn't strictly newer
-            logger.warning("Expected newer version in job %s but it is no newer than job %s", other, self)
+            logger.warning(
+                "Expected newer version in job %s from PID %s but it is no "
+                "newer than job %s from PID %s",
+                other,
+                other._job_version_writer,
+                self,
+                self._job_version_writer
+            )
             return False
 
         return True
