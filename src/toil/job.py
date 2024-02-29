@@ -882,7 +882,7 @@ class JobDescription(Requirer):
 
         For each job, produces a named tuple with its various names and its
         original job store ID. The jobs in the chain are in execution order.
-        
+
         If the job hasn't run yet or it didn't chain, produces a one-item list.
         """
         if len(self._merged_job_names) == 0:
@@ -1067,7 +1067,7 @@ class JobDescription(Requirer):
         # When deleting, we need to delete the files for our old ID, and also
         # anything that needed to be deleted for the job we are replacing. And
         # we need to keep track of all the names of jobs involved for logging.
-        
+
         # We need first the job we are merging into if nothing has merged into
         # it yet, then anything that already merged into it (including it),
         # then us if nothing has yet merged into us, then anything that merged
@@ -1080,7 +1080,7 @@ class JobDescription(Requirer):
             _merged_job_names.append(self.get_names())
         _merged_job_names += self._merged_job_names
         self._merged_job_names = _merged_job_names
-        
+
         # Now steal its ID.
         self.jobStoreID = other.jobStoreID
 
@@ -1106,10 +1106,12 @@ class JobDescription(Requirer):
 
         if self.jobStoreID != other.jobStoreID:
             # Not the same job
+            logger.warning("Expected ID %s but found ID %s in job %s that ought to update job %s", self.jobStoreID, other.jobStoreID, other, self)
             return False
 
-        if self._job_version <= other._job_version:
+        if self._job_version >= other._job_version:
             # Version isn't strictly newer
+            logger.warning("Expected newer version in job %s but it is no newer than job %s", other, self)
             return False
 
         return True
