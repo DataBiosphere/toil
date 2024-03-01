@@ -2825,7 +2825,7 @@ class Job:
         :returns: The job referenced by the JobDescription.
         """
         
-        userModule, pickleFile = jobDescription.get_body()
+        pickleFile, userModule = jobDescription.get_body()
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
 

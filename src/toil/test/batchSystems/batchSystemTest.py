@@ -872,7 +872,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                         preemptible=preemptible
                                     ),
                                     jobName=str(i),
-                                    unitName='')
+                                    unitName=''
                                 )
                                 desc.set_worker_command(self.scriptCommand())
                                 jobIds.add(bs.issueBatchJob(desc))
