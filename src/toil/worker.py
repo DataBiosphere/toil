@@ -376,9 +376,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
             logger.info("Working on job %s", jobDesc)
 
             if jobDesc.command is not None:
+                logger.debug("Got a command to run: %s" % jobDesc.command)
                 if not jobDesc.command.startswith("_toil "):
                     raise RuntimeError("Job command must start with '_toil' before being converted to an executable command.")
-                logger.debug("Got a command to run: %s" % jobDesc.command)
                 # Load the job. It will use the same JobDescription we have been using.
                 job = Job.loadJob(jobStore, jobDesc)
                 if isinstance(jobDesc, CheckpointJobDescription):
