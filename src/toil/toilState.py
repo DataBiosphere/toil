@@ -298,10 +298,10 @@ class ToilState:
 
         :param jobDesc: The description for the root job of the workflow being run.
         """
-        # If the job description has a command, is a checkpoint, has services
+        # If the job description has a body, is a checkpoint, has services
         # or is ready to be deleted it is ready to be processed (i.e. it is updated)
         if (
-            jobDesc.command is not None
+            jobDesc.has_body()
             or (
                 isinstance(jobDesc, CheckpointJobDescription)
                 and jobDesc.checkpoint is not None
@@ -310,10 +310,10 @@ class ToilState:
             or jobDesc.nextSuccessors() is None
         ):
             logger.debug(
-                "Found job to run: %s, with command: %s, with checkpoint: %s, with "
+                "Found job to run: %s, with body: %s, with checkpoint: %s, with "
                 "services: %s, with no next successors: %s",
                 jobDesc.jobStoreID,
-                jobDesc.command is not None,
+                jobDesc.has_body(),
                 isinstance(jobDesc, CheckpointJobDescription)
                 and jobDesc.checkpoint is not None,
                 len(jobDesc.services) > 0,
@@ -323,7 +323,7 @@ class ToilState:
             self.bus.publish(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
 
             if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
-                jobDesc.command = jobDesc.checkpoint
+                jobDesc.restore_checkpoint()
 
         else:  # There exist successors
             logger.debug(

@@ -209,8 +209,7 @@ class GoogleJobStore(AbstractJobStore):
 
     def assign_job_id(self, job_description):
         jobStoreID = self._new_job_id()
-        log.debug("Assigning ID to job %s for '%s'",
-                  jobStoreID, '<no command>' if job_description.command is None else job_description.command)
+        log.debug("Assigning ID to job %s", jobStoreID)
         job_description.jobStoreID = jobStoreID
 
     @contextmanager

@@ -756,11 +756,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
         self.check_resource_request(scaled_desc)
-        logger.debug(f"Issuing the command: {jobDesc.command} with {scaled_desc.requirements_string()}")
+        command = jobDesc.get_worker_command()
+        logger.debug(f"Issuing the command: {command} with {scaled_desc.requirements_string()}")
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = jobDesc.command
+        self.jobs[jobID] = command
 
         environment = self.environment.copy()
         if job_environment:
@@ -769,10 +770,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if self.debugWorker:
             # Run immediately, blocking for return.
             # Ignore resource requirements; we run one job at a time
-            self._runDebugJob(jobDesc.command, jobID, environment)
+            self._runDebugJob(command, jobID, environment)
         else:
             # Queue the job for later
-            self.inputQueue.put((jobDesc.command, jobID, scaled_desc.cores, scaled_desc.memory,
+            self.inputQueue.put((command, jobID, scaled_desc.cores, scaled_desc.memory,
                                 scaled_desc.disk, scaled_desc.accelerators, environment))
 
         return jobID

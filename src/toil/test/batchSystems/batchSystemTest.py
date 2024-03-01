@@ -152,7 +152,7 @@ class hidden:
             # serialization logic takes care of filling them in. We set them
             # here.
             if command is not None:
-                desc.command = command
+                desc.set_worker_command(command)
             if jobStoreID is not None:
                 desc.jobStoreID = jobStoreID
 
@@ -863,13 +863,19 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(JobDescription(command=self.scriptCommand(),
-                                                                           requirements=dict(
-                                                                               cores=float(coresPerJob),
-                                                                               memory=1, disk=1,
-                                                                               accelerators=[],
-                                                                               preemptible=preemptible),
-                                                                           jobName=str(i), unitName='')))
+                                desc = JobDescription(
+                                    requirements=dict(
+                                        cores=float(coresPerJob),
+                                        memory=1,
+                                        disk=1,
+                                        accelerators=[],
+                                        preemptible=preemptible
+                                    ),
+                                    jobName=str(i),
+                                    unitName='')
+                                )
+                                desc.set_worker_command(self.scriptCommand())
+                                jobIds.add(bs.issueBatchJob(desc))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)

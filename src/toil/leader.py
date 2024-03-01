@@ -526,10 +526,10 @@ class Leader:
                          "manager: %s", readyJob.jobStoreID)
         elif readyJob.jobStoreID in self.toilState.hasFailedSuccessors:
             self._processFailedSuccessors(job_id)
-        elif readyJob.command is not None or result_status != 0:
-            # The job has a command it must be run before any successors.
+        elif readyJob.has_body() or result_status != 0:
+            # The job has a body it must be run before any successors.
             # Similarly, if the job previously failed we rerun it, even if it doesn't have a
-            # command to run, to eliminate any parts of the stack now completed.
+            # body to run, to eliminate any parts of the stack now completed.
             isServiceJob = readyJob.jobStoreID in self.toilState.service_to_client
 
             # We want to run the job, and expend one of its "tries" (possibly
@@ -901,10 +901,9 @@ class Leader:
             workerCommand.append('--context')
             workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
 
-        # We locally override the command. This shouldn't get persisted back to
-        # the job store, or we will detach the job body from the job
-        # description. TODO: Don't do it this way! It's weird!
-        jobNode.command = ' '.join(workerCommand)
+        # We locally compute the command to run on the worker to run the job.
+        # TODO: Just pass this to the batch system, don't store it in the job description.
+        jobNode.set_worker_command(' '.join(workerCommand))
 
         omp_threads = os.environ.get('OMP_NUM_THREADS') \
             or str(max(1, int(jobNode.cores)))  # make sure OMP_NUM_THREADS is a positive integer
