@@ -4,7 +4,9 @@
 
 Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline management system,
 written entirely in Python, and designed around the principles of functional
-programming.
+programming. It supports running workflows written in either Common Workflow Language (`CWL`_) or 
+Workflow Description Language (`WDL`_), as well as having its own rich Python API for writing workflows against. 
+It supports running workflows locally on your system (e.g. a laptop), on an HPC cluster, or in the cloud. 
 
 * Check the `website`_ for a description of Toil and its features.
 * Full documentation for the latest stable release can be found at
@@ -20,8 +22,10 @@ programming.
 .. _forum: https://groups.google.com/forum/#!forum/toil-community
 .. _blog: https://toilpipelines.wordpress.com/
 .. _biostars: https://www.biostars.org/t/toil/
+.. _CWL: https://www.commonwl.org/
+.. _WDL: https://openwdl.org/
 
 Notes:
 
 * Toil moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on July 5th, 2018.
-* Toil dropped python 2.7 support on February 13, 2020 (last working py2.7 version is 3.24.0).
+* Toil dropped Python 2.7 support on February 13, 2020 (the last working py2.7 version is 3.24.0).
