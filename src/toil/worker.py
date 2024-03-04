@@ -70,7 +70,7 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
 
 
     #Get the next set of jobs to run
-    jobs = list(predecessor.nextSuccessors())
+    jobs = list(predecessor.nextSuccessors() or set())
     if len(jobs) == 0:
         # If there are no jobs, we might just not have any children.
         logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")

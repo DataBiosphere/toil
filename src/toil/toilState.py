@@ -329,12 +329,12 @@ class ToilState:
             logger.debug(
                 "Adding job: %s to the state with %s successors",
                 jobDesc.jobStoreID,
-                len(jobDesc.nextSuccessors()),
+                len(jobDesc.nextSuccessors() or set()),
             )
 
             # Record the number of successors
             self.successorCounts[str(jobDesc.jobStoreID)] = len(
-                jobDesc.nextSuccessors()
+                jobDesc.nextSuccessors() or set()
             )
 
             def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
@@ -356,7 +356,7 @@ class ToilState:
                     self._buildToilState(successor)
 
             # For each successor
-            for successorJobStoreID in jobDesc.nextSuccessors():
+            for successorJobStoreID in jobDesc.nextSuccessors() or set():
 
                 # If the successor does not yet point back at a
                 # predecessor we have not yet considered it
