@@ -1234,7 +1234,7 @@ class Leader:
                     if not change_detected:
                         logger.warning(
                             'Failed job %s has no new version available immediately. '
-                            'The the worker trying to run the job may have vanished '
+                            'The worker trying to run the job may have vanished '
                             'or never executed, or the scheduler may be faster '
                             'than the filesystem. Not waiting!',
                             replacement_job,
