@@ -199,12 +199,16 @@ class ToilState:
         Will wait for up to timeout seconds for a modification (or deletion)
         from another host to actually be visible.
 
+        Always replaces the JobDescription with what is stored in the job
+        store, even if no modification ends up being visible.
+
         Returns True if an update was detected in time, and False otherwise.
         """
 
         start_time = time.time()
         wait_time = 0.1
         initially_known = job_id in self.__job_database
+        new_truth: Optional[JobDescription] = None
         while True:
             try:
                 new_truth = self.__job_store.load_job(job_id)
@@ -233,7 +237,11 @@ class ToilState:
             # We looked but didn't get a good update
             time_elapsed = time.time() - start_time
             if time_elapsed >= timeout:
-                # We're out of time to check
+                # We're out of time to check.
+                if new_truth is not None:
+                    # Commit whatever we managed to load to accomplish a real
+                    # reset.
+                    old_truth.__dict__.update(new_truth.__dict__)
                 return False
             # Wait a little and poll again
             time.sleep(min(timeout - time_elapsed, wait_time))
