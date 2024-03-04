@@ -1463,7 +1463,7 @@ class CheckpointJobDescription(JobDescription):
 
     def restore_checkpoint(self) -> None:
         """
-        Restore the bidy checkpoint from self.checkpoint
+        Restore the body checkpoint from self.checkpoint
         """
         if self.checkpoint is None:
             raise RuntimeError(f"Cannot restore an empty checkpoint for a job {self}")
@@ -1489,7 +1489,7 @@ class CheckpointJobDescription(JobDescription):
                     raise RuntimeError("The stored body reference and checkpoint are not the same.")
                 logger.debug("Checkpoint job already has body set to run")
             else:
-                self.restore_checkpoint(self.checkpoint)
+                self.restore_checkpoint()
 
             jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
