@@ -5,6 +5,8 @@ import subprocess
 import sys
 import unittest
 
+from typing import List
+
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
@@ -36,9 +38,9 @@ class ToilDocumentationTest(ToilTest):
         unittest.TestCase.tearDown(self)
 
     """Just check the exit code"""
-    def checkExitCode(self, script):
+    def checkExitCode(self, script, extra_args: List[str] = []):
         program = os.path.join(self.directory, "scripts", script)
-        process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"],
+        process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"] + extra_args,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         if isinstance(stdout, bytes):
@@ -70,7 +72,8 @@ class ToilDocumentationTest(ToilTest):
         self.checkExitCode("tutorial_cwlexample.py")
 
     def testStats(self):
-        self.checkExitCode("tutorial_stats.py")
+        # This script asks for 4 cores but we might need to run the tests in only 3.
+        self.checkExitCode("tutorial_stats.py", ["--scale=0.5"])
 
     def testDynamic(self):
         self.checkExitCode("tutorial_dynamic.py")
