@@ -1188,7 +1188,7 @@ class JobDescription(Requirer):
 
         if self._job_version >= other._job_version:
             # Version isn't strictly newer
-            logger.warning(
+            logger.debug(
                 "Expected newer version in job %s from PID %s but it is no "
                 "newer than job %s from PID %s",
                 other,
