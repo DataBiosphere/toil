@@ -51,6 +51,15 @@ class JobDescriptionTest(ToilTest):
 
         j = JobDescription(requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                            jobName='testJobGraph', unitName='noName')
+        
+
+        # Without a body, and with nothing to run, nextSuccessors will be None
+        self.assertEqual(j.has_body(), False)
+        self.assertEqual(j.nextSuccessors(), None)
+
+        # Attach a body so the job has something to do itself.
+        j.attach_body("fake", ModuleDescriptor.forModule("toil"))
+        self.assertEqual(j.has_body(), True)
 
         #Check attributes
         self.assertEqual(j.memory, memory)
@@ -69,6 +78,7 @@ class JobDescriptionTest(ToilTest):
         #Check equals function (should be based on object identity and not contents)
         j2 = JobDescription(requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
                             jobName='testJobGraph', unitName='noName')
+        j2.attach_body("fake", ModuleDescriptor.forModule("toil"))
         self.assertNotEqual(j, j2)
         ###TODO test other functionality
 

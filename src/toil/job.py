@@ -1023,7 +1023,7 @@ class JobDescription(Requirer):
             raise RuntimeError(f"Leader has not yet set up a worker command for job {self}")
         return self._worker_command
 
-    def nextSuccessors(self) -> Set[str]:
+    def nextSuccessors(self) -> Optional[Set[str]]:
         """
         Return the collection of job IDs for the successors of this job that are ready to run.
 
