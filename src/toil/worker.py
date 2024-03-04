@@ -118,6 +118,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
         logger.debug("Next job is checkpoint, so finishing")
         return None
 
+    if not config.run_local_jobs_on_workers and predecessor.local and not successor.local:
+        # This job might be running on the leader, but the next job may not.
+        #
+        # TODO: Optimize by detecting whether we actually are on the leader,
+        # somehow.
+        logger.debug("Next job is not allowed to run on the leader, so finishing")
+        return None
+
     # Made it through! This job is chainable.
     return successor
 
