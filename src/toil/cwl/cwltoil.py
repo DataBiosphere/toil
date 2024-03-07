@@ -1083,6 +1083,10 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
+# When a file we want to have is missing, we can give it this sentinal location
+# URI instead of raising an error right away, in case it is optional.
+MISSING_FILE = "missing://"
+
 DirectoryContents = Dict[str, Union[str, "DirectoryContents"]]
 
 
@@ -1707,7 +1711,7 @@ def import_files(
     fileindex: Dict[str, str],
     existing: Dict[str, str],
     cwl_object: Optional[CWLObjectType],
-    skip_broken: bool = False,
+    mark_broken: bool = False,
     skip_remote: bool = False,
     bypass_file_store: bool = False,
     log_level: int = logging.DEBUG
@@ -1726,8 +1730,8 @@ def import_files(
     Preserves any listing fields.
 
     If a file cannot be found (like if it is an optional secondary file that
-    doesn't exist), fails, unless skip_broken is set, in which case it leaves
-    the location it was supposed to have been at.
+    doesn't exist), fails, unless mark_broken is set, in which case it applies
+    a sentinel location.
 
     Also does some miscelaneous normalization.
 
@@ -1745,8 +1749,9 @@ def import_files(
 
     :param cwl_object: CWL tool (or workflow order) we are importing files for
 
-    :param skip_broken: If True, when files can't be imported because they e.g.
-        don't exist, leave their locations alone rather than failing with an error.
+    :param mark_broken: If True, when files can't be imported because they e.g.
+        don't exist, set their locations to MISSING_FILE rather than failing
+        with an error.
 
     :param skp_remote: If True, leave remote URIs in place instead of importing
         files.
@@ -1866,7 +1871,7 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_and_log, fileindex, existing, rec, skip_broken=skip_broken, skip_remote=skip_remote
+                import_and_log, fileindex, existing, rec, mark_broken=mark_broken, skip_remote=skip_remote
             )
 
             # Make a record for this file under its name
@@ -1895,7 +1900,7 @@ def import_files(
                 contents.update(child_result)
 
             # Upload the directory itself, which will adjust its location.
-            upload_directory(rec, contents, skip_broken=skip_broken)
+            upload_directory(rec, contents, mark_broken=mark_broken)
 
             # Show those contents as being under our name in our parent.
             return {cast(str, rec["basename"]): contents}
@@ -1915,7 +1920,7 @@ def import_files(
 def upload_directory(
     directory_metadata: CWLObjectType,
     directory_contents: DirectoryContents,
-    skip_broken: bool = False,
+    mark_broken: bool = False,
 ) -> None:
     """
     Upload a Directory object.
@@ -1926,6 +1931,9 @@ def upload_directory(
 
     Makes sure the directory actually exists, and rewrites its location to be
     something we can use on another machine.
+
+    If mark_broken is set, ignores missing directories and replaces them with
+    directories containing the given (possibly empty) contents.
 
     We can't rely on the directory's listing as visible to the next tool as a
     complete recursive description of the files we will need to present to the
@@ -1947,8 +1955,8 @@ def upload_directory(
     if location.startswith("file://") and not os.path.isdir(
         schema_salad.ref_resolver.uri_file_path(location)
     ):
-        if skip_broken:
-            return
+        if mark_broken:
+            logger.debug("Directory %s is missing as a whole", direcotry_metadata)
         else:
             raise cwl_utils.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"]
@@ -1970,7 +1978,7 @@ def upload_file(
     fileindex: Dict[str, str],
     existing: Dict[str, str],
     file_metadata: CWLObjectType,
-    skip_broken: bool = False,
+    mark_broken: bool = False,
     skip_remote: bool = False
 ) -> None:
     """
@@ -1978,6 +1986,9 @@ def upload_file(
 
     Uploads local files to the Toil file store, and sets their location to a
     reference to the toil file store.
+
+    If a file doesn't exist, fails with an error, unless mark_broken is set, in
+    which case the missing file is given a special sentinel location.
 
     Unless skip_remote is set, downloads remote files into the file store and
     sets their locations to references into the file store as well.
@@ -1999,10 +2010,11 @@ def upload_file(
     if location.startswith("file://") and not os.path.isfile(
         schema_salad.ref_resolver.uri_file_path(location)
     ):
-        if skip_broken:
-            return
+        if mark_broken:
+            logger.debug("File %s is missing", file_metadata)
+            file_metadata["location"] = location = MISSING_FILE
         else:
-            raise cwl_utils.errors.WorkflowException("File is missing: %s" % location)
+            raise cwl_utils.errors.WorkflowException("File is missing: %s" % file_metadata)
 
     if location.startswith("file://") or not skip_remote:
         # This is a local file, or we also need to download and re-upload remote files
@@ -3282,9 +3294,8 @@ def filtered_secondary_files(
     but add the resolved fields to the list of unresolved fields so we remove
     them here after the fact.
 
-    We keep secondary files using the 'toildir:', or '_:' protocols, or using
-    the 'file:' protocol and indicating files or directories that actually
-    exist. The 'required' logic seems to be handled deeper in
+    We keep secondary files with anything other than MISSING_FILE as their
+    location. The 'required' logic seems to be handled deeper in
     cwltool.builder.Builder(), and correctly determines which files should be
     imported. Therefore we remove the files here and if this file is SUPPOSED
     to exist, it will still give the appropriate file does not exist error, but
@@ -3299,24 +3310,22 @@ def filtered_secondary_files(
         if ("$(" not in sf_bn) and ("${" not in sf_bn):
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
                 intermediate_secondary_files.append(sf)
+            else:
+                logger.debug("Secondary file %s is dropped because it has an uninterpolated location", sf)
+        else:
+            logger.debug("Secondary file %s is dropped because it has an uninterpolated basename", sf)
     # remove secondary files that are not present in the filestore or pointing
     # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = cast(str, sf.get("location", ""))
         if (
-            sf_loc.startswith("toilfile:")
-            or sf_loc.startswith("toildir:")
-            or sf_loc.startswith("_:")
+            sf_loc != MISSING_FILE
             or sf.get("class", "") == "Directory"
         ):
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
-        elif sf_loc.startswith("file:") and os.path.exists(
-            schema_salad.ref_resolver.uri_file_path(sf_loc)
-        ):
-            # Pass things that exist on disk (which we presumably declined to
-            # import because we aren't using the file store)
-            final_secondary_files.append(sf)
+        else:
+            logger.debug("Secondary file %s is dropped because it is known to be missing", sf)
     return final_secondary_files
 
 
@@ -3818,7 +3827,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 fileindex,
                 existing,
                 initialized_job_order,
-                skip_broken=True,
+                mark_broken=True,
                 skip_remote=options.reference_inputs,
                 bypass_file_store=options.bypass_file_store,
                 log_level=logging.INFO,
@@ -3835,7 +3844,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     fs_access,
                     fileindex,
                     existing,
-                    skip_broken=True,
+                    mark_broken=True,
                     skip_remote=options.reference_inputs,
                     bypass_file_store=options.bypass_file_store,
                     log_level=logging.INFO,
