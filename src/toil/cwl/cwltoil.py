@@ -1956,7 +1956,7 @@ def upload_directory(
         schema_salad.ref_resolver.uri_file_path(location)
     ):
         if mark_broken:
-            logger.debug("Directory %s is missing as a whole", direcotry_metadata)
+            logger.debug("Directory %s is missing as a whole", directory_metadata)
         else:
             raise cwl_utils.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"]
