@@ -1591,8 +1591,6 @@ class WDLTaskJob(WDLBaseJob):
     def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
         """
         Handle any data received from injected runtime code in the container.
-
-        See :ref:`add_injections()`.
         """
         
         message_files = outputs_library._glob(WDL.Value.String(os.path.join(self.INJECTED_MESSAGE_DIR, "*")))
