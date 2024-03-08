@@ -19,6 +19,8 @@ from tempfile import NamedTemporaryFile
 
 from setuptools import find_packages, setup
 
+SETUP_DIR = os.path.dirname(__file__)
+README = os.path.join(SETUP_DIR, "README.rst")
 
 def get_requirements(extra=None):
     """
@@ -70,6 +72,8 @@ def run_setup():
     setup(
         name='toil',
         version=version.distVersion,
+        long_description=open(README).read(),
+        long_description_content_type="text/x-rst",
         description='Pipeline management software for clusters.',
         author='Benedict Paten and the Toil community',
         author_email='toil-community@googlegroups.com',
