@@ -15,7 +15,7 @@ include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, docker, and push_docker.
+Supported targets: prepare, develop, docs, dist, clean, test, docker, and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -29,10 +29,11 @@ list of supported extras. To install Toil in develop mode with all extras, run
 
 	make develop extras=[all]
 
-The 'sdist' target creates a source distribution of Toil. It is used for some unit tests and for
-installing the currently checked out version of Toil into the appliance image.
+The 'dist' target creates a source distribution and a wheel of Toil. It is used
+for some unit tests and for installing the currently checked out version of Toil
+into the appliance image.
 
-The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', and 'docker'
+The 'clean' target cleans up the side effects of 'develop', 'dist', 'docs', and 'docker'
 on this machine. It does not undo externally visible effects like removing packages already
 uploaded to PyPI.
 
@@ -91,7 +92,7 @@ extras=
 # You can say make develop packages=xxx to install packages in the same Python
 # environment as Toil itself without creating dependency conflicts with Toil
 packages=
-sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
+sdist_name:=toil-$(shell python3 version_template.py distVersion).tar.gz
 
 green=\033[0;32m
 normal=\033[0m
@@ -114,11 +115,12 @@ clean_develop: check_venv
 uninstall:
 	- pip uninstall -y toil
 
+dist: sdist
 sdist: dist/$(sdist_name)
 
-dist/$(sdist_name): check_venv
+dist/$(sdist_name):
 	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
-	python setup.py sdist
+	python3 -m build
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
