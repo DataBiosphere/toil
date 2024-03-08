@@ -142,9 +142,9 @@ class AbstractJobStoreTest:
             super().tearDown()
 
         def testInitialState(self):
-            """Ensure proper handling of nonexistant files."""
-            self.assertFalse(self.jobstore_initialized.job_exists('nonexistantFile'))
-            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load_job, 'nonexistantFile')
+            """Ensure proper handling of nonexistent files."""
+            self.assertFalse(self.jobstore_initialized.job_exists('nonexistentFile'))
+            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load_job, 'nonexistentFile')
 
         def testJobCreation(self):
             """
@@ -474,7 +474,7 @@ class AbstractJobStoreTest:
                     pass
 
         def testStatsAndLogging(self):
-            """Tests behavior of reading and writting stats and logging."""
+            """Tests behavior of reading and writing stats and logging."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
