@@ -451,7 +451,7 @@ def update_column_widths(tag: Expando, cw: ColumnWidths, options: Namespace) -> 
                     cw.set_width(category, field, len(s) + 1)
 
 
-def build_element(element: Expando, items: List[Job], item_name: str, defaults: dict[str, float]) -> Expando:
+def build_element(element: Expando, items: List[Job], item_name: str, defaults: Dict[str, float]) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
