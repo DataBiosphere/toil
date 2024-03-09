@@ -184,7 +184,7 @@ def main() -> None:
                               clusterType=options.clusterType,
                               zone=options.zone,
                               nodeStorage=options.nodeStorage,
-                              enable_fuse=options.enableFuse)
+                              enable_fuse=options.allowFuse)
 
     cluster.launchCluster(leaderNodeType=options.leaderNodeType,
                           leaderStorage=options.leaderStorage,

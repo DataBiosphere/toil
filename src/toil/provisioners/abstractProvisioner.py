@@ -818,7 +818,7 @@ class AbstractProvisioner(ABC):
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
                 # Pass in a path to use for singularity image caching into the container
                 {"-e TOIL_KUBERNETES_PRIVILEGED=True --privileged" if self.enable_fuse else 
-                "-e TOIL_INSIDE_DOCKER_CONTAINER=True"} \\
+                "--security-opt seccomp=unconfined --security-opt systempaths=unconfined"} \\
                 -e TOIL_KUBERNETES_HOST_PATH=/var/lib/toil \\
                 -e SINGULARITY_CACHEDIR=/var/lib/toil/singularity \\
                 -e MINIWDL__SINGULARITY__IMAGE_CACHE=/var/lib/toil/miniwdl \\
