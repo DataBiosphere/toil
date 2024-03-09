@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple, Union
 from toil import applianceSelf
 from toil.common import parser_with_common_options
 from toil.lib.aws import build_tag_dict_from_env
+from toil.options import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
                                parse_node_types)
@@ -114,6 +115,10 @@ def main() -> None:
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
+    parser.add_argument("--allowFuse", type=opt_strtobool, default=True,
+                        help="Enable both the leader and worker nodes to be able to run Singularity with FUSE. For "
+                             "Kubernetes, this will make the leader privileged and ask workers to run as privileged. "
+                             "(default: %(default)s)")
     #TODO Set Aws Profile in CLI options
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -178,7 +183,8 @@ def main() -> None:
                               clusterName=options.clusterName,
                               clusterType=options.clusterType,
                               zone=options.zone,
-                              nodeStorage=options.nodeStorage)
+                              nodeStorage=options.nodeStorage,
+                              enable_fuse=options.enableFuse)
 
     cluster.launchCluster(leaderNodeType=options.leaderNodeType,
                           leaderStorage=options.leaderStorage,

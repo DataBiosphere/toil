@@ -233,6 +233,11 @@ levels in toil are based on priority from the logging module:
   --kubernetesPodTimeout KUBERNETES_POD_TIMEOUT
                         Seconds to wait for a scheduled Kubernetes pod to
                         start running. (default: 120s)
+  --kubernetesPrivileged BOOL
+                        Whether to allow Kubernetes pods to run as privileged. This can be
+                        used to enable FUSE mounts for faster runtimes with Singularity.
+                        When launching Toil-managed clusters, this will be set to true by --allowFuse.
+                        (default: False)
   --awsBatchRegion AWS_BATCH_REGION
                         The AWS region containing the AWS Batch queue to submit
                         to.

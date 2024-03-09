@@ -125,6 +125,7 @@ class Config:
     kubernetes_owner: Optional[str]
     kubernetes_service_account: Optional[str]
     kubernetes_pod_timeout: float
+    kubernetes_privileged: bool
     tes_endpoint: str
     tes_user: str
     tes_password: str
@@ -255,7 +256,7 @@ class Config:
         addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
         # The parser already knows about the default config file
         ns = parser.parse_args("")
-        self.setOptions(ns)
+        self.setOptions(ns, debug_mute=True)
 
     def prepare_start(self) -> None:
         """
@@ -274,7 +275,7 @@ class Config:
         # exist and that can't safely be re-made.
         self.write_messages = None
 
-    def setOptions(self, options: Namespace) -> None:
+    def setOptions(self, options: Namespace, debug_mute: bool = False) -> None:
         """Creates a config object from the options object."""
 
         def set_option(option_name: str,
@@ -411,7 +412,9 @@ class Config:
 
         self.check_configuration_consistency()
 
-        logger.debug("Loaded configuration: %s", vars(options))
+        if not debug_mute:
+            # class initialization populates defaults and does not need to be logged
+            logger.debug("Loaded configuration: %s", vars(options))
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""

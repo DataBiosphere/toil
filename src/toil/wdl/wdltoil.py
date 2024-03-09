@@ -14,6 +14,8 @@
 # limitations under the License.
 import asyncio
 import errno
+import importlib.util
+from WDL._util import configure_logger, COLORED_LOGGING_FORMAT
 import io
 import json
 import logging
@@ -24,6 +26,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
@@ -68,7 +71,7 @@ from toil.job import (AcceleratorRequirement,
                       unwrap_all)
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              UnimplementedURLException)
-from toil.lib.conversions import convert_units, human2bytes
+from toil.lib.conversions import convert_units, human2bytes, strtobool
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
@@ -1559,6 +1562,23 @@ class WDLTaskJob(WDLBaseJob):
         """
         return "KUBERNETES_SERVICE_HOST" not in os.environ
 
+    def unprivileged_fuse_mount(self) -> bool:
+        """
+        Determine whether singularity needs to be ran in a separated namespace environment to get unprivileged FUSE
+        mounts to work
+        This is usually the case when running Toil inside a docker container, and --privileged is not set.
+        Ex: Toil managed clusters, such as Toil Kubernetes clusters, do not run the container with any privileges
+
+        This function checks if /dev/fuse exists and if Toil is running inside a Docker container (controlled by
+        env var), returning True if so.
+
+        This could also check if Toil is specifically installed inside an unprivileged docker container, but FUSE
+        should work anyways
+        :return:
+        """
+        return (os.path.exists("/dev/fuse") and strtobool(os.environ.get("TOIL_INSTALLED_INSIDE_DOCKER", "0")) and
+                strtobool(os.environ.get("TOIL_KUBERNETES_PRIVILEGED", "0")) is False)
+
     @report_wdl_errors("run task command")
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -1687,6 +1707,33 @@ class WDLTaskJob(WDLBaseJob):
                     # If on Kubernetes and proc cannot be mounted, get rid of --containall
                     if '--containall' in command_line and not self.can_mount_proc():
                         command_line.remove('--containall')
+
+                    if self.unprivileged_fuse_mount():
+                        # this is the workaround for unprivileged fuse mount on docker
+                        # https://github.com/docker/for-linux/issues/321#issuecomment-677744121
+                        # this can cause scary errors on the command line (with logLevel set to debug)
+                        # where it complains that it fails to cleanup
+                        # this is because singularity will attempt the cleanup twice, and error even if the cleanup
+                        # is successful
+                        # https://github.com/sylabs/singularity/issues/2698#issuecomment-1974917941
+                        command_line = ["unshare", "-r", "--keep-caps", "-m"] + command_line
+
+                        # if attempting to do unprivileged fuse mounts, the new namespace from unshare will unmap the
+                        # root user from the parent namespace to Uid: (65534/  nobody)
+                        # Singularity tries to use /usr/bin/newuidmap when running with --fakeroot
+                        # https://docs.sylabs.io/guides/latest/admin-guide/user_namespace.html#unprivileged-installations
+                        # but newuidmap expects to be owned by root to operate, so it crashes
+                        # unshare isn't fancy enough to preserve certain UIDs
+                        # it might be theoretically possible
+                        # https://stackoverflow.com/questions/45972426/unshare-user-namespace-and-set-uid-mapping-with-newuidmap
+                        # but there still seems to be permission errors
+
+                        if '--fakeroot' in command_line:
+                            command_line.remove('--fakeroot')
+
+                        # if the container is set to privileged with --allowFuse, singularity should be able to use
+                        # FUSE normally
+
 
                     extra_flags: Set[str] = set()
                     accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators
@@ -2899,7 +2946,7 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
-            return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir) 
+            return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir)
 
         # Make all the files local files
         output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)

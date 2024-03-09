@@ -95,6 +95,9 @@ print(heredoc('''
 
     # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
     ENV SETUPTOOLS_USE_DISTUTILS=stdlib
+    
+    # to tell Toil that it's running inside a Docker container
+    ENV TOIL_INSTALLED_INSIDE_DOCKER=True
 
     # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
     # See <https://stackoverflow.com/a/66523384>
@@ -120,6 +123,11 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
     
+    RUN apt-get -y update --fix-missing
+    RUN apt-get install -y autoconf automake cryptsetup fuse fuse2fs git libfuse-dev libglib2.0-dev libseccomp-dev libtool pkg-config runc squashfs-tools squashfs-tools-ng uidmap wget zlib1g-dev
+    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
+    RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
     # than Ubuntu 20.04 ships. So we need a 22.04+ base.
@@ -141,16 +149,19 @@ print(heredoc('''
     # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
     #
     # So we need to make sure to install a downgraded squashfs first.
+    #
+    # TODO: Singularity has since resolved this on their end
+    # https://github.com/sylabs/singularity/pull/267
+    # This works by checking that the UID of the caller is not root
+    # In a Kubernetes pod, the default setup will have UID 0 even if the pod is unprivileged
+    # https://github.com/sylabs/singularity/issues/2727
+    # It is possible to avoid this by changing the user of the pod (such as runAsUser: 1000)
+    # but this may cause permission issues, ex: changed read/write permissions
+    # so the downgraded squashfs stays, but options for updated squashfs are possible
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
-        dpkg -i squashfs-tools_*.deb && \
-        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
-        dpkg -i singularity-container_*.deb && \
-        rm singularity-container_*.deb && \
-        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
-        mkdir -p /usr/local/libexec/toil && \
-        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
-        && /usr/local/libexec/toil/singularity-real version
+        dpkg -i squashfs-tools_*.deb
+    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
