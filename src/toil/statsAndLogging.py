@@ -39,6 +39,7 @@ __loggingFiles = []
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
+
     def __init__(self, jobStore: 'AbstractJobStore', config: 'Config') -> None:
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
@@ -74,10 +75,10 @@ class StatsAndLogging:
 
         return '\n'.join(lines)
 
-
     @classmethod
-    def logWithFormatting(cls, stream_name: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
-                            message: Optional[str] = None) -> None:
+    def logWithFormatting(cls, stream_name: str, jobLogs: Union[IO[str], IO[bytes]],
+                          method: Callable[[str], None] = logger.debug,
+                          message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
 
@@ -100,7 +101,7 @@ class StatsAndLogging:
                 fullName = os.path.join(logPath, logName + suffix)
                 #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
                 if len(fullName) >= 255:
-                    return fullName[:(255-len(suffix))] + suffix
+                    return fullName[:(255 - len(suffix))] + suffix
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
@@ -231,15 +232,43 @@ class StatsAndLogging:
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
 
-def set_log_level(level: str, set_logger: Optional[logging.Logger] = None) -> None:
+def set_log_level(level: str, set_logger: Optional[logging.Logger] = None, colored_logs: bool = False) -> None:
     """Sets the root logger level to a given string level (like "INFO")."""
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
+    if colored_logs:
+        install_log_color(set_logger)
 
     # Suppress any random loggers introduced by libraries we use.
     # Especially boto/boto3.  They print too much.  -__-
     suppress_exotic_logging(__name__)
+
+
+def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
+    """Make logs colored."""
+    # Most of this code is taken from miniwdl
+    # delayed import
+    import coloredlogs  # type ignore[import-untyped]
+
+    level_styles = dict(coloredlogs.DEFAULT_LEVEL_STYLES)
+    level_styles["debug"]["color"] = 242
+    level_styles["notice"] = {"color": "green", "bold": True}
+    level_styles["error"]["bold"] = True
+    level_styles["warning"]["bold"] = True
+    level_styles["info"] = {}
+    field_styles = dict(coloredlogs.DEFAULT_FIELD_STYLES)
+    field_styles["asctime"] = {"color": "blue"}
+    field_styles["name"] = {"color": "magenta"}
+    fmt = "%(asctime)s.%(msecs)03d %(name)s %(message)s"  # colors obviate levelname
+    set_logger = set_logger if set_logger else root_logger
+    coloredlogs.install(
+        level=set_logger.getEffectiveLevel(),
+        logger=set_logger,
+        level_styles=level_styles,
+        field_styles=field_styles,
+        fmt=fmt,
+    )
 
 
 def add_logging_options(parser: ArgumentParser) -> None:
@@ -262,6 +291,8 @@ def add_logging_options(parser: ArgumentParser) -> None:
     group.add_argument("--logFile", dest="logFile", help="File to log in.")
     group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                        help="Turn on rotating logging, which prevents log files from getting too big.")
+    group.add_argument("--no-color", action="store_false", dest="colored_logs", default=True,
+                       help="Enable colored logging")
 
 
 def configure_root_logger() -> None:
@@ -291,7 +322,7 @@ def log_to_file(log_file: Optional[str], log_rotation: bool) -> None:
 def set_logging_from_options(options: Union["Config", Namespace]) -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
-    set_log_level(options.logLevel)
+    set_log_level(options.logLevel, colored_logs=options.colored_logs)
     logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
                  f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
 

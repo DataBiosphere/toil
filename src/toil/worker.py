@@ -142,7 +142,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     """
 
     configure_root_logger()
-    set_log_level(config.logLevel)
+    set_log_level(config.logLevel, colored_logs=config.colored_logs)
 
     ##########################################
     #Create the worker killer, if requested
@@ -518,7 +518,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     #Trapping where worker goes wrong
     ##########################################
     except BaseException as e: #Case that something goes wrong in worker, or we are asked to stop
-        traceback.print_exc()
+        logger.critical("Worker crashed with traceback:\n%s", traceback.format_exc())
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
             # We need to inform the leader that this is a CWL workflow problem
