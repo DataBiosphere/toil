@@ -23,7 +23,7 @@ from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 from toil.lib.expando import Expando
-from toil.lib.resources import get_total_cpu_time
+from toil.lib.resources import ResourceMonitor
 
 if TYPE_CHECKING:
     from toil.common import Config
@@ -145,7 +145,7 @@ class StatsAndLogging:
         """
         #  Overall timing
         startTime = time.time()
-        startClock = get_total_cpu_time()
+        startClock = ResourceMonitor.get_total_cpu_time()
 
         def callback(fileHandle: Union[IO[bytes], IO[str]]) -> None:
             statsStr = fileHandle.read()
@@ -210,7 +210,7 @@ class StatsAndLogging:
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
+                               total_clock=str(ResourceMonitor.get_total_cpu_time() - startClock)), ensure_ascii=True)
         jobStore.write_logs(text)
 
     def check(self) -> None:

@@ -2771,7 +2771,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = get_total_cpu_time()
+            startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2795,7 +2795,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
+            totalCpuTime, totalMemoryUsage = ResourceMonitor.get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),

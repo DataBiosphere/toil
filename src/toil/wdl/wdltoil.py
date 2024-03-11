@@ -74,7 +74,7 @@ from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.threading import global_mutex
-from toil.lib.resources import record_extra_memory, record_extra_cpu
+from toil.lib.resources import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -1636,13 +1636,13 @@ class WDLTaskJob(WDLBaseJob):
             if max_memory_bytes is not None:
                 logger.info("Container used at about %s bytes of memory at peak", max_memory_bytes)
                 # Treat it as if used by a child process
-                record_extra_memory(max_memory_bytes // 1024)
+                ResourceMonitor.record_extra_memory(max_memory_bytes // 1024)
             if last_cpu_usec is not None:
                 assert(first_cpu_usec is not None)
                 cpu_seconds = (last_cpu_usec - first_cpu_usec) / 1000000
                 logger.info("Container used about %s seconds of CPU time", cpu_seconds)
                 # Treat it as if used by a child process
-                record_extra_cpu(cpu_seconds)
+                ResourceMonitor.record_extra_cpu(cpu_seconds)
 
     ###
     # Helper functions to work out what containers runtime we can use
