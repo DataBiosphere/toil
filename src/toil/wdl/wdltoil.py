@@ -14,8 +14,6 @@
 # limitations under the License.
 import asyncio
 import errno
-import importlib.util
-from WDL._util import configure_logger, COLORED_LOGGING_FORMAT
 import io
 import json
 import logging
@@ -26,7 +24,6 @@ import shutil
 import stat
 import subprocess
 import sys
-import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
@@ -57,7 +54,7 @@ from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
 
-from toil.common import Toil, addOptions, check_and_create_default_config_file
+from toil.common import Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
@@ -561,10 +558,21 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
-        Makes sure sibling files stay siblings and files with the same name don't clobber each other. Called from within this class for tasks, and statically at the end of the workflow for outputs.
+        The destination directory must already exist.
 
-        Returns the local path to the file.
+        Makes sure sibling files stay siblings and files with the same name
+        don't clobber each other. Called from within this class for tasks, and
+        statically at the end of the workflow for outputs.
+
+        Returns the local path to the file. If it already had a local path
+        elsewhere, it might not actually be put in dest_dir.
         """
+
+        if not os.path.isdir(dest_dir):
+            # os.mkdir fails saying the directory *being made* caused a
+            # FileNotFoundError. So check the dest_dir before trying to make
+            # directories under it.
+            raise RuntimeError(f"Cannot devirtualize {filename} into nonexistent directory {dest_dir}")
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
@@ -2946,6 +2954,9 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
+            # Make sure the output directory exists if we have output files
+            # that might need to use it.
+            os.makedirs(output_directory, exist_ok=True)
             return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir)
 
         # Make all the files local files
