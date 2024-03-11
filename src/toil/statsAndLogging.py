@@ -249,7 +249,7 @@ def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
     """Make logs colored."""
     # Most of this code is taken from miniwdl
     # delayed import
-    import coloredlogs  # type ignore[import-untyped]
+    import coloredlogs  # type: ignore[import-untyped]
 
     level_styles = dict(coloredlogs.DEFAULT_LEVEL_STYLES)
     level_styles["debug"]["color"] = 242
