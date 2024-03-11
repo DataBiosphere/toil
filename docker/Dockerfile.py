@@ -215,4 +215,7 @@ print(heredoc('''
 
     RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/motd' >> /etc/bash.bashrc \
         && printf '{motd}' > /etc/motd
+    
+    # Final check that Toil actually runs at all in the container
+    RUN toil --version
 '''))
