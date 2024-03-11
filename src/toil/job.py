@@ -68,8 +68,7 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import ResourceManager 
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
