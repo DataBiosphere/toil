@@ -116,6 +116,14 @@ class WDLTests(BaseWDLTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
+    def test_missing_output_directory(self):
+        """
+        Test if Toil can run a WDL workflow into a new directory.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
+        json_file = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
+        subprocess.check_call(self.base_command + [wdl, json_file, '-o', os.path.join(self.output_dir, "does", "not", "exist"), '--logDebug', '--retryCount=0'])
+
     @needs_singularity_or_docker
     def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
