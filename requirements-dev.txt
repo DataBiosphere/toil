@@ -10,7 +10,7 @@ astroid>=2.15,<3
 sphinx-autodoc-typehints>=1.24.0,<3
 sphinxcontrib-autoprogram==0.1.8
 cwltest>=2.2.20211116163652
-mypy==1.8.0
+mypy==1.9.0
 types-requests
 types-setuptools
 types-boto<2.49.18.20240205
