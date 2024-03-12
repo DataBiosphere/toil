@@ -18,7 +18,6 @@ import logging
 import os
 import time
 from argparse import ArgumentParser, Namespace
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
