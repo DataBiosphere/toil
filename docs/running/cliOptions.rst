@@ -172,8 +172,8 @@ levels in toil are based on priority from the logging module:
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
   --log-dir DIRPATH
                         For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
-  --no-color
-                        Disable colored logging.
+  --logColors BOOL
+                        Enable or disable colored logging. Default=True.
 
 **Batch System Options**
 

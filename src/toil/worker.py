@@ -42,7 +42,7 @@ from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
 from toil.lib.resources import (get_total_cpu_time,
                                 get_total_cpu_time_and_memory_usage)
-from toil.statsAndLogging import configure_root_logger, set_log_level
+from toil.statsAndLogging import configure_root_logger, set_log_level, install_log_color
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,10 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
     """
 
     configure_root_logger()
-    set_log_level(config.logLevel, colored_logs=config.colored_logs)
+    set_log_level(config.logLevel)
+
+    if config.colored_logs:
+        install_log_color()
 
     ##########################################
     #Create the worker killer, if requested

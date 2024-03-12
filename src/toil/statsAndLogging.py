@@ -18,10 +18,12 @@ import logging
 import os
 import time
 from argparse import ArgumentParser, Namespace
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
 
+from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando
 from toil.lib.resources import get_total_cpu_time
 
@@ -232,14 +234,11 @@ class StatsAndLogging:
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs
 
 
-def set_log_level(level: str, set_logger: Optional[logging.Logger] = None, colored_logs: bool = False) -> None:
+def set_log_level(level: str, set_logger: Optional[logging.Logger] = None) -> None:
     """Sets the root logger level to a given string level (like "INFO")."""
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
-    if colored_logs:
-        install_log_color(set_logger)
-
     # Suppress any random loggers introduced by libraries we use.
     # Especially boto/boto3.  They print too much.  -__-
     suppress_exotic_logging(__name__)
@@ -260,13 +259,16 @@ def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
     field_styles = dict(coloredlogs.DEFAULT_FIELD_STYLES)
     field_styles["asctime"] = {"color": "blue"}
     field_styles["name"] = {"color": "magenta"}
-    fmt = "%(asctime)s.%(msecs)03d %(name)s %(message)s"  # colors obviate levelname
+    field_styles["levelname"] = {"color": "blue"}
+    field_styles["threadName"] = {"color": "blue"}
+    fmt = "[%(asctime)s] [%(threadName)s] [%(levelname).1s] [%(name)s] %(message)s"  # mimic old toil logging format
     set_logger = set_logger if set_logger else root_logger
     coloredlogs.install(
         level=set_logger.getEffectiveLevel(),
         logger=set_logger,
         level_styles=level_styles,
         field_styles=field_styles,
+        datefmt="%Y-%m-%dT%H:%M:%S%z",  # mimic old toil date format
         fmt=fmt,
     )
 
@@ -291,8 +293,8 @@ def add_logging_options(parser: ArgumentParser) -> None:
     group.add_argument("--logFile", dest="logFile", help="File to log in.")
     group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                        help="Turn on rotating logging, which prevents log files from getting too big.")
-    group.add_argument("--no-color", action="store_false", dest="colored_logs", default=True,
-                       help="Enable colored logging")
+    group.add_argument("--logColors", dest="colored_logs", default=True, type=strtobool, metavar="BOOL",
+                       help="Enable or disable colored logging. Default: %(default)s")
 
 
 def configure_root_logger() -> None:
@@ -322,7 +324,9 @@ def log_to_file(log_file: Optional[str], log_rotation: bool) -> None:
 def set_logging_from_options(options: Union["Config", Namespace]) -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
-    set_log_level(options.logLevel, colored_logs=options.colored_logs)
+    set_log_level(options.logLevel)
+    if options.colored_logs:
+        install_log_color()
     logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
                  f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
 
