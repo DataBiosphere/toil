@@ -124,12 +124,13 @@ print(heredoc('''
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
-        apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
-    
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
+    RUN apt-get -f install
     RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
     RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+
+    RUN apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
