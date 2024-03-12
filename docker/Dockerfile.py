@@ -62,6 +62,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libapr1',
                          # Dependencies for singularity
                          'containernetworking-plugins',
+                         'libfuse2',
+                         'fuse',
+                         'fuse2fs',
+                         'uidmap',
+                         'squashfs-tools-ng',
                          # Dependencies for singularity on kubernetes
                          'tzdata'])
 
@@ -123,9 +128,6 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
     
-    RUN apt-get update
-    RUN apt-get install -y autoconf automake cryptsetup fuse fuse2fs git libfuse-dev libglib2.0-dev libseccomp-dev libtool pkg-config runc squashfs-tools squashfs-tools-ng uidmap wget zlib1g-dev
-    RUN apt-get install -f
     RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
     RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
