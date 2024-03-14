@@ -345,7 +345,7 @@ def main() -> None:
                         help="Do not print overall, aggregate status of workflow.",
                         default=True)
 
-    parser.add_argument("--printDot", action="store_true",
+    parser.add_argument("--dot", "--printDot", dest="print_dot", action="store_true",
                         help="Print dot formatted description of the graph. If using --jobs will "
                              "restrict to subgraph including only those jobs. default=%(default)s",
                         default=False)
@@ -354,19 +354,19 @@ def main() -> None:
                         help="Restrict reporting to the following jobs (allows subsetting of the report).",
                         default=None)
 
-    parser.add_argument("--printPerJobStats", action="store_true",
+    parser.add_argument("--perJob", "--printPerJobStats", dest="print_per_job_stats", action="store_true",
                         help="Print info about each job. default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printLogs", action="store_true",
+    parser.add_argument("--logs", "--printLogs", dest="print_logs", action="store_true",
                         help="Print the log files of jobs (if they exist). default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printChildren", action="store_true",
+    parser.add_argument("--children", "--printChildren", dest="print_children", action="store_true",
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printStatus", action="store_true",
+    parser.add_argument("--status", "--printStatus", dest="print_status", action="store_true",
                         help="Determine which jobs are currently running and the associated batch system ID")
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -400,13 +400,13 @@ def main() -> None:
     properties = jobStats['properties']
     childNumber = jobStats['childNumber']
 
-    if options.printPerJobStats:
+    if options.print_per_job_stats:
         status.printAggregateJobStats(properties, childNumber)
-    if options.printLogs:
+    if options.print_logs:
         status.printJobLog()
-    if options.printChildren:
+    if options.print_children:
         status.printJobChildren()
-    if options.printDot:
+    if options.print_dot:
         status.print_dot_chart()
     if options.stats:
         print('Of the %i jobs considered, '
@@ -418,7 +418,7 @@ def main() -> None:
               'and %i jobs with log files currently in %s.' %
               (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
                len(hasServices), len(services), len(hasLogFile), status.jobStore))
-    if options.printStatus:
+    if options.print_status:
         status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
