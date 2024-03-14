@@ -1526,6 +1526,17 @@ class Job:
         else:
             return 'Job(' + str(self.description) + ')'
 
+    def check_initialized(self) -> None:
+        """
+        Determine whether __init__() has been called. This uses the fact that the self._description instance variable
+        should always be set after __init__().
+        If this init has not been called, raise an error
+        :return:
+        """
+        if not hasattr(self, "_description"):
+            raise ValueError(f"Job instance of type {type(self)} has not been initialized. super().__init__() may not "
+                             f"have been called.")
+
     @property
     def jobStoreID(self) -> Union[str, TemporaryID]:
         """Get the ID of this Job."""
@@ -1656,6 +1667,11 @@ class Job:
         """
         if not isinstance(childJob, Job):
             raise RuntimeError("The type of the child job is not a job.")
+
+        # Check that both jobs have been initialized
+        self.check_initialized()
+        childJob.check_initialized()
+
         # Join the job graphs
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
@@ -1683,6 +1699,11 @@ class Job:
         """
         if not isinstance(followOnJob, Job):
             raise RuntimeError("The type of the follow-on job is not a job.")
+
+        # Check that both jobs have been initialized
+        self.check_initialized()
+        followOnJob.check_initialized()
+
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship

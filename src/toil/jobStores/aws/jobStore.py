@@ -38,7 +38,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchFileException,
                                              NoSuchJobException,
-                                             NoSuchJobStoreException)
+                                             NoSuchJobStoreException, LocatorException)
 from toil.jobStores.aws.utils import (SDBHelper,
                                       ServerSideCopyProhibitedError,
                                       copyKeyMultipart,
@@ -146,7 +146,7 @@ class AWSJobStore(AbstractJobStore):
 
     def initialize(self, config):
         if self._registered:
-            raise JobStoreExistsException(self.locator)
+            raise JobStoreExistsException("aws:" + self.locator)
         self._registered = None
         try:
             self._bind(create=True)
@@ -164,7 +164,7 @@ class AWSJobStore(AbstractJobStore):
 
     def resume(self):
         if not self._registered:
-            raise NoSuchJobStoreException(self.locator)
+            raise NoSuchJobStoreException("aws:" + self.locator)
         self._bind(create=False)
         super().resume()
 
@@ -1680,7 +1680,7 @@ aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quo
 custom_repr = aRepr.repr
 
 
-class BucketLocationConflictException(Exception):
+class BucketLocationConflictException(LocatorException):
     def __init__(self, bucketRegion):
         super().__init__(
             'A bucket with the same name as the jobstore was found in another region (%s). '
