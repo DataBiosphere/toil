@@ -119,13 +119,14 @@ class ToilStatus:
         :returns jobStats: Dict containing some lists of jobs by category, and
             some lists of job properties for each job in self.jobsToReport.
         """
-        # These are lists of the mathcing jobs
+        # These are lists of the matching jobs
         hasChildren = []
         readyToRun = []
         zombies = []
         hasLogFile: List[JobDescription] = []
         hasServices = []
         services: List[ServiceJobDescription] = []
+        completely_failed = []
 
         # These are stats for jobs in self.jobsToReport
         child_number: List[int] = []
@@ -158,6 +159,9 @@ class ToilStatus:
             if isinstance(job, ServiceJobDescription):
                 services.append(job)
                 job_properties.add("IS_SERVICE")
+            if job.remainingTryCount == 0:
+                # Job is out of tries (and thus completely failed)
+                completely_failed.append(job)
             properties.append(job_properties)
 
         jobStats = {
@@ -168,6 +172,7 @@ class ToilStatus:
             'hasServices': hasServices,
             'services': services,
             'hasLogFile': hasLogFile,
+            'completelyFailed': completely_failed,
             # These are stats for jobs in self.jobsToReport
             'properties': properties,
             'childNumber': child_number
@@ -396,6 +401,7 @@ def main() -> None:
     hasServices = jobStats['hasServices']
     services = jobStats['services']
     hasLogFile = jobStats['hasLogFile']
+    completely_failed = jobStats['completelyFailed']
     # These are results for corresponding jobs in status.jobsToReport
     properties = jobStats['properties']
     childNumber = jobStats['childNumber']
@@ -410,14 +416,17 @@ def main() -> None:
         status.print_dot_chart()
     if options.stats:
         print('Of the %i jobs considered, '
-              'there are %i jobs with children, '
+              'there are '
+              '%i completely failed jobs, '
+              '%i jobs with children, '
               '%i jobs ready to run, '
               '%i zombie jobs, '
               '%i jobs with services, '
               '%i services, '
               'and %i jobs with log files currently in %s.' %
-              (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
-               len(hasServices), len(services), len(hasLogFile), status.jobStore))
+              (len(status.jobsToReport), len(completely_failed), len(hasChildren),
+               len(readyToRun), len(zombies), len(hasServices), len(services),
+               len(hasLogFile), status.jobStore))
     if options.print_status:
         status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
