@@ -105,12 +105,21 @@ class ToilStatus:
 
             def lf(x: str) -> str:
                 return f"{x}:{str(x in job_properties)}"
-            print("\t".join(("JOB:%s" % job,
-                             "LOG_FILE:%s" % job.logJobStoreFileID,
-                             "TRYS_REMAINING:%i" % job.remainingTryCount,
-                             "CHILD_NUMBER:%s" % job_child_number,
-                             lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
-                             lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+            # We use a sort of not-really-machine-readable key:value TSV format here.
+            # But we only include important keys to help the humans, and flags
+            # don't have a value, just a key.
+            parts = [f"JOB:{job}"]
+            for flag in ["COMPLETELY_FAILED", "READY_TO_RUN", "IS_ZOMBIE", "HAS_SERVICES", "IS_SERVICE"]:
+                if flag in job_properties:
+                    parts.append(flag)
+            if job.logJobStoreFileID:
+                parts.append(f"LOG_FILE:{job.logJobStoreFileID}")
+            if job.remainingTryCount > 0:
+                parts.append(f"TRYS_REMAINING:{job.remainingTryCount}")
+            if job_child_number > 0:
+                parts.append(f"CHILD_NUMBER:{job_child_number}")
+            
+            print("\t".join(parts))
 
     def report_on_jobs(self) -> Dict[str, Any]:
         """
@@ -161,6 +170,7 @@ class ToilStatus:
                 job_properties.add("IS_SERVICE")
             if job.remainingTryCount == 0:
                 # Job is out of tries (and thus completely failed)
+                job_properties.add("COMPLETELY_FAILED")
                 completely_failed.append(job)
             properties.append(job_properties)
 
