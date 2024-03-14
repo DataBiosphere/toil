@@ -49,19 +49,14 @@ class MessageDetector(logging.StreamHandler):
     def __init__(self):
         self.detected = False  # Have we seen the message we want?
         self.overLogged = False  # Have we seen the message we don't want?
-        self.entire_string = ""
 
         super().__init__()
 
     def emit(self, record):
-        self.entire_string += record.msg
         if record.msg == 'This should be logged at info level':
             self.detected = True
         if record.msg == 'This should be logged at debug level':
             self.overLogged = True
-
-    def entire(self) -> str:
-        return self.entire_string
 
 
 class LogTest(Job):
