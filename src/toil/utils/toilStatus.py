@@ -94,16 +94,21 @@ class ToilStatus:
                 children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
-    def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
-        """Prints a job's ID, log file, remaining tries, and other properties."""
-        for job in self.jobsToReport:
+    def printAggregateJobStats(self, properties: List[Set[str]], childNumber: List[int]) -> None:
+        """
+        Prints each job's ID, log file, remaining tries, and other properties.
+
+        :param properties: A set of string flag names for each job in self.jobsToReport.
+        :param childNumber: A list of child counts for each job in self.jobsToReport.
+        """
+        for job, job_properties, job_child_number in zip(self.jobsToReport, properties, childNumber):
 
             def lf(x: str) -> str:
-                return f"{x}:{str(x in properties)}"
+                return f"{x}:{str(x in job_properties)}"
             print("\t".join(("JOB:%s" % job,
                              "LOG_FILE:%s" % job.logJobStoreFileID,
                              "TRYS_REMAINING:%i" % job.remainingTryCount,
-                             "CHILD_NUMBER:%s" % childNumber,
+                             "CHILD_NUMBER:%s" % job_child_number,
                              lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
                              lf("HAS_SERVICES"), lf("IS_SERVICE"))))
 
@@ -111,48 +116,62 @@ class ToilStatus:
         """
         Gathers information about jobs such as its child jobs and status.
 
-        :returns jobStats: Pairings of a useful category and a list of jobs which fall into it.
-        :rtype dict:
+        :returns jobStats: Dict containing some lists of jobs by category, and
+            some lists of job properties for each job in self.jobsToReport.
         """
+        # These are lists of the mathcing jobs
         hasChildren = []
         readyToRun = []
         zombies = []
         hasLogFile: List[JobDescription] = []
         hasServices = []
         services: List[ServiceJobDescription] = []
-        properties = set()
+
+        # These are stats for jobs in self.jobsToReport
+        child_number: List[int] = []
+        properties: List[Set[str]] = []
+
+        # TODO: This mix of semantics is confusing and made per-job status be
+        # wrong for multiple years because it was not understood. Redesign it!
 
         for job in self.jobsToReport:
+            job_properties: Set[str] = set()
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = len(list(job.allSuccessors()))
-            if childNumber > 0:  # Total number of successors > 0
+            job_child_number = len(list(job.allSuccessors()))
+            child_number.append(job_child_number)
+            if job_child_number > 0:  # Total number of successors > 0
                 hasChildren.append(job)
-                properties.add("HAS_CHILDREN")
+                job_properties.add("HAS_CHILDREN")
             elif job.command is not None:
                 # Job has no children and a command to run. Indicates job could be run.
                 readyToRun.append(job)
-                properties.add("READY_TO_RUN")
+                job_properties.add("READY_TO_RUN")
             else:
                 # Job has no successors and no command, so is a zombie job.
                 zombies.append(job)
-                properties.add("IS_ZOMBIE")
+                job_properties.add("IS_ZOMBIE")
             if job.services:
                 hasServices.append(job)
-                properties.add("HAS_SERVICES")
+                job_properties.add("HAS_SERVICES")
             if isinstance(job, ServiceJobDescription):
                 services.append(job)
-                properties.add("IS_SERVICE")
+                job_properties.add("IS_SERVICE")
+            properties.append(job_properties)
 
-        jobStats = {'hasChildren': hasChildren,
-                    'readyToRun': readyToRun,
-                    'zombies': zombies,
-                    'hasServices': hasServices,
-                    'services': services,
-                    'hasLogFile': hasLogFile,
-                    'properties': properties,
-                    'childNumber': childNumber}
+        jobStats = {
+            # These are lists of the mathcing jobs
+            'hasChildren': hasChildren,
+            'readyToRun': readyToRun,
+            'zombies': zombies,
+            'hasServices': hasServices,
+            'services': services,
+            'hasLogFile': hasLogFile,
+            # These are stats for jobs in self.jobsToReport
+            'properties': properties,
+            'childNumber': child_number
+        }
         return jobStats
 
     @staticmethod
@@ -370,12 +389,14 @@ def main() -> None:
     jobStats = status.report_on_jobs()
 
     # Info to be reported.
+    # These are lists of matching jobs.
     hasChildren = jobStats['hasChildren']
     readyToRun = jobStats['readyToRun']
     zombies = jobStats['zombies']
     hasServices = jobStats['hasServices']
     services = jobStats['services']
     hasLogFile = jobStats['hasLogFile']
+    # These are results for corresponding jobs in status.jobsToReport
     properties = jobStats['properties']
     childNumber = jobStats['childNumber']
 
