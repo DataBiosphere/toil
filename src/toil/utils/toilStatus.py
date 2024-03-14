@@ -394,11 +394,8 @@ def main() -> None:
         parser.print_help()
         sys.exit(0)
 
-    config = Config()
-    config.setOptions(options)
-
     try:
-        status = ToilStatus(config.jobStore, options.jobs)
+        status = ToilStatus(options.jobStore, options.jobs)
     except NoSuchJobStoreException:
         print('No job store found.')
         return
