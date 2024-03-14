@@ -33,9 +33,9 @@ Running an Example
 
 We can run an example workflow and record stats::
 
-    python3 discoverfiles.py file:my-jobstore --stats
+    python3 workflow.py file:my-jobstore --stats
 
-Where ``discoverfiles.py`` is the following:
+Where ``workflow.py`` is the following:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_stats.py
 
@@ -202,7 +202,7 @@ Status Command
 
 Continuing the example from the stats section above, if we ran our workflow with the command ::
 
-    python3 discoverfiles.py file:my-jobstore --stats
+    python3 workflow.py file:my-jobstore --stats
 
 We could interrogate our jobstore with the status command, for example::
 
@@ -215,9 +215,11 @@ If the run was successful, this would not return much valuable information, some
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
     The root job of the job store is absent, the workflow completed successfully.
 
-Otherwise, the ``status`` command should return the following:
+Otherwise, the ``toil status`` command will return something like the following:
 
-    There are ``x`` unfinished jobs, ``y`` parent jobs with children, ``z`` jobs with services, ``a`` services, and ``b`` totally failed jobs currently in  ``c``.
+    Of the 3 jobs considered, there are 1 completely failed jobs, 1 jobs with children, 2 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in FileJobStore(/Users/anovak/workspace/toil/tree).
+
+The ``toil status`` command supports several useful flags, including ``--perJob`` to get per-job status information, ``--logs`` to print stored worker logs, and ``--failed`` to list all failed jobs in the workflow. For more information, run ``toil status --help``.
 
 Clean Command
 -------------
