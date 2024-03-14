@@ -47,24 +47,23 @@ But it will fail.
 
 If you want to reproduce the failure later, or on another machine, you can first find out what jobs failed with ``toil status``::
 
-    toil status --failed ./store
+    toil status --failed --noAggStats ./store
 
 This will produce something like:
 
     [2024-03-14T17:45:15-0400] [MainThread] [I] [toil.utils.toilStatus] Traversing the job graph gathering jobs. This may take a couple of minutes.
     Failed jobs:
     'WDLTaskJob' test.hello.command kind-WDLTaskJob/instance-r9u6_dcs v6
-    Of the 3 jobs considered, there are 1 completely failed jobs, 1 jobs with children, 2 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 1 jobs with log files currently in FileJobStore(/Users/anovak/workspace/toil/store).
 
-And we can see a failed job with the display name ``test.hello.command``, which describes the job's location in the WDL workflow (the command section of the ``hello`` task called from the ``test`` workflow). We can then run that job again locally by name with::
+And we can see a failed job with the display name ``test.hello.command``, which describes the job's location in the WDL workflow as the command section of the ``hello`` task called from the ``test`` workflow. (If you are writing a Toil Python script, this is the job's ``displayName``.) We can then run that job again locally by name with::
 
     toil debug-job ./store test.hello.command
 
-If there were multiple failed jobs with that name, we would need to select one by Toil job ID instead::
+If there were multiple failed jobs with that name (perhaps because of a WDL scatter), we would need to select one by Toil job ID instead::
 
     toil debug-job ./store kind-WDLTaskJob/instance-r9u6_dcs
 
-And if we know there's only one failed WDL task, we can just tell Toil to rerun the failed ``WDLTaskJob`` by class name::
+And if we know there's only one failed WDL task, we can just tell Toil to rerun the failed ``WDLTaskJob`` by Python class name::
 
     toil debug-job ./store WDLTaskJob
 
