@@ -118,7 +118,7 @@ class ToilStatus:
                 parts.append(f"TRYS_REMAINING:{job.remainingTryCount}")
             if job_child_number > 0:
                 parts.append(f"CHILD_NUMBER:{job_child_number}")
-            
+
             print("\t".join(parts))
 
     def report_on_jobs(self) -> Dict[str, Any]:
@@ -383,6 +383,10 @@ def main() -> None:
 
     parser.add_argument("--status", "--printStatus", dest="print_status", action="store_true",
                         help="Determine which jobs are currently running and the associated batch system ID")
+
+    parser.add_argument("--failed", "--printFailed", dest="print_failed", action="store_true",
+                        help="List jobs which seem to have failed to run")
+
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -424,6 +428,10 @@ def main() -> None:
         status.printJobChildren()
     if options.print_dot:
         status.print_dot_chart()
+    if options.print_failed:
+        print("Failed jobs:")
+        for job in completely_failed:
+            print(job)
     if options.stats:
         print('Of the %i jobs considered, '
               'there are '
