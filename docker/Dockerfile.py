@@ -176,9 +176,9 @@ print(heredoc('''
 
     # Wrap Singularity to use a Docker mirror instead of always Docker Hub
     # We need to put it where the installed singularity expects singularity to actually be.
-    ADD singularity-wrapper.sh /usr/bin/singularity
+    # ADD singularity-wrapper.sh /usr/bin/singularity
 
-    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
+    # RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
     RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
