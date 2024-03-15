@@ -32,7 +32,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.9-distutils' if python == 'python3.9' else '',
                          'python3.10-distutils' if python == 'python3.10' else '',
                          'python3.11-distutils' if python == 'python3.11' else '',
-                         'python3.12-distutils' if python== 'python3.12' else '',
+                         'python3.12-distutils' if python == 'python3.12' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -125,9 +125,9 @@ print(heredoc('''
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
         if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
-    RUN apt-get -f install
-    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
-    RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+    # RUN apt-get -f install
+    # RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
+    # RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
     RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/*
