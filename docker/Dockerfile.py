@@ -126,7 +126,7 @@ print(heredoc('''
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
         if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
     RUN apt-get -f install
-    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-focal_amd64.deb && apt-get install ./singularity-ce_*.deb
+    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
     RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
     RUN apt-get clean && \
