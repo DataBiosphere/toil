@@ -68,8 +68,7 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import ResourceMonitor 
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
@@ -2883,7 +2882,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = get_total_cpu_time()
+            startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2907,7 +2906,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
+            totalCpuTime, totalMemoryUsage = ResourceMonitor.get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),
