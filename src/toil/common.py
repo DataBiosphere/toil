@@ -149,6 +149,7 @@ class Config:
     workflowAttemptNumber: int
     jobStore: str
     logLevel: str
+    colored_logs: bool
     workDir: Optional[str]
     coordination_dir: Optional[str]
     noStdOutErr: bool
@@ -400,6 +401,7 @@ class Config:
         set_option("badWorker")
         set_option("badWorkerFailInterval")
         set_option("logLevel")
+        set_option("colored_logs")
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists

@@ -209,14 +209,6 @@ py311_main:
     - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
-batch_systems:
-  rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule"
-  stage: main_tests
-  script:
-    - pwd
-    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
-
 slurm_test:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
