@@ -7,9 +7,10 @@ import logging
 
 from ruamel.yaml import YAML
 
-from toil.lib.conversions import bytes2human, human2bytes, strtobool
+from toil.lib.conversions import bytes2human, human2bytes
 
 from toil.batchSystems.options import add_all_batchsystem_options
+from toil.options import convert_bool, opt_strtobool
 from toil.provisioners import parse_node_types
 from toil.statsAndLogging import add_logging_options
 if TYPE_CHECKING:
@@ -199,14 +200,6 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     # default config value is set to none as defaults should already be populated at config init
     config.add_argument('--config', dest='config', is_config_file_arg=True, default=None, metavar="PATH",
                         help="Get options from a config file.")
-
-    def convert_bool(b: str) -> bool:
-        """Convert a string representation of bool to bool"""
-        return bool(strtobool(b))
-
-    def opt_strtobool(b: Optional[str]) -> Optional[bool]:
-        """Convert an optional string representation of bool to None or bool"""
-        return b if b is None else convert_bool(b)
 
     add_logging_options(parser)
     parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.

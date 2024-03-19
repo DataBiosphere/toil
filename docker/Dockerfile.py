@@ -32,7 +32,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'python3.9-distutils' if python == 'python3.9' else '',
                          'python3.10-distutils' if python == 'python3.10' else '',
                          'python3.11-distutils' if python == 'python3.11' else '',
-                         'python3.12-distutils' if python== 'python3.12' else '',
+                         'python3.12-distutils' if python == 'python3.12' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -62,6 +62,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'libapr1',
                          # Dependencies for singularity
                          'containernetworking-plugins',
+                         'libfuse2',
+                         'fuse',
+                         'fuse2fs',
+                         'uidmap',
+                         'squashfs-tools-ng',
                          # Dependencies for singularity on kubernetes
                          'tzdata'])
 
@@ -95,6 +100,9 @@ print(heredoc('''
 
     # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
     ENV SETUPTOOLS_USE_DISTUTILS=stdlib
+    
+    # to tell Toil that it's running inside a Docker container
+    ENV TOIL_INSTALLED_INSIDE_DOCKER=True
 
     # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
     # See <https://stackoverflow.com/a/66523384>
@@ -116,10 +124,14 @@ print(heredoc('''
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
-        apt-get clean && \
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
+    RUN apt-get -f install
+    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
+    RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+
+    RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/*
-    
+
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
     # than Ubuntu 20.04 ships. So we need a 22.04+ base.
@@ -141,16 +153,19 @@ print(heredoc('''
     # <https://github.com/apptainer/singularity/issues/6113#issuecomment-901897566>).
     #
     # So we need to make sure to install a downgraded squashfs first.
+    #
+    # TODO: Singularity has since resolved this on their end
+    # https://github.com/sylabs/singularity/pull/267
+    # This works by checking that the UID of the caller is not root
+    # In a Kubernetes pod, the default setup will have UID 0 even if the pod is unprivileged
+    # https://github.com/sylabs/singularity/issues/2727
+    # It is possible to avoid this by changing the user of the pod (such as runAsUser: 1000)
+    # but this may cause permission issues, ex: changed read/write permissions
+    # so the downgraded squashfs stays, but options for updated squashfs are possible
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
-        dpkg -i squashfs-tools_*.deb && \
-        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
-        dpkg -i singularity-container_*.deb && \
-        rm singularity-container_*.deb && \
-        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
-        mkdir -p /usr/local/libexec/toil && \
-        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
-        && /usr/local/libexec/toil/singularity-real version
+        dpkg -i squashfs-tools_*.deb
+    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh

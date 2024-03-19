@@ -171,7 +171,7 @@ class InvalidClusterStateException(Exception):
     pass
 
 class AWSProvisioner(AbstractProvisioner):
-    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey, enable_fuse):
         self.cloud = 'aws'
         self._sseKey = sseKey
         # self._zone will be filled in by base class constructor
@@ -197,7 +197,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, enable_fuse)
 
         # After self.clusterName is set, generate a valid name for the S3 bucket associated with this cluster
         suffix = _S3_BUCKET_INTERNAL_SUFFIX
