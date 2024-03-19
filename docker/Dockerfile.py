@@ -125,9 +125,9 @@ print(heredoc('''
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
         if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
-    # RUN apt-get -f install
-    # RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
-    # RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
+    RUN apt-get -f install
+    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-focal_amd64.deb && apt-get install ./singularity-ce_*.deb
+    RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
     RUN apt-get clean && \
         rm -rf /var/lib/apt/lists/*
@@ -165,7 +165,7 @@ print(heredoc('''
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
         dpkg -i squashfs-tools_*.deb
-    # RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
+    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -176,9 +176,9 @@ print(heredoc('''
 
     # Wrap Singularity to use a Docker mirror instead of always Docker Hub
     # We need to put it where the installed singularity expects singularity to actually be.
-    # ADD singularity-wrapper.sh /usr/bin/singularity
+    ADD singularity-wrapper.sh /usr/bin/singularity
 
-    # RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
     RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
