@@ -165,7 +165,7 @@ print(heredoc('''
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
         dpkg -i squashfs-tools_*.deb
-    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
+    # RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
