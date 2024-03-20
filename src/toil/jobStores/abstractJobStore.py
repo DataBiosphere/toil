@@ -75,7 +75,9 @@ class LocatorException(Exception):
     Base exception class for all locator exceptions.
     For example, job store/aws bucket exceptions where they already exist
     """
-    pass
+    def __init__(self, error_msg: str, locator: str, prefix: Optional[str]=None):
+        full_locator = locator if prefix is None else f"{prefix}:{locator}"
+        super().__init__(error_msg % full_locator)
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url: ParseResult) -> None:
@@ -144,22 +146,22 @@ class NoSuchFileException(Exception):
 
 class NoSuchJobStoreException(LocatorException):
     """Indicates that the specified job store does not exist."""
-    def __init__(self, locator: str):
+    def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
         """
-        super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
+        super().__init__("The job store '%s' does not exist, so there is nothing to restart.", locator, prefix)
 
 
 class JobStoreExistsException(LocatorException):
     """Indicates that the specified job store already exists."""
-    def __init__(self, locator: str):
+    def __init__(self, prefix: str, locator: str):
         """
         :param str locator: The location of the job store
         """
         super().__init__(
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
-            "the job store with 'toil clean' to start the workflow from scratch." % locator)
+            "the job store with 'toil clean' to start the workflow from scratch.", locator, prefix)
 
 
 class AbstractJobStore(ABC):

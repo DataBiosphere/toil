@@ -146,7 +146,7 @@ class AWSJobStore(AbstractJobStore):
 
     def initialize(self, config):
         if self._registered:
-            raise JobStoreExistsException("aws:" + self.locator)
+            raise JobStoreExistsException(self.locator, "aws")
         self._registered = None
         try:
             self._bind(create=True)
@@ -164,7 +164,7 @@ class AWSJobStore(AbstractJobStore):
 
     def resume(self):
         if not self._registered:
-            raise NoSuchJobStoreException("aws:" + self.locator)
+            raise NoSuchJobStoreException(self.locator, "aws")
         self._bind(create=False)
         super().resume()
 
@@ -1684,4 +1684,4 @@ class BucketLocationConflictException(LocatorException):
     def __init__(self, bucketRegion):
         super().__init__(
             'A bucket with the same name as the jobstore was found in another region (%s). '
-            'Cannot proceed as the unique bucket name is already in use.' % bucketRegion)
+            'Cannot proceed as the unique bucket name is already in use.', locator=bucketRegion)

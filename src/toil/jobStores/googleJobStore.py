@@ -164,7 +164,7 @@ class GoogleJobStore(AbstractJobStore):
         try:
             self.bucket = self.storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
-            raise JobStoreExistsException("google:" + self.locator)
+            raise JobStoreExistsException(self.locator, "google")
         super().initialize(config)
 
         # set up sever side encryption after we set up config in super
@@ -178,7 +178,7 @@ class GoogleJobStore(AbstractJobStore):
         try:
             self.bucket = self.storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
-            raise NoSuchJobStoreException("google:" + self.locator)
+            raise NoSuchJobStoreException(self.locator, "google")
         super().resume()
 
     @google_retry

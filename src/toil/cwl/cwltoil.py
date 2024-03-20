@@ -3742,8 +3742,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         secret_store=runtime_context.secret_store,
                         input_required=True,
                     )
-                except SystemExit as e:
-                    if e.code == 2:  # raised by argparse's parse_args() function
+                except SystemExit as err:
+                    if err.code == 2:  # raised by argparse's parse_args() function
                         print(
                             "\nIf both a CWL file and an input object (YAML/JSON) file were "
                             "provided, this may be the argument order." + usage_message,
@@ -3945,8 +3945,8 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logging.error(err)
             return 1
     except (InsufficientSystemResources, LocatorException, InvalidImportExportUrlException, UnimplementedURLException,
-            JobTooBigError) as e:
-        logging.error(e)
+            JobTooBigError) as err:
+        logging.error(err)
         return 1
 
     return 0

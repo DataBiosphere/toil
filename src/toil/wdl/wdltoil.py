@@ -95,13 +95,13 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         WDL.Error.ValidationError,
         WDL.Error.MultipleValidationErrors,
         FileNotFoundError,
-        # Don't expose tracebacks to the user for exceptions that may be expected
         InsufficientSystemResources,
         LocatorException,
         InvalidImportExportUrlException,
         UnimplementedURLException,
         JobTooBigError
     ) as e:
+        # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task)
         # These are the errors that MiniWDL's parser can raise and its reporter
         # can report. See
