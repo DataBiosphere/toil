@@ -398,7 +398,7 @@ def main() -> None:
     try:
         status = ToilStatus(options.jobStore, options.jobs)
     except NoSuchJobStoreException:
-        print(f'The job store {config.jobStore} was not found.')
+        print(f'The job store {options.jobStore} was not found.')
         return
     except JobException:  # Workflow likely complete, user informed in ToilStatus()
         return
