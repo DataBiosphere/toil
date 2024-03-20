@@ -16,7 +16,7 @@ def main():
 
     Then you can inspect the job store with tools like `toil status`:
 
-        toil status --printLogs ./jobstore
+        toil status --logs ./jobstore
 
     """
     parser = ArgumentParser(description=main.__doc__)

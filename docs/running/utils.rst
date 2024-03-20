@@ -11,6 +11,8 @@ The generic ``toil`` subcommand utilities are:
 
     ``status`` --- Inspects a job store to see which jobs have failed, run successfully, etc.
 
+    ``debug-job`` --- Runs a failing job on your local machine.
+
     ``clean`` --- Delete the job store used by a previous Toil workflow invocation.
 
     ``kill`` --- Kills any running jobs in a rogue toil.
@@ -33,9 +35,9 @@ Running an Example
 
 We can run an example workflow and record stats::
 
-    python3 discoverfiles.py file:my-jobstore --stats
+    python3 workflow.py file:my-jobstore --stats
 
-Where ``discoverfiles.py`` is the following:
+Where ``workflow.py`` is the following:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_stats.py
 
@@ -202,7 +204,7 @@ Status Command
 
 Continuing the example from the stats section above, if we ran our workflow with the command ::
 
-    python3 discoverfiles.py file:my-jobstore --stats
+    python3 workflow.py file:my-jobstore --stats
 
 We could interrogate our jobstore with the status command, for example::
 
@@ -215,9 +217,13 @@ If the run was successful, this would not return much valuable information, some
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
     The root job of the job store is absent, the workflow completed successfully.
 
-Otherwise, the ``status`` command should return the following:
+Otherwise, the ``toil status`` command will return something like the following:
 
-    There are ``x`` unfinished jobs, ``y`` parent jobs with children, ``z`` jobs with services, ``a`` services, and ``b`` totally failed jobs currently in  ``c``.
+    Of the 3 jobs considered, there are 1 completely failed jobs, 1 jobs with children, 2 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in FileJobStore(/Users/anovak/workspace/toil/tree).
+
+The ``toil status`` command supports several useful flags, including ``--perJob`` to get per-job status information, ``--logs`` to print stored worker logs, and ``--failed`` to list all failed jobs in the workflow. For more information, run ``toil status --help``.
+
+.. _cli_clean:
 
 Clean Command
 -------------
@@ -232,6 +238,22 @@ The deletion of the job store can be modified by the ``--clean`` argument, and m
 Temporary directories where jobs are running can also be saved from deletion using the ``--cleanWorkDir``, which has
 the same options as ``--clean``.  This option should only be run when debugging, as intermediate jobs will fill up
 disk space.
+
+.. _cli_debug_job:
+
+Debug Job Command
+-----------------
+
+If a Toil worklfow fails, and it wasn't run with ``--clean=always``, the failing job will be waiting in the job store to be debugged. (With WDL or CWL workflows, you may have needed to manually set a ``--jobStore`` location you can find again.)
+
+You can use ``toil debug-job`` on a job in the job store to run it on your local machine, to locally reproduce any error that may have happened during a remote workflow.
+
+The ``toil debug-job`` command takes a job store, and the ID or a name of a job in it. If multiple jobs match a job name, and only one seems to have run out of retries and completely failed, it will run that one.
+
+You can also pass the ``--printJobInfo`` flag to dump information about the job instead of running it.
+
+
+.. _cli_kill:
 
 Kill Command
 ------------

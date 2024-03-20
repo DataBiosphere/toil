@@ -40,8 +40,7 @@ from toil.job import CheckpointJobDescription, Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import ResourceMonitor
 from toil.statsAndLogging import configure_root_logger, set_log_level, install_log_color
 
 logger = logging.getLogger(__name__)
@@ -376,7 +375,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         if config.stats:
             # Remember the cores from the first job, which is how many we have reserved for us.
             statsDict.workers.requested_cores = jobDesc.cores
-            startClock = get_total_cpu_time()
+            startClock = ResourceMonitor.get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -496,7 +495,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         #Finish up the stats
         ##########################################
         if config.stats:
-            totalCPUTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
+            totalCPUTime, totalMemoryUsage = ResourceMonitor.get_total_cpu_time_and_memory_usage()
             statsDict.workers.time = str(time.time() - startTime)
             statsDict.workers.clock = str(totalCPUTime - startClock)
             statsDict.workers.memory = str(totalMemoryUsage)
