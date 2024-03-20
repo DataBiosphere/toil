@@ -1527,10 +1527,12 @@ class Job:
 
     def check_initialized(self) -> None:
         """
-        Determine whether __init__() has been called. This uses the fact that the self._description instance variable
-        should always be set after __init__().
-        If this init has not been called, raise an error
-        :return:
+        Ensure that Job.__init__() has been called by any subclass __init__().
+        
+        This uses the fact that the self._description instance variable should always
+        be set after __init__().
+        
+        If __init__() has not been called, raise an error.
         """
         if not hasattr(self, "_description"):
             raise ValueError(f"Job instance of type {type(self)} has not been initialized. super().__init__() may not "
