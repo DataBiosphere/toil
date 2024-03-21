@@ -13,7 +13,7 @@
 # limitations under the License.
 """Debug tool for running a toil job locally."""
 import logging
-
+import os
 import pprint
 import sys
 
@@ -32,7 +32,9 @@ def main() -> None:
     parser.add_argument("job", type=str,
                         help="The job store id or job name of a job within the provided jobstore")
     parser.add_argument("--printJobInfo", action="store_true",
-                        help="Dump debugging info about the job instead of runnign it")
+                        help="Dump debugging info about the job instead of running it")
+    parser.add_argument("--retrieveTaskDirectory", dest="retrieve_task_directory", type=str, default=None,
+                        help="Download iCWL or WDL task inputs to the given directory and stop.")
 
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -100,8 +102,19 @@ def main() -> None:
         pprint.pprint(job_desc.__dict__)
     else:
         # Run the job
+
+        debug_flags = set()
+        local_worker_temp_dir = None
+        if options.retrieve_task_directory is not None:
+            # Pick a directory in it (which may be removed by the worker) as the worker's temp dir.
+            local_worker_temp_dir = os.path.join(options.retrieve_task_directory, "worker")
+            # Make sure it exists
+            os.makedirs(local_worker_temp_dir, exist_ok=True)
+            # And tell the job to just download files
+            debug_flags.add("download_only")
+
         logger.debug(f"Running the following job locally: {job_id}")
-        workerScript(jobStore, config, job_id, job_id, redirect_output_to_log_file=False)
+        workerScript(jobStore, config, job_id, job_id, redirect_output_to_log_file=False, local_worker_temp_dir=local_worker_temp_dir, debug_flags=debug_flags)
         logger.debug(f"Finished running: {job_id}")
 
     # TODO: Option to print list of successor jobs

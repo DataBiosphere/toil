@@ -1011,6 +1011,22 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
 class ToilTool:
     """Mixin to hook Toil into a cwltool tool type."""
 
+    def __init__(self, *args, **kwargs):
+        """
+        Init hook to set up member variables.
+        """
+        super().__init__(*args, **kwargs)
+        # Reserve a spot for the Toil job that ends up executing this tool.
+        self._toil_job: Optional[Job] = None
+
+    def connect_toil_job(self, job: Job) -> None:
+        """
+        Attach the Toil tool to the Toil job that is executing it. This allows
+        it to use the Toil job to stop at certain points if debugging flags are
+        set.
+        """
+        self._toil_job = job
+
     def make_path_mapper(
         self,
         reffiles: List[Any],
@@ -1051,7 +1067,12 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         name conflicts at the top level of the work directory.
         """
 
+        # Set up the initial work dir with all its files
         super()._initialworkdir(j, builder)
+
+        if self._toil_job is not None:
+            # Notice that we have downloaded our inputs
+            self._toil_job.files_downloaded_hook()
 
         # The initial work dir listing is now in j.generatefiles["listing"]
         # Also j.generatrfiles is a CWL Directory.
@@ -2633,6 +2654,11 @@ class CWLJob(CWLNamedJob):
         logger.debug("Running tool %s with order: %s", self.cwltool, self.cwljob)
 
         runtime_context.name = self.description.unitName
+
+        if isinstance(self.cwltool, ToilTool):
+            # Connect the CWL tool to us so it can call into the Toil job when
+            # it reaches points where we might need to debug it.
+            self.cwltool.connect_toil_job(self)
 
         status = "did_not_run"
         try:

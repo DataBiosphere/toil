@@ -26,7 +26,7 @@ import sys
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, List, Optional
+from typing import Any, Callable, Iterator, List, Set, Optional
 
 from configargparse import ArgParser
 
@@ -36,7 +36,7 @@ from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import CheckpointJobDescription, Job, JobDescription
+from toil.job import CheckpointJobDescription, Job, JobDescription, DebugStoppingPointReached
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
@@ -134,7 +134,8 @@ def workerScript(
     job_name: str,
     job_store_id: str,
     redirect_output_to_log_file: bool = True,
-
+    local_worker_temp_dir: Optional[str] = None,
+    debug_flags: Optional[Set[str]] = None
 ) -> int:
     """
     Worker process script, runs a job.
@@ -145,7 +146,9 @@ def workerScript(
     :param job_store_id: The job store ID of the job to be run
     :param redirect_output_to_log_file: If False, log directly to the console
         instead of capturing job output.
-    
+    :param local_worker_temp_dir: The directory for the worker to work in. May
+        be recursively removed after the job runs.
+    :param debug_flags: Flags to set on each job before running it.
 
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
@@ -248,8 +251,10 @@ def workerScript(
     toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     # Dir to put lock files in, ideally not on NFS.
     toil_coordination_dir = Toil.get_local_workflow_coordination_dir(config.workflowID, config.workDir, config.coordination_dir)
-    localWorkerTempDir = make_public_dir(in_directory=toilWorkflowDir)
-    os.chmod(localWorkerTempDir, 0o755)
+    if local_worker_temp_dir is None:
+        # Invent a temp directory to work in
+        local_worker_temp_dir = make_public_dir(toilWorkflowDir)
+    os.chmod(local_worker_temp_dir, 0o755)
 
     ##########################################
     #Setup the logging
@@ -268,7 +273,7 @@ def workerScript(
     redirect_output_to_log_file = redirect_output_to_log_file and not config.disableWorkerOutputCapture
 
     #What file do we want to point FDs 1 and 2 to?
-    tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
+    tempWorkerLogPath = os.path.join(local_worker_temp_dir, "worker_log.txt")
 
     if redirect_output_to_log_file:
         # Announce that we are redirecting logging, and where it will now go.
@@ -407,8 +412,13 @@ def workerScript(
 
                 logger.info("Loaded body %s from description %s", job, jobDesc)
 
+                if debug_flags:
+                    for flag in debug_flags:
+                        logger.debug("Turning on debug flag %s on job", flag)
+                        job.set_debug_flag(flag)
+
                 # Create a fileStore object for the job
-                fileStore = AbstractFileStore.createFileStore(job_store, jobDesc, localWorkerTempDir, blockFn,
+                fileStore = AbstractFileStore.createFileStore(job_store, jobDesc, local_worker_temp_dir, blockFn,
                                                               caching=config.caching)
                 with job._executor(stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
@@ -490,7 +500,7 @@ def workerScript(
 
             # Build a fileStore to update the job and commit the replacement.
             # TODO: can we have a commit operation without an entire FileStore???
-            fileStore = AbstractFileStore.createFileStore(job_store, jobDesc, localWorkerTempDir, blockFn,
+            fileStore = AbstractFileStore.createFileStore(job_store, jobDesc, local_worker_temp_dir, blockFn,
                                                           caching=config.caching)
 
             # Update blockFn to wait for that commit operation.
@@ -522,13 +532,16 @@ def workerScript(
 
         # log the worker log path here so that if the file is truncated the path can still be found
         if redirect_output_to_log_file:
-            logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
+            logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", local_worker_temp_dir)
 
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
 
     ##########################################
     #Trapping where worker goes wrong
     ##########################################
+    except DebugStoppingPointReached:
+        # Job wants the worker to stop for debugging
+        sys.exit(1)
     except BaseException as e: #Case that something goes wrong in worker, or we are asked to stop
         logger.critical("Worker crashed with traceback:\n%s", traceback.format_exc())
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
@@ -662,14 +675,14 @@ def workerScript(
                 os.chmod(os.path.dirname(path),  stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
             except PermissionError as e:
                 logger.error('Could not set permissions on %s to allow cleanup of %s: %s', os.path.dirname(path), path, e)
-        shutil.rmtree(localWorkerTempDir, onerror=make_parent_writable)
+        shutil.rmtree(local_worker_temp_dir, onerror=make_parent_writable)
 
     # This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.is_subtree_done():
         for merged_in in jobDesc.get_chain():
             # We can now safely get rid of the JobDescription, and all jobs it chained up
             job_store.delete_job(merged_in.job_store_id)
-        
+
 
     if jobAttemptFailed:
         return failure_exit_code
@@ -690,11 +703,11 @@ def parse_args(args: List[str]) -> Any:
     # Now add all the options to it
 
     # Base required job information
-    parser.add_argument("jobName", dest="job_name", type=str,
+    parser.add_argument("jobName", type=str,
         help="Text name of the job being run")
-    parser.add_argument("jobStoreLocator", dest="job_store_locator", type=str,
+    parser.add_argument("jobStoreLocator", type=str,
         help="Information required to connect to the job store")
-    parser.add_argument("jobStoreID", dest="job_store_id", type=str,
+    parser.add_argument("jobStoreID", type=str,
         help="ID of the job within the job store")
 
     # Additional worker abilities
@@ -747,12 +760,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     #Load the jobStore/config file
     ##########################################
 
-    job_store = Toil.resumeJobStore(options.job_store_locator)
+    job_store = Toil.resumeJobStore(options.jobStoreLocator)
     config = job_store.config
 
     with in_contexts(options.context):
         # Call the worker
-        exit_code = workerScript(job_store, config, options.job_name, options.job_store_id)
+        exit_code = workerScript(job_store, config, options.jobName, options.jobStoreID)
 
     # Exit with its return value
     sys.exit(exit_code)
