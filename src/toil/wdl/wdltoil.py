@@ -1927,11 +1927,14 @@ class WDLTaskJob(WDLBaseJob):
                         with ExitStack() as cleanup:
                             task_container._pull(miniwdl_logger, cleanup)
 
-            # Now our inputs are all downloaded. Let debugging break in.
+            # Log that we are about to run the command in the container
+            logger.info('Executing command in %s: %s', task_container, command_string)
+
+            # Now our inputs are all downloaded. Let debugging break in (after command is logged)
             self.files_downloaded_hook()
 
-            # Run the command in the container
-            logger.info('Executing command in %s: %s', task_container, command_string)
+            # TODO: Really we might want to set up a fake container working directory, to actually help the user.
+
             try:
                 task_container.run(miniwdl_logger, command_string)
             except Exception:
