@@ -27,11 +27,9 @@ from functools import partial
 from io import StringIO
 from pathlib import Path
 from typing import (TYPE_CHECKING,
-                    Any,
                     Callable,
                     Dict,
                     List,
-                    MutableMapping,
                     Optional,
                     cast)
 from unittest.mock import Mock, call
@@ -51,7 +49,6 @@ from toil.cwl.utils import (DirectoryStructure,
                             download_structure,
                             visit_cwl_class_and_reduce,
                             visit_top_cwl_class)
-from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
@@ -540,7 +537,6 @@ class CWLWorkflowTest(ToilTest):
         """
         log.info("Running CWL Test Restart.  Expecting failure, then success.")
         from toil.cwl import cwltoil
-        from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 
         outDir = self._createTempDir()
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
@@ -570,18 +566,19 @@ class CWLWorkflowTest(ToilTest):
         # Force a failure by trying to use an incorrect version of `rev` from the PATH
         os.environ["PATH"] = path_with_bogus_rev()
         try:
-            cwltoil.main(cmd)
+            subprocess.check_output(["toil-cwl-runner"] + cmd, env=os.environ.copy(), stderr=subprocess.STDOUT)
             self.fail("Expected problem job with incorrect PATH did not fail")
-        except FailedJobsException:
+        except subprocess.CalledProcessError:
             pass
         # Finish the job with a correct PATH
         os.environ["PATH"] = orig_path
-        cwltoil.main(["--restart"] + cmd)
+        cmd.insert(0, "--restart")
+        cwltoil.main(cmd)
         # Should fail because previous job completed successfully
         try:
-            cwltoil.main(["--restart"] + cmd)
+            subprocess.check_output(["toil-cwl-runner"] + cmd, env=os.environ.copy(), stderr=subprocess.STDOUT)
             self.fail("Restart with missing directory did not fail")
-        except NoSuchJobStoreException:
+        except subprocess.CalledProcessError:
             pass
 
     @needs_aws_s3

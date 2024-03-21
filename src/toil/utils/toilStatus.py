@@ -285,8 +285,9 @@ class ToilStatus:
         """
         try:
             return self.jobStore.load_root_job()
-        except JobException:
-            print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
+        except JobException as e:
+            logger.info(e)
+            print('Root job is absent. The workflow has may have completed successfully.')
             raise
 
     def fetchUserJobs(self, jobs: List[str]) -> List[JobDescription]:
@@ -397,7 +398,7 @@ def main() -> None:
     try:
         status = ToilStatus(options.jobStore, options.jobs)
     except NoSuchJobStoreException:
-        print('No job store found.')
+        print(f'The job store {options.jobStore} was not found.')
         return
     except JobException:  # Workflow likely complete, user informed in ToilStatus()
         return

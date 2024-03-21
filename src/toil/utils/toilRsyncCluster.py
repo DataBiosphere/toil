@@ -14,9 +14,10 @@
 """Rsyncs into the toil appliance container running on the leader of the cluster."""
 import argparse
 import logging
+import sys
 
 from toil.common import parser_with_common_options
-from toil.provisioners import cluster_factory
+from toil.provisioners import cluster_factory, NoSuchClusterException
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -37,4 +38,8 @@ def main() -> None:
     cluster = cluster_factory(provisioner=options.provisioner,
                               clusterName=options.clusterName,
                               zone=options.zone)
-    cluster.getLeader().coreRsync(args=options.args, strict=not options.insecure)
+    try:
+        cluster.getLeader().coreRsync(args=options.args, strict=not options.insecure)
+    except NoSuchClusterException as e:
+        logger.error(e)
+        sys.exit(1)
