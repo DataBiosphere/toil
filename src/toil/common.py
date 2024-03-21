@@ -885,6 +885,16 @@ class Toil(ContextManager["Toil"]):
         """
         self._assertContextManagerUsed()
 
+        from toil.job import Job
+
+        # Check that the rootJob is an instance of the Job class
+        if not isinstance(rootJob, Job):
+            raise RuntimeError("The type of the root job is not a job.")
+
+        # Check that the rootJob has been initialized
+        rootJob.check_initialized()
+
+
         # Write shared files to the job store
         self._jobStore.write_leader_pid()
         self._jobStore.write_leader_node_id()

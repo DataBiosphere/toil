@@ -113,7 +113,7 @@ class FileJobStore(AbstractJobStore):
             os.mkdir(self.jobStoreDir)
         except OSError as e:
             if e.errno == errno.EEXIST:
-                raise JobStoreExistsException(self.jobStoreDir)
+                raise JobStoreExistsException(self.jobStoreDir, "file")
             else:
                 raise
         os.makedirs(self.jobsDir, exist_ok=True)
@@ -127,7 +127,7 @@ class FileJobStore(AbstractJobStore):
 
     def resume(self):
         if not os.path.isdir(self.jobStoreDir):
-            raise NoSuchJobStoreException(self.jobStoreDir)
+            raise NoSuchJobStoreException(self.jobStoreDir, "file")
         super().resume()
 
     def destroy(self):

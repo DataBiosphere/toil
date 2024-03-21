@@ -48,14 +48,15 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
 import WDL.runtime.config
-from configargparse import ArgParser, SUPPRESS
+from configargparse import ArgParser
 from WDL._util import byte_size_units, strip_leading_whitespace
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
 
-from toil.common import Toil, addOptions, check_and_create_default_config_file
+from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from toil.common import Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
@@ -63,18 +64,19 @@ from toil.job import (AcceleratorRequirement,
                       Promise,
                       Promised,
                       TemporaryID,
-                      accelerators_fully_satisfy,
                       parse_accelerator,
                       unwrap,
                       unwrap_all)
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             UnimplementedURLException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
+                                             InvalidImportExportUrlException, LocatorException)
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
-from toil.lib.threading import global_mutex
 from toil.lib.resources import ResourceMonitor
+from toil.lib.threading import global_mutex
+from toil.provisioners.clusterScaler import JobTooBigError
+
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +94,14 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         WDL.Error.ImportError,
         WDL.Error.ValidationError,
         WDL.Error.MultipleValidationErrors,
-        FileNotFoundError
+        FileNotFoundError,
+        InsufficientSystemResources,
+        LocatorException,
+        InvalidImportExportUrlException,
+        UnimplementedURLException,
+        JobTooBigError
     ) as e:
+        # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task)
         # These are the errors that MiniWDL's parser can raise and its reporter
         # can report. See
