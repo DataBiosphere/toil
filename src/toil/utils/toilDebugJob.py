@@ -101,7 +101,7 @@ def main() -> None:
     else:
         # Run the job
         logger.debug(f"Running the following job locally: {job_id}")
-        workerScript(jobStore, config, job_id, job_id, redirectOutputToLogFile=False)
+        workerScript(jobStore, config, job_id, job_id, redirect_output_to_log_file=False)
         logger.debug(f"Finished running: {job_id}")
 
     # TODO: Option to print list of successor jobs
