@@ -154,8 +154,8 @@ class ToilStatus:
             if job_child_number > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 job_properties.add("HAS_CHILDREN")
-            elif job.command is not None:
-                # Job has no children and a command to run. Indicates job could be run.
+            elif job.has_body():
+                # Job has no children and a body to run. Indicates job could be run.
                 readyToRun.append(job)
                 job_properties.add("READY_TO_RUN")
             else:

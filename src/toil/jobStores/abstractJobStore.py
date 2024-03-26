@@ -932,11 +932,11 @@ class AbstractJobStore(ABC):
                 jobDescription.filesToDelete = []
                 changed[0] = True
 
-            # For a job whose command is already executed, remove jobs from the
+            # For a job whose body has already executed, remove jobs from the
             # stack that are already deleted. This cleans up the case that the
             # jobDescription had successors to run, but had not been updated to
             # reflect this.
-            if jobDescription.command is None:
+            if not jobDescription.has_body():
 
                 def stackSizeFn() -> int:
                     return len(list(jobDescription.allSuccessors()))

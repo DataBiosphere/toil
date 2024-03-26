@@ -62,14 +62,14 @@ def nextChainable(predecessor: JobDescription, jobStore: AbstractJobStore, confi
     :param config: The configuration for the current run.
     """
     #If no more jobs to run or services not finished, quit
-    if predecessor.nextSuccessors() is None or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None):
+    if predecessor.nextSuccessors() is None or len(predecessor.services) > 0 or (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint is not None):
         logger.debug("Stopping running chain of jobs: no successors: %s, services: %s, checkpoint: %s",
-                     predecessor.nextSuccessors() is None, len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint != None))
+                     predecessor.nextSuccessors() is None, len(predecessor.services), (isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint is not None))
         return None
 
 
     #Get the next set of jobs to run
-    jobs = list(predecessor.nextSuccessors())
+    jobs = list(predecessor.nextSuccessors() or set())
     if len(jobs) == 0:
         # If there are no jobs, we might just not have any children.
         logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")
@@ -330,7 +330,7 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
         # Cleanup from any earlier invocation of the job
         ##########################################
 
-        if jobDesc.command is None:
+        if not jobDesc.has_body():
             logger.debug("Job description has no body to run.")
             # Cleanup jobs already finished
             jobDesc.clear_nonexistent_dependents(jobStore)
@@ -385,15 +385,12 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
 
             logger.info("Working on job %s", jobDesc)
 
-            if jobDesc.command is not None:
-                if not jobDesc.command.startswith("_toil "):
-                    raise RuntimeError("Job command must start with '_toil' before being converted to an executable command.")
-                logger.debug("Got a command to run: %s" % jobDesc.command)
+            if jobDesc.has_body():
                 # Load the job. It will use the same JobDescription we have been using.
                 job = Job.loadJob(jobStore, jobDesc)
                 if isinstance(jobDesc, CheckpointJobDescription):
-                    # If it is a checkpoint job, save the command
-                    jobDesc.checkpoint = jobDesc.command
+                    # If it is a checkpoint job, set the checkpoint
+                    jobDesc.set_checkpoint()
 
                 logger.info("Loaded body %s from description %s", job, jobDesc)
 
@@ -419,8 +416,8 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                             job._runner(jobGraph=None, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
                             # When the executor for the job finishes it will
-                            # kick off a commit with the command link to the
-                            # job body cut.
+                            # kick off a commit with the link to the job body
+                            # cut.
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logs_to_leader += fileStore.logging_messages
@@ -429,9 +426,9 @@ def workerScript(jobStore: AbstractJobStore, config: Config, jobName: str, jobSt
                 logger.info("Completed body for %s", jobDesc)
 
             else:
-                #The command may be none, in which case
-                #the JobDescription is either a shell ready to be deleted or has
-                #been scheduled after a failure to cleanup
+                # The body may not be attached, in which case the
+                # JobDescription is either a shell ready to be deleted or has
+                # been scheduled after a failure to cleanup
                 logger.debug("No user job to run, so finishing")
                 break
 

@@ -36,7 +36,7 @@ These components are described below:
         If the job defines successor jobs the worker may choose to immediately run them
         (see `Job Chaining`_ below).
     * the batch-system:
-        Responsible for scheduling the jobs given to it by the leader, creating
+        Responsible for scheduling the jobs given to it by the leader, running
         a worker command for each job. The batch-system is defined by the
         :class:`~toil.batchSystems.abstractBatchSystem.AbstractBatchSystem` class.
         Toil uses multiple existing batch systems to schedule jobs, including
@@ -63,7 +63,7 @@ and un-pickled by the worker when they are scheduled to run.
 During scheduling, Toil does not work with the actual Job objects. Instead,
 :class:`~toil.job.JobDescription` objects are used to store all the information
 that the Toil Leader ever needs to know about the Job. This includes requirements
-information, dependency information, commands to issue, etc.
+information, dependency information, body object to run, worker command to issue, etc.
 
 Internally, the JobDescription object is referenced by its jobStoreID, which is
 often not human readable. However, the Job and JobDescription objects contain

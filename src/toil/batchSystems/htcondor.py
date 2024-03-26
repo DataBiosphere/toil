@@ -397,8 +397,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
 
+            command = jobNode.get_worker_command()
             # Construct our style of job tuple
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command,
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, command,
                                    job_environment or {}, jobNode.accelerators))
-            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+            logger.debug("Issued the job command: %s with job id: %s ", command, str(jobID))
         return jobID

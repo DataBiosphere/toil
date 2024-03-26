@@ -406,10 +406,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                         gpus = accelerator['count']
             else:
                 gpus = jobDesc.accelerators
-
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, get_job_kind(jobDesc.get_names()),
+            
+            command = jobDesc.get_worker_command()
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, command, get_job_kind(jobDesc.get_names()),
                                    job_environment, gpus))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(jobID),
                          get_job_kind(jobDesc.get_names()))
         return jobID
 

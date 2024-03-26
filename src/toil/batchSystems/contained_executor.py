@@ -46,7 +46,7 @@ def pack_job(job_desc: JobDescription, user_script: Optional[Resource] = None, e
     """
     # Make a job dict to send to the executor.
     # TODO: Factor out executor setup from here and Kubernetes and TES
-    job: Dict[str, Any] = {"command": job_desc.command}
+    job: Dict[str, Any] = {"command": job_desc.get_worker_command()}
     if user_script is not None:
         # If there's a user script resource be sure to send it along
         job['userScript'] = user_script

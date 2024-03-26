@@ -113,9 +113,7 @@ class AbstractFileStore(ABC):
         assert self.jobStore.config.workflowID is not None
         self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
         self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
-        self.jobName: str = (
-            self.jobDesc.command.split()[1] if self.jobDesc.command else ""
-        )
+        self.jobName: str = str(self.jobDesc)
         self.waitForPreviousCommit = waitForPreviousCommit
         self.logging_messages: List[Dict[str, Union[int, str]]] = []
         self.logging_user_streams: List[dict[str, str]] = []

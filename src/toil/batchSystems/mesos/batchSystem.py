@@ -200,12 +200,12 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
                       resources=MesosShape(wallTime=0, **mesos_resources),
-                      command=jobNode.command,
+                      command=jobNode.get_worker_command(),
                       userScript=self.userScript,
                       environment=environment,
                       workerCleanupInfo=self.workerCleanupInfo)
         jobType = job.resources
-        log.debug("Queueing the job command: %s with job id: %s ...", jobNode.command, str(jobID))
+        log.debug("Queueing the job %s with job id: %s ...", jobNode, str(jobID))
 
         # TODO: round all elements of resources
 
