@@ -1011,7 +1011,7 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
 class ToilTool:
     """Mixin to hook Toil into a cwltool tool type."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         """
         Init hook to set up member variables.
         """

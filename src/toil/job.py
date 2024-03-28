@@ -2905,7 +2905,7 @@ class Job:
         """
         self._debug_flags.add(flag)
 
-    def files_downloaded_hook(self):
+    def files_downloaded_hook(self) -> None:
         """
         Function that subclasses can call when they have downloaded their input files.
 
