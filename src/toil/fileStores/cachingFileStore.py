@@ -1036,7 +1036,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a working directory for the job
         startingDir = os.getcwd()
         # Move self.localTempDir from the worker directory set up in __init__ to a per-job directory.
-        self.localTempDir = make_public_dir(in_directory=self.localTempDir)
+        self.localTempDir = make_public_dir(self.localTempDir, suggested_name="job")
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
         self._removeDeadJobs(self.coordination_dir, self.con)

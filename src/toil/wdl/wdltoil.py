@@ -561,7 +561,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         on the local host.
         """
 
-        return self.devirtualze_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir) 
+        return self.devirtualze_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir)
 
     @staticmethod
     def devirtualze_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str]) -> str:
@@ -1271,7 +1271,7 @@ class WDLBaseJob(Job):
         # may have coalesced postprocessing steps deferred by several levels of
         # jobs returning other jobs' promised RVs.
         self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
-        
+
         self._wdl_options = wdl_options if wdl_options is not None else {}
 
         assert self._wdl_options.get("container") is not None
@@ -1428,7 +1428,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
-        # Fill these in with not-None if the workflow asks for each resource. 
+        # Fill these in with not-None if the workflow asks for each resource.
         runtime_memory: Optional[int] = None
         runtime_cores: Optional[float] = None
         runtime_disk: Optional[int] = None
@@ -1606,12 +1606,12 @@ class WDLTaskJob(WDLBaseJob):
             return "\n".join(parts)
         else:
             return command_string
-    
+
     def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
         """
         Handle any data received from injected runtime code in the container.
         """
-        
+
         message_files = outputs_library._glob(WDL.Value.String(os.path.join(self.INJECTED_MESSAGE_DIR, "*")))
         logger.debug("Handling message files: %s", message_files)
         for message_file in message_files.value:
@@ -1713,7 +1713,7 @@ class WDLTaskJob(WDLBaseJob):
         bindings = unwrap(self._task_internal_bindings)
         # And the bindings from evaluating the runtime section
         runtime_bindings = unwrap(self._runtime_bindings)
-        
+
         # We have all the resources we need, so run the task
 
         if shutil.which('singularity') and self._wdl_options.get("container") in ["singularity", "auto"]:
@@ -1927,8 +1927,14 @@ class WDLTaskJob(WDLBaseJob):
                         with ExitStack() as cleanup:
                             task_container._pull(miniwdl_logger, cleanup)
 
-            # Run the command in the container
+            # Log that we are about to run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
+
+            # Now our inputs are all downloaded. Let debugging break in (after command is logged)
+            self.files_downloaded_hook()
+
+            # TODO: Really we might want to set up a fake container working directory, to actually help the user.
+
             try:
                 task_container.run(miniwdl_logger, command_string)
             except Exception:
@@ -3046,7 +3052,7 @@ def main() -> None:
             # Make sure the output directory exists if we have output files
             # that might need to use it.
             os.makedirs(output_directory, exist_ok=True)
-            return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir) 
+            return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir)
 
         # Make all the files local files
         output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)

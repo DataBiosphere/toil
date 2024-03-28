@@ -102,7 +102,7 @@ class NonCachingFileStore(AbstractFileStore):
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
         startingDir = os.getcwd()
-        self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
+        self.localTempDir: str = make_public_dir(self.localTempDir, suggested_name="job")
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
         self.check_for_state_corruption()

@@ -476,7 +476,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:4] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
             statusCode = toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
-                                     redirectOutputToLogFile=not self.debugWorker) # Call the worker
+                                     redirect_output_to_log_file=not self.debugWorker) # Call the worker
         else:
             # Run synchronously. If starting or running the command fails, let the exception stop us.
             statusCode = subprocess.check_call(jobCommand,
