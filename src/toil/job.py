@@ -2905,6 +2905,13 @@ class Job:
         """
         self._debug_flags.add(flag)
 
+    def has_debug_flag(self, flag: str) -> bool:
+        """
+        Return true if the given debug flag is set.
+        """
+
+        return flag in self._debug_flags
+
     def files_downloaded_hook(self) -> None:
         """
         Function that subclasses can call when they have downloaded their input files.
@@ -2912,7 +2919,7 @@ class Job:
         Will abort the job if the "download_only" debug flag is set.
         """
 
-        if "download_only" in self._debug_flags:
+        if self.has_debug_flag("download_only"):
             # Stop the worker!
             logger.info("Job has downloaded its files. Stopping.")
             raise DebugStoppingPointReached()
