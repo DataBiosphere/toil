@@ -1753,8 +1753,8 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     def _url_exists(cls, url: ParseResult) -> bool:
         try:
             # TODO: Figure out how to HEAD instead of this.
-            cls._open_url(url)
-            return True
+            with cls._open_url(url):
+                return True
         except:
             pass
         return False
@@ -1780,20 +1780,20 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     ) -> Tuple[int, bool]:
         # We can't actually retry after we start writing.
         # TODO: Implement retry with byte range requests
-        readable = cls._open_url(url)
-        # Make something to count the bytes we get
-        # We need to put the actual count in a container so our
-        # nested function can modify it without creating its own
-        # local with the same name.
-        size = [0]
-        def count(l: int) -> None:
-            size[0] += l
-        counter = WriteWatchingStream(writable)
-        counter.onWrite(count)
+        with cls._open_url(url) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l: int) -> None:
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
 
-        # Do the download
-        shutil.copyfileobj(readable, counter)
-        return size[0], False
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0], False
 
     @classmethod
     @retry(

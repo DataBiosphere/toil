@@ -39,7 +39,13 @@ class Node:
         else:
             self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
-        self.launchTime = launchTime if isinstance(launchTime, datetime.datetime) else parse_iso_utc(launchTime)
+        if isinstance(launchTime, datetime.datetime):
+            self.launchTime = launchTime
+        else:
+            try:
+                self.launchTime = parse_iso_utc(launchTime)
+            except ValueError:
+                self.launchTime = datetime.datetime.fromisoformat(launchTime)
         self.nodeType = nodeType
         self.preemptible = preemptible
         self.tags = tags
