@@ -1242,7 +1242,7 @@ class AWSProvisioner(AbstractProvisioner):
         def instanceFilter(i: InstanceTypeDef) -> bool:
             # filter by type only if nodeType is true
             rightType = not instance_type or i['InstanceType'] == instance_type
-            rightState = i['State'] == 'running' or i['State'] == 'pending'
+            rightState = i['State']['Name'] == 'running' or i['State']['Name'] == 'pending'
             if include_stopped_nodes:
                 rightState = rightState or i['State']['Name'] == 'stopping' or i['State']['Name'] == 'stopped'
             return rightType and rightState
