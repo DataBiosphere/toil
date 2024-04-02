@@ -36,7 +36,7 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             get_error_code,
                             get_error_status,
                             old_retry,
-                            retry)
+                            retry, ErrorCondition)
 
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -77,11 +77,14 @@ THROTTLED_ERROR_CODES = [
         'EC2ThrottledException',
 ]
 
-@retry(errors=[BotoServerError])
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    from boto.iam.connection import IAMConnection
+    # from boto.iam.connection import IAMConnection
 
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
@@ -92,9 +95,8 @@ def delete_iam_role(
     # we wanted MyPy to be able to understand us. So at some point we should
     # consider revising our API here to be less annoying to explain to the type
     # checker.
-    iam_client = cast(IAMClient, session.client('iam', region_name=region))
-    iam_resource = cast(IAMServiceResource, session.resource('iam', region_name=region))
-    boto_iam_connection = IAMConnection()
+    iam_client = session.client('iam', region_name=region)
+    iam_resource = session.resource('iam', region_name=region)
     role = iam_resource.Role(role_name)
     # normal policies
     for attached_policy in role.attached_policies.all():
@@ -104,16 +106,19 @@ def delete_iam_role(
     for inline_policy in role.policies.all():
         printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
         # couldn't find an easy way to remove inline policies with boto3; use boto
-        boto_iam_connection.delete_role_policy(role.name, inline_policy.policy_name)
+        iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    iam_resource = cast(IAMServiceResource, session.resource("iam", region_name=region))
+    iam_resource = session.resource("iam", region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     if instance_profile.roles is not None:
         for role in instance_profile.roles:
@@ -123,11 +128,14 @@ def delete_iam_instance_profile(
     printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    sdb_client = cast(SimpleDBClient, session.client("sdb", region_name=region))
+    sdb_client = session.client("sdb", region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
@@ -162,7 +170,10 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-@retry(errors=[BotoServerError])
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
 def delete_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket: str,
@@ -238,7 +249,7 @@ def enable_public_objects(bucket_name: str) -> None:
     would be a very awkward way to do it. So we restore the old behavior.
     """
 
-    s3_client = cast(S3Client, session.client('s3'))
+    s3_client = session.client('s3')
 
     # Even though the new default is for public access to be prohibited, this
     # is implemented by adding new things attached to the bucket. If we remove
@@ -261,7 +272,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
     :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
     """
 
-    s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+    s3_client = session.client('s3', endpoint_url=endpoint_url)
 
     def attempt_get_bucket_location() -> Optional[str]:
         """
@@ -283,7 +294,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         # It could also be because AWS open data buckets (which we tend to
         # encounter this problem for) tend to actually themselves be in
         # us-east-1.
-        backup_s3_client = cast(S3Client, session.client('s3', region_name='us-east-1'))
+        backup_s3_client = session.client('s3', region_name='us-east-1')
         return backup_s3_client.get_bucket_location(Bucket=bucket_name).get('LocationConstraint', None)
 
     def attempt_head_bucket() -> Optional[str]:
@@ -368,11 +379,11 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         try:
             # Get the bucket's region to avoid a redirect per request
             region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-            s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
+            s3 = session.resource('s3', region_name=region, endpoint_url=endpoint_url)
         except ClientError:
             # Probably don't have permission.
             # TODO: check if it is that
-            s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
+            s3 = session.resource('s3', endpoint_url=endpoint_url)
 
         obj = s3.Object(bucket_name, key_name)
         objExists = True
@@ -394,7 +405,10 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         return obj
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)])
 def list_objects_for_url(url: ParseResult) -> List[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be
@@ -419,7 +433,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         if host:
             endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
 
-        client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+        client = session.client('s3', endpoint_url=endpoint_url)
 
         listing = []
 

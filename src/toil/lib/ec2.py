@@ -1,13 +1,13 @@
 import logging
 import time
 from base64 import b64encode
-from operator import attrgetter
-from typing import Dict, Iterable, List, Optional, Union
+from operator import itemgetter
+from typing import Dict, Iterable, List, Optional, Union, TYPE_CHECKING, Generator, Callable, Mapping, Any
 
+import botocore.client
 from boto3.resources.base import ServiceResource
 from boto.ec2.instance import Instance as Boto2Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
-from botocore.client import BaseClient
 
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
@@ -17,6 +17,11 @@ from toil.lib.retry import (ErrorCondition,
                             get_error_message,
                             old_retry,
                             retry)
+
+from mypy_boto3_ec2.client import EC2Client
+from mypy_boto3_autoscaling.client import AutoScalingClient
+from mypy_boto3_ec2.type_defs import SpotInstanceRequestTypeDef, DescribeInstancesResultTypeDef, InstanceTypeDef
+from mypy_boto3_ec2.service_resource import EC2ServiceResource, Instance
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -38,12 +43,14 @@ def not_found(e):
         # Not the right kind of error
         return False
 
+
 def inconsistencies_detected(e):
     if get_error_code(e) == 'InvalidGroup.NotFound':
         return True
     m = get_error_message(e).lower()
     matches = ('invalid iam instance profile' in m) or ('no associated iam roles' in m)
     return matches
+
 
 # We also define these error categories for the new retry decorator
 INCONSISTENCY_ERRORS = [ErrorCondition(boto_error_codes=['InvalidGroup.NotFound']),
@@ -62,9 +69,10 @@ class UnexpectedResourceState(Exception):
         super().__init__(
             "Expected state of %s to be '%s' but got '%s'" %
             (resource, to_state, state))
-            
-def wait_transition(resource, from_states, to_state,
-                    state_getter=attrgetter('state')):
+
+
+def wait_transition(boto3_ec2: EC2Client, resource: InstanceTypeDef, from_states: Iterable[str], to_state: str,
+                    state_getter: Callable[[InstanceTypeDef], str]=lambda x: x.get('State').get('Name')):
     """
     Wait until the specified EC2 resource (instance, image, volume, ...) transitions from any
     of the given 'from' states to the specified 'to' state. If the instance is found in a state
@@ -76,22 +84,22 @@ def wait_transition(resource, from_states, to_state,
     :param to_state: the state of the resource when this method returns
     """
     state = state_getter(resource)
+    instance_id = resource["InstanceId"]
     while state in from_states:
         time.sleep(a_short_time)
-        for attempt in retry_ec2():
-            with attempt:
-                resource.update(validate=True)
+        described = boto3_ec2.describe_instances(InstanceIds=[instance_id])
+        resource = described["Reservations"][0]["Instances"][0]  # there should only be one requested
         state = state_getter(resource)
     if state != to_state:
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[Boto2Instance]:
+def wait_instances_running(boto3_ec2: EC2Client, instances: Iterable[InstanceTypeDef]) -> Generator[InstanceTypeDef, None, None]:
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
     entered the running state as soon as it does.
 
-    :param boto.ec2.connection.EC2Connection ec2: the EC2 connection to use for making requests
+    :param EC2Client boto3_ec2: the EC2 connection to use for making requests
     :param Iterable[Boto2Instance] instances: the instances to wait on
     :rtype: Iterable[Boto2Instance]
     """
@@ -100,17 +108,18 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
     while True:
         pending_ids = set()
         for i in instances:
-            if i.state == 'pending':
-                pending_ids.add(i.id)
-            elif i.state == 'running':
-                if i.id in running_ids:
+            i: InstanceTypeDef
+            if i['State']['Name'] == 'pending':
+                pending_ids.add(i['InstanceId'])
+            elif i['State']['Name'] == 'running':
+                if i['InstanceId'] in running_ids:
                     raise RuntimeError("An instance was already added to the list of running instance IDs. Maybe there is a duplicate.")
-                running_ids.add(i.id)
+                running_ids.add(i['InstanceId'])
                 yield i
             else:
-                if i.id in other_ids:
+                if i['InstanceId'] in other_ids:
                     raise RuntimeError("An instance was already added to the list of other instances. Maybe there is a duplicate.")
-                other_ids.add(i.id)
+                other_ids.add(i['InstanceId'])
                 yield i
         logger.info('%i instance(s) pending, %i running, %i other.',
                     *list(map(len, (pending_ids, running_ids, other_ids))))
@@ -121,14 +130,16 @@ def wait_instances_running(ec2, instances: Iterable[Boto2Instance]) -> Iterable[
         time.sleep(seconds)
         for attempt in retry_ec2():
             with attempt:
-                instances = ec2.get_only_instances(list(pending_ids))
+                described_instances = boto3_ec2.describe_instances(InstanceIds=list(pending_ids))
+                instances = [instance for reservation in described_instances["Reservations"] for instance in reservation["Instances"]]
 
 
-def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequest]]:
+def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInstanceRequestTypeDef], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequest]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
 
+    :param boto3_ec2: ec2 client
     :param requests: The requests to wait on.
 
     :param timeout: Maximum time in seconds to spend waiting or None to wait forever. If a
@@ -145,11 +156,11 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
     other_ids = set()
     open_ids = None
 
-    def cancel():
+    def cancel() -> None:
         logger.warning('Cancelling remaining %i spot requests.', len(open_ids))
-        ec2.cancel_spot_instance_requests(list(open_ids))
+        boto3_ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=list(open_ids))
 
-    def spot_request_not_found(e):
+    def spot_request_not_found(e: Exception) -> bool:
         return get_error_code(e) == 'InvalidSpotInstanceRequestID.NotFound'
 
     try:
@@ -157,30 +168,31 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
             open_ids, eval_ids, fulfill_ids = set(), set(), set()
             batch = []
             for r in requests:
-                if r.state == 'open':
-                    open_ids.add(r.id)
-                    if r.status.code == 'pending-evaluation':
-                        eval_ids.add(r.id)
-                    elif r.status.code == 'pending-fulfillment':
-                        fulfill_ids.add(r.id)
+                r: SpotInstanceRequestTypeDef  # pycharm thinks it is a string
+                if r['State']['Name'] == 'open':
+                    open_ids.add(r['InstanceId'])
+                    if r['Status']['Code'] == 'pending-evaluation':
+                        eval_ids.add(r['InstanceId'])
+                    elif r['Status']['Code'] == 'pending-fulfillment':
+                        fulfill_ids.add(r['InstanceId'])
                     else:
                         logger.info(
                             'Request %s entered status %s indicating that it will not be '
-                            'fulfilled anytime soon.', r.id, r.status.code)
-                elif r.state == 'active':
-                    if r.id in active_ids:
+                            'fulfilled anytime soon.', r['InstanceId'], r['Status']['Code'])
+                elif r['State']['Name'] == 'active':
+                    if r['InstanceId'] in active_ids:
                         raise RuntimeError("A request was already added to the list of active requests. Maybe there are duplicate requests.")
-                    active_ids.add(r.id)
+                    active_ids.add(r['InstanceId'])
                     batch.append(r)
                 else:
-                    if r.id in other_ids:
+                    if r['InstanceId'] in other_ids:
                         raise RuntimeError("A request was already added to the list of other IDs. Maybe there are duplicate requests.")
-                    other_ids.add(r.id)
+                    other_ids.add(r['InstanceId'])
                     batch.append(r)
             if batch:
                 yield batch
             logger.info('%i spot requests(s) are open (%i of which are pending evaluation and %i '
-                     'are pending fulfillment), %i are active and %i are in another state.',
+                        'are pending fulfillment), %i are active and %i are in another state.',
                         *list(map(len, (open_ids, eval_ids, fulfill_ids, active_ids, other_ids))))
             if not open_ids or tentative and not eval_ids and not fulfill_ids:
                 break
@@ -192,8 +204,7 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
             time.sleep(sleep_time)
             for attempt in retry_ec2(retry_while=spot_request_not_found):
                 with attempt:
-                    requests = ec2.get_all_spot_instance_requests(
-                        list(open_ids))
+                    requests = boto3_ec2.describe_spot_instance_requests(SpotInstanceRequestIds=list(open_ids))
     except BaseException:
         if open_ids:
             with panic(logger):
@@ -204,29 +215,32 @@ def wait_spot_requests_active(ec2, requests: Iterable[SpotInstanceRequest], time
             cancel()
 
 
-def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Iterable[List[Boto2Instance]]:
+def create_spot_instances(boto3_ec2: EC2Client, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Generator[DescribeInstancesResultTypeDef, None, None]:
     """
     Create instances on the spot market.
     """
+
     def spotRequestNotFound(e):
         return getattr(e, 'error_code', None) == "InvalidSpotInstanceRequestID.NotFound"
 
+    spec['LaunchSpecification'].update({'ImageId': image_id})  # boto3 image id is in the launch specification
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
-            requests = ec2.request_spot_instances(
-                price, image_id, count=num_instances, **spec)
+            requests_dict = boto3_ec2.request_spot_instances(
+                SpotPrice=price, InstanceCount=num_instances, **spec)
+            requests = requests_dict['SpotInstanceRequests']
 
     if tags is not None:
-        for requestID in (request.id for request in requests):
+        for requestID in (request['SpotInstanceRequestId'] for request in requests):
             for attempt in retry_ec2(retry_while=spotRequestNotFound):
                 with attempt:
-                    ec2.create_tags([requestID], tags)
+                    boto3_ec2.create_tags(Resources=[requestID], Tags=tags)
 
     num_active, num_other = 0, 0
     # noinspection PyUnboundLocalVariable,PyTypeChecker
     # request_spot_instances's type annotation is wrong
-    for batch in wait_spot_requests_active(ec2,
+    for batch in wait_spot_requests_active(boto3_ec2,
                                            requests,
                                            timeout=timeout,
                                            tentative=tentative):
@@ -244,7 +258,12 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
         if instance_ids:
             # This next line is the reason we batch. It's so we can get multiple instances in
             # a single request.
-            yield ec2.get_only_instances(instance_ids)
+            for instance_id in instance_ids:
+                for attempt in retry_ec2():
+                    with attempt:
+                        # Increase hop limit from 1 to use Instance Metadata V2
+                        boto3_ec2.modify_instance_metadata_options(InstanceId=instance_id, HttpPutResponseHopLimit=3)
+            yield boto3_ec2.describe_instances(InstanceIds=instance_ids)
     if not num_active:
         message = 'None of the spot requests entered the active state'
         if tentative:
@@ -255,22 +274,43 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
         logger.warning('%i request(s) entered a state other than active.', num_other)
 
 
-def create_ondemand_instances(ec2, image_id, spec, num_instances=1) -> List[Boto2Instance]:
+def create_ondemand_instances(boto3_ec2: EC2Client, image_id: str, spec: Mapping[str, Any], num_instances: int=1) -> List[InstanceTypeDef]:
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
 
     :rtype: List[Boto2Instance]
     """
-    instance_type = spec['instance_type']
+    instance_type = spec['InstanceType']
     logger.info('Creating %s instance(s) ... ', instance_type)
+    boto_instance_list = []
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
-            return ec2.run_instances(image_id,
-                                     min_count=num_instances,
-                                     max_count=num_instances,
-                                     **spec).instances
+            boto_instance_list: List[InstanceTypeDef] = boto3_ec2.run_instances(ImageId=image_id,
+                                                                                MinCount=num_instances,
+                                                                                MaxCount=num_instances,
+                                                                                **spec)['Instances']
+
+    return boto_instance_list
+
+
+def increase_instance_hop_limit(boto3_ec2: EC2Client, boto_instance_list: List[InstanceTypeDef]) -> None:
+    """
+    Increase the default HTTP hop limit, as we are running Toil and Kubernetes inside a Docker container, so the default
+    hop limit of 1 will not be enough when grabbing metadata information with ec2_metadata
+
+    Must be called after the instances are guaranteed to be running.
+
+    :param boto_instance_list: List of boto instances to modify
+    :return:
+    """
+    for boto_instance in boto_instance_list:
+        instance_id = boto_instance['InstanceId']
+        for attempt in retry_ec2():
+            with attempt:
+                # Increase hop limit from 1 to use Instance Metadata V2
+                boto3_ec2.modify_instance_metadata_options(InstanceId=instance_id, HttpPutResponseHopLimit=3)
 
 
 def prune(bushy: dict) -> dict:
@@ -289,6 +329,7 @@ def prune(bushy: dict) -> dict:
 # catch, and to wait on IAM items.
 iam_client = establish_boto3_session().client('iam')
 
+
 # exception is generated by a factory so we weirdly need a client instance to reference it
 @retry(errors=[iam_client.exceptions.NoSuchEntityException],
        intervals=[1, 1, 2, 4, 8, 16, 32, 64])
@@ -301,7 +342,7 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_instances(ec2_resource: ServiceResource,
+def create_instances(ec2_resource: EC2ServiceResource,
                      image_id: str,
                      key_name: str,
                      instance_type: str,
@@ -312,7 +353,7 @@ def create_instances(ec2_resource: ServiceResource,
                      instance_profile_arn: Optional[str] = None,
                      placement_az: Optional[str] = None,
                      subnet_id: str = None,
-                     tags: Optional[Dict[str, str]] = None) -> List[dict]:
+                     tags: Optional[Dict[str, str]] = None) -> List[Instance]:
     """
     Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
 
@@ -336,7 +377,10 @@ def create_instances(ec2_resource: ServiceResource,
                'InstanceType': instance_type,
                'UserData': user_data,
                'BlockDeviceMappings': block_device_map,
-               'SubnetId': subnet_id}
+               'SubnetId': subnet_id,
+               # Metadata V2 defaults hops to 1, which is an issue when running inside a docker container
+               # https://github.com/adamchainz/ec2-metadata?tab=readme-ov-file#instance-metadata-service-version-2
+               'MetadataOptions': {'HttpPutResponseHopLimit': 3}}
 
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
@@ -357,8 +401,9 @@ def create_instances(ec2_resource: ServiceResource,
 
     return ec2_resource.create_instances(**prune(request))
 
+
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_launch_template(ec2_client: BaseClient,
+def create_launch_template(ec2_client: EC2Client,
                            template_name: str,
                            image_id: str,
                            key_name: str,
@@ -400,7 +445,10 @@ def create_launch_template(ec2_client: BaseClient,
                 'InstanceType': instance_type,
                 'UserData': user_data,
                 'BlockDeviceMappings': block_device_map,
-                'SubnetId': subnet_id}
+                'SubnetId': subnet_id,
+                # Increase hop limit from 1 to use Instance Metadata V2
+                'MetadataOptions': {'HttpPutResponseHopLimit': 3}
+                }
 
     if instance_profile_arn:
         # We could just retry when we get an error because the ARN doesn't
@@ -413,6 +461,7 @@ def create_launch_template(ec2_client: BaseClient,
     if placement_az:
         template['Placement'] = {'AvailabilityZone': placement_az}
 
+    flat_tags = []
     if tags:
         # Tag everything when we make it.
         flat_tags = flatten_tags(tags)
@@ -429,17 +478,16 @@ def create_launch_template(ec2_client: BaseClient,
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_auto_scaling_group(autoscaling_client: BaseClient,
+def create_auto_scaling_group(autoscaling_client: AutoScalingClient,
                               asg_name: str,
                               launch_template_ids: Dict[str, str],
                               vpc_subnets: List[str],
                               min_size: int,
                               max_size: int,
-                              instance_types: Optional[List[str]] = None,
+                              instance_types: Optional[Iterable[str]] = None,
                               spot_bid: Optional[float] = None,
                               spot_cheapest: bool = False,
                               tags: Optional[Dict[str, str]] = None) -> None:
-
     """
     Create a new Auto Scaling Group with the given name (which is also its
     unique identifier).
@@ -472,7 +520,7 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
     """
 
     if instance_types is None:
-        instance_types = []
+        instance_types: List[str] = []
 
     if instance_types is not None and len(instance_types) > 20:
         raise RuntimeError(f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20.")
@@ -493,8 +541,8 @@ def create_auto_scaling_group(autoscaling_client: BaseClient,
     # We need to use a launch template per instance type so that different
     # instance types with specified EBS storage size overrides will get their
     # storage.
-    mip = {'LaunchTemplate': {'LaunchTemplateSpecification': get_launch_template_spec(next(iter(instance_types))),
-                              'Overrides': [{'InstanceType': t, 'LaunchTemplateSpecification': get_launch_template_spec(t)} for t in instance_types]}}
+    mip = {'LaunchTemplate': {'LaunchTemplateSpecification': get_launch_template_spec(next(iter(instance_types))),  # noqa
+                              'Overrides': [{'InstanceType': t, 'LaunchTemplateSpecification': get_launch_template_spec(t)} for t in instance_types]}}  # noqa
 
     if spot_bid is not None:
         # Ask for spot instances by saying everything above base capacity of 0 should be spot.

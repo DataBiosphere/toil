@@ -18,6 +18,8 @@ from operator import attrgetter
 from statistics import mean, stdev
 from typing import List, Optional
 
+from botocore.client import BaseClient
+
 from toil.lib.aws import (get_aws_zone_from_boto,
                           get_aws_zone_from_environment,
                           get_aws_zone_from_environment_region,
@@ -27,8 +29,10 @@ logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
+
 def get_aws_zone_from_spot_market(spotBid: Optional[float], nodeType: Optional[str],
-                                  boto2_ec2: Optional["boto.connection.AWSAuthConnection"], zone_options: Optional[List[str]]) -> Optional[str]:
+                                  boto3_ec2: Optional[BaseClient], zone_options: Optional[List[str]]) -> \
+Optional[str]:
     """
     If a spot bid, node type, and Boto2 EC2 connection are specified, picks a
     zone where instances are easy to buy from the zones in the region of the
@@ -40,21 +44,22 @@ def get_aws_zone_from_spot_market(spotBid: Optional[float], nodeType: Optional[s
     """
     if spotBid:
         # if spot bid is present, all the other parameters must be as well
-        assert bool(spotBid) == bool(nodeType) == bool(boto2_ec2)
+        assert bool(spotBid) == bool(nodeType) == bool(boto3_ec2)
         # if the zone is unset and we are using the spot market, optimize our
         # choice based on the spot history
 
         if zone_options is None:
             # We can use all the zones in the region
-            zone_options = [z.name for z in boto2_ec2.get_all_zones()]
+            zone_options = [z.name for z in boto3_ec2.describe_availability_zones()]
 
-        return optimize_spot_bid(boto2_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
+        return optimize_spot_bid(boto3_ec2, instance_type=nodeType, spot_bid=float(spotBid), zone_options=zone_options)
     else:
         return None
 
 
 def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] = None,
-                      boto2_ec2: Optional["boto.connection.AWSAuthConnection"] = None, zone_options: Optional[List[str]] = None) -> Optional[str]:
+                      boto3_ec2: Optional[BaseClient] = None,
+                      zone_options: Optional[List[str]] = None) -> Optional[str]:
     """
     Get the right AWS zone to use.
 
@@ -81,12 +86,13 @@ def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] =
     """
     return get_aws_zone_from_environment() or \
         get_aws_zone_from_metadata() or \
-        get_aws_zone_from_spot_market(spotBid, nodeType, boto2_ec2, zone_options) or \
+        get_aws_zone_from_spot_market(spotBid, nodeType, boto3_ec2, zone_options) or \
         get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
 
-def choose_spot_zone(zones: List[str], bid: float, spot_history: List['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:
+def choose_spot_zone(zones: List[str], bid: float,
+                     spot_history: List['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:
     """
     Returns the zone to put the spot request based on, in order of priority:
 
@@ -137,7 +143,7 @@ def choose_spot_zone(zones: List[str], bid: float, spot_history: List['boto.ec2.
     return min(markets_under_bid or markets_over_bid, key=attrgetter('price_deviation')).name
 
 
-def optimize_spot_bid(boto2_ec2, instance_type, spot_bid, zone_options: List[str]):
+def optimize_spot_bid(boto3_ec2: BaseClient, instance_type: str, spot_bid: float, zone_options: List[str]):
     """
     Check whether the bid is in line with history and makes an effort to place
     the instance in a sensible zone.
@@ -145,7 +151,7 @@ def optimize_spot_bid(boto2_ec2, instance_type, spot_bid, zone_options: List[str
     :param zone_options: The collection of allowed zones to consider, within
         the region associated with the Boto2 connection.
     """
-    spot_history = _get_spot_history(boto2_ec2, instance_type)
+    spot_history = _get_spot_history(boto3_ec2, instance_type)
     if spot_history:
         _check_spot_bid(spot_bid, spot_history)
     most_stable_zone = choose_spot_zone(zone_options, spot_bid, spot_history)
@@ -183,20 +189,19 @@ def _check_spot_bid(spot_bid, spot_history):
     average = mean([datum.price for datum in spot_history])
     if spot_bid > average * 2:
         logger.warning("Your bid $ %f is more than double this instance type's average "
-                 "spot price ($ %f) over the last week", spot_bid, average)
+                       "spot price ($ %f) over the last week", spot_bid, average)
 
 
-def _get_spot_history(boto2_ec2, instance_type):
+def _get_spot_history(boto3_ec2: BaseClient, instance_type: str):
     """
     Returns list of 1,000 most recent spot market data points represented as SpotPriceHistory
     objects. Note: The most recent object/data point will be first in the list.
 
     :rtype: list[SpotPriceHistory]
     """
-
     one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
-    spot_data = boto2_ec2.get_spot_price_history(start_time=one_week_ago.isoformat(),
-                                                 instance_type=instance_type,
-                                                 product_description="Linux/UNIX")
+    spot_data = boto3_ec2.describe_spot_price_history(StartTime=one_week_ago.isoformat(),
+                                                      InstanceTypes=[instance_type],
+                                                      ProductDescriptions=["Linux/UNIX"])
     spot_data.sort(key=attrgetter("timestamp"), reverse=True)
     return spot_data
