@@ -1,3 +1,5 @@
+import unittest
+
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from uuid import uuid4
 
@@ -69,3 +71,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
             "bash",
             "-c",
             f"cd {wdl_dir} && toil-wdl-runner {' '.join(test_options)} {' '.join(toil_options)}"])
+
+
+if __name__ == "__main__":
+    unittest.main()  # run all tests
