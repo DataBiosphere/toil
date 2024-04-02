@@ -318,7 +318,7 @@ wdl:
     - pwd
     - apt update && apt install -y default-jre
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/
 
 jobstore:
   rules:
