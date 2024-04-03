@@ -1312,7 +1312,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         failed to be created.  We simulate a failed jobstore bucket creation by using a bucket in a
         different region with the same name.
         """
-        from boto.sdb import connect_to_region
         from botocore.exceptions import ClientError
 
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
@@ -1352,13 +1351,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             except BucketLocationConflictException:
                 # Catch the expected BucketLocationConflictException and ensure that the bound
                 # domains don't exist in SDB.
-                sdb = connect_to_region(self.awsRegion())
+                sdb = establish_boto3_session().client(region_name=self.awsRegion(), service_name="sdb")
                 next_token = None
                 allDomainNames = []
                 while True:
-                    domains = sdb.get_all_domains(max_domains=100, next_token=next_token)
-                    allDomainNames.extend([x.name for x in domains])
-                    next_token = domains.next_token
+                    if next_token is None:
+                        domains = sdb.list_domains(MaxNumberOfDomains=100)
+                    else:
+                        domains = sdb.list_domains(MaxNumberOfDomains=100, NextToken=next_token)
+                    allDomainNames.extend(domains["DomainNames"])
+                    next_token = domains["NextToken"]
                     if next_token is None:
                         break
                 self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])

@@ -17,12 +17,12 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import Optional, cast, TYPE_CHECKING
+from typing import Optional, cast, TYPE_CHECKING, Dict, List, Tuple
 
 from boto3.s3.transfer import TransferConfig
-from boto.exception import SDBResponseError
 from botocore.client import Config
 from botocore.exceptions import ClientError
+from mypy_boto3_sdb.type_defs import ItemTypeDef, AttributeTypeDef
 
 from toil.lib.aws import session
 from toil.lib.aws.utils import connection_reset, get_bucket_region
@@ -149,6 +149,30 @@ class SDBHelper:
         return attributes
 
     @classmethod
+    def attributeDictToBoto3(cls, attributes: Dict[str, str]) -> List[AttributeTypeDef]:
+        """
+        Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
+        to be compatible with boto3 argument syntax
+        :param attributes: Dict[str, str], attribute in object form
+        :return: List[AttributeTypeDef], list of attributes in typed dict form
+        """
+        return [{"Name": name, "Value": value} for name, value in attributes]
+
+    @classmethod
+    def attributeBoto3ToDict(cls, attributes: List[AttributeTypeDef]) -> Dict[str, str]:
+        """
+        Convert the attribute boto3 representation of list of attribute typed dicts
+        back to a boto2-like attribute dict
+        :param attribute: List[AttributeTypeDef, attribute in typed dict form
+        :return: Dict[str, str], attribute in dict form
+        """
+        return {attribute["Name"]: attribute["Value"] for attribute in attributes}
+
+    @classmethod
+    def get_attribute_from_item(cls, item: ItemTypeDef, key: str) -> str:
+        return next((attribute["Value"] for attribute in item["Attributes"] if attribute["Name"] == key), None)
+
+    @classmethod
     def _chunkName(cls, i):
         return str(i).zfill(3)
 
@@ -166,7 +190,7 @@ class SDBHelper:
         return 'numChunks'
 
     @classmethod
-    def attributesToBinary(cls, attributes):
+    def attributesToBinary(cls, attributes: List[AttributeTypeDef]) -> Tuple[bytes, int]:
         """
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
@@ -439,9 +463,9 @@ def sdb_unavailable(e):
 
 
 def no_such_sdb_domain(e):
-    return (isinstance(e, SDBResponseError)
-            and e.error_code
-            and e.error_code.endswith('NoSuchDomain'))
+    return (isinstance(e, ClientError)
+            and get_error_code(e)
+            and get_error_code(e).endswith('NoSuchDomain'))
 
 
 def retryable_ssl_error(e):

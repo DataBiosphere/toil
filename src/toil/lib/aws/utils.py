@@ -44,7 +44,6 @@ else:
     from typing_extensions import Literal
 
 try:
-    from boto.exception import BotoServerError, S3ResponseError
     from botocore.exceptions import ClientError
     from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
@@ -52,7 +51,6 @@ try:
     from mypy_boto3_s3.service_resource import Bucket, Object
     from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
-    BotoServerError = None  # type: ignore
     ClientError = None  # type: ignore
     # AWS/boto extra is not installed
 
@@ -155,10 +153,10 @@ def retryable_s3_errors(e: Exception) -> bool:
     Return true if this is an error from S3 that looks like we ought to retry our request.
     """
     return (connection_reset(e)
-            or (isinstance(e, BotoServerError) and e.status in (429, 500))
-            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_status(e) in (429, 500))
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             # boto3 errors
-            or (isinstance(e, (S3ResponseError, ClientError)) and get_error_code(e) in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))

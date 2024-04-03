@@ -36,7 +36,7 @@ import uuid
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
-from boto.exception import BotoServerError
+from botocore.exceptions import ClientError
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -376,7 +376,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Get rid of the job definition we are using if we can.
         self._destroy_job_definition()
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _try_terminate(self, aws_id: str) -> None:
         """
         Internal function. Should not be called outside this class.
@@ -392,7 +392,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Kill the AWS Batch job
         self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _wait_until_stopped(self, aws_id: str) -> None:
         """
         Internal function. Should not be called outside this class.
@@ -418,7 +418,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             logger.info('Waiting for killed job %s to stop', self.aws_id_to_bs_id.get(aws_id, aws_id))
             time.sleep(2)
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _get_or_create_job_definition(self) -> str:
         """
         Internal function. Should not be called outside this class.
@@ -482,7 +482,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
         return self.job_definition
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _destroy_job_definition(self) -> None:
         """
         Internal function. Should not be called outside this class.

@@ -264,8 +264,6 @@ class AWSProvisioner(AbstractProvisioner):
         # Determine where to deploy workers.
         self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
 
-        from boto.utils import get_instance_metadata
-
         self._keyName = instance["KeyName"]
         logger.error(f"{self._keyName}")
         # self._keyName = list(instanceMetaData['public-keys'].keys())[0]

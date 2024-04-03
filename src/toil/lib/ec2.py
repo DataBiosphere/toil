@@ -6,8 +6,6 @@ from typing import Dict, Iterable, List, Optional, Union, TYPE_CHECKING, Generat
 
 import botocore.client
 from boto3.resources.base import ServiceResource
-from boto.ec2.instance import Instance as Boto2Instance
-from boto.ec2.spotinstancerequest import SpotInstanceRequest
 
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
@@ -100,8 +98,8 @@ def wait_instances_running(boto3_ec2: EC2Client, instances: Iterable[InstanceTyp
     entered the running state as soon as it does.
 
     :param EC2Client boto3_ec2: the EC2 connection to use for making requests
-    :param Iterable[Boto2Instance] instances: the instances to wait on
-    :rtype: Iterable[Boto2Instance]
+    :param Iterable[InstanceTypeDef] instances: the instances to wait on
+    :rtype: Iterable[InstanceTypeDef]
     """
     running_ids = set()
     other_ids = set()
@@ -279,7 +277,7 @@ def create_ondemand_instances(boto3_ec2: EC2Client, image_id: str, spec: Mapping
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
 
-    :rtype: List[Boto2Instance]
+    :rtype: List[InstanceTypeDef]
     """
     instance_type = spec['InstanceType']
     logger.info('Creating %s instance(s) ... ', instance_type)
