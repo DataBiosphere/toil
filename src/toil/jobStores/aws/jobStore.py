@@ -1134,7 +1134,6 @@ class AWSJobStore(AbstractJobStore):
             try:
                 for attempt in retry_sdb():
                     with attempt:
-                        logger.exception(f"attributes is: {attributes_boto3}")
                         self.outer.db.put_attributes(DomainName=self.outer.filesDomainName,
                                                      ItemName=compat_bytes(self.fileID),
                                                      Attributes=[{"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
@@ -1161,7 +1160,6 @@ class AWSJobStore(AbstractJobStore):
                                                             ItemName=compat_bytes(self.fileID),
                                                             Attributes=delete_attributes)
                     res = self.outer.db.get_attributes(DomainName=self.outer.filesDomainName, ItemName=compat_bytes(self.fileID))
-                    logger.exception(f"After now, and got attributes for {compat_bytes(self.fileID)}: {res}")
 
                 self._numContentChunks = numNewContentChunks
             except ClientError as e:
