@@ -126,8 +126,11 @@ class SDBHelper:
         return cls._maxChunks() * cls.maxValueSize
 
     @classmethod
-    def binaryToChunks(cls, binary: bytes):
-        if binary is None: return ['0']
+    def binaryToAttributes(cls, binary) -> Dict[str, str]:
+        """
+        Turn a bytestring, or None, into SimpleDB attributes.
+        """
+        if binary is None: return {'numChunks': '0'}
         assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
@@ -140,15 +143,7 @@ class SDBHelper:
         encoded = base64.b64encode(compressed)
         assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
-        return (encoded[i:i + n] for i in range(0, len(encoded), n))
-
-    @classmethod
-    def binaryToAttributes(cls, binary) -> Dict[str, str]:
-        """
-        Turn a bytestring, or None, into SimpleDB attributes.
-        """
-        if binary is None: return {'numChunks': '0'}
-        chunks = cls.binaryToChunks(binary)
+        chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
         attributes = {cls._chunkName(i): chunk.decode("utf-8") for i, chunk in enumerate(chunks)}
         attributes.update({'numChunks': str(len(attributes))})
         return attributes

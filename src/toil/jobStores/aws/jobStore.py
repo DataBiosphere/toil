@@ -1090,21 +1090,6 @@ class AWSJobStore(AbstractJobStore):
                            content=content, numContentChunks=numContentChunks, checksum=checksum)
                 return self
 
-        def getContent(self) -> bytes:
-            """
-            Get the contents of this instance and encrypt if necessary
-            :return:
-            """
-            content = self.content
-            assert content is None or isinstance(content, bytes)
-            if self.encrypted and content is not None:
-                sseKeyPath = self.outer.sseKeyPath
-                if sseKeyPath is None:
-                    raise AssertionError('Encryption requested but no key was provided.')
-                content = encryption.encrypt(content, sseKeyPath)
-            assert content is None or isinstance(content, bytes)
-            return content
-
         def toItem(self) -> Tuple[Dict[str, str], int]:
             """
             Convert this instance to an attribute dictionary suitable for SDB put_attributes().
@@ -1114,7 +1099,14 @@ class AWSJobStore(AbstractJobStore):
             :return: the attributes dict and an integer specifying the the number of chunk
                      attributes in the dictionary that are used for storing inlined content.
             """
-            content = self.getContent()
+            content = self.content
+            assert content is None or isinstance(content, bytes)
+            if self.encrypted and content is not None:
+                sseKeyPath = self.outer.sseKeyPath
+                if sseKeyPath is None:
+                    raise AssertionError('Encryption requested but no key was provided.')
+                content = encryption.encrypt(content, sseKeyPath)
+            assert content is None or isinstance(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = int(attributes['numChunks'])
             attributes.update(dict(ownerID=self.ownerID or '',
