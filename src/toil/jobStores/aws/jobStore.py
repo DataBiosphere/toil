@@ -657,7 +657,7 @@ class AWSJobStore(AbstractJobStore):
         itemsProcessed = 0
 
         for info in self._read_logs(callback, self.statsFileOwnerID):
-            info._ownerID = self.readStatsFileOwnerID
+            info._ownerID = str(self.readStatsFileOwnerID)  # boto3 requires strings
             info.save()
             itemsProcessed += 1
 
@@ -1134,6 +1134,7 @@ class AWSJobStore(AbstractJobStore):
             try:
                 for attempt in retry_sdb():
                     with attempt:
+                        logger.exception(f"attributes is: {attributes_boto3}")
                         self.outer.db.put_attributes(DomainName=self.outer.filesDomainName,
                                                      ItemName=compat_bytes(self.fileID),
                                                      Attributes=[{"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
