@@ -36,7 +36,7 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             old_retry,
                             retry)
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3 import S3ServiceResource
 
 logger = logging.getLogger(__name__)
 
@@ -126,11 +126,8 @@ class SDBHelper:
         return cls._maxChunks() * cls.maxValueSize
 
     @classmethod
-    def binaryToAttributes(cls, binary):
-        """
-        Turn a bytestring, or None, into SimpleDB attributes.
-        """
-        if binary is None: return {'numChunks': 0}
+    def binaryToChunks(cls, binary: bytes):
+        if binary is None: return ['0']
         assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
@@ -143,9 +140,17 @@ class SDBHelper:
         encoded = base64.b64encode(compressed)
         assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
-        chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
-        attributes = {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
-        attributes.update({'numChunks': len(attributes)})
+        return (encoded[i:i + n] for i in range(0, len(encoded), n))
+
+    @classmethod
+    def binaryToAttributes(cls, binary) -> Dict[str, str]:
+        """
+        Turn a bytestring, or None, into SimpleDB attributes.
+        """
+        if binary is None: return {'numChunks': '0'}
+        chunks = cls.binaryToChunks(binary)
+        attributes = {cls._chunkName(i): chunk.decode("utf-8") for i, chunk in enumerate(chunks)}
+        attributes.update({'numChunks': str(len(attributes))})
         return attributes
 
     @classmethod
@@ -156,7 +161,7 @@ class SDBHelper:
         :param attributes: Dict[str, str], attribute in object form
         :return: List[AttributeTypeDef], list of attributes in typed dict form
         """
-        return [{"Name": name, "Value": value} for name, value in attributes]
+        return [{"Name": name, "Value": value} for name, value in attributes.items()]
 
     @classmethod
     def attributeBoto3ToDict(cls, attributes: List[AttributeTypeDef]) -> Dict[str, str]:
@@ -169,8 +174,15 @@ class SDBHelper:
         return {attribute["Name"]: attribute["Value"] for attribute in attributes}
 
     @classmethod
-    def get_attribute_from_item(cls, item: ItemTypeDef, key: str) -> str:
-        return next((attribute["Value"] for attribute in item["Attributes"] if attribute["Name"] == key), None)
+    def get_attributes_from_item(cls, item: ItemTypeDef, keys: List[str]) -> List[Optional[str]]:
+        return_values: List[Optional[str]] = [None for _ in keys]
+        mapped_indices: Dict[str, int] = {name: index for index, name in enumerate(keys)}
+        for attribute in item["Attributes"]:
+            name = attribute["Name"]
+            value = attribute["Value"]
+            if name in mapped_indices:
+                return_values[mapped_indices[name]] = value
+        return return_values
 
     @classmethod
     def _chunkName(cls, i):
@@ -195,9 +207,16 @@ class SDBHelper:
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
         """
-        chunks = [(int(k), v) for k, v in attributes.items() if cls._isValidChunkName(k)]
+        chunks = []
+        numChunks: int = 0
+        for attribute in attributes:
+            name = attribute["Name"]
+            value = attribute["Value"]
+            if cls._isValidChunkName(name):
+                chunks.append((int(name), value))
+            if name == "numChunks":
+                numChunks = int(value)
         chunks.sort()
-        numChunks = int(attributes['numChunks'])
         if numChunks:
             serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)

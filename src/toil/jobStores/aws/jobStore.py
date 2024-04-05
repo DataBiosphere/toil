@@ -23,12 +23,12 @@ import time
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import List, Optional, IO, Dict, Union, Generator, Sequence, Tuple, cast, TYPE_CHECKING
+from typing import List, Optional, IO, Dict, Union, Generator, Tuple, cast, TYPE_CHECKING
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 from botocore.exceptions import ClientError
 from mypy_boto3_sdb import SimpleDBClient
-from mypy_boto3_sdb.type_defs import ReplaceableItemTypeDef, ReplaceableAttributeTypeDef, SelectResultTypeDef, ItemTypeDef, GetAttributesResultTypeDef, AttributeTypeDef, DeletableItemTypeDef, UpdateConditionTypeDef
+from mypy_boto3_sdb.type_defs import ReplaceableItemTypeDef, ReplaceableAttributeTypeDef, SelectResultTypeDef, ItemTypeDef, AttributeTypeDef, DeletableItemTypeDef, UpdateConditionTypeDef
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
@@ -43,7 +43,6 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       ServerSideCopyProhibitedError,
                                       copyKeyMultipart,
                                       fileSizeAndTime,
-                                      monkeyPatchSdbConnection,
                                       no_such_sdb_domain,
                                       retry_sdb,
                                       sdb_unavailable,
@@ -220,8 +219,7 @@ class AWSJobStore(AbstractJobStore):
                                                         ItemName=self.namePrefix,
                                                         AttributeNames=['exists'],
                                                         ConsistentRead=True)
-                    logger.exception(f"GET_RESULT: {get_result}")
-                    attributes: List[AttributeTypeDef] = get_result["Attributes"]
+                    attributes: List[AttributeTypeDef] = get_result.get("Attributes", [])  # the documentation says 'Attributes' should always exist, but this is not true
                     try:
                         assert "exists" in (attribute["Name"] for attribute in attributes)
                     except AssertionError:
@@ -375,14 +373,14 @@ class AWSJobStore(AbstractJobStore):
                 return len(self.db.get_attributes(DomainName=self.jobsDomainName,
                                                   ItemName=compat_bytes(job_id),
                                                   AttributeNames=[SDBHelper.presenceIndicator()],
-                                                  ConsistentRead=True)["Attributes"]) > 0
+                                                  ConsistentRead=True).get("Attributes", [])) > 0
 
     def jobs(self) -> Generator[Job, None, None]:
         job_items: Optional[List[ItemTypeDef]] = None
         for attempt in retry_sdb():
             with attempt:
                 query_result: SelectResultTypeDef = self.db.select(ConsistentRead=True, SelectExpression="select * from `%s`" % self.jobsDomainName)
-                job_items = query_result["Items"]
+                job_items = query_result.get("Items", [])
         assert job_items is not None
         for jobItem in job_items:
             yield self._awsJobFromItem(jobItem)
@@ -393,7 +391,7 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 item_attributes = self.db.get_attributes(DomainName=self.jobsDomainName,
                                                          ItemName=compat_bytes(job_id),
-                                                         ConsistentRead=True)["Attributes"]
+                                                         ConsistentRead=True).get("Attributes", [])
         if not item_attributes:
             raise NoSuchJobException(job_id)
         job = self._awsJobFromAttributes(item_attributes)
@@ -419,12 +417,11 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Deleting job %s", job_id)
 
         # If the job is overlarge, delete its file from the filestore
-        item = None
         for attempt in retry_sdb():
             with attempt:
                 attributes = self.db.get_attributes(DomainName=self.jobsDomainName,
                                                     ItemName=compat_bytes(job_id),
-                                                    ConsistentRead=True)["Attributes"]
+                                                    ConsistentRead=True).get("Attributes", [])
         # If the overlargeID has fallen off, maybe we partially deleted the
         # attributes of the item? Or raced on it? Or hit SimpleDB being merely
         # eventually consistent? We should still be able to get rid of it.
@@ -432,7 +429,6 @@ class AWSJobStore(AbstractJobStore):
         overlarge_id_value = next((attribute["Value"] for attribute in attributes if attribute["Name"] == "overlargeID"), None)
         if overlarge_id_value:
             logger.debug("Deleting job from filestore")
-            overlarge_id_value = next((attribute["Value"] for attribute in item["Attributes"] if attribute["Name"] == "overlargeID"), None)
             self.delete_file(overlarge_id_value)
         for attempt in retry_sdb():
             with attempt:
@@ -441,8 +437,8 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 items = self.db.select(ConsistentRead=True,
-                                       SelectExpression=f"select version from `{self.filesDomainName}` where ownerID='{job_id}'")["Items"]
-        assert len(items) > 0
+                                       SelectExpression=f"select version from `{self.filesDomainName}` where ownerID='{job_id}'").get("Items", [])
+        assert items is not None
         if items:
             logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
             n = self.itemsPerBatchDelete
@@ -677,8 +673,8 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 items = self.db.select(ConsistentRead=True,
                                        SelectExpression="select * from `{}` where ownerID='{}'"
-                                       .format(self.filesDomainName, str(ownerId)))["Items"]
-        assert len(items) > 0
+                                       .format(self.filesDomainName, str(ownerId))).get("Items", [])
+        assert items is not None
         for item in items:
             info = self.FileInfo.fromItem(item)
             with info.downloadStream() as readable:
@@ -1009,7 +1005,7 @@ class AWSJobStore(AbstractJobStore):
                 self.version = ''
 
         @classmethod
-        def create(cls, ownerID):
+        def create(cls, ownerID: str):
             return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
 
         @classmethod
@@ -1020,18 +1016,21 @@ class AWSJobStore(AbstractJobStore):
         def exists(cls, jobStoreFileID):
             for attempt in retry_sdb():
                 with attempt:
-                    return bool(cls.outer.filesDomainName.get_attributes(
-                        item_name=compat_bytes(jobStoreFileID),
-                        attribute_name=[cls.presenceIndicator()],
-                        consistent_read=True))
+                    return bool(cls.outer.db.get_attributes(DomainName=cls.outer.filesDomainName,
+                                                            ItemName=compat_bytes(jobStoreFileID),
+                                                            AttributeNames=[cls.presenceIndicator()],
+                                                            ConsistentRead=True).get("Attributes", []))
 
         @classmethod
         def load(cls, jobStoreFileID):
             for attempt in retry_sdb():
                 with attempt:
                     self = cls.fromItem(
-                        cls.outer.filesDomainName.get_attributes(item_name=compat_bytes(jobStoreFileID),
-                                                                 consistent_read=True))
+                        {
+                            "Name": compat_bytes(jobStoreFileID),
+                            "Attributes": cls.outer.db.get_attributes(DomainName=cls.outer.filesDomainName,
+                                                                      ItemName=compat_bytes(jobStoreFileID),
+                                                                      ConsistentRead=True).get("Attributes", [])})
                     return self
 
         @classmethod
@@ -1074,14 +1073,11 @@ class AWSJobStore(AbstractJobStore):
                 return s if s is None else str(s)
 
             # ownerID and encrypted are the only mandatory attributes
-            ownerID = strOrNone(SDBHelper.get_attribute_from_item(item, "ownerID"))
-            encrypted = SDBHelper.get_attribute_from_item(item, "encrypted")
+            ownerID, encrypted, version, checksum = SDBHelper.get_attributes_from_item(item, ["ownerID", "encrypted", "version", "checksum"])
             if ownerID is None:
                 assert encrypted is None
                 return None
             else:
-                version = strOrNone(SDBHelper.get_attribute_from_item(item, "version"))
-                checksum = strOrNone(SDBHelper.get_attribute_from_item(item, "checksum"))
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item["Attributes"])
                 if encrypted:
@@ -1094,14 +1090,10 @@ class AWSJobStore(AbstractJobStore):
                            content=content, numContentChunks=numContentChunks, checksum=checksum)
                 return self
 
-        def toItem(self) -> Tuple[Dict[str, str], int]:
+        def getContent(self) -> bytes:
             """
-            Convert this instance to an attribute dictionary suitable for SDB put_attributes().
-
-            :rtype: (dict,int)
-
-            :return: the attributes dict and an integer specifying the the number of chunk
-                     attributes in the dictionary that are used for storing inlined content.
+            Get the contents of this instance and encrypt if necessary
+            :return:
             """
             content = self.content
             assert content is None or isinstance(content, bytes)
@@ -1111,10 +1103,22 @@ class AWSJobStore(AbstractJobStore):
                     raise AssertionError('Encryption requested but no key was provided.')
                 content = encryption.encrypt(content, sseKeyPath)
             assert content is None or isinstance(content, bytes)
+            return content
+
+        def toItem(self) -> Tuple[Dict[str, str], int]:
+            """
+            Convert this instance to an attribute dictionary suitable for SDB put_attributes().
+
+            :rtype: (dict,int)
+
+            :return: the attributes dict and an integer specifying the the number of chunk
+                     attributes in the dictionary that are used for storing inlined content.
+            """
+            content = self.getContent()
             attributes = self.binaryToAttributes(content)
-            numChunks = attributes['numChunks']
-            attributes.update(dict(ownerID=self.ownerID,
-                                   encrypted=self.encrypted,
+            numChunks = int(attributes['numChunks'])
+            attributes.update(dict(ownerID=self.ownerID or '',
+                                   encrypted=str(self.encrypted),
                                    version=self.version or '',
                                    checksum=self.checksum or ''))
             return attributes, numChunks
@@ -1153,12 +1157,19 @@ class AWSJobStore(AbstractJobStore):
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
-                    attributes_boto3 = [self._chunkName(i) for i in residualChunks]
+                    residual_chunk_names = [self._chunkName(i) for i in residualChunks]
+                    # boto3 requires providing the value as well as the name in the attribute, and we don't store it locally
+                    delete_attributes = self.outer.db.get_attributes(DomainName=self.outer.filesDomainName,
+                                                                     ItemName=compat_bytes(self.fileID),
+                                                                     AttributeNames=[chunk for chunk in residual_chunk_names]).get("Attributes")
                     for attempt in retry_sdb():
                         with attempt:
                             self.outer.db.delete_attributes(DomainName=self.outer.filesDomainName,
                                                             ItemName=compat_bytes(self.fileID),
-                                                            Attributes=attributes_boto3)
+                                                            Attributes=delete_attributes)
+                    res = self.outer.db.get_attributes(DomainName=self.outer.filesDomainName, ItemName=compat_bytes(self.fileID))
+                    logger.exception(f"After now, and got attributes for {compat_bytes(self.fileID)}: {res}")
+
                 self._numContentChunks = numNewContentChunks
             except ClientError as e:
                 if get_error_code(e) == 'ConditionalCheckFailed':
@@ -1692,18 +1703,18 @@ class AWSJobStore(AbstractJobStore):
         if self.filesBucket is not None:
             self._delete_bucket(self.filesBucket)
             self.filesBucket = None
-        for name in 'filesDomain', 'jobsDomain':
-            domain = getattr(self, name)
-            if domain is not None:
-                self._delete_domain(domain)
+        for name in 'filesDomainName', 'jobsDomainName':
+            domainName = getattr(self, name)
+            if domainName is not None:
+                self._delete_domain(domainName)
                 setattr(self, name, None)
         self._registered = False
 
-    def _delete_domain(self, domain):
+    def _delete_domain(self, domainName):
         for attempt in retry_sdb():
             with attempt:
                 try:
-                    domain.delete()
+                    self.db.delete_domain(DomainName=domainName)
                 except ClientError as e:
                     if not no_such_sdb_domain(e):
                         raise
