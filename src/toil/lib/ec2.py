@@ -132,7 +132,7 @@ def wait_instances_running(boto3_ec2: EC2Client, instances: Iterable[InstanceTyp
                 instances = [instance for reservation in described_instances["Reservations"] for instance in reservation["Instances"]]
 
 
-def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInstanceRequestTypeDef], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequest]]:
+def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInstanceRequestTypeDef], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequestTypeDef]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
@@ -167,17 +167,17 @@ def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInsta
             batch = []
             for r in requests:
                 r: SpotInstanceRequestTypeDef  # pycharm thinks it is a string
-                if r['State']['Name'] == 'open':
+                if r['State'] == 'open':
                     open_ids.add(r['InstanceId'])
-                    if r['Status']['Code'] == 'pending-evaluation':
+                    if r['Status'] == 'pending-evaluation':
                         eval_ids.add(r['InstanceId'])
-                    elif r['Status']['Code'] == 'pending-fulfillment':
+                    elif r['Status'] == 'pending-fulfillment':
                         fulfill_ids.add(r['InstanceId'])
                     else:
                         logger.info(
                             'Request %s entered status %s indicating that it will not be '
-                            'fulfilled anytime soon.', r['InstanceId'], r['Status']['Code'])
-                elif r['State']['Name'] == 'active':
+                            'fulfilled anytime soon.', r['InstanceId'], r['Status'])
+                elif r['State'] == 'active':
                     if r['InstanceId'] in active_ids:
                         raise RuntimeError("A request was already added to the list of active requests. Maybe there are duplicate requests.")
                     active_ids.add(r['InstanceId'])
@@ -244,14 +244,15 @@ def create_spot_instances(boto3_ec2: EC2Client, price, image_id, spec, num_insta
                                            tentative=tentative):
         instance_ids = []
         for request in batch:
-            if request.state == 'active':
-                instance_ids.append(request.instance_id)
+            request: SpotInstanceRequestTypeDef
+            if request["State"] == 'active':
+                instance_ids.append(request["InstanceId"])
                 num_active += 1
             else:
                 logger.info(
                     'Request %s in unexpected state %s.',
-                    request.id,
-                    request.state)
+                    request["InstanceId"],
+                    request["State"])
                 num_other += 1
         if instance_ids:
             # This next line is the reason we batch. It's so we can get multiple instances in
