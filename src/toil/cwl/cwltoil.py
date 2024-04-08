@@ -2174,7 +2174,7 @@ def toilStageFiles(
         jobfiles,
         "",
         outdir,
-        separateDirs=False,
+        separateDirs=True,
         stage_listing=True,
     )
     for _, p in pm.items():
