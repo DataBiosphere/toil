@@ -36,7 +36,12 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             old_retry,
                             retry)
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3 import S3ServiceResource
+
+AWSServerErrors = ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +198,7 @@ def fileSizeAndTime(localFilePath):
     return file_stat.st_size, file_stat.st_mtime
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def uploadFromPath(localFilePath: str,
                    resource,
                    bucketName: str,
@@ -232,10 +234,7 @@ def uploadFromPath(localFilePath: str,
     return version
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def uploadFile(readable,
                resource,
                bucketName: str,
@@ -287,10 +286,7 @@ class ServerSideCopyProhibitedError(RuntimeError):
     insists that you pay to download and upload the data yourself instead.
     """
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def copyKeyMultipart(resource: "S3ServiceResource",
                      srcBucketName: str,
                      srcKeyName: str,

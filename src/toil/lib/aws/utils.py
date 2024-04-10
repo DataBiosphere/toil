@@ -29,6 +29,7 @@ from typing import (Any,
                     cast)
 from urllib.parse import ParseResult
 
+from toil.jobStores.aws.utils import AWSServerErrors
 from toil.lib.aws import session, AWSRegionName
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
@@ -77,10 +78,7 @@ THROTTLED_ERROR_CODES = [
         'EC2ThrottledException',
 ]
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
@@ -109,10 +107,7 @@ def delete_iam_role(
     printq(f'Role {role_name} successfully deleted.', quiet)
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
@@ -126,10 +121,7 @@ def delete_iam_instance_profile(
     printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
@@ -168,10 +160,7 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket: str,
@@ -403,10 +392,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         return obj
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def list_objects_for_url(url: ParseResult) -> List[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be

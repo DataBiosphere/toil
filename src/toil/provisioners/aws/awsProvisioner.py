@@ -45,6 +45,7 @@ from mypy_boto3_ec2.service_resource import Instance
 from mypy_boto3_iam.type_defs import InstanceProfileTypeDef, RoleTypeDef, ListRolePoliciesResponseTypeDef
 from mypy_extensions import VarArg, KwArg
 
+from toil.jobStores.aws.utils import AWSServerErrors
 from toil.lib.aws import zone_to_region, AWSRegionName
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
@@ -285,10 +286,7 @@ class AWSProvisioner(AbstractProvisioner):
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
 
-    @retry(errors=[ErrorCondition(
-        error=ClientError,
-        error_codes=[404, 500, 502, 503, 504]
-    )])
+    @retry(errors=[AWSServerErrors])
     def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         bucket_name = self.s3_bucket_name
 
