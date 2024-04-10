@@ -24,15 +24,17 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
 pip = f'{python} -m pip'
 
+# Debian and Ubuntu don't package ensurepip by default so the python-venv package must be installed
+python_packages = {'python3.8': ['python3.8-distutils', 'python3.8-venv'],
+                   'python3.9': ['python3.9-distutils', 'python3.9-venv'],
+                   'python3.10': ['python3.10-distutils', 'python3.10-venv'],
+                   'python3.11': ['python3.11-distutils', 'python3.11-venv'],
+                   'python3.12': ['python3.12-distutils', 'python3.12-venv']}
 
-dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
+dependencies = ' '.join(python_packages[python] +
+                        ['libffi-dev',  # For client side encryption for extras with PyNACL
                          python,
                          f'{python}-dev',
-                         'python3.8-distutils' if python == 'python3.8' else '',
-                         'python3.9-distutils' if python == 'python3.9' else '',
-                         'python3.10-distutils' if python == 'python3.10' else '',
-                         'python3.11-distutils' if python == 'python3.11' else '',
-                         'python3.12-distutils' if python == 'python3.12' else '',
                          'python3-pip',
                          'libssl-dev',
                          'wget',
@@ -97,9 +99,6 @@ print(heredoc('''
     ARG TARGETARCH
 
     RUN if [ -z "$TARGETARCH" ] ; then echo "Specify a TARGETARCH argument to build this container"; exit 1; fi
-
-    # make sure we don't use too new a version of setuptools (which can get out of sync with poetry and break things)
-    ENV SETUPTOOLS_USE_DISTUTILS=stdlib
     
     # to tell Toil that it's running inside a Docker container
     ENV TOIL_INSTALLED_INSIDE_DOCKER=True
@@ -125,12 +124,8 @@ print(heredoc('''
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
         if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
-    RUN apt-get -f install
-    RUN wget https://github.com/sylabs/singularity/releases/download/v4.1.2/singularity-ce_4.1.2-jammy_amd64.deb && apt-get install ./singularity-ce_*.deb
-    RUN mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real
 
-    RUN apt-get clean && \
-        rm -rf /var/lib/apt/lists/*
+    RUN rm -rf /var/lib/apt/lists/*
 
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
@@ -164,8 +159,13 @@ print(heredoc('''
     # so the downgraded squashfs stays, but options for updated squashfs are possible
     ADD extra-debs.tsv /etc/singularity/extra-debs.tsv
     RUN wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^squashfs-tools.$TARGETARCH" | cut -f4)" && \
-        dpkg -i squashfs-tools_*.deb
-    RUN sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf
+        dpkg -i squashfs-tools_*.deb && \
+        wget -q "$(cat /etc/singularity/extra-debs.tsv | grep "^singularity-container.$TARGETARCH" | cut -f4)" && \
+        dpkg -i singularity-container_*.deb && \
+        rm singularity-container_*.deb && \
+        sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
+        mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real && \
+        /usr/local/libexec/toil/singularity-real version
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -181,18 +181,20 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
-
-    # Default setuptools is too old
-    RUN {pip} install --upgrade setuptools==59.7.0
+    RUN {python} -m ensurepip --upgrade
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==20.0.17
+    RUN {pip} install --upgrade virtualenv
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
+    # Install setuptools within the virtual environment to properly access distutils due to PEP 632 and gh-95299 in Python 3.12 release notes
+    # https://docs.python.org/3/whatsnew/3.12.html#summary-release-highlights
     RUN virtualenv --python {python} --never-download /home/s3am \
+        && /home/s3am/bin/pip install setuptools \
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
+    
+    RUN {pip} install --upgrade setuptools
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix

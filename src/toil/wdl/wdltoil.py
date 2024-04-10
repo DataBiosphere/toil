@@ -1702,7 +1702,6 @@ class WDLTaskJob(WDLBaseJob):
         Determine whether singularity needs to be ran in a separated namespace environment to get unprivileged FUSE
         mounts to work
         This is usually the case when running Toil inside a docker container, and --privileged is not set.
-        Ex: Toil managed clusters, such as Toil Kubernetes clusters, do not run the container with any privileges
 
         This function checks if /dev/fuse exists and if Toil is running inside a Docker container (controlled by
         env var), returning True if so.
