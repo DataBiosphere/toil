@@ -335,9 +335,9 @@ class AWSJobStore(AbstractJobStore):
                    range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            item_attributes: List[ReplaceableAttributeTypeDef] = []
             items: List[ReplaceableItemTypeDef] = []
             for jobDescription in batch:
+                item_attributes: List[ReplaceableAttributeTypeDef] = []
                 jobDescription.pre_update_hook()
                 item_name = compat_bytes(jobDescription.jobStoreID)
                 got_job_attributes: List[AttributeTypeDef] = self._awsJobToAttributes(jobDescription)
