@@ -178,7 +178,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.boss.with_retries(self.getJobExitCode, batchJobID) is not None:
+                    exit_code = self.boss.with_retries(self.getJobExitCode, batchJobID)
+                    if exit_code is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
