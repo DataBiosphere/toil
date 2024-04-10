@@ -170,7 +170,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         dest="state_polling_timeout",
         type=int,
         default=1200,
-        help="Time, in seconds, to retry against on a broken scheduler. Only works for grid "
+        help="Time, in seconds, to retry against a broken scheduler. Only works for grid "
              "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
     parser.add_argument(
