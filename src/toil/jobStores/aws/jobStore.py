@@ -444,7 +444,7 @@ class AWSJobStore(AbstractJobStore):
             n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
-                delete_items: List[DeletableItemTypeDef] = [{"Name": item["Name"], "Attributes": item["Attributes"]} for item in batch]
+                delete_items: List[DeletableItemTypeDef] = [{"Name": item["Name"]} for item in batch]
                 for attempt in retry_sdb():
                     with attempt:
                         self.db.batch_delete_attributes(DomainName=self.filesDomainName, Items=delete_items)
