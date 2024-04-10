@@ -45,6 +45,8 @@ TERMINAL_STATES: Dict[str, BatchJobExitReason] = {
     "NODE_FAIL": BatchJobExitReason.LOST,
     "OUT_OF_MEMORY": BatchJobExitReason.MEMLIMIT,
     "PREEMPTED": BatchJobExitReason.KILLED,
+    "REVOKED": BatchJobExitReason.KILLED,
+    "SPECIAL_EXIT": BatchJobExitReason.FAILED,
     "TIMEOUT": BatchJobExitReason.KILLED
 }
 
@@ -60,9 +62,7 @@ NONTERMINAL_STATES: Set[str] = {
     "REQUEUE_HOLD",
     "REQUEUED",
     "RESIZING",
-    "REVOKED", # TODO: Will *this* job run again, or will some other job?
     "SIGNALING",
-    "SPECIAL_EXIT", # TODO: Will *this* job run again, or will some other job?
     "STAGE_OUT",
     "STOPPED",
     "SUSPENDED"
