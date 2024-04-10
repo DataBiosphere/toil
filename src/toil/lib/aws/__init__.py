@@ -23,6 +23,8 @@ from urllib.request import urlopen
 
 from mypy_boto3_s3.literals import BucketLocationConstraintType
 
+AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
+
 logger = logging.getLogger(__name__)
 
 # This file isn't allowed to import anything that depends on Boto or Boto3,
@@ -129,7 +131,7 @@ def get_current_aws_zone() -> Optional[str]:
         get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
-def zone_to_region(zone: str) -> Union["BucketLocationConstraintType", Literal["us-east-1"]]:
+def zone_to_region(zone: str) -> AWSRegionName:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
     # re.compile() caches the regex internally so we don't have to
     availability_zone = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')

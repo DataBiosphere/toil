@@ -29,7 +29,7 @@ from typing import (Any,
                     cast)
 from urllib.parse import ParseResult
 
-from toil.lib.aws import session
+from toil.lib.aws import session, AWSRegionName
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
@@ -105,7 +105,6 @@ def delete_iam_role(
     # inline policies
     for inline_policy in role.policies.all():
         printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
-        # couldn't find an easy way to remove inline policies with boto3; use boto
         iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
@@ -206,7 +205,7 @@ def delete_s3_bucket(
 def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
-    region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
+    region: AWSRegionName,
 ) -> "Bucket":
     """
     Create an AWS S3 bucket, using the given Boto3 S3 session, with the
