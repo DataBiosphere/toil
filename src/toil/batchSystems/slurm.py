@@ -226,7 +226,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # If the code is nonzero, pass it along.
             return (rc, exit_reason)
 
-        def _canonicalize_state(state: str) -> str:
+        def _canonicalize_state(self, state: str) -> str:
             """
             Turn a state string form SLURM into just the state token like "CANCELED".
             """
