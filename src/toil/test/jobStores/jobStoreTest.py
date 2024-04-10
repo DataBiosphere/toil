@@ -1360,7 +1360,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     else:
                         domains = sdb.list_domains(MaxNumberOfDomains=100, NextToken=next_token)
                     allDomainNames.extend(domains["DomainNames"])
-                    next_token = domains["NextToken"]
+                    next_token = domains.get("NextToken")
                     if next_token is None:
                         break
                 self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])
