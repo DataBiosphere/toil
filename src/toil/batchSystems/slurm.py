@@ -18,7 +18,7 @@ from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
 from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union
 
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
