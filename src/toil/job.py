@@ -68,8 +68,7 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
-from toil.lib.resources import (get_total_cpu_time,
-                                get_total_cpu_time_and_memory_usage)
+from toil.lib.resources import ResourceMonitor 
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
@@ -1526,6 +1525,19 @@ class Job:
         else:
             return 'Job(' + str(self.description) + ')'
 
+    def check_initialized(self) -> None:
+        """
+        Ensure that Job.__init__() has been called by any subclass __init__().
+        
+        This uses the fact that the self._description instance variable should always
+        be set after __init__().
+        
+        If __init__() has not been called, raise an error.
+        """
+        if not hasattr(self, "_description"):
+            raise ValueError(f"Job instance of type {type(self)} has not been initialized. super().__init__() may not "
+                             f"have been called.")
+
     @property
     def jobStoreID(self) -> Union[str, TemporaryID]:
         """Get the ID of this Job."""
@@ -1656,6 +1668,11 @@ class Job:
         """
         if not isinstance(childJob, Job):
             raise RuntimeError("The type of the child job is not a job.")
+
+        # Check that both jobs have been initialized
+        self.check_initialized()
+        childJob.check_initialized()
+
         # Join the job graphs
         self._jobGraphsJoined(childJob)
         # Remember the child relationship
@@ -1683,6 +1700,11 @@ class Job:
         """
         if not isinstance(followOnJob, Job):
             raise RuntimeError("The type of the follow-on job is not a job.")
+
+        # Check that both jobs have been initialized
+        self.check_initialized()
+        followOnJob.check_initialized()
+
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
         # Remember the follow-on relationship
@@ -2771,7 +2793,7 @@ class Job:
         """
         if stats is not None:
             startTime = time.time()
-            startClock = get_total_cpu_time()
+            startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
 
         yield
@@ -2795,7 +2817,7 @@ class Job:
             os.chdir(baseDir)
         # Finish up the stats
         if stats is not None:
-            totalCpuTime, totalMemoryUsage = get_total_cpu_time_and_memory_usage()
+            totalCpuTime, totalMemoryUsage = ResourceMonitor.get_total_cpu_time_and_memory_usage()
             stats.jobs.append(
                 Expando(
                     time=str(time.time() - startTime),

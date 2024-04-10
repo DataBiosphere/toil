@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 def create_tags_dict(tags: List[str]) -> Dict[str, str]:
     tags_dict = dict()
     for tag in tags:
-        key, value = tag.split('=')
+        try:
+            key, value = tag.split('=')
+        except ValueError:
+            logger.error("Tag specification '%s' must contain '='", tag)
+            raise
         tags_dict[key] = value
     return tags_dict
 
