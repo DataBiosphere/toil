@@ -51,7 +51,7 @@ from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
                               get_policy_permissions,
                               policy_permissions_allow)
 from toil.lib.aws.session import AWSConnectionManager
-from toil.lib.aws.utils import create_s3_bucket, flatten_tags
+from toil.lib.aws.utils import create_s3_bucket, flatten_tags, boto3_pager
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (a_short_time,
                           create_auto_scaling_group,
@@ -571,7 +571,7 @@ class AWSProvisioner(AbstractProvisioner):
         }]
 
         # TODO: Can't we use the resource's network_acls.filter(Filters=)?
-        return [item['NetworkAclId'] for item in self._pager(ec2.describe_network_acls,
+        return [item['NetworkAclId'] for item in boto3_pager(ec2.describe_network_acls,
                                                              'NetworkAcls',
                                                              Filters=filters)]
 
@@ -1592,30 +1592,6 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 break
 
-    # A = TypeVar("A", bound=LiteralString)
-    # B = TypeVar("B")
-    # func: Gettable[Literal["PolicyNames"], str] = ListRolePoliciesResponseTypeDef(PolicyNames= ["a"], IsTruncated= True, Marker="a", ResponseMetadata=ResponseMetadataTypeDef(RequestId="",HostId="",HTTPStatusCode=1,HTTPHeaders={},RetryAttempts=1))
-    def _pager(self, requestor_callable: Callable[..., Any], result_attribute_name: str,
-               **kwargs: Any) -> Iterable[Any]:
-        """
-        Yield all the results from calling the given Boto 3 method with the
-        given keyword arguments, paging through the results using the Marker or
-        NextToken, and fetching out and looping over the list in the response
-        with the given attribute name.
-        """
-
-        # Recover the Boto3 client, and the name of the operation
-        client = requestor_callable.__self__  # type: ignore[attr-defined]
-        op_name = requestor_callable.__name__
-
-        # grab a Boto 3 built-in paginator. See
-        # <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html>
-        paginator = client.get_paginator(op_name)
-
-        for page in paginator.paginate(**kwargs):
-            # Invoke it and go through the pages, yielding from them
-            yield from page.get(result_attribute_name, [])
-
     @awsRetry
     def _getRoleNames(self) -> List[str]:
         """
@@ -1624,7 +1600,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         results = []
         boto3_iam = self.aws.client(self._region, 'iam')
-        for result in self._pager(boto3_iam.list_roles, 'Roles'):
+        for result in boto3_pager(boto3_iam.list_roles, 'Roles'):
             # For each Boto2 role object
             # Grab out the name
             cast(RoleTypeDef, result)
@@ -1642,7 +1618,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         results = []
         boto3_iam = self.aws.client(self._region, 'iam')
-        for result in self._pager(boto3_iam.list_instance_profiles,
+        for result in boto3_pager(boto3_iam.list_instance_profiles,
                                   'InstanceProfiles'):
             # For each Boto2 role object
             # Grab out the name
@@ -1664,7 +1640,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Grab the connection we need to use for this operation.
         boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
 
-        return [item['InstanceProfileName'] for item in self._pager(boto3_iam.list_instance_profiles_for_role,
+        return [item['InstanceProfileName'] for item in boto3_pager(boto3_iam.list_instance_profiles_for_role,
                                                                     'InstanceProfiles',
                                                                     RoleName=role_name)]
 
@@ -1683,7 +1659,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # TODO: we don't currently use attached policies.
 
-        return [item['PolicyArn'] for item in self._pager(boto3_iam.list_attached_role_policies,
+        return [item['PolicyArn'] for item in boto3_pager(boto3_iam.list_attached_role_policies,
                                                           'AttachedPolicies',
                                                           RoleName=role_name)]
 
@@ -1697,7 +1673,7 @@ class AWSProvisioner(AbstractProvisioner):
         # Grab the connection we need to use for this operation.
         boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
 
-        return list(self._pager(boto3_iam.list_role_policies, 'PolicyNames', RoleName=role_name))
+        return list(boto3_pager(boto3_iam.list_role_policies, 'PolicyNames', RoleName=role_name))
 
     def full_policy(self, resource: str) -> Dict[str, Any]:
         """

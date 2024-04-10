@@ -60,7 +60,7 @@ from toil.lib.aws.utils import (create_s3_bucket,
                                 get_object_for_url,
                                 list_objects_for_url,
                                 retry_s3,
-                                retryable_s3_errors)
+                                retryable_s3_errors, boto3_pager)
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
@@ -379,8 +379,10 @@ class AWSJobStore(AbstractJobStore):
         job_items: Optional[List[ItemTypeDef]] = None
         for attempt in retry_sdb():
             with attempt:
-                query_result: SelectResultTypeDef = self.db.select(ConsistentRead=True, SelectExpression="select * from `%s`" % self.jobsDomainName)
-                job_items = query_result.get("Items", [])
+                job_items = boto3_pager(self.db.select,
+                                        "Items",
+                                        ConsistentRead=True,
+                                        SelectExpression="select * from `%s`" % self.jobsDomainName)
         assert job_items is not None
         for jobItem in job_items:
             yield self._awsJobFromItem(jobItem)
@@ -436,8 +438,10 @@ class AWSJobStore(AbstractJobStore):
         items: Optional[List[ItemTypeDef]] = None
         for attempt in retry_sdb():
             with attempt:
-                items = self.db.select(ConsistentRead=True,
-                                       SelectExpression=f"select version from `{self.filesDomainName}` where ownerID='{job_id}'").get("Items", [])
+                items = list(boto3_pager(self.db.select,
+                                         "Items",
+                                         ConsistentRead=True,
+                                         SelectExpression=f"select version from `{self.filesDomainName}` where ownerID='{job_id}'"))
         assert items is not None
         if items:
             logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
@@ -671,9 +675,10 @@ class AWSJobStore(AbstractJobStore):
         items = None
         for attempt in retry_sdb():
             with attempt:
-                items = self.db.select(ConsistentRead=True,
-                                       SelectExpression="select * from `{}` where ownerID='{}'"
-                                       .format(self.filesDomainName, str(ownerId))).get("Items", [])
+                items = boto3_pager(self.db.select,
+                                    "Items",
+                                    ConsistentRead=True,
+                                    SelectExpression="select * from `{}` where ownerID='{}'".format(self.filesDomainName, str(ownerId)))
         assert items is not None
         for item in items:
             info = self.FileInfo.fromItem(item)

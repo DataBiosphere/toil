@@ -456,3 +456,25 @@ def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
+
+
+def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: str,
+                **kwargs: Any) -> Iterable[Any]:
+    """
+    Yield all the results from calling the given Boto 3 method with the
+    given keyword arguments, paging through the results using the Marker or
+    NextToken, and fetching out and looping over the list in the response
+    with the given attribute name.
+    """
+
+    # Recover the Boto3 client, and the name of the operation
+    client = requestor_callable.__self__  # type: ignore[attr-defined]
+    op_name = requestor_callable.__name__
+
+    # grab a Boto 3 built-in paginator. See
+    # <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html>
+    paginator = client.get_paginator(op_name)
+
+    for page in paginator.paginate(**kwargs):
+        # Invoke it and go through the pages, yielding from them
+        yield from page.get(result_attribute_name, [])
