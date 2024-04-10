@@ -259,7 +259,6 @@ class AWSProvisioner(AbstractProvisioner):
         # Determine where to deploy workers.
         self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
 
-        # self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._leaderPrivateIP = ec2_metadata.private_ipv4  # this is PRIVATE IP
         self._tags = {k: v for k, v in (self.getLeader().tags or {}).items() if k != _TAG_KEY_TOIL_NODE_TYPE}
         # Grab the ARN name of the instance profile (a str) to apply to workers
@@ -818,7 +817,6 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeTypes: Set[str], numNodes: int, preemptible: bool, spotBid: Optional[float] = None) -> int:
         # Grab the AWS connection we need
-        # ec2 = self.aws.boto2(self._region, 'ec2')
         boto3_ec2 = get_client(service_name='ec2', region_name=self._region)
         assert self._leaderPrivateIP
 
@@ -1256,7 +1254,6 @@ class AWSProvisioner(AbstractProvisioner):
         requests: List[SpotInstanceRequestTypeDef] = ec2.describe_spot_instance_requests()["SpotInstanceRequests"]
         tag_filter: FilterTypeDef = {"Name": "tag:" + _TAG_KEY_TOIL_CLUSTER_NAME, "Values": [self.clusterName]}
         tags: List[TagDescriptionTypeDef] = ec2.describe_tags(Filters=[tag_filter])["Tags"]
-        # tags = ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
         idsToCancel = [tag["ResourceId"] for tag in tags]
         return [request["SpotInstanceRequestId"] for request in requests if request["InstanceId"] in idsToCancel]
 
@@ -1600,9 +1597,6 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 break
 
-    # A = TypeVar("A", bound=LiteralString)
-    # B = TypeVar("B")
-    # func: Gettable[Literal["PolicyNames"], str] = ListRolePoliciesResponseTypeDef(PolicyNames= ["a"], IsTruncated= True, Marker="a", ResponseMetadata=ResponseMetadataTypeDef(RequestId="",HostId="",HTTPStatusCode=1,HTTPHeaders={},RetryAttempts=1))
     def _pager(self, requestor_callable: Callable[..., Any], result_attribute_name: str,
                **kwargs: Any) -> Iterable[Any]:
         """
