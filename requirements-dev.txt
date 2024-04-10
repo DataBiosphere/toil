@@ -24,6 +24,6 @@ autoflake
 isort
 diff_cover
 lxml
-docutils>=0.16,<0.21
+docutils>=0.16,<0.22
 pyupgrade
 pytest-xdist
