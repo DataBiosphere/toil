@@ -84,7 +84,6 @@ THROTTLED_ERROR_CODES = [
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    # from boto.iam.connection import IAMConnection
 
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
