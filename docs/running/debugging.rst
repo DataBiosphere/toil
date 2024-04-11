@@ -74,45 +74,13 @@ Fetching Job Inputs
 
 The ``--retrieveTaskDirectory`` option to ``toil debug-job`` allows you to send the input files for a job to a directory, and then stop running the job. It works for CWL and WDL jobs, and for Python workflows that call :meth:`toil.job.Job.files_downloaded_hook` after downloading their files. It will make the worker work in the specified directory, so the job's temporary directory will be at ``worker/job`` inside it. For WDL and CWL jobs that mount files into containers, there will also be an ``inside`` directory populated with symlinks to the files as they would be visible from the root of the container's filesystem.
 
-For example, say you have a **broken WDL workflow** named ``test.wdl``, like this::
+For example, say you have a **broken WDL workflow** named ``example_alwaysfail_with_files.wdl``, like this:
 
-    version 1.0
-    workflow test {
-        call make_file as f1
-        call make_file as f2
-        call hello {
-            input:
-                name_file=f1.out,
-                unused_file=f2.out
-        }
-    }
-    task make_file {
-        input {
-        }
-        command <<<
-            echo "These are the contents" >test.txt
-        >>>
-        output {
-            File out = "test.txt"
-        }
-    }
-    task hello {
-        input {
-            File name_file
-            File? unused_file
-        }
-        command <<<
-            set -e
-            echoo "Hello" "$(cat ~{name_file})"
-        >>>
-        output {
-            File out = stdout()
-        }
-    }
+.. literalinclude:: ../../src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl
 
 You can try and fail to run it like this::
 
-    toil-wdl-runner --jobStore ./store test.wdl --retryCount 0
+    toil-wdl-runner --jobStore ./store example_alwaysfail_with_files.wdl --retryCount 0
 
 If you then dump the files from the failing job::
 
