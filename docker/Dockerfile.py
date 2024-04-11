@@ -120,9 +120,9 @@ print(heredoc('''
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
         DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
-        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi
-
-    RUN rm -rf /var/lib/apt/lists/*
+        if [ $TARGETARCH = amd64 ] ; then DEBIAN_FRONTEND=noninteractive apt-get -y install mesos ; mesos-agent --help >/dev/null ; fi && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
     # Install a particular old Debian Sid Singularity from somewhere.
     # It's 3.10, which is new enough to use cgroups2, but it needs a newer libc
@@ -161,8 +161,9 @@ print(heredoc('''
         dpkg -i singularity-container_*.deb && \
         rm singularity-container_*.deb && \
         sed -i 's!bind path = /etc/localtime!#bind path = /etc/localtime!g' /etc/singularity/singularity.conf && \
-        mkdir -p /usr/local/libexec/toil && mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real && \
-        /usr/local/libexec/toil/singularity-real version
+        mkdir -p /usr/local/libexec/toil && \
+        mv /usr/bin/singularity /usr/local/libexec/toil/singularity-real \
+        && /usr/local/libexec/toil/singularity-real version
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -181,7 +182,7 @@ print(heredoc('''
     RUN {python} -m ensurepip --upgrade
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv
+    RUN {pip} install --upgrade virtualenv==20.25.1
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
     # Install setuptools within the virtual environment to properly access distutils due to PEP 632 and gh-95299 in Python 3.12 release notes
@@ -191,7 +192,7 @@ print(heredoc('''
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
     
-    RUN {pip} install --upgrade setuptools
+    RUN {pip} install --upgrade setuptools==69.2.0
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
