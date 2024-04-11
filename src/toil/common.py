@@ -602,7 +602,10 @@ def generate_config(filepath: str) -> None:
 
 
 def parser_with_common_options(
-        provisioner_options: bool = False, jobstore_option: bool = True, prog: Optional[str] = None
+    provisioner_options: bool = False,
+    jobstore_option: bool = True,
+    prog: Optional[str] = None,
+    default_log_level: Optional[int] = None
 ) -> ArgParser:
     parser = ArgParser(prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
@@ -613,7 +616,7 @@ def parser_with_common_options(
         parser.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
 
     # always add these
-    add_logging_options(parser)
+    add_logging_options(parser, default_log_level)
     parser.add_argument("--version", action='version', version=version)
     parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
                         help="Path to where temporary directory containing all temp files are created, "

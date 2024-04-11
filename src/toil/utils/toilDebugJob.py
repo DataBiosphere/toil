@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(jobstore_option=True, prog="toil debug-job")
+    parser = parser_with_common_options(jobstore_option=True, prog="toil debug-job", default_log_level=logging.DEBUG)
     parser.add_argument("job", type=str,
                         help="The job store id or job name of a job within the provided jobstore")
     parser.add_argument("--printJobInfo", action="store_true",
