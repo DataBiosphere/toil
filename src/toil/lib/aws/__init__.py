@@ -16,19 +16,19 @@ import logging
 import os
 import re
 import socket
+import toil.lib.retry
 from http.client import HTTPException
 from typing import Dict, MutableMapping, Optional, Union, Literal
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from toil.lib.retry import ErrorCondition
 from botocore.exceptions import ClientError
 
 from mypy_boto3_s3.literals import BucketLocationConstraintType
 
 AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
 
-AWSServerErrors = ErrorCondition(
+AWSServerErrors = toil.lib.retry.ErrorCondition(
     error=ClientError,
     error_codes=[404, 500, 502, 503, 504]
 )
