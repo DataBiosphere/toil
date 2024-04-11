@@ -1018,6 +1018,8 @@ class ToilTool:
         super().__init__(*args, **kwargs)
         # Reserve a spot for the Toil job that ends up executing this tool.
         self._toil_job: Optional[Job] = None
+        # Remember path mappers we have used so we can interrogate them later to find out what the job mapped.
+        self._path_mappers: List[cwltool.pathmapper.PathMapper] = []
 
     def connect_toil_job(self, job: Job) -> None:
         """
@@ -1037,12 +1039,12 @@ class ToilTool:
         """Create the appropriate PathMapper for the situation."""
         if getattr(runtimeContext, "bypass_file_store", False):
             # We only need to understand cwltool's supported URIs
-            return PathMapper(
+            mapper = PathMapper(
                 reffiles, runtimeContext.basedir, stagedir, separateDirs=separateDirs
             )
         else:
             # We need to be able to read from Toil-provided URIs
-            return ToilPathMapper(
+            mapper = ToilPathMapper(
                 reffiles,
                 runtimeContext.basedir,
                 stagedir,
@@ -1050,6 +1052,10 @@ class ToilTool:
                 get_file=getattr(runtimeContext, "toil_get_file", None),
                 streaming_allowed=runtimeContext.streaming_allowed,
             )
+
+        # Remember the path mappers
+        self._path_mappers.append(mapper)
+        return mapper
 
     def __str__(self) -> str:
         """Return string representation of this tool type."""
@@ -1070,18 +1076,30 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
         # Set up the initial work dir with all its files
         super()._initialworkdir(j, builder)
 
-        if self._toil_job is not None:
-            # Notice that we have downloaded our inputs
-            self._toil_job.files_downloaded_hook()
-
         # The initial work dir listing is now in j.generatefiles["listing"]
-        # Also j.generatrfiles is a CWL Directory.
+        # Also j.generatefiles is a CWL Directory.
         # So check the initial working directory.
-        logger.info("Initial work dir: %s", j.generatefiles)
+        logger.debug("Initial work dir: %s", j.generatefiles)
         ensure_no_collisions(
             j.generatefiles,
             "the job's working directory as specified by the InitialWorkDirRequirement",
         )
+
+        if self._toil_job is not None:
+            # Make a table of all the places we mapped files to when downloading the inputs.
+
+            # We want to hint which host paths and container (if any) paths correspond
+            host_and_job_paths: List[Tuple[str, str]] = []
+
+            for pm in self._path_mappers:
+                for _, mapper_entry in pm.items_exclude_children():
+                    # We know that mapper_entry.target as seen by the task is
+                    # mapper_entry.resolved on the host.
+                    host_and_job_paths.append((mapper_entry.resolved, mapper_entry.target))
+
+            # Notice that we have downloaded our inputs. Explain which files
+            # those are here and what the task will expect to call them.
+            self._toil_job.files_downloaded_hook(host_and_job_paths)
 
 
 class ToilExpressionTool(ToilTool, cwltool.command_line_tool.ExpressionTool):

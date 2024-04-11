@@ -1782,9 +1782,20 @@ class WDLTaskJob(WDLBaseJob):
         workdir_in_container: Optional[str] = None
 
         if self._task.command:
-            # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
-            # TODO: Figure out whan the command template actually uses File values and lazily download them.
-            # For now we just grab all the File values in the inside-the-task environment, since any of them *might* be used.
+            # When the command string references a File, we need to get a path
+            # to the file on a local disk, which the commnad will be able to
+            # actually use, accounting for e.g. containers.
+            #
+            # TODO: Figure out whan the command template actually uses File
+            # values and lazily download them.
+            #
+            # For now we just grab all the File values in the inside-the-task
+            # environment, since any of them *might* be used.
+            #
+            # Some also might be expected to be adjacent to files that are
+            # used, like a BAI that doesn't get referenced in a command line
+            # but must be next to its BAM.
+            #
             # TODO: MiniWDL can parallelize the fetch
             bindings = devirtualize_files(bindings, standard_library)
 
@@ -1859,6 +1870,7 @@ class WDLTaskJob(WDLBaseJob):
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             add_paths(task_container, get_file_paths_in_bindings(bindings))
+            # This maps from oustide container to inside container
             logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
@@ -1930,8 +1942,10 @@ class WDLTaskJob(WDLBaseJob):
             # Log that we are about to run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
 
-            # Now our inputs are all downloaded. Let debugging break in (after command is logged)
-            self.files_downloaded_hook()
+            # Now our inputs are all downloaded. Let debugging break in (after command is logged).
+            # But we need to hint which host paths are meant to be which container paths
+            host_and_job_paths: List[Tuple[str, str]] = [(k, v) for k, v in task_container.input_path_map.items()]
+            self.files_downloaded_hook(host_and_job_paths)
 
             # TODO: Really we might want to set up a fake container working directory, to actually help the user.
 

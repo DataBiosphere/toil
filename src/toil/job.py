@@ -127,6 +127,18 @@ class DebugStoppingPointReached(BaseException):
     """
     pass
 
+class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
+    """
+    Raised when a job stops because it was asked to download its files, and the files are downloaded.
+    """
+
+    def __init__(self, message, host_and_job_paths: Optional[List[Tuple[str, str]]] = None):
+        super().__init__(message)
+
+        # Save the host and user-code-visible paths of files, in case we're
+        # using a container and they are different.
+        self.host_and_job_paths = host_and_job_paths
+
 class TemporaryID:
     """
     Placeholder for a unregistered job ID used by a JobDescription.
@@ -2912,21 +2924,22 @@ class Job:
 
         return flag in self._debug_flags
 
-    def files_downloaded_hook(self) -> None:
+    def files_downloaded_hook(self, host_and_job_paths: Optional[List[Tuple[str, str]]] = None) -> None:
         """
         Function that subclasses can call when they have downloaded their input files.
 
         Will abort the job if the "download_only" debug flag is set.
+
+        Can be hinted a list of file path pairs outside and inside the job
+        container, in which case the container environment can be
+        reconstructed.
         """
 
         if self.has_debug_flag("download_only"):
             # Stop the worker!
             logger.info("Job has downloaded its files. Stopping.")
-            raise DebugStoppingPointReached()
-
-
-
-
+            # Send off the path mapping for the debugging wrapper.
+            raise FilesDownloadedStoppingPointReached("Files downloaded", host_and_job_paths=host_and_job_paths)
 
 class JobException(Exception):
     """General job exception."""

@@ -196,7 +196,10 @@ class AbstractFileStore(ABC):
             yield
             failed = False
         except BaseException as e:
-            self._dumpAccessLogs(job_type="Debugged" if isinstance(e, DebugStoppingPointReached) else "Failed")
+            if isinstance(e, DebugStoppingPointReached):
+                self._dumpAccessLogs(job_type="Debugged", log_level=logging.INFO)
+            else:
+                self._dumpAccessLogs()
             raise
         finally:
             # See how much disk space is used at the end of the job.
@@ -360,7 +363,7 @@ class AbstractFileStore(ABC):
 
             yield wrappedStream, fileID
 
-    def _dumpAccessLogs(self, job_type: str = "Failed") -> None:
+    def _dumpAccessLogs(self, job_type: str = "Failed", log_level: int = logging.WARNING) -> None:
         """
         Log a report of the files accessed.
 
@@ -369,7 +372,7 @@ class AbstractFileStore(ABC):
         :param job_type: Adjective to describe the job in the report.
         """
         if len(self._accessLog) > 0:
-            logger.warning('%s job accessed files:', job_type)
+            logger.log(log_level, '%s job accessed files:', job_type)
 
             for item in self._accessLog:
                 # For each access record
@@ -378,14 +381,14 @@ class AbstractFileStore(ABC):
                     file_id, dest_path = item
                     if os.path.exists(dest_path):
                         if os.path.islink(dest_path):
-                            logger.warning('Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(log_level, 'Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
                         else:
-                            logger.warning('Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
                     else:
-                        logger.warning('Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
+                        logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
                 else:
                     # Otherwise dump without the name
-                    logger.warning('Streamed file \'%s\'', *item)
+                    logger.log(log_level, 'Streamed file \'%s\'', *item)
 
     def logAccess(
         self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None
