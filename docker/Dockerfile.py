@@ -99,9 +99,6 @@ print(heredoc('''
     ARG TARGETARCH
 
     RUN if [ -z "$TARGETARCH" ] ; then echo "Specify a TARGETARCH argument to build this container"; exit 1; fi
-    
-    # to tell Toil that it's running inside a Docker container
-    ENV TOIL_INSTALLED_INSIDE_DOCKER=True
 
     # Try to avoid "Failed to fetch ...  Undetermined Error" from apt
     # See <https://stackoverflow.com/a/66523384>
