@@ -24,12 +24,11 @@ from boto.exception import SDBResponseError
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from toil.lib.aws import session
+from toil.lib.aws import session, AWSServerErrors
 from toil.lib.aws.utils import connection_reset, get_bucket_region
 from toil.lib.compatibility import compat_bytes
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
-                            ErrorCondition,
                             get_error_code,
                             get_error_message,
                             get_error_status,
@@ -37,11 +36,6 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             retry)
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource
-
-AWSServerErrors = ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)
 
 logger = logging.getLogger(__name__)
 

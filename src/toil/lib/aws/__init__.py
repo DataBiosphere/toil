@@ -21,9 +21,17 @@ from typing import Dict, MutableMapping, Optional, Union, Literal
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from toil.lib.retry import ErrorCondition
+from botocore.exceptions import ClientError
+
 from mypy_boto3_s3.literals import BucketLocationConstraintType
 
 AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
+
+AWSServerErrors = ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)
 
 logger = logging.getLogger(__name__)
 

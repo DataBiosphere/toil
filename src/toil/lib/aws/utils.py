@@ -15,7 +15,6 @@ import errno
 import logging
 import os
 import socket
-import sys
 from typing import (Any,
                     Callable,
                     ContextManager,
@@ -25,24 +24,17 @@ from typing import (Any,
                     List,
                     Optional,
                     Set,
-                    Union,
                     cast)
 from urllib.parse import ParseResult
 
-from toil.jobStores.aws.utils import AWSServerErrors
-from toil.lib.aws import session, AWSRegionName
+from toil.lib.aws import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
                             get_error_code,
                             get_error_status,
                             old_retry,
-                            retry, ErrorCondition)
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+                            retry)
 
 try:
     from boto.exception import BotoServerError, S3ResponseError
