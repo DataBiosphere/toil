@@ -28,6 +28,8 @@ from mypy_boto3_s3.literals import BucketLocationConstraintType
 
 AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
 
+# These are errors where we think something randomly
+# went wrong on the AWS side and we ought to retry.
 AWSServerErrors = toil.lib.retry.ErrorCondition(
     error=ClientError,
     error_codes=[404, 500, 502, 503, 504]
