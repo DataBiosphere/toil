@@ -263,11 +263,10 @@ class AWSProvisioner(AbstractProvisioner):
         self._tags = {k: v for k, v in (self.getLeader().tags or {}).items() if k != _TAG_KEY_TOIL_NODE_TYPE}
         # Grab the ARN name of the instance profile (a str) to apply to workers
         leader_info = None
-        for attempt in old_retry(timeout=300, predicate=lambda e: isinstance(e, ValueError)):
+        for attempt in old_retry(timeout=300, predicate=lambda e: True):
             with attempt:
                 leader_info = ec2_metadata.iam_info
-                if leader_info is None:
-                    raise ValueError(f"Failed to query leader IAM metadata. EC2 instance is not reachable.")
+                assert leader_info is not None
         if leader_info is None:
             # This is more for mypy as it is unable to see that the retry will guarantee this is not None
             # and that this is not reachable
