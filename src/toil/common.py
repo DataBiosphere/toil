@@ -139,6 +139,7 @@ class Config:
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
     statePollingWait: int
+    state_polling_timeout: int
     disableAutoDeployment: bool
 
     # Core options
