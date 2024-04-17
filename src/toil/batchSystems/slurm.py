@@ -341,7 +341,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
 
             # Start by naming the job
-            sbatch_line = ['sbatch', '-J', f'toil_job_{jobID}_{jobName}']
+            sbatch = os.getenv("SBATCH_WRAPPER", 'sbatch')
+
+            sbatch_line = [sbatch, '-J', f'toil_job_{jobID}_{jobName}']
 
             # Make sure the job gets a signal before it disappears so that e.g.
             # container cleanup finally blocks can run. Ask for SIGINT so we
