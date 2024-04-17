@@ -208,6 +208,10 @@ levels in toil are based on priority from the logging module:
                         the waiting period. Only works for grid engine batch
                         systems such as gridengine, htcondor, torque, slurm,
                         and lsf.
+  --statePollingTimeout STATEPOLLINGTIMEOUT
+                        Time, in seconds, to retry against a broken scheduler.
+                        Only works for grid engine batch systems such as 
+                        gridengine, htcondor, torque, slurm, and lsf.
   --batchLogsDir BATCHLOGSDIR
                         Directory to tell the backing batch system to log into.
                         Should be available on both the leader and the workers,

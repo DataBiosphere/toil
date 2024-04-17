@@ -25,6 +25,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.job import AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
+from toil.lib.retry import old_retry, DEFAULT_DELAYS
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.boss = boss
             self.boss.config.statePollingWait = \
                 self.boss.config.statePollingWait or self.boss.getWaitDuration()
+            self.boss.config.state_polling_timeout = \
+                self.boss.config.state_polling_timeout or self.boss.config.statePollingWait * 10
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
@@ -175,7 +178,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.boss.with_retries(self.getJobExitCode, batchJobID) is not None:
+                    exit_code = self.boss.with_retries(self.getJobExitCode, batchJobID)
+                    if exit_code is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
@@ -504,21 +508,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def with_retries(self, operation, *args, **kwargs):
         """
-        Call operation with args and kwargs. If one of the calls to an SGE
-        command fails, sleep and try again for a set number of times.
+        Call operation with args and kwargs. If one of the calls to a
+        command fails, sleep and try again.
         """
-        maxTries = 3
-        tries = 0
-        while True:
-            tries += 1
-            try:
-                return operation(*args, **kwargs)
-            except CalledProcessErrorStderr as err:
-                if tries < maxTries:
-                    logger.error("Will retry errored operation %s, code %d: %s",
+        for attempt in old_retry(
+            # Don't retry more often than the state polling wait.
+            delays=[max(delay, self.config.statePollingWait) for delay in DEFAULT_DELAYS],
+            timeout=self.config.state_polling_timeout,
+            predicate=lambda e: isinstance(e, CalledProcessErrorStderr)
+        ):
+            with attempt:
+                try:
+                    return operation(*args, **kwargs)
+                except CalledProcessErrorStderr as err:
+                    logger.error("Errored operation %s, code %d: %s",
                                  operation.__name__, err.returncode, err.stderr)
-                    time.sleep(self.config.statePollingWait)
-                else:
-                    logger.error("Failed operation %s, code %d: %s",
-                                 operation.__name__, err.returncode, err.stderr)
+                    # Raise up to the retry logic, which will retry until timeout
                     raise err
