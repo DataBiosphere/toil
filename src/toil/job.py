@@ -790,7 +790,7 @@ class JobDescription(Requirer):
         # Used to be the "command" until it was extended beyond making sense as
         # an actual command, so now it's just a string with several
         # space-separated fields. See attach_body() and get_body().
-        self._body_spec: Optional[str] = None
+        self._body: Optional[str] = None
 
         # Set scheduling properties that the leader read to think about scheduling.
 
@@ -962,7 +962,7 @@ class JobDescription(Requirer):
         """
         Returns True if we have a job body associated, and False otherwise.
         """
-        return self._body_spec is not None
+        return self._body is not None
 
     def attach_body(self, file_store_id: str, user_script: ModuleDescriptor) -> None:
         """
@@ -977,13 +977,13 @@ class JobDescription(Requirer):
 
         # TODO: The format here is from the ancient Toil "command" concept, and
         # should be changed.
-        self._body_spec =  ' '.join(('_toil', file_store_id) + user_script.toCommand())
+        self._body =  ' '.join(('_toil', file_store_id) + user_script.toCommand())
 
     def detach_body(self) -> None:
         """
         Drop the body reference from a JobDescription.
         """
-        self._body_spec = None
+        self._body = None
 
     def get_body(self) -> Tuple[str, ModuleDescriptor]:
         """
@@ -995,13 +995,13 @@ class JobDescription(Requirer):
         Fails if no body is attached; check has_body() first.
         """
 
-        if self._body_spec is None:
+        if not self.has_body():
             raise RuntimeError(f"Cannot load the body of a job {self} without one")
 
-        parts = self._body_spec.split()
+        parts = self._body.split()
         if parts[0] != "_toil":
             # TODO: Remove this now useless word
-            raise RuntimeError(f"An invalid body spec {self._body_spec} was found in {self}.")
+            raise RuntimeError(f"An invalid body spec {self._body} was found in {self}.")
         return parts[1], ModuleDescriptor.fromCommand(parts[2:])
 
     def set_worker_command(self, worker_command: str) -> None:
@@ -1445,7 +1445,7 @@ class CheckpointJobDescription(JobDescription):
 
         # Set checkpoint-specific properties
 
-        # None, or a copy of the original self._body_spec string used to reestablish the job after failure.
+        # None, or a copy of the original self._body string used to reestablish the job after failure.
         self.checkpoint: Optional[str] = None
 
         # Files that can not be deleted until the job and its successors have completed
@@ -1458,7 +1458,7 @@ class CheckpointJobDescription(JobDescription):
 
         if not self.has_body():
             raise RuntimeError(f"Cannot snapshot the body of a job {self} without one")
-        self.checkpoint = self._body_spec
+        self.checkpoint = self._body
 
     def restore_checkpoint(self) -> None:
         """
@@ -1466,7 +1466,7 @@ class CheckpointJobDescription(JobDescription):
         """
         if self.checkpoint is None:
             raise RuntimeError(f"Cannot restore an empty checkpoint for a job {self}")
-        self._body_spec = self.checkpoint
+        self._body = self.checkpoint
 
     def restartCheckpoint(self, jobStore: "AbstractJobStore") -> List[str]:
         """
@@ -1484,7 +1484,7 @@ class CheckpointJobDescription(JobDescription):
         all_successors = list(self.allSuccessors())
         if len(all_successors) > 0 or self.serviceTree or self.has_body():
             if self.has_body():
-                if self._body_spec != self.checkpoint:
+                if self._body != self.checkpoint:
                     raise RuntimeError("The stored body reference and checkpoint are not the same.")
                 logger.debug("Checkpoint job already has body set to run")
             else:
