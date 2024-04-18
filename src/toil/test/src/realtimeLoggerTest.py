@@ -30,6 +30,9 @@ class RealtimeLoggerTest(ToilTest):
         # Set up a log message detector to the root logger
         logging.getLogger().addHandler(detector)
 
+        # I believe coloredlogs replaces handlers with its own when doing handler formatting, preserving only filters
+        # https://github.com/xolox/python-coloredlogs/blob/65bdfe976ac0bf81e8c0bd9a98242b9d666b2859/coloredlogs/__init__.py#L453-L459
+        options.colored_logs = False
         Job.Runner.startToil(LogTest(), options)
 
         # We need the message we're supposed to see
@@ -46,6 +49,7 @@ class MessageDetector(logging.StreamHandler):
     def __init__(self):
         self.detected = False  # Have we seen the message we want?
         self.overLogged = False  # Have we seen the message we don't want?
+
         super().__init__()
 
     def emit(self, record):

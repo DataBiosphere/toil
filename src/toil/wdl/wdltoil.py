@@ -24,6 +24,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
@@ -47,14 +48,15 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
 import WDL.runtime.config
-from configargparse import ArgParser, SUPPRESS
+from configargparse import ArgParser
 from WDL._util import byte_size_units, strip_leading_whitespace
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
 
-from toil.common import Toil, addOptions, check_and_create_default_config_file
+from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
+from toil.common import Toil, addOptions
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
@@ -62,17 +64,19 @@ from toil.job import (AcceleratorRequirement,
                       Promise,
                       Promised,
                       TemporaryID,
-                      accelerators_fully_satisfy,
                       parse_accelerator,
                       unwrap,
                       unwrap_all)
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             UnimplementedURLException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
+                                             InvalidImportExportUrlException, LocatorException)
 from toil.lib.conversions import convert_units, human2bytes
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
+from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
+from toil.provisioners.clusterScaler import JobTooBigError
+
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +94,14 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         WDL.Error.ImportError,
         WDL.Error.ValidationError,
         WDL.Error.MultipleValidationErrors,
-        FileNotFoundError
+        FileNotFoundError,
+        InsufficientSystemResources,
+        LocatorException,
+        InvalidImportExportUrlException,
+        UnimplementedURLException,
+        JobTooBigError
     ) as e:
+        # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task)
         # These are the errors that MiniWDL's parser can raise and its reporter
         # can report. See
@@ -558,10 +568,21 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
-        Makes sure sibling files stay siblings and files with the same name don't clobber each other. Called from within this class for tasks, and statically at the end of the workflow for outputs.
+        The destination directory must already exist.
 
-        Returns the local path to the file.
+        Makes sure sibling files stay siblings and files with the same name
+        don't clobber each other. Called from within this class for tasks, and
+        statically at the end of the workflow for outputs.
+
+        Returns the local path to the file. If it already had a local path
+        elsewhere, it might not actually be put in dest_dir.
         """
+
+        if not os.path.isdir(dest_dir):
+            # os.mkdir fails saying the directory *being made* caused a
+            # FileNotFoundError. So check the dest_dir before trying to make
+            # directories under it.
+            raise RuntimeError(f"Cannot devirtualize {filename} into nonexistent directory {dest_dir}")
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
@@ -806,7 +827,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         work_dir = '.' if not self._current_directory_override else self._current_directory_override
 
         # TODO: get this to run in the right container if there is one
-        # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quotes string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
+        # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quoted string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
         # This will handle everything except newlines in the filenames.
         # TODO: Newlines in the filenames?
         # Since compgen will return 1 if nothing matches, we need to allow a failing exit code here.
@@ -1306,7 +1327,7 @@ class WDLBaseJob(Job):
 
         for action, argument in self._postprocessing_steps:
 
-            logger.debug("Apply postprocessing setp: (%s, %s)", action, argument)
+            logger.debug("Apply postprocessing step: (%s, %s)", action, argument)
 
             # Interpret the mini language of postprocessing steps.
             # These are too small to justify being their own separate jobs.
@@ -1528,6 +1549,123 @@ class WDLTaskJob(WDLBaseJob):
         self._task_id = task_id
         self._namespace = namespace
         self._task_path = task_path
+
+    ###
+    # Runtime code injection system
+    ###
+
+    # WDL runtime code injected in the container communicates back to the rest
+    # of the runtime through files in this directory.
+    INJECTED_MESSAGE_DIR = ".toil_wdl_runtime"
+
+    def add_injections(self, command_string: str, task_container: TaskContainer) -> str:
+        """
+        Inject extra Bash code from the Toil WDL runtime into the command for the container.
+
+        Currently doesn't implement the MiniWDL plugin system, but does add
+        resource usage monitoring to Docker containers.
+        """
+        if isinstance(task_container, SwarmContainer):
+            # We're running on Docker Swarm, so we need to monitor CPU usage
+            # and so on from inside the container, since it won't be attributed
+            # to Toil child processes in the leader's self-monitoring.
+            # TODO: Mount this from a file Toil installs instead or something.
+            script = textwrap.dedent("""\
+                function _toil_resource_monitor () {
+                    # Turn off error checking and echo in here
+                    set +ex
+                    MESSAGE_DIR="${1}"
+                    mkdir -p "${MESSAGE_DIR}"
+
+                    function sample_cpu_usec() {
+                        if [[ -f  /sys/fs/cgroup/cpu.stat ]] ; then
+                            awk '{ if ($1 == "usage_usec") {print $2} }' /sys/fs/cgroup/cpu.stat
+                        elif [[ -f /sys/fs/cgroup/cpuacct/cpuacct.stat ]] ; then
+                            echo $(( $(head -n 1 /sys/fs/cgroup/cpuacct/cpuacct.stat | cut -f2 -d' ') * 10000 ))
+                        fi
+                    }
+
+                    function sample_memory_bytes() {
+                        if [[ -f /sys/fs/cgroup/memory.stat ]] ; then
+                            awk '{ if ($1 == "anon") { print $2 } }' /sys/fs/cgroup/memory.stat
+                        elif [[ -f /sys/fs/cgroup/memory/memory.stat ]] ; then
+                            awk '{ if ($1 == "total_rss") { print $2 } }' /sys/fs/cgroup/memory/memory.stat
+                        fi
+                    }
+
+                    while true ; do
+                        printf "CPU\\t" >> ${MESSAGE_DIR}/resources.tsv
+                        sample_cpu_usec >> ${MESSAGE_DIR}/resources.tsv
+                        printf "Memory\\t" >> ${MESSAGE_DIR}/resources.tsv
+                        sample_memory_bytes >> ${MESSAGE_DIR}/resources.tsv
+                        sleep 1
+                    done
+                }
+                """)
+            parts = [script, f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &", command_string]
+            return "\n".join(parts)
+        else:
+            return command_string
+    
+    def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
+        """
+        Handle any data received from injected runtime code in the container.
+        """
+        
+        message_files = outputs_library._glob(WDL.Value.String(os.path.join(self.INJECTED_MESSAGE_DIR, "*")))
+        logger.debug("Handling message files: %s", message_files)
+        for message_file in message_files.value:
+            self.handle_message_file(message_file.value)
+
+    def handle_message_file(self, file_path: str) -> None:
+        """
+        Handle a message file received from in-container injected code.
+
+        Takes the host-side path of the file.
+        """
+        if os.path.basename(file_path) == "resources.tsv":
+            # This is a TSV of resource usage info.
+            first_cpu_usec: Optional[int] = None
+            last_cpu_usec: Optional[int] = None
+            max_memory_bytes: Optional[int] = None
+
+            for line in open(file_path):
+                if not line.endswith("\n"):
+                    # Skip partial lines
+                    continue
+                # For each full line we got
+                parts = line.strip().split("\t")
+                if len(parts) != 2:
+                    # Skip odd-shaped lines
+                    continue
+                if parts[0] == "CPU":
+                    # Parse CPU usage
+                    cpu_usec = int(parts[1])
+                    # Update summary stats
+                    if first_cpu_usec is None:
+                        first_cpu_usec = cpu_usec
+                    last_cpu_usec = cpu_usec
+                elif parts[0] == "Memory":
+                    # Parse memory usage
+                    memory_bytes = int(parts[1])
+                    # Update summary stats
+                    if max_memory_bytes is None or max_memory_bytes < memory_bytes:
+                        max_memory_bytes = memory_bytes
+
+            if max_memory_bytes is not None:
+                logger.info("Container used at about %s bytes of memory at peak", max_memory_bytes)
+                # Treat it as if used by a child process
+                ResourceMonitor.record_extra_memory(max_memory_bytes // 1024)
+            if last_cpu_usec is not None:
+                assert(first_cpu_usec is not None)
+                cpu_seconds = (last_cpu_usec - first_cpu_usec) / 1000000
+                logger.info("Container used about %s seconds of CPU time", cpu_seconds)
+                # Treat it as if used by a child process
+                ResourceMonitor.record_extra_cpu(cpu_seconds)
+
+    ###
+    # Helper functions to work out what containers runtime we can use
+    ###
 
     def can_fake_root(self) -> bool:
         """
@@ -1767,6 +1905,9 @@ class WDLTaskJob(WDLBaseJob):
             # Work out the command string, and unwrap it
             command_string: str = hacky_dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)
 
+            # Do any command injection we might need to do
+            command_string = self.add_injections(command_string, task_container)
+
             # Grab the standard out and error paths. MyPy complains if we call
             # them because in the current MiniWDL version they are untyped.
             # TODO: MyPy will complain if we accomodate this and they later
@@ -1856,6 +1997,9 @@ class WDLTaskJob(WDLBaseJob):
             if size > 0:
                 # Save the whole output stream because the workflow didn't capture it.
                 file_store.log_user_stream(self._task_path + '.stdout', open(host_stdout_txt, 'rb'))
+
+        # Collect output messages from any code Toil injected into the task.
+        self.handle_injection_messages(outputs_library)
 
         # TODO: Check the output bindings against the types of the decls so we
         # can tell if we have a null in a value that is supposed to not be
@@ -2899,6 +3043,9 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
+            # Make sure the output directory exists if we have output files
+            # that might need to use it.
+            os.makedirs(output_directory, exist_ok=True)
             return ToilWDLStdLibBase.devirtualze_to(filename, output_directory, toil, execution_dir) 
 
         # Make all the files local files

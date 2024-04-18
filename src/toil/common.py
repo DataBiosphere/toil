@@ -138,6 +138,7 @@ class Config:
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
     statePollingWait: int
+    state_polling_timeout: int
     disableAutoDeployment: bool
 
     # Core options
@@ -149,6 +150,7 @@ class Config:
     workflowAttemptNumber: int
     jobStore: str
     logLevel: str
+    colored_logs: bool
     workDir: Optional[str]
     coordination_dir: Optional[str]
     noStdOutErr: bool
@@ -402,6 +404,7 @@ class Config:
         set_option("badWorker")
         set_option("badWorkerFailInterval")
         set_option("logLevel")
+        set_option("colored_logs")
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
@@ -884,6 +887,16 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+
+        from toil.job import Job
+
+        # Check that the rootJob is an instance of the Job class
+        if not isinstance(rootJob, Job):
+            raise RuntimeError("The type of the root job is not a job.")
+
+        # Check that the rootJob has been initialized
+        rootJob.check_initialized()
+
 
         # Write shared files to the job store
         self._jobStore.write_leader_pid()

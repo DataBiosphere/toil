@@ -172,6 +172,8 @@ levels in toil are based on priority from the logging module:
                         Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
   --log-dir DIRPATH
                         For CWL and local file system only. Log stdout and stderr (if tool requests stdout/stderr) to the DIRPATH.
+  --logColors BOOL
+                        Enable or disable colored logging. Default=True.
 
 **Batch System Options**
 
@@ -206,6 +208,10 @@ levels in toil are based on priority from the logging module:
                         the waiting period. Only works for grid engine batch
                         systems such as gridengine, htcondor, torque, slurm,
                         and lsf.
+  --statePollingTimeout STATEPOLLINGTIMEOUT
+                        Time, in seconds, to retry against a broken scheduler.
+                        Only works for grid engine batch systems such as 
+                        gridengine, htcondor, torque, slurm, and lsf.
   --batchLogsDir BATCHLOGSDIR
                         Directory to tell the backing batch system to log into.
                         Should be available on both the leader and the workers,

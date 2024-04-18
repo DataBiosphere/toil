@@ -475,17 +475,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # We can actually run in this thread
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:4] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
-            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
+            statusCode = toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
                                      redirectOutputToLogFile=not self.debugWorker) # Call the worker
         else:
             # Run synchronously. If starting or running the command fails, let the exception stop us.
-            subprocess.check_call(jobCommand,
+            statusCode = subprocess.check_call(jobCommand,
                                   shell=True,
                                   env=dict(os.environ, **environment))
 
         self.runningJobs.pop(jobID)
         if not info.killIntended:
-            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
+            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=statusCode, wallTime=time.time() - info.time, exitReason=None))
 
     def getSchedulingStatusMessage(self):
         # Implement the abstractBatchSystem's scheduling status message API
