@@ -7,10 +7,9 @@ import logging
 
 from ruamel.yaml import YAML
 
-from toil.lib.conversions import bytes2human, human2bytes
+from toil.lib.conversions import bytes2human, human2bytes, strtobool, opt_strtobool
 
 from toil.batchSystems.options import add_all_batchsystem_options
-from toil.options import convert_bool, opt_strtobool
 from toil.provisioners import parse_node_types
 from toil.statsAndLogging import add_logging_options
 if TYPE_CHECKING:
@@ -346,7 +345,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                          "them from being modified externally.  When set to False, as long as caching is enabled, "
                          "Toil will protect the file automatically by changing the permissions to read-only."
                          "default=%(default)s")
-    link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=convert_bool, default=True,
+    link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=strtobool, default=True,
                               metavar="BOOL", help=link_imports_help)
     move_exports = file_store_options.add_mutually_exclusive_group()
     move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
@@ -354,7 +353,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                          'location.  Setting this option to True instead copies the files into the output directory.  '
                          'Applies to filesystem-based job stores only.'
                          'default=%(default)s')
-    move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=convert_bool, default=False, metavar="BOOL",
+    move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=strtobool, default=False, metavar="BOOL",
                               help=move_exports_help)
 
     caching = file_store_options.add_mutually_exclusive_group()
@@ -464,11 +463,11 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                           "This is useful for heterogeneous jobs where some tasks require much more "
                                           "disk than others.")
 
-    autoscaling_options.add_argument("--metrics", dest="metrics", default=False, type=convert_bool, metavar="BOOL",
+    autoscaling_options.add_argument("--metrics", dest="metrics", default=False, type=strtobool, metavar="BOOL",
                                      help="Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, "
                                           "queue size, and issued jobs.")
     autoscaling_options.add_argument("--assumeZeroOverhead", dest="assume_zero_overhead", default=False,
-                                     type=convert_bool, metavar="BOOL",
+                                     type=strtobool, metavar="BOOL",
                                      help="Ignore scheduler and OS overhead and assume jobs can use every last byte "
                                           "of memory and disk on a node when autoscaling.")
 
@@ -539,7 +538,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                   help=resource_help_msg.format('default', 'accelerators', accelerators_note, []))
     resource_options.add_argument('--defaultPreemptible', '--defaultPreemptable', dest='defaultPreemptible',
                                   metavar='BOOL',
-                                  type=convert_bool, nargs='?', const=True, default=False,
+                                  type=strtobool, nargs='?', const=True, default=False,
                                   help='Make all jobs able to run on preemptible (spot) nodes by default.')
     resource_options.add_argument('--maxCores', dest='maxCores', default=SYS_MAX_SIZE, metavar='INT', type=int,
                                   action=make_open_interval_action(1),
@@ -564,10 +563,10 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                   f"labeling job failed. default={1}")
     job_options.add_argument("--enableUnlimitedPreemptibleRetries", "--enableUnlimitedPreemptableRetries",
                              dest="enableUnlimitedPreemptibleRetries",
-                             type=convert_bool, default=False, metavar="BOOL",
+                             type=strtobool, default=False, metavar="BOOL",
                              help="If set, preemptible failures (or any failure due to an instance getting "
                                   "unexpectedly terminated) will not count towards job failures and --retryCount.")
-    job_options.add_argument("--doubleMem", dest="doubleMem", type=convert_bool, default=False, metavar="BOOL",
+    job_options.add_argument("--doubleMem", dest="doubleMem", type=strtobool, default=False, metavar="BOOL",
                              help="If set, batch jobs which die to reaching memory limit on batch schedulers "
                                   "will have their memory doubled and they will be retried. The remaining "
                                   "retry count will be reduced by 1. Currently supported by LSF.")
@@ -605,7 +604,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     log_options.add_argument("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store', default=None,
                              const=os.getcwd(), metavar="OPT_PATH",
                              help="Identical to --writeLogs except the logs files are gzipped on the leader.")
-    log_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", type=convert_bool,
+    log_options.add_argument("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", type=strtobool,
                              default=False, metavar="BOOL",
                              help="Whether to write logs from all jobs (including the successful ones) without "
                                   "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
@@ -613,7 +612,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     log_options.add_argument("--writeMessages", dest="write_messages", default=None,
                              type=lambda x: None if x is None else os.path.abspath(x), metavar="PATH",
                              help="File to send messages from the leader's message bus to.")
-    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", type=convert_bool, default=False,
+    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", type=strtobool, default=False,
                              help="Enable real-time logging from workers to leader")
 
     # Misc options
@@ -621,12 +620,12 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
         title="Toil miscellaneous options.",
         description="Everything else."
     )
-    misc_options.add_argument('--disableChaining', dest='disableChaining', type=convert_bool, default=False,
+    misc_options.add_argument('--disableChaining', dest='disableChaining', type=strtobool, default=False,
                               metavar="BOOL",
                               help="Disables chaining of jobs (chaining uses one job's resource allocation "
                                    "for its successor job if possible).")
     misc_options.add_argument("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
-                              default=False, type=convert_bool, metavar="BOOL",
+                              default=False, type=strtobool, metavar="BOOL",
                               help="Disables checksum verification for files transferred to/from the job store.  "
                                    "Checksum verification is a safety check to ensure the data is not corrupted "
                                    "during transfer. Currently only supported for non-streaming AWS files.")
@@ -678,7 +677,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                               action=make_open_interval_action(0.0), metavar="FLOAT",
                               help=f"Interval of time service jobs wait between polling for the existence of the "
                                    f"keep-alive flag.  Default: {60.0}")
-    misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', type=convert_bool, default=False,
+    misc_options.add_argument('--forceDockerAppliance', dest='forceDockerAppliance', type=strtobool, default=False,
                               metavar="BOOL",
                               help='Disables sanity checking the existence of the docker image specified by '
                                    'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')

@@ -879,10 +879,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a container definition
         container = V1Container(command=command_list,
-                                                  image=self.docker_image,
-                                                  name="runner-container",
-                                                  resources=resources,
-                                                  volume_mounts=mounts)
+                                image=self.docker_image,
+                                name="runner-container",
+                                resources=resources,
+                                volume_mounts=mounts)
 
         # In case security context rules are not allowed to be set
         if self.config.kubernetes_privileged:
@@ -890,8 +890,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Wrap the container in a spec
         pod_spec = V1PodSpec(containers=[container],
-                                               volumes=volumes,
-                                               restart_policy="Never")
+                             volumes=volumes,
+                             restart_policy="Never")
         # Tell the spec where to land
         placement.apply(pod_spec)
 
