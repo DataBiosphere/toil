@@ -1457,7 +1457,7 @@ class CheckpointJobDescription(JobDescription):
         Save a body checkpoint into self.checkpoint
         """
 
-        if self._body_spec is None:
+        if not self.has_body():
             raise RuntimeError(f"Cannot snapshot the body of a job {self} without one")
         self.checkpoint = self._body_spec
 
