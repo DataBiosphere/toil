@@ -34,6 +34,7 @@ from typing import (TYPE_CHECKING,
                     Iterator,
                     List,
                     Mapping,
+                    NamedTuple,
                     Optional,
                     Sequence,
                     Set,
@@ -710,6 +711,15 @@ class Requirer:
             parts = ['no requirements']
         return ', '.join(parts)
 
+class JobBodyReference(NamedTuple):
+    """
+    Reference from a job description to its body.
+    """
+    file_store_id: str
+    """File ID (or special shared file name for the root job) of the job's body."""
+    module_string: str 
+    """Stringified description of the module needed to load the body."""
+
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a Job.
@@ -783,14 +793,10 @@ class JobDescription(Requirer):
         # TODO: Really internal leader state!
         self._worker_command: Optional[str] = None
 
-        # String that encodes how to find the Job body data that this
+        # Information that encodes how to find the Job body data that this
         # JobDescription describes, and the module(s) needed to unpickle it.
         # None if no body needs to run.
-        #
-        # Used to be the "command" until it was extended beyond making sense as
-        # an actual command, so now it's just a string with several
-        # space-separated fields. See attach_body() and get_body().
-        self._body: Optional[str] = None
+        self._body: Optional[JobBodyReference] = None
 
         # Set scheduling properties that the leader read to think about scheduling.
 
@@ -975,9 +981,7 @@ class JobDescription(Requirer):
         shared file instead.
         """
 
-        # TODO: The format here is from the ancient Toil "command" concept, and
-        # should be changed.
-        self._body =  ' '.join(('_toil', file_store_id) + user_script.toCommand())
+        self._body = JobBodyReference(file_store_id, user_script.toCommand())
 
     def detach_body(self) -> None:
         """
@@ -998,11 +1002,7 @@ class JobDescription(Requirer):
         if not self.has_body():
             raise RuntimeError(f"Cannot load the body of a job {self} without one")
 
-        parts = self._body.split()
-        if parts[0] != "_toil":
-            # TODO: Remove this now useless word
-            raise RuntimeError(f"An invalid body spec {self._body} was found in {self}.")
-        return parts[1], ModuleDescriptor.fromCommand(parts[2:])
+        return self._body.file_store_id, ModuleDescriptor.fromCommand(self._body.module_string)
 
     def set_worker_command(self, worker_command: str) -> None:
         """
@@ -1445,8 +1445,8 @@ class CheckpointJobDescription(JobDescription):
 
         # Set checkpoint-specific properties
 
-        # None, or a copy of the original self._body string used to reestablish the job after failure.
-        self.checkpoint: Optional[str] = None
+        # None, or a copy of the original self._body used to reestablish the job after failure.
+        self.checkpoint: Optional[JobBodyReference] = None
 
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = []
@@ -2847,16 +2847,16 @@ class Job:
         :returns: The job referenced by the JobDescription.
         """
         
-        filestore_id, user_module_descriptor = job_description.get_body()
+        file_store_id, user_module_descriptor = job_description.get_body()
         logger.debug('Loading user module %s.', user_module_descriptor)
         user_module = cls._loadUserModule(user_module_descriptor)
 
         #Loads context manager using file stream
-        if filestore_id == "firstJob":
+        if file_store_id == "firstJob":
             # This one is actually a shared file name and not a file ID.
-            manager = job_store.read_shared_file_stream(filestore_id)
+            manager = job_store.read_shared_file_stream(file_store_id)
         else:
-            manager = job_store.read_file_stream(filestore_id)
+            manager = job_store.read_file_stream(file_store_id)
 
         #Open and unpickle
         with manager as file_handle:
