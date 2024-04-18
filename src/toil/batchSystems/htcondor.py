@@ -48,7 +48,7 @@ schedd_lock = Lock()
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
 
-    class Worker(AbstractGridEngineBatchSystem.Worker):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
         # and so that we can get disk allocation requests and ceil the CPU request.

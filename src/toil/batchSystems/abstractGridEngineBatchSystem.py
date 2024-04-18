@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import queue
 import time
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
@@ -45,20 +46,22 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
     """
+    class GridEngineThreadException(Exception):
+        pass
 
-    class Worker(Thread, metaclass=ABCMeta):
+    class GridEngineThread(Thread, metaclass=ABCMeta):
 
         def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
             """
-            Abstract worker interface class. All instances are created with five
+            Abstract thread interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
 
             :param newJobsQueue: a Queue of new (unsubmitted) jobs
             :param updatedJobsQueue: a Queue of jobs that have been updated
             :param killQueue: a Queue of active jobs that need to be killed
-            :param killedJobsQueue: Queue of killed jobs for this worker
+            :param killedJobsQueue: Queue of killed jobs for this thread
             :param boss: the AbstractGridEngineBatchSystem instance that
-                         controls this AbstractGridEngineWorker
+                         controls this GridEngineThread
 
             """
             Thread.__init__(self)
@@ -110,7 +113,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             """
             Create a new job with the given attributes.
 
-            Implementation-specific; called by AbstractGridEngineWorker.run()
+            Implementation-specific; called by GridEngineThread.run()
             """
             activity = False
             # Load new job id if present:
@@ -146,7 +149,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         def killJobs(self):
             """
-            Kill any running jobs within worker
+            Kill any running jobs within thread
             """
             killList = list()
             while True:
@@ -284,7 +287,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             """
             Returns exit codes and possibly exit reasons for a list of jobs, or None if they are running.
 
-            Called by AbstractGridEngineWorker.checkOnJobs().
+            Called by GridEngineThread.checkOnJobs().
 
             This is an optional part of the interface. It should raise
             NotImplementedError if not actually implemented for a particular
@@ -345,7 +348,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         def killJob(self, jobID):
             """
             Kill specific job with the Toil job ID. Implementation-specific; called
-            by AbstractGridEngineWorker.killJobs()
+            by GridEngineThread.killJobs()
 
             :param string jobID: Toil job ID
             """
@@ -360,7 +363,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
             If the job is not running but the exit code is not available, it
             will be EXIT_STATUS_UNAVAILABLE_VALUE. Implementation-specific;
-            called by AbstractGridEngineWorker.checkOnJobs().
+            called by GridEngineThread.checkOnJobs().
 
             The exit code will only be 0 if the job affirmatively succeeded.
 
@@ -379,10 +382,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
         self.killedJobsQueue = Queue()
-        # get the associated worker class here
-        self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue,
-                                  self.killQueue, self.killedJobsQueue, self)
-        self.worker.start()
+        # get the associated thread class here
+        self.background_thread = self.GridEngineThread(self.newJobsQueue, self.updatedJobsQueue,
+                                                       self.killQueue, self.killedJobsQueue, self)
+        self.background_thread.start()
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
 
@@ -428,7 +431,12 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         for jobID in jobIDs:
             self.killQueue.put(jobID)
         while jobIDs:
-            killedJobId = self.killedJobsQueue.get()
+            try:
+                killedJobId = self.killedJobsQueue.get(block=False, timeout=10)
+            except queue.Empty:
+                if not self.background_thread.is_alive():
+                    raise self.GridEngineThreadException("Grid engine thread failed unexpectedly.")
+                continue
             if killedJobId is None:
                 break
             jobIDs.remove(killedJobId)
@@ -460,7 +468,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            batchIds = self.with_retries(self.worker.getRunningJobIDs)
+            batchIds = self.with_retries(self.background_thread.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
@@ -468,6 +476,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         local_tuple = self.getUpdatedLocalJob(0)
+
+        if not self.background_thread.is_alive():
+            # kill remaining jobs on the thread
+            self.background_thread.killJobs()
+            raise self.GridEngineThreadException("Unexpected GridEngineThread failure.")
         if local_tuple:
             return local_tuple
         else:
@@ -481,14 +494,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def shutdown(self) -> None:
         """
-        Signals worker to shutdown (via sentinel) then cleanly joins the thread
+        Signals thread to shutdown (via sentinel) then cleanly joins the thread
         """
         self.shutdownLocal()
         newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
 
         newJobsQueue.put(None)
-        self.worker.join()
+        self.background_thread.join()
 
     def setEnv(self, name, value=None):
         if value and ',' in value:

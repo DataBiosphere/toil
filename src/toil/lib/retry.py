@@ -493,7 +493,7 @@ DEFAULT_TIMEOUT = 300
 #  still used there to avoid the duplication of future work
 def old_retry(
     delays: Iterable[float] = DEFAULT_DELAYS,
-    timeout: float = DEFAULT_TIMEOUT,
+    timeout: Optional[float] = DEFAULT_TIMEOUT,
     predicate: Callable[[Exception], bool] = lambda e: False,
 ) -> Generator[ContextManager, None, None]:
     """
@@ -567,6 +567,7 @@ def old_retry(
     >>> i
     1
     """
+    timeout = timeout if timeout else DEFAULT_TIMEOUT
     if timeout > 0:
         go = [ None ]
 

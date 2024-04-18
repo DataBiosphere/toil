@@ -70,7 +70,7 @@ NONTERMINAL_STATES: Set[str] = {
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
-    class Worker(AbstractGridEngineBatchSystem.Worker):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
 
         def getRunningJobIDs(self):
             # Should return a dictionary of Job IDs and number of seconds
