@@ -884,7 +884,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                                                   resources=resources,
                                                   volume_mounts=mounts)
 
-        # In case security context rules are not allowed to be set
+        # In case security context rules are not allowed to be set, we only apply
+        # a security context at all if we need to turn on privileged mode.
         if self.config.kubernetes_privileged:
             container.security_context = V1SecurityContext(privileged=self.config.kubernetes_privileged)
 

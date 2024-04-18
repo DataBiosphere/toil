@@ -169,7 +169,7 @@ define tag_docker
 	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
 endef
 
-docker: toil_docker
+docker: toil_docker prometheus_docker grafana_docker mtail_docker
 
 toil_docker: docker/Dockerfile
 	mkdir -p .docker_cache

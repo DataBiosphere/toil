@@ -168,7 +168,7 @@ class AbstractProvisioner(ABC):
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
 
-        # Whether or not to use FUSE on the cluster. If true, the cluster will be launched in privileged mode
+        # Whether or not to use FUSE on the cluster. If true, the cluster's Toil containers will be launched in privileged mode
         self.enable_fuse = enable_fuse
 
         if clusterName:

@@ -314,8 +314,8 @@ with ``worker`` to get shell access in your worker.
 
 .. admonition:: Enabling FUSE
 
-    When running toil-wdl-runner with Singularity, Singularity will sandbox images
-    by default. This can take time if a workflow has lots of images. To avoid this, FUSE can be given
+    When running toil-wdl-runner with Singularity, Singularity will decompress images to sandbox directories
+    by default. This can take time if a workflow has lots of images. To avoid this, access to FUSE can be given
     to the Docker container at startup. There are 2 main ways to do this. Either run all the Docker
     containers in privileged mode::
 

@@ -129,7 +129,7 @@ exist yet, Toil will create it for you.
                         Whether to allow FUSE mounts for faster runtimes with Singularity.
                         Note: This will result in the Toil container running as privileged.
                         For Kubernetes, pods will be asked to run as privileged. If this is not
-                        allowed, images will be sandboxed instead.
+                        allowed, Singularity containers will use sandbox directories instead.
 
 **Logging Options**
 
