@@ -168,7 +168,7 @@ class AbstractProvisioner(ABC):
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
 
-        # Whether or not to use FUSE on the cluster. If true, the cluster will be launched in privileged mode
+        # Whether or not to use FUSE on the cluster. If true, the cluster's Toil containers will be launched in privileged mode
         self.enable_fuse = enable_fuse
 
         if clusterName:
@@ -816,10 +816,10 @@ class AbstractProvisioner(ABC):
                 -v /opt:/opt \\
                 -v /etc/kubernetes:/etc/kubernetes \\
                 -v /etc/kubernetes/admin.conf:/root/.kube/config \\
-                # Pass in a path to use for singularity image caching into the container
                 {"-e TOIL_KUBERNETES_PRIVILEGED=True --privileged" if self.enable_fuse else 
                 "--security-opt seccomp=unconfined --security-opt systempaths=unconfined"} \\
                 -e TOIL_KUBERNETES_HOST_PATH=/var/lib/toil \\
+                # Pass in a path to use for singularity image caching into the container
                 -e SINGULARITY_CACHEDIR=/var/lib/toil/singularity \\
                 -e MINIWDL__SINGULARITY__IMAGE_CACHE=/var/lib/toil/miniwdl \\
                 --name=toil_{role} \\
