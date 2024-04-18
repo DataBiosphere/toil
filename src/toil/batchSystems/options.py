@@ -76,6 +76,7 @@ def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSette
     set_option("manualMemArgs")
     set_option("run_local_jobs_on_workers")
     set_option("statePollingWait")
+    set_option("state_polling_timeout")
     set_option("batch_logs_dir")
 
 
@@ -162,6 +163,14 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=None,
         help="Time, in seconds, to wait before doing a scheduler query for job state.  "
              "Return cached results if within the waiting period. Only works for grid "
+             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+    )
+    parser.add_argument(
+        "--statePollingTimeout",
+        dest="state_polling_timeout",
+        type=int,
+        default=1200,
+        help="Time, in seconds, to retry against a broken scheduler. Only works for grid "
              "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
     parser.add_argument(
