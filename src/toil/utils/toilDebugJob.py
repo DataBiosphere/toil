@@ -19,6 +19,7 @@ import pprint
 import sys
 
 from pathlib import Path
+from typing import Optional, List, Tuple
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import FilesDownloadedStoppingPointReached
