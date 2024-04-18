@@ -1096,7 +1096,7 @@ class Leader:
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
-            reissued = self.killJobs(jobsToKill, exit_reson=BatchJobExitReason.MAXJOBDURATION)
+            reissued = self.killJobs(jobsToKill, exit_reason=BatchJobExitReason.MAXJOBDURATION)
             if len(jobsToKill) > 0:
                 # Summarize our actions
                 logger.info("Killed %d over long jobs and reissued %d of them", len(jobsToKill), len(reissued))

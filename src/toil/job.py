@@ -723,10 +723,12 @@ class JobBodyReference(NamedTuple):
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a Job.
-
-    (requirements information, dependency information, pickled job body to run,
-    etc.)
-
+    
+    This includes:
+        * Resource requirements.
+        * Which jobs are children or follow-ons or predecessors of this job.
+        * A reference to the Job object in the job store.
+    
     Can be obtained from an actual (i.e. executable) Job object, and can be
     used to obtain the Job object from the JobStore.
 
