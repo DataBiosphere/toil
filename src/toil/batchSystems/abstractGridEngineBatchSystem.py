@@ -50,7 +50,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         pass
 
     class GridEngineThread(Thread, metaclass=ABCMeta):
-
         def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
             """
             Abstract thread interface class. All instances are created with five
@@ -80,6 +79,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.batchJobIDs: Dict[int, str] = dict()
             self._checkOnJobsCache = None
             self._checkOnJobsTimestamp = None
+            self.exception = None
 
         def getBatchSystemID(self, jobID: int) -> str:
             """
@@ -280,8 +280,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 while self._runStep():
                     pass
             except Exception as ex:
-                logger.error("GridEngine like batch system failure", exc_info=ex)
-                raise
+                self.exception = ex
+                logger.error("GridEngine like batch system failure: %s", ex)
+                # dont raise exception as is_alive will still be set to false,
+                # signalling exception in the thread as we expect the thread to
+                # always be running for the duration of the workflow
 
         def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
             """
@@ -435,7 +438,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 killedJobId = self.killedJobsQueue.get(timeout=10)
             except queue.Empty:
                 if not self.background_thread.is_alive():
-                    raise self.GridEngineThreadException("Grid engine thread failed unexpectedly.")
+                    raise self.GridEngineThreadException("Grid engine thread failed unexpectedly") from self.background_thread.exception
                 continue
             if killedJobId is None:
                 break
@@ -480,7 +483,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         if not self.background_thread.is_alive():
             # kill remaining jobs on the thread
             self.background_thread.killJobs()
-            raise self.GridEngineThreadException("Unexpected GridEngineThread failure.")
+            raise self.GridEngineThreadException("Unexpected GridEngineThread failure") from self.background_thread.exception
         if local_tuple:
             return local_tuple
         else:
