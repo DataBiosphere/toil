@@ -174,13 +174,13 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def unignoreNode(self, nodeAddress):
         self.ignoredNodes.remove(nodeAddress)
 
-    def issueBatchJob(self, jobNode: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobNode: JobDescription, job_environment: Optional[Dict[str, str]] = None):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
         needed for the job and error-file is the path of the file to place any std-err/std-out in.
         """
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(command, jobNode)
         if localID is not None:
             return localID
 
@@ -200,7 +200,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
                       resources=MesosShape(wallTime=0, **mesos_resources),
-                      command=jobNode.get_worker_command(),
+                      command=command,
                       userScript=self.userScript,
                       environment=environment,
                       workerCleanupInfo=self.workerCleanupInfo)

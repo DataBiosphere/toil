@@ -790,11 +790,6 @@ class JobDescription(Requirer):
         # ID of this job description in the JobStore.
         self.jobStoreID: Union[str, TemporaryID] = TemporaryID()
 
-        # Actual command string we intend for the batch system to run somewhere
-        # Used internally by the leader.
-        # TODO: Really internal leader state!
-        self._worker_command: Optional[str] = None
-
         # Information that encodes how to find the Job body data that this
         # JobDescription describes, and the module(s) needed to unpickle it.
         # None if no body needs to run.
@@ -1005,24 +1000,6 @@ class JobDescription(Requirer):
             raise RuntimeError(f"Cannot load the body of a job {self} without one")
 
         return self._body.file_store_id, ModuleDescriptor.fromCommand(self._body.module_string)
-
-    def set_worker_command(self, worker_command: str) -> None:
-        """
-        Used by the leader to store the command to run this job.
-        """
-        # TODO: This probably should become a new issueBatchJob argument
-        # instead.
-        self._worker_command = worker_command
-
-    def get_worker_command(self) -> str:
-        """
-        Get the command for the batch system to call the Toil worker, as set by the leader.
-
-        Fails if the command was not set.
-        """
-        if self._worker_command is None:
-            raise RuntimeError(f"Leader has not yet set up a worker command for job {self}")
-        return self._worker_command
 
     def nextSuccessors(self) -> Optional[Set[str]]:
         """

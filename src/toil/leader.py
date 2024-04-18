@@ -901,10 +901,6 @@ class Leader:
             workerCommand.append('--context')
             workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
 
-        # We locally compute the command to run on the worker to run the job.
-        # TODO: Just pass this to the batch system, don't store it in the job description.
-        jobNode.set_worker_command(' '.join(workerCommand))
-
         omp_threads = os.environ.get('OMP_NUM_THREADS') \
             or str(max(1, int(jobNode.cores)))  # make sure OMP_NUM_THREADS is a positive integer
 
@@ -914,7 +910,7 @@ class Leader:
         }
 
         # jobBatchSystemID is an int for each job
-        jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode, job_environment=job_environment)
+        jobBatchSystemID = self.batchSystem.issueBatchJob(' '.join(workerCommand), jobNode, job_environment=job_environment)
         # Record the job by the ID the batch system will use to talk about it with us
         self.issued_jobs_by_batch_system_id[jobBatchSystemID] = jobNode.jobStoreID
         # Record that this job is issued right now and shouldn't e.g. be issued again.

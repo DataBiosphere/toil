@@ -163,17 +163,19 @@ class AbstractBatchSystem(ABC):
         """
 
     @abstractmethod
-    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
         Issues a job with the specified command to the batch system and returns
-        a unique jobID.
+        a unique job ID number.
 
-        :param jobDesc: a toil.job.JobDescription
+        :param command: the command to execute somewhere to run the Toil
+            worker process
+        :param job_desc: the JobDescription for the job being run
         :param job_environment: a collection of job-specific environment
-                                variables to be set on the worker.
+            variables to be set on the worker.
 
-        :return: a unique jobID that can be used to reference the newly issued
-                 job
+        :return: a unique job ID number that can be used to reference the newly
+            issued job
         """
         raise NotImplementedError()
 
@@ -195,20 +197,20 @@ class AbstractBatchSystem(ABC):
         """
         Gets all currently issued jobs
 
-        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
-                 waiting to be run). Despite the result being a list, the ordering should not
-                 be depended upon.
+        :return: A list of jobs (as job ID numbers) currently issued (may be
+            running, or may be waiting to be run). Despite the result being a
+            list, the ordering should not be depended upon.
         """
         raise NotImplementedError()
 
     @abstractmethod
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         """
-        Gets a map of jobs as jobIDs that are currently running (not just waiting)
-        and how long they have been running, in seconds.
+        Gets a map of jobs as job ID numbers that are currently running (not
+        just waiting) and how long they have been running, in seconds.
 
-        :return: dictionary with currently running jobID keys and how many seconds they have
-                 been running as the value
+        :return: dictionary with currently running job ID number keys and how
+            many seconds they have been running as the value
         """
         raise NotImplementedError()
 

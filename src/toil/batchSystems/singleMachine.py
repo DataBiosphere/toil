@@ -743,20 +743,19 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         logger.debug('Child %d for job %s succeeded', pid, jobID)
 
-    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
 
         # Apply scale in cores
-        scaled_desc = jobDesc.scale('cores', self.scale)
+        scaled_desc = job_desc.scale('cores', self.scale)
         # Round cores up to multiples of minCores
         scaled_desc.cores = max(math.ceil(scaled_desc.cores / self.minCores) * self.minCores, self.minCores)
 
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
         self.check_resource_request(scaled_desc)
-        command = jobDesc.get_worker_command()
         logger.debug(f"Issuing the command: {command} with {scaled_desc.requirements_string()}")
         with self.jobIndexLock:
             jobID = self.jobIndex

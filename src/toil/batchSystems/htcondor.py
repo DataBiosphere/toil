@@ -387,9 +387,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return '"' + ' '.join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobNode, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(command, jobNode)
         if localID is not None:
             return localID
         else:
@@ -397,7 +397,6 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
 
-            command = jobNode.get_worker_command()
             # Construct our style of job tuple
             self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, command,
                                    job_environment or {}, jobNode.accelerators))

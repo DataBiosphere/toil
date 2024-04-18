@@ -34,9 +34,9 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
-    def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:
+    def handleLocalJob(self, command: str, jobDesc: JobDescription) -> Optional[int]:
         """
-        To be called by issueBatchJobs.
+        To be called by issueBatchJob.
 
         Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
@@ -50,7 +50,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             # somehow doesn't error whereas just returning the value complains
             # we're returning an Any. TODO: When singleMachine.py typechecks,
             # remove all these extra variables.
-            local_id: int = self.localBatch.issueBatchJob(jobDesc)
+            local_id: int = self.localBatch.issueBatchJob(command, jobDesc)
             return local_id
         else:
             return None
