@@ -266,7 +266,8 @@ class AWSProvisioner(AbstractProvisioner):
         for attempt in old_retry(timeout=300, predicate=lambda e: True):
             with attempt:
                 leader_info = ec2_metadata.iam_info
-                assert leader_info is not None
+                if leader_info is None:
+                    raise RuntimeError("Could not get EC2 metadata IAM info")
         if leader_info is None:
             # This is more for mypy as it is unable to see that the retry will guarantee this is not None
             # and that this is not reachable
