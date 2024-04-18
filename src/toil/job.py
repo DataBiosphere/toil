@@ -2837,32 +2837,33 @@ class Job:
 
     @classmethod
     def loadJob(
-        cls, jobStore: "AbstractJobStore", jobDescription: JobDescription
+        cls, job_store: "AbstractJobStore", job_description: JobDescription
     ) -> "Job":
         """
         Retrieves a :class:`toil.job.Job` instance from a JobStore
 
-        :param jobStore: The job store.
-        :param jobDescription: the JobDescription of the job to retrieve.
+        :param job_store: The job store.
+        :param job_description: the JobDescription of the job to retrieve.
         :returns: The job referenced by the JobDescription.
         """
         
-        pickleFile, userModule = jobDescription.get_body()
-        logger.debug('Loading user module %s.', userModule)
-        userModule = cls._loadUserModule(userModule)
+        filestore_id, user_module_descriptor = job_description.get_body()
+        logger.debug('Loading user module %s.', user_module_descriptor)
+        user_module = cls._loadUserModule(user_module_descriptor)
 
         #Loads context manager using file stream
-        if pickleFile == "firstJob":
-            manager = jobStore.read_shared_file_stream(pickleFile)
+        if filestore_id == "firstJob":
+            # This one is actually a shared file name and not a file ID.
+            manager = job_store.read_shared_file_stream(filestore_id)
         else:
-            manager = jobStore.read_file_stream(pickleFile)
+            manager = job_store.read_file_stream(filestore_id)
 
         #Open and unpickle
-        with manager as fileHandle:
+        with manager as file_handle:
 
-            job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+            job = cls._unpickle(user_module, file_handle, requireInstanceOf=Job)
             # Fill in the current description
-            job._description = jobDescription
+            job._description = job_description
 
             # Set up the registry again, so children and follow-ons can be added on the worker
             job._registry = {job.jobStoreID: job}
