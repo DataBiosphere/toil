@@ -432,7 +432,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.killQueue.put(jobID)
         while jobIDs:
             try:
-                killedJobId = self.killedJobsQueue.get(block=False, timeout=10)
+                killedJobId = self.killedJobsQueue.get(timeout=10)
             except queue.Empty:
                 if not self.background_thread.is_alive():
                     raise self.GridEngineThreadException("Grid engine thread failed unexpectedly.")
