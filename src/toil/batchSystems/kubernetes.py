@@ -47,7 +47,7 @@ from typing import (Any,
                     cast,
                     overload)
 
-from toil.options import opt_strtobool
+from toil.lib.conversions import opt_strtobool
 
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
