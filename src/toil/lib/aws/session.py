@@ -15,16 +15,22 @@ import collections
 import logging
 import os
 import threading
-from typing import Dict, Optional, Tuple, cast
+from typing import Dict, Optional, Tuple, cast, Union, Literal, overload, TypeVar
 
+import boto
 import boto3
 import boto3.resources.base
-import boto.connection
 import botocore
 from boto3 import Session
 from botocore.client import Config
 from botocore.session import get_session
 from botocore.utils import JSONFileCache
+from mypy_boto3_autoscaling import AutoScalingClient
+from mypy_boto3_ec2 import EC2Client, EC2ServiceResource
+from mypy_boto3_iam import IAMClient, IAMServiceResource
+from mypy_boto3_s3 import S3Client, S3ServiceResource
+from mypy_boto3_sdb import SimpleDBClient
+from mypy_boto3_sts import STSClient
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +126,13 @@ class AWSConnectionManager:
             storage.item = _new_boto3_session(region_name=region)
         return cast(boto3.session.Session, storage.item)
 
+    @overload
+    def resource(self, region: Optional[str], service_name: Literal["s3"], endpoint_url: Optional[str] = None) -> S3ServiceResource: ...
+    @overload
+    def resource(self, region: Optional[str], service_name: Literal["iam"], endpoint_url: Optional[str] = None) -> IAMServiceResource: ...
+    @overload
+    def resource(self, region: Optional[str], service_name: Literal["ec2"], endpoint_url: Optional[str] = None) -> EC2ServiceResource: ...
+
     def resource(self, region: Optional[str], service_name: str, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
         """
         Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
@@ -146,7 +159,28 @@ class AWSConnectionManager:
 
         return cast(boto3.resources.base.ServiceResource, storage.item)
 
-    def client(self, region: Optional[str], service_name: str, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["ec2"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> EC2Client: ...
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["iam"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> IAMClient: ...
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["s3"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> S3Client: ...
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["sts"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> STSClient: ...
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["sdb"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> SimpleDBClient: ...
+    @overload
+    def client(self, region: Optional[str], service_name: Literal["autoscaling"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> AutoScalingClient: ...
+
+
+    def client(self, region: Optional[str], service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"], endpoint_url: Optional[str] = None,
+               config: Optional[Config] = None) -> botocore.client.BaseClient:
         """
         Get the Boto3 Client to use with the given service (like 'ec2') in the given region.
 
@@ -159,9 +193,9 @@ class AWSConnectionManager:
             # Don't try and memoize if a custom config is used
             with _init_lock:
                 if endpoint_url is not None:
-                    return self.session(region).client(service_name, endpoint_url=endpoint_url, config=config) # type: ignore
+                    return self.session(region).client(service_name, endpoint_url=endpoint_url, config=config)
                 else:
-                    return self.session(region).client(service_name, config=config) # type: ignore
+                    return self.session(region).client(service_name, config=config)
 
         key = (region, service_name, endpoint_url)
         storage = self.client_cache[key]
@@ -172,25 +206,12 @@ class AWSConnectionManager:
                 if endpoint_url is not None:
                     # The Boto3 stubs are probably missing an overload here too. See:
                     # <https://github.com/vemel/mypy_boto3_builder/issues/121#issuecomment-1011322636>
-                    storage.item = self.session(region).client(service_name, endpoint_url=endpoint_url) # type: ignore
+                    storage.item = self.session(region).client(service_name, endpoint_url=endpoint_url)
                 else:
                     # We might not be able to pass None to Boto3 and have it be the same as no argument.
-                    storage.item = self.session(region).client(service_name) # type: ignore
+                    storage.item = self.session(region).client(service_name)
         return cast(botocore.client.BaseClient , storage.item)
 
-    def boto2(self, region: Optional[str], service_name: str) -> boto.connection.AWSAuthConnection:
-        """
-        Get the connected boto2 connection for the given region and service.
-        """
-        if service_name == 'iam':
-            # IAM connections are regionless
-            region = 'universal'
-        key = (region, service_name)
-        storage = self.boto2_cache[key]
-        if not hasattr(storage, 'item'):
-            with _init_lock:
-                storage.item = getattr(boto, service_name).connect_to_region(region, profile_name=os.environ.get("TOIL_AWS_PROFILE", None))
-        return cast(boto.connection.AWSAuthConnection, storage.item)
 
 # If you don't want your own AWSConnectionManager, we have a global one and some global functions
 _global_manager = AWSConnectionManager()
@@ -205,7 +226,20 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     # Just use a global version of the manager. Note that we change the argument order!
     return _global_manager.session(region_name)
 
-def client(service_name: str, region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
+@overload
+def client(service_name: Literal["ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> EC2Client: ...
+@overload
+def client(service_name: Literal["iam"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> IAMClient: ...
+@overload
+def client(service_name: Literal["s3"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> S3Client: ...
+@overload
+def client(service_name: Literal["sts"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> STSClient: ...
+@overload
+def client(service_name: Literal["sdb"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> SimpleDBClient: ...
+@overload
+def client(service_name: Literal["autoscaling"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> AutoScalingClient: ...
+
+def client(service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
     """
     Get a Boto 3 client for a particular AWS service, usable by the current thread.
 
@@ -215,7 +249,14 @@ def client(service_name: str, region_name: Optional[str] = None, endpoint_url: O
     # Just use a global version of the manager. Note that we change the argument order!
     return _global_manager.client(region_name, service_name, endpoint_url=endpoint_url, config=config)
 
-def resource(service_name: str, region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
+@overload
+def resource(service_name: Literal["s3"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> S3ServiceResource: ...
+@overload
+def resource(service_name: Literal["iam"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> IAMServiceResource: ...
+@overload
+def resource(service_name: Literal["ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> EC2ServiceResource: ...
+
+def resource(service_name: Literal["s3", "iam", "ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
     """
     Get a Boto 3 resource for a particular AWS service, usable by the current thread.
 

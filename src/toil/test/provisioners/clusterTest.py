@@ -20,6 +20,7 @@ from uuid import uuid4
 from typing import Optional, List
 
 from toil.lib.aws import zone_to_region
+from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.retry import retry
 from toil.provisioners.aws import get_best_aws_zone
 from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance
@@ -40,7 +41,12 @@ class AbstractClusterTest(ToilTest):
         # We need a boto2 connection to EC2 to check on the cluster.
         # Since we are protected by needs_aws_ec2 we can import from boto.
         import boto.ec2
-        self.boto2_ec2 = boto.ec2.connect_to_region(zone_to_region(self.zone))
+        self.region = zone_to_region(self.zone)
+        self.boto2_ec2 = boto.ec2.connect_to_region(self.region)
+
+        # Get connection to AWS with boto3/boto2
+        self.aws = AWSConnectionManager()
+
         # Where should we put our virtualenv?
         self.venvDir = '/tmp/venv'
 
