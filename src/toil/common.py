@@ -258,7 +258,7 @@ class Config:
         addOptions(parser, jobstore_as_flag=True, cwl=self.cwl)
         # The parser already knows about the default config file
         ns = parser.parse_args("")
-        self.setOptions(ns, debug_mute=True)
+        self.setOptions(ns)
 
     def prepare_start(self) -> None:
         """
@@ -277,7 +277,7 @@ class Config:
         # exist and that can't safely be re-made.
         self.write_messages = None
 
-    def setOptions(self, options: Namespace, debug_mute: bool = False) -> None:
+    def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
 
         def set_option(option_name: str,
@@ -414,10 +414,6 @@ class Config:
             self.workDir = os.getenv('TOIL_COORDINATION_DIR_OVERRIDE')
 
         self.check_configuration_consistency()
-
-        if not debug_mute:
-            # class initialization populates defaults and does not need to be logged
-            logger.debug("Loaded configuration: %s", vars(options))
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
@@ -815,6 +811,7 @@ class Toil(ContextManager["Toil"]):
         set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
+        logger.debug("Loaded configuration: %s", vars(self.options))
         if config.jobStore is None:
             raise RuntimeError("No jobstore provided!")
         jobStore = self.getJobStore(config.jobStore)
