@@ -15,7 +15,7 @@ import json
 import logging
 
 import boto3
-from moto import mock_iam
+from moto import mock_aws
 
 from toil.lib.aws import iam
 from toil.test import ToilTest
@@ -46,7 +46,7 @@ class IAMTest(ToilTest):
         assert iam.permission_matches_any("iam:*", ["*"]) is True
         assert iam.permission_matches_any("ec2:*", ['iam:*']) is False
 
-    @mock_iam
+    @mock_aws
     def test_get_policy_permissions(self):
         mock_iam = boto3.client("iam")
 
