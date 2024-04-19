@@ -257,8 +257,8 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
     :param zone: AWS zone to connect to
     """
 
-    iam: IAMClient = cast(IAMClient, get_client('iam', region))
-    sts: STSClient = cast(STSClient, get_client('sts', region))
+    iam: IAMClient = get_client('iam', region)
+    sts: STSClient = get_client('sts', region)
     #TODO Condider effect: deny at some point
     allowed_actions: AllowedActionCollection = defaultdict(lambda: {'Action': [], 'NotAction': []})
     try:

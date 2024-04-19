@@ -18,6 +18,7 @@ import socket
 import subprocess
 import time
 from itertools import count
+from typing import Union, Dict, Optional, List, Any
 
 from toil.lib.memoize import parse_iso_utc
 
@@ -29,7 +30,8 @@ logger = logging.getLogger(__name__)
 class Node:
     maxWaitTime = 7 * 60
 
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptible, tags=None, use_private_ip=None):
+    def __init__(self, publicIP: str, privateIP: str, name: str, launchTime: Union[datetime.datetime, str],
+                 nodeType: Optional[str], preemptible: bool, tags: Optional[Dict[str, str]] = None, use_private_ip: Optional[bool] = None) -> None:
         self.publicIP = publicIP
         self.privateIP = privateIP
         if use_private_ip:
@@ -37,7 +39,13 @@ class Node:
         else:
             self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
-        self.launchTime = launchTime
+        if isinstance(launchTime, datetime.datetime):
+            self.launchTime = launchTime
+        else:
+            try:
+                self.launchTime = parse_iso_utc(launchTime)
+            except ValueError:
+                self.launchTime = datetime.datetime.fromisoformat(launchTime)
         self.nodeType = nodeType
         self.preemptible = preemptible
         self.tags = tags
@@ -65,12 +73,12 @@ class Node:
         """
         if self.launchTime:
             now = datetime.datetime.utcnow()
-            delta = now - parse_iso_utc(self.launchTime)
+            delta = now - self.launchTime
             return 1 - delta.total_seconds() / 3600.0 % 1.0
         else:
             return 1
 
-    def waitForNode(self, role, keyName='core'):
+    def waitForNode(self, role: str, keyName: str='core') -> None:
         self._waitForSSHPort()
         # wait here so docker commands can be used reliably afterwards
         self._waitForSSHKeys(keyName=keyName)
@@ -288,7 +296,7 @@ class Node:
                                % (' '.join(args), exit_code, stdout, stderr))
         return stdout
 
-    def coreRsync(self, args, applianceName='toil_leader', **kwargs):
+    def coreRsync(self, args: List[str], applianceName: str = 'toil_leader', **kwargs: Any) -> int:
         remoteRsync = "docker exec -i %s rsync -v" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         sshCommand = "ssh"

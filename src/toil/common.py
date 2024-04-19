@@ -64,8 +64,7 @@ else:
     from typing_extensions import Literal
 
 from toil import logProcessContext, lookupEnvVar
-from toil.batchSystems.options import (add_all_batchsystem_options,
-                                       set_batchsystem_options)
+from toil.batchSystems.options import set_batchsystem_options
 from toil.bus import (ClusterDesiredSizeMessage,
                       ClusterSizeMessage,
                       JobCompletedMessage,
@@ -75,17 +74,15 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       MessageBus,
                       QueueSizeMessage)
 from toil.fileStores import FileID
-from toil.lib.aws import zone_to_region, build_tag_dict_from_env
 from toil.lib.compatibility import deprecated
 from toil.lib.io import try_path, AtomicFileCreate
 from toil.lib.retry import retry
 from toil.provisioners import (add_provisioner_options,
-                               cluster_factory,
-                               parse_node_types)
+                               cluster_factory)
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import (add_logging_options,
                                   set_logging_from_options)
-from toil.version import dockerRegistry, dockerTag, version, baseVersion
+from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -1443,6 +1440,8 @@ class ToilMetrics:
             clusterName = str(provisioner.clusterName)
             if provisioner._zone is not None:
                 if provisioner.cloud == 'aws':
+                    # lazy import to avoid AWS dependency if the aws extra is not installed
+                    from toil.lib.aws import zone_to_region
                     # Remove AZ name
                     region = zone_to_region(provisioner._zone)
                 else:
