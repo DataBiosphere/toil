@@ -196,7 +196,7 @@ class MesosExecutor(Executor):
             """
             if job.userScript:
                 job.userScript.register()
-            command = job.get_worker_command()
+            command = job.command
             log.debug("Invoking command: '%s'", command)
             # Construct the job's environment
             jobEnv = dict(os.environ, **job.environment)

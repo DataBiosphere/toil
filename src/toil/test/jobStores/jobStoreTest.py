@@ -159,7 +159,6 @@ class AbstractJobStoreTest:
             # Create a job and verify its existence/properties
             job = JobDescription(requirements=self.parentJobReqs,
                                  jobName='test1', unitName='onParent')
-            job.set_worker_command("parent1")
             self.assertTrue(isinstance(job.jobStoreID, TemporaryID))
             jobstore.assign_job_id(job)
             self.assertFalse(isinstance(job.jobStoreID, TemporaryID))
@@ -168,7 +167,6 @@ class AbstractJobStoreTest:
             self.assertEqual(created, job)
 
             self.assertTrue(jobstore.job_exists(job.jobStoreID))
-            self.assertEqual(job.get_worker_command(), 'parent1')
             self.assertEqual(job.memory, self.parentJobReqs['memory'])
             self.assertEqual(job.cores, self.parentJobReqs['cores'])
             self.assertEqual(job.disk, self.parentJobReqs['disk'])
@@ -195,24 +193,21 @@ class AbstractJobStoreTest:
             # Create a job on the first jobstore.
             jobDesc1 = JobDescription(requirements=self.parentJobReqs,
                                       jobName='test1', unitName='onJS1')
-            jobDesc1.set_worker_command("jobstore1")
             self.jobstore_initialized.assign_job_id(jobDesc1)
             self.jobstore_initialized.create_job(jobDesc1)
 
             # Load it from the second jobstore
             jobDesc2 = self.jobstore_resumed_noconfig.load_job(jobDesc1.jobStoreID)
 
-            self.assertEqual(jobDesc1.get_worker_command(), jobDesc2.get_worker_command())
+            self.assertEqual(jobDesc1._body, jobDesc2._body)
 
         def testChildLoadingEquality(self):
             """Test that loading a child job operates as expected."""
             job = JobDescription(requirements=self.parentJobReqs,
                                  jobName='test1', unitName='onParent')
-            job.set_worker_command("parent1")
 
             childJob = JobDescription(requirements=self.childJobReqs1,
                                       jobName='test2', unitName='onChild1')
-            childJob.set_worker_command("child1")
             self.jobstore_initialized.assign_job_id(job)
             self.jobstore_initialized.assign_job_id(childJob)
             self.jobstore_initialized.create_job(job)
@@ -220,7 +215,7 @@ class AbstractJobStoreTest:
             job.addChild(childJob.jobStoreID)
             self.jobstore_initialized.update_job(job)
 
-            self.assertEqual(self.jobstore_initialized.load_job(list(job.allSuccessors())[0]).get_worker_command(), childJob.get_worker_command())
+            self.assertEqual(self.jobstore_initialized.load_job(list(job.allSuccessors())[0])._body, childJob._body)
 
         def testPersistantFilesToDelete(self):
             """
