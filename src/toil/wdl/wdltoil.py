@@ -561,7 +561,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         on the local host.
         """
 
-        return self.devirtualze_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir) 
+        return self.devirtualze_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir)
 
     @staticmethod
     def devirtualze_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str]) -> str:
@@ -1271,7 +1271,7 @@ class WDLBaseJob(Job):
         # may have coalesced postprocessing steps deferred by several levels of
         # jobs returning other jobs' promised RVs.
         self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
-        
+
         self._wdl_options = wdl_options if wdl_options is not None else {}
 
         assert self._wdl_options.get("container") is not None
@@ -1428,7 +1428,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
-        # Fill these in with not-None if the workflow asks for each resource. 
+        # Fill these in with not-None if the workflow asks for each resource.
         runtime_memory: Optional[int] = None
         runtime_cores: Optional[float] = None
         runtime_disk: Optional[int] = None
@@ -1606,12 +1606,12 @@ class WDLTaskJob(WDLBaseJob):
             return "\n".join(parts)
         else:
             return command_string
-    
+
     def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
         """
         Handle any data received from injected runtime code in the container.
         """
-        
+
         message_files = outputs_library._glob(WDL.Value.String(os.path.join(self.INJECTED_MESSAGE_DIR, "*")))
         logger.debug("Handling message files: %s", message_files)
         for message_file in message_files.value:
@@ -1713,7 +1713,7 @@ class WDLTaskJob(WDLBaseJob):
         bindings = unwrap(self._task_internal_bindings)
         # And the bindings from evaluating the runtime section
         runtime_bindings = unwrap(self._runtime_bindings)
-        
+
         # We have all the resources we need, so run the task
 
         if shutil.which('singularity') and self._wdl_options.get("container") in ["singularity", "auto"]:
@@ -1782,9 +1782,20 @@ class WDLTaskJob(WDLBaseJob):
         workdir_in_container: Optional[str] = None
 
         if self._task.command:
-            # When the command string references a File, we need to get a path to the file on a local disk, which the commnad will be able to actually use, accounting for e.g. containers.
-            # TODO: Figure out whan the command template actually uses File values and lazily download them.
-            # For now we just grab all the File values in the inside-the-task environment, since any of them *might* be used.
+            # When the command string references a File, we need to get a path
+            # to the file on a local disk, which the commnad will be able to
+            # actually use, accounting for e.g. containers.
+            #
+            # TODO: Figure out whan the command template actually uses File
+            # values and lazily download them.
+            #
+            # For now we just grab all the File values in the inside-the-task
+            # environment, since any of them *might* be used.
+            #
+            # Some also might be expected to be adjacent to files that are
+            # used, like a BAI that doesn't get referenced in a command line
+            # but must be next to its BAM.
+            #
             # TODO: MiniWDL can parallelize the fetch
             bindings = devirtualize_files(bindings, standard_library)
 
@@ -1859,6 +1870,7 @@ class WDLTaskJob(WDLBaseJob):
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
             add_paths(task_container, get_file_paths_in_bindings(bindings))
+            # This maps from oustide container to inside container
             logger.debug("Using container path map: %s", task_container.input_path_map)
 
             # Replace everything with in-container paths for the command.
@@ -1927,8 +1939,16 @@ class WDLTaskJob(WDLBaseJob):
                         with ExitStack() as cleanup:
                             task_container._pull(miniwdl_logger, cleanup)
 
-            # Run the command in the container
+            # Log that we are about to run the command in the container
             logger.info('Executing command in %s: %s', task_container, command_string)
+
+            # Now our inputs are all downloaded. Let debugging break in (after command is logged).
+            # But we need to hint which host paths are meant to be which container paths
+            host_and_job_paths: List[Tuple[str, str]] = [(k, v) for k, v in task_container.input_path_map.items()]
+            self.files_downloaded_hook(host_and_job_paths)
+
+            # TODO: Really we might want to set up a fake container working directory, to actually help the user.
+
             try:
                 task_container.run(miniwdl_logger, command_string)
             except Exception:

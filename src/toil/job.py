@@ -68,7 +68,7 @@ from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
-from toil.lib.resources import ResourceMonitor 
+from toil.lib.resources import ResourceMonitor
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
@@ -121,6 +121,23 @@ class ConflictingPredecessorError(Exception):
             f'The given job: "{predecessor.description}" is already a predecessor of job: "{successor.description}".'
         )
 
+class DebugStoppingPointReached(BaseException):
+    """
+    Raised when a job reaches a point at which it has been instructed to stop for debugging.
+    """
+    pass
+
+class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
+    """
+    Raised when a job stops because it was asked to download its files, and the files are downloaded.
+    """
+
+    def __init__(self, message, host_and_job_paths: Optional[List[Tuple[str, str]]] = None):
+        super().__init__(message)
+
+        # Save the host and user-code-visible paths of files, in case we're
+        # using a container and they are different.
+        self.host_and_job_paths = host_and_job_paths
 
 class TemporaryID:
     """
@@ -881,7 +898,7 @@ class JobDescription(Requirer):
 
         For each job, produces a named tuple with its various names and its
         original job store ID. The jobs in the chain are in execution order.
-        
+
         If the job hasn't run yet or it didn't chain, produces a one-item list.
         """
         if len(self._merged_job_names) == 0:
@@ -1066,7 +1083,7 @@ class JobDescription(Requirer):
         # When deleting, we need to delete the files for our old ID, and also
         # anything that needed to be deleted for the job we are replacing. And
         # we need to keep track of all the names of jobs involved for logging.
-        
+
         # We need first the job we are merging into if nothing has merged into
         # it yet, then anything that already merged into it (including it),
         # then us if nothing has yet merged into us, then anything that merged
@@ -1079,7 +1096,7 @@ class JobDescription(Requirer):
             _merged_job_names.append(self.get_names())
         _merged_job_names += self._merged_job_names
         self._merged_job_names = _merged_job_names
-        
+
         # Now steal its ID.
         self.jobStoreID = other.jobStoreID
 
@@ -1515,6 +1532,9 @@ class Job:
         self._defer = None
         self._tempDir = None
 
+        # Holds flags set by set_debug_flag()
+        self._debug_flags: Set[str] = set()
+
     def __str__(self):
         """
         Produce a useful logging string to identify this Job and distinguish it
@@ -1528,10 +1548,10 @@ class Job:
     def check_initialized(self) -> None:
         """
         Ensure that Job.__init__() has been called by any subclass __init__().
-        
+
         This uses the fact that the self._description instance variable should always
         be set after __init__().
-        
+
         If __init__() has not been called, raise an error.
         """
         if not hasattr(self, "_description"):
@@ -2798,6 +2818,11 @@ class Job:
 
         yield
 
+        if "download_only" in self._debug_flags:
+            # We should stop right away
+            logger.debug("Job did not stop itself after downloading files; stopping.")
+            raise DebugStoppingPointReached()
+
         # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete
         # TODO: why is Promise holding a global list here???
@@ -2886,6 +2911,35 @@ class Job:
         """
         return self._description.displayName
 
+    def set_debug_flag(self, flag: str) -> None:
+        """
+        Enable the given debug option on the job.
+        """
+        self._debug_flags.add(flag)
+
+    def has_debug_flag(self, flag: str) -> bool:
+        """
+        Return true if the given debug flag is set.
+        """
+
+        return flag in self._debug_flags
+
+    def files_downloaded_hook(self, host_and_job_paths: Optional[List[Tuple[str, str]]] = None) -> None:
+        """
+        Function that subclasses can call when they have downloaded their input files.
+
+        Will abort the job if the "download_only" debug flag is set.
+
+        Can be hinted a list of file path pairs outside and inside the job
+        container, in which case the container environment can be
+        reconstructed.
+        """
+
+        if self.has_debug_flag("download_only"):
+            # Stop the worker!
+            logger.info("Job has downloaded its files. Stopping.")
+            # Send off the path mapping for the debugging wrapper.
+            raise FilesDownloadedStoppingPointReached("Files downloaded", host_and_job_paths=host_and_job_paths)
 
 class JobException(Exception):
     """General job exception."""
