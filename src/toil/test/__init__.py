@@ -633,6 +633,20 @@ def needs_cwl(test_item: MT) -> MT:
     else:
         return test_item
 
+def needs_wdl(test_item: MT) -> MT:
+    """
+    Use as a decorator before test classes or methods to only run them if miniwdl is installed
+    and configured.
+    """
+    test_item = _mark_test('wdl', test_item)
+    try:
+        # noinspection PyUnresolvedReferences
+        import WDL  # noqa
+    except ImportError:
+        return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(test_item)
+    else:
+        return test_item
+
 
 def needs_server(test_item: MT) -> MT:
     """
