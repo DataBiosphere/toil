@@ -16,10 +16,24 @@ import logging
 import os
 import re
 import socket
+import toil.lib.retry
 from http.client import HTTPException
-from typing import Dict, MutableMapping, Optional
+from typing import Dict, MutableMapping, Optional, Union, Literal
 from urllib.error import URLError
 from urllib.request import urlopen
+
+from botocore.exceptions import ClientError
+
+from mypy_boto3_s3.literals import BucketLocationConstraintType
+
+AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
+
+# These are errors where we think something randomly
+# went wrong on the AWS side and we ought to retry.
+AWSServerErrors = toil.lib.retry.ErrorCondition(
+    error=ClientError,
+    error_codes=[404, 500, 502, 503, 504]
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,11 +81,10 @@ def get_aws_zone_from_metadata() -> Optional[str]:
         # metadata.
         try:
             # Use the EC2 metadata service
-            import boto
-            str(boto)  # to prevent removal of the import
-            from boto.utils import get_instance_metadata
+            from ec2_metadata import ec2_metadata
+
             logger.debug("Fetch AZ from EC2 metadata")
-            return get_instance_metadata()['placement']['availability-zone']
+            return ec2_metadata.availability_zone
         except ImportError:
             # This is expected to happen a lot
             logger.debug("No boto to fetch ECS metadata")
@@ -128,7 +141,7 @@ def get_current_aws_zone() -> Optional[str]:
         get_aws_zone_from_environment_region() or \
         get_aws_zone_from_boto()
 
-def zone_to_region(zone: str) -> str:
+def zone_to_region(zone: str) -> AWSRegionName:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
     # re.compile() caches the regex internally so we don't have to
     availability_zone = re.compile(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$')
