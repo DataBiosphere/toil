@@ -163,7 +163,7 @@ class AbstractProvisioner(ABC):
         for override in nodeStorageOverrides or []:
             nodeShape, storageOverride = override.split(':')
             self._nodeStorageOverrides[nodeShape] = int(storageOverride)
-        self._leaderPrivateIP = None
+        self._leaderPrivateIP: Optional[str] = None
         # This will hold an SSH public key for Mesos clusters, or the
         # Kubernetes joining information as a dict for Kubernetes clusters.
         self._leaderWorkerAuthentication = None
@@ -1238,7 +1238,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             ''').format(**values))
 
-    def _getIgnitionUserData(self, role, keyPath=None, preemptible=False, architecture='amd64'):
+    def _getIgnitionUserData(self, role: str, keyPath: Optional[str] = None, preemptible: bool = False, architecture: str = 'amd64') -> str:
         """
         Return the text (not bytes) user data to pass to a provisioned node.
 

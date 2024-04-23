@@ -56,7 +56,6 @@ else:
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
                                    have_working_nvidia_smi)
-from toil.lib.aws import running_on_ec2
 from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
@@ -127,6 +126,7 @@ class ToilTest(unittest.TestCase):
         Use us-west-2 unless running on EC2, in which case use the region in which
         the instance is located
         """
+        from toil.lib.aws import running_on_ec2
         return cls._region() if running_on_ec2() else 'us-west-2'
 
     @classmethod
@@ -378,7 +378,7 @@ def needs_aws_s3(test_item: MT) -> MT:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item
         )
-
+    from toil.lib.aws import running_on_ec2
     if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
     return test_item

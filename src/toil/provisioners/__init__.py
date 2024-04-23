@@ -175,8 +175,13 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
 
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
-    def __init__(self, cluster_name):
+    def __init__(self, cluster_name: str) -> None:
         super().__init__(f"The cluster '{cluster_name}' could not be found")
+
+class NoSuchZoneException(Exception):
+    """Indicates that a valid zone could not be found."""
+    def __init__(self) -> None:
+        super().__init__(f"No valid zone could be found!")
 
 
 class ClusterTypeNotSupportedException(Exception):
