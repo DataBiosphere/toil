@@ -272,23 +272,31 @@ def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
     )
 
 
-def add_logging_options(parser: ArgumentParser) -> None:
-    """Add logging options to set the global log level."""
+def add_logging_options(parser: ArgumentParser, default_level: Optional[int] = None) -> None:
+    """
+    Add logging options to set the global log level.
+
+    :param default_level: A logging level, like logging.INFO, to use as the default.
+    """
+    if default_level is None:
+        # Make sure we have a log levle to make the default
+        default_level = DEFAULT_LOGLEVEL
+    default_level_name = logging.getLevelName(default_level)
+
     group = parser.add_argument_group("Logging Options")
-    default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
 
     levels = ['Critical', 'Error', 'Warning', 'Debug', 'Info']
     for level in levels:
-        group.add_argument(f"--log{level}", dest="logLevel", default=default_loglevel, action="store_const",
-                           const=level, help=f"Turn on loglevel {level}.  Default: {default_loglevel}.")
+        group.add_argument(f"--log{level}", dest="logLevel", default=default_level_name, action="store_const",
+                           const=level, help=f"Turn on loglevel {level}.  Default: {default_level_name}.")
 
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
-    group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
+    group.add_argument("--logOff", dest="logLevel", default=default_level_name,
                        action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
     # Maybe deprecate the above in favor of --logLevel?
 
-    group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
-                       help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
+    group.add_argument("--logLevel", dest="logLevel", default=default_level_name, choices=levels,
+                       help=f"Set the log level. Default: {default_level_name}.  Options: {levels}.")
     group.add_argument("--logFile", dest="logFile", help="File to log in.")
     group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                        help="Turn on rotating logging, which prevents log files from getting too big.")

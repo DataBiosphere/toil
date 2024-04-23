@@ -39,7 +39,7 @@ import dill
 
 from toil.common import Toil, cacheDirName, getDirSizeRecursively
 from toil.fileStores import FileID
-from toil.job import Job, JobDescription
+from toil.job import Job, JobDescription, DebugStoppingPointReached
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human
@@ -189,17 +189,17 @@ class AbstractFileStore(ABC):
 
         :param job: The job instance of the toil job to run.
         """
-        failed = True
         job_requested_disk = job.disk
         try:
             yield
             failed = False
-        finally:
-            # Do a finally instead of an except/raise because we don't want
-            # to appear as "another exception occurred" in the stack trace.
-            if failed:
+        except BaseException as e:
+            if isinstance(e, DebugStoppingPointReached):
+                self._dumpAccessLogs(job_type="Debugged", log_level=logging.INFO)
+            else:
                 self._dumpAccessLogs()
-
+            raise
+        finally:
             # See how much disk space is used at the end of the job.
             # Not a real peak disk usage, but close enough to be useful for warning the user.
             self._job_disk_used = getDirSizeRecursively(self.localTempDir)
@@ -361,14 +361,16 @@ class AbstractFileStore(ABC):
 
             yield wrappedStream, fileID
 
-    def _dumpAccessLogs(self) -> None:
+    def _dumpAccessLogs(self, job_type: str = "Failed", log_level: int = logging.WARNING) -> None:
         """
-        When something goes wrong, log a report.
+        Log a report of the files accessed.
 
         Includes the files that were accessed while the file store was open.
+
+        :param job_type: Adjective to describe the job in the report.
         """
         if len(self._accessLog) > 0:
-            logger.warning('Failed job accessed files:')
+            logger.log(log_level, '%s job accessed files:', job_type)
 
             for item in self._accessLog:
                 # For each access record
@@ -377,14 +379,14 @@ class AbstractFileStore(ABC):
                     file_id, dest_path = item
                     if os.path.exists(dest_path):
                         if os.path.islink(dest_path):
-                            logger.warning('Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(log_level, 'Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
                         else:
-                            logger.warning('Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
                     else:
-                        logger.warning('Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
+                        logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
                 else:
                     # Otherwise dump without the name
-                    logger.warning('Streamed file \'%s\'', *item)
+                    logger.log(log_level, 'Streamed file \'%s\'', *item)
 
     def logAccess(
         self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None

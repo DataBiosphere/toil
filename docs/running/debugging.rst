@@ -41,7 +41,7 @@ For example, say you have this WDL workflow in ``test.wdl``. This workflow **can
 
 You could try to run it with::
 
-    toil-wdl-runner --jobStore ./store test.wdl
+    toil-wdl-runner --jobStore ./store test.wdl --retryCount 0
 
 But it will fail.
 
@@ -68,6 +68,49 @@ And if we know there's only one failed WDL task, we can just tell Toil to rerun 
     toil debug-job ./store WDLTaskJob
 
 Any of these will run the job (including any containers) on the local machine, where its execution can be observed live or monitored with a debugger.
+
+Fetching Job Inputs
+~~~~~~~~~~~~~~~~~~~
+
+The ``--retrieveTaskDirectory`` option to ``toil debug-job`` allows you to send the input files for a job to a directory, and then stop running the job. It works for CWL and WDL jobs, and for Python workflows that call :meth:`toil.job.Job.files_downloaded_hook` after downloading their files. It will make the worker work in the specified directory, so the job's temporary directory will be at ``worker/job`` inside it. For WDL and CWL jobs that mount files into containers, there will also be an ``inside`` directory populated with symlinks to the files as they would be visible from the root of the container's filesystem.
+
+For example, say you have a **broken WDL workflow** named ``example_alwaysfail_with_files.wdl``, like this:
+
+.. literalinclude:: ../../src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl
+
+You can try and fail to run it like this::
+
+    toil-wdl-runner --jobStore ./store example_alwaysfail_with_files.wdl --retryCount 0
+
+If you then dump the files from the failing job::
+
+    toil debug-job ./store WDLTaskJob --retrieveTaskDirectory dumpdir
+
+You will end up with a directory tree that looks, accorfing to ``tree``, something like this::
+
+    dumpdir
+    ├── inside
+    │   └── mnt
+    │       └── miniwdl_task_container
+    │           └── work
+    │               └── _miniwdl_inputs
+    │                   ├── 0
+    │                   │   └── test.txt -> ../../../../../../worker/job/2c6b3dc4-1d21-4abf-9937-db475e6a6bc2/test.txt
+    │                   └── 1
+    │                       └── test.txt -> ../../../../../../worker/job/e3d724e1-e6cc-4165-97f1-6f62ab0fb1ef/test.txt
+    └── worker
+        └── job
+            ├── 2c6b3dc4-1d21-4abf-9937-db475e6a6bc2
+            │   └── test.txt
+            ├── e3d724e1-e6cc-4165-97f1-6f62ab0fb1ef
+            │   └── test.txt
+            ├── tmpr2j5yaic
+            ├── tmpxqr9__y4
+            └── work
+
+    15 directories, 4 files
+
+You can see where Toil downloaded the input files for the job to the worker's temporary directory, and how they would be mounted into the container.
     
 
 Introspecting the Job Store
