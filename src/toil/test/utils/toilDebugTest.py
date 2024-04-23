@@ -21,7 +21,7 @@ import pytest
 from toil.test import ToilTest
 
 from toil.lib.resources import glob
-from toil.test import slow
+from toil.test import slow, needs_wdl
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ class DebugJobTest(ToilTest):
 
         logger.info("Running workflow that always fails")
         try:
-            # Run an always-failign workflow
+            # Run an always-failing workflow
             subprocess.check_call([
                 python,
                 os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
@@ -150,12 +150,43 @@ class DebugJobTest(ToilTest):
             # Should fail to run
             logger.info("Task failed successfully")
             pass
-
+        
         # Get the job ID.
         # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
         job_id = "kind-explode/" + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
 
         return job_store, job_id
+
+    def _get_wdl_job_store_and_job_name(self):
+        """
+        Get a job store and the name of a failed job in it that actually wanted to use some files.
+        """
+        
+        # First make a job store.
+        job_store = os.path.join(self._createTempDir(), "tree")
+
+        logger.info("Running workflow that always fails")
+        try:
+            # Run an always-failing workflow
+            subprocess.check_call([
+                "toil-wdl-runner",
+                os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"),
+                "--retryCount=0",
+                "--logCritical",
+                "--disableProgress",
+                "--jobStore",
+                job_store
+            ], stderr=subprocess.DEVNULL)
+            raise RuntimeError("Failing workflow succeeded!")
+        except subprocess.CalledProcessError:
+            # Should fail to run
+            logger.info("Task failed successfully")
+            pass
+
+        # Get a job name for a job that fails
+        job_name = "WDLTaskJob"
+
+        return job_store, job_name
 
     def test_run_job(self):
         """
@@ -197,5 +228,32 @@ class DebugJobTest(ToilTest):
             "--printJobInfo",
             job_id
         ])
+
+    @needs_wdl
+    def test_retrieve_task_directory(self):
+        """
+        Make sure that we can use --retrieveTaskDirectory to get the input files for a job.
+        """
+
+        job_store, job_name = self._get_wdl_job_store_and_job_name()
+
+        logger.info("Trying to retrieve task dorectory for job %s", job_name)
+
+        dest_dir = os.path.join(self._createTempDir(), "dump")
+
+        # Print the job info and make sure that doesn't crash.
+        subprocess.check_call([
+            "toil",
+            "debug-job",
+            "--logDebug",
+            job_store,
+            job_name,
+            "--retrieveTaskDirectory",
+            dest_dir
+        ])
+        
+        first_file = os.path.join(dest_dir, "inside/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/test.txt")
+        assert os.path.exists(first_file), "Input file not found in fake container environment"
+        self.assertEqual(open(first_file).read(), "These are the contents\n")
 
 

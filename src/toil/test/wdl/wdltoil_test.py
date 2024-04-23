@@ -16,11 +16,12 @@ from toil.test import (ToilTest,
                        needs_docker_cuda,
                        needs_google_storage,
                        needs_singularity_or_docker,
+                       needs_wdl,
                        slow, integrative)
 from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
-
+@needs_wdl
 class BaseWDLTest(ToilTest):
     """Base test class for WDL tests."""
 
