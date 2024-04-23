@@ -45,7 +45,7 @@ from mypy_boto3_ec2.service_resource import Instance
 from mypy_boto3_iam.type_defs import InstanceProfileTypeDef, RoleTypeDef, ListRolePoliciesResponseTypeDef
 from mypy_extensions import VarArg, KwArg
 
-from toil.lib.aws import zone_to_region
+from toil.lib.aws import zone_to_region, AWSRegionName, AWSServerErrors
 from toil.lib.aws.ami import get_flatcar_ami
 from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
                               get_policy_permissions,
@@ -210,7 +210,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Determine our region to work in, before readClusterSettings() which
         # might need it. TODO: support multiple regions in one cluster
-        self._region: Union["BucketLocationConstraintType", Literal["us-east-1"]] = zone_to_region(zone)
+        self._region: AWSRegionName = zone_to_region(zone)
 
         # Set up our connections to AWS
         self.aws = AWSConnectionManager()
@@ -264,17 +264,20 @@ class AWSProvisioner(AbstractProvisioner):
         # Determine where to deploy workers.
         self._worker_subnets_by_zone = self._get_good_subnets_like(self._leader_subnet)
 
-        self._keyName = instance["KeyName"]
-        logger.error(f"{self._keyName}")
-        # self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._leaderPrivateIP = ec2_metadata.private_ipv4  # this is PRIVATE IP
         self._tags = {k: v for k, v in (self.getLeader().tags or {}).items() if k != _TAG_KEY_TOIL_NODE_TYPE}
         # Grab the ARN name of the instance profile (a str) to apply to workers
-        leader_info = ec2_metadata.iam_info
+        leader_info = None
+        for attempt in old_retry(timeout=300, predicate=lambda e: True):
+            with attempt:
+                leader_info = ec2_metadata.iam_info
+                if leader_info is None:
+                    raise RuntimeError("Could not get EC2 metadata IAM info")
         if leader_info is None:
-            logger.error("Failed to query leader IAM metadata. This may cause issues with the cluster in the future.")
-        else:
-            self._leaderProfileArn = leader_info["InstanceProfileArn"]
+            # This is more for mypy as it is unable to see that the retry will guarantee this is not None
+            # and that this is not reachable
+            raise RuntimeError(f"Leader IAM metadata is unreachable.")
+        self._leaderProfileArn = leader_info["InstanceProfileArn"]
 
         # The existing metadata API returns a single string if there is one security group, but
         # a list when there are multiple: change the format to always be a list.
@@ -287,10 +290,7 @@ class AWSProvisioner(AbstractProvisioner):
         # workers for this leader.
         self._setLeaderWorkerAuthentication()
 
-    @retry(errors=[ErrorCondition(
-        error=ClientError,
-        error_codes=[404, 500, 502, 503, 504]
-    )])
+    @retry(errors=[AWSServerErrors])
     def _write_file_to_cloud(self, key: str, contents: bytes) -> str:
         bucket_name = self.s3_bucket_name
 
@@ -421,17 +421,17 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('Launching leader with tags: %s', leader_tags)
 
         instances: List[Instance] = create_instances(self.aws.resource(self._region, 'ec2'),
-                                     image_id=self._discoverAMI(),
-                                     num_instances=1,
-                                     key_name=self._keyName,
-                                     security_group_ids=createdSGs + (awsEc2ExtraSecurityGroupIds or []),
-                                     instance_type=leader_type.name,
-                                     user_data=userData,
-                                     block_device_map=bdms,
-                                     instance_profile_arn=profileArn,
-                                     placement_az=self._zone,
-                                     subnet_id=self._leader_subnet,
-                                     tags=leader_tags)
+                                                     image_id=self._discoverAMI(),
+                                                     num_instances=1,
+                                                     key_name=self._keyName,
+                                                     security_group_ids=createdSGs + (awsEc2ExtraSecurityGroupIds or []),
+                                                     instance_type=leader_type.name,
+                                                     user_data=userData,
+                                                     block_device_map=bdms,
+                                                     instance_profile_arn=profileArn,
+                                                     placement_az=self._zone,
+                                                     subnet_id=self._leader_subnet,
+                                                     tags=leader_tags)
 
         # wait for the leader to exist at all
         leader = instances[0]
@@ -819,7 +819,6 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeTypes: Set[str], numNodes: int, preemptible: bool, spotBid: Optional[float]=None) -> int:
         # Grab the AWS connection we need
-        # ec2 = self.aws.boto2(self._region, 'ec2')
         boto3_ec2 = get_client(service_name='ec2', region_name=self._region)
         assert self._leaderPrivateIP
 
@@ -885,7 +884,6 @@ class AWSProvisioner(AbstractProvisioner):
                            },
                            'SubnetId': subnet_id}
                        }
-        # _TAG_KEY_TOIL_NODE_TYPE
         on_demand_kwargs = {'KeyName': self._keyName,
                             'SecurityGroupIds': self._getSecurityGroupIDs(),
                             'InstanceType': type_info.name,
@@ -909,8 +907,8 @@ class AWSProvisioner(AbstractProvisioner):
                 if not preemptible:
                     logger.debug('Launching %s non-preemptible nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(boto3_ec2=boto3_ec2,
-                                                                                         image_id=self._discoverAMI(),
-                                                                                         spec=on_demand_kwargs, num_instances=numNodes)
+                                                                  image_id=self._discoverAMI(),
+                                                                  spec=on_demand_kwargs, num_instances=numNodes)
                 else:
                     logger.debug('Launching %s preemptible nodes', numNodes)
                     # force generator to evaluate
@@ -1142,13 +1140,13 @@ class AWSProvisioner(AbstractProvisioner):
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
                         boto3_iam.remove_role_from_instance_profile(InstanceProfileName=profile_name,
-                                                                                               RoleName=role_name)
+                                                                    RoleName=role_name)
             # We also need to drop all inline policies
             for policy_name in self._getRoleInlinePolicyNames(role_name):
                 for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                     with attempt:
                         boto3_iam.delete_role_policy(PolicyName=policy_name,
-                                                                                RoleName=role_name)
+                                                     RoleName=role_name)
 
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
@@ -1223,7 +1221,7 @@ class AWSProvisioner(AbstractProvisioner):
         return bdms
 
     @awsRetry
-    def _get_nodes_in_cluster_boto3(self, instance_type: Optional[str] = None, include_stopped_nodes: bool=False) -> List[InstanceTypeDef]:
+    def _get_nodes_in_cluster_boto3(self, instance_type: Optional[str] = None, include_stopped_nodes: bool = False) -> List[InstanceTypeDef]:
         """
         Get Boto3 instance objects for all nodes in the cluster.
         """
@@ -1258,7 +1256,6 @@ class AWSProvisioner(AbstractProvisioner):
         requests: List[SpotInstanceRequestTypeDef] = ec2.describe_spot_instance_requests()["SpotInstanceRequests"]
         tag_filter: FilterTypeDef = {"Name": "tag:" + _TAG_KEY_TOIL_CLUSTER_NAME, "Values": [self.clusterName]}
         tags: List[TagDescriptionTypeDef] = ec2.describe_tags(Filters=[tag_filter])["Tags"]
-        # tags = ec2.get_all_tags({'tag:': {_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName}})
         idsToCancel = [tag["ResourceId"] for tag in tags]
         return [request["SpotInstanceRequestId"] for request in requests if request["InstanceId"] in idsToCancel]
 
@@ -1280,10 +1277,14 @@ class AWSProvisioner(AbstractProvisioner):
             if len(subnets) > 0:
                 vpc_id = subnets[0]["VpcId"]
         try:
-            if vpc_id is None:
-                web_response: CreateSecurityGroupResultTypeDef = boto3_ec2.create_security_group(GroupName=self.clusterName, Description='Toil appliance security group')
-            else:
-                web_response = boto3_ec2.create_security_group(GroupName=self.clusterName, Description='Toil appliance security group', VpcId=vpc_id)
+            # Security groups need to belong to the same VPC as the leader. If we
+            # put the leader in a particular non-default subnet, it may be in a
+            # particular non-default VPC, which we need to know about.
+            other = {"GroupName": self.clusterName, "Description": "Toil appliance security group"}
+            if vpc_id is not None:
+                other["VpcId"] = vpc_id
+            # mypy stubs don't explicitly state kwargs even though documentation allows it, and mypy gets confused
+            web_response: CreateSecurityGroupResultTypeDef = boto3_ec2.create_security_group(**other)  # type: ignore[arg-type]
         except ClientError as e:
             if get_error_status(e) == 400 and 'already exists' in get_error_body(e):
                 pass
@@ -1292,8 +1293,13 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             for attempt in old_retry(predicate=group_not_found, timeout=300):
                 with attempt:
-                    ip_permissions: List[IpPermissionTypeDef] = []
-                    ip_permissions.append({"IpProtocol": "tcp", "FromPort": 22, "ToPort": 22, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], "Ipv6Ranges": [{"CidrIpv6": "::/0"}]})
+                    ip_permissions: List[IpPermissionTypeDef] = [{"IpProtocol": "tcp",
+                                                                  "FromPort": 22,
+                                                                  "ToPort": 22,
+                                                                  "IpRanges": [
+                                                                      {"CidrIp": "0.0.0.0/0"}
+                                                                  ],
+                                                                  "Ipv6Ranges": [{"CidrIpv6": "::/0"}]}]
                     for protocol in ("tcp", "udp"):
                         ip_permissions.append({"IpProtocol": protocol,
                                                "FromPort": 0,
@@ -1620,7 +1626,6 @@ class AWSProvisioner(AbstractProvisioner):
         boto3_iam = self.aws.client(self._region, 'iam')
         for result in boto3_pager(boto3_iam.list_instance_profiles,
                                   'InstanceProfiles'):
-            # For each Boto2 role object
             # Grab out the name
             cast(InstanceProfileTypeDef, result)
             name = result['InstanceProfileName']

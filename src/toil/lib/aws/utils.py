@@ -15,7 +15,6 @@ import errno
 import logging
 import os
 import socket
-import sys
 from typing import (Any,
                     Callable,
                     ContextManager,
@@ -25,11 +24,10 @@ from typing import (Any,
                     List,
                     Optional,
                     Set,
-                    Union,
                     cast)
 from urllib.parse import ParseResult
 
-from toil.lib.aws import session
+from toil.lib.aws import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
@@ -37,11 +35,6 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             get_error_status,
                             old_retry,
                             retry, ErrorCondition)
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
 
 try:
     from botocore.exceptions import ClientError
@@ -75,15 +68,10 @@ THROTTLED_ERROR_CODES = [
         'EC2ThrottledException',
 ]
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    # from boto.iam.connection import IAMConnection
-
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
     # string passed in, to return exactly the right kind of client or resource.
@@ -103,16 +91,12 @@ def delete_iam_role(
     # inline policies
     for inline_policy in role.policies.all():
         printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
-        # couldn't find an easy way to remove inline policies with boto3; use boto
         iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
@@ -126,10 +110,7 @@ def delete_iam_instance_profile(
     printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
@@ -168,10 +149,7 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def delete_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket: str,
@@ -204,7 +182,7 @@ def delete_s3_bucket(
 def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
-    region: Union["BucketLocationConstraintType", Literal["us-east-1"]],
+    region: AWSRegionName,
 ) -> "Bucket":
     """
     Create an AWS S3 bucket, using the given Boto3 S3 session, with the
@@ -403,10 +381,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         return obj
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def list_objects_for_url(url: ParseResult) -> List[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be

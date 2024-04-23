@@ -17,9 +17,9 @@ import os
 import threading
 from typing import Dict, Optional, Tuple, cast, Union, Literal, overload, TypeVar
 
+import boto
 import boto3
 import boto3.resources.base
-# import boto.connection
 import botocore
 from boto3 import Session
 from botocore.client import Config

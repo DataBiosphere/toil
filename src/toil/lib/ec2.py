@@ -85,7 +85,9 @@ def wait_transition(boto3_ec2: EC2Client, resource: InstanceTypeDef, from_states
     instance_id = resource["InstanceId"]
     while state in from_states:
         time.sleep(a_short_time)
-        described = boto3_ec2.describe_instances(InstanceIds=[instance_id])
+        for attempt in retry_ec2():
+            with attempt:
+                described = boto3_ec2.describe_instances(InstanceIds=[instance_id])
         resource = described["Reservations"][0]["Instances"][0]  # there should only be one requested
         state = state_getter(resource)
     if state != to_state:

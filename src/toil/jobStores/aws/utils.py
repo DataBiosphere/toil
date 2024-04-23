@@ -24,12 +24,11 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 from mypy_boto3_sdb.type_defs import ItemTypeDef, AttributeTypeDef
 
-from toil.lib.aws import session
+from toil.lib.aws import session, AWSServerErrors
 from toil.lib.aws.utils import connection_reset, get_bucket_region
 from toil.lib.compatibility import compat_bytes
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
-                            ErrorCondition,
                             get_error_code,
                             get_error_message,
                             get_error_status,
@@ -231,10 +230,7 @@ def fileSizeAndTime(localFilePath):
     return file_stat.st_size, file_stat.st_mtime
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def uploadFromPath(localFilePath: str,
                    resource,
                    bucketName: str,
@@ -270,10 +266,7 @@ def uploadFromPath(localFilePath: str,
     return version
 
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def uploadFile(readable,
                resource,
                bucketName: str,
@@ -325,10 +318,7 @@ class ServerSideCopyProhibitedError(RuntimeError):
     insists that you pay to download and upload the data yourself instead.
     """
 
-@retry(errors=[ErrorCondition(
-    error=ClientError,
-    error_codes=[404, 500, 502, 503, 504]
-)])
+@retry(errors=[AWSServerErrors])
 def copyKeyMultipart(resource: "S3ServiceResource",
                      srcBucketName: str,
                      srcKeyName: str,
