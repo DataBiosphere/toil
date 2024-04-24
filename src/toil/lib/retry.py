@@ -572,7 +572,8 @@ def old_retry(
     >>> i
     1
     """
-    timeout = timeout if timeout else DEFAULT_TIMEOUT
+    if timeout is None:
+        timeout = DEFAULT_TIMEOUT
     if timeout > 0:
         go = [ None ]
 

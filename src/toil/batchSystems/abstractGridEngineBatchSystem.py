@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-import queue
 import time
 from abc import ABCMeta, abstractmethod
 from datetime import datetime
@@ -282,7 +281,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             except Exception as ex:
                 self.exception = ex
                 logger.error("GridEngine like batch system failure: %s", ex)
-                # dont raise exception as is_alive will still be set to false,
+                # don't raise exception as is_alive will still be set to false,
                 # signalling exception in the thread as we expect the thread to
                 # always be running for the duration of the workflow
 
@@ -436,7 +435,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         while jobIDs:
             try:
                 killedJobId = self.killedJobsQueue.get(timeout=10)
-            except queue.Empty:
+            except Empty:
                 if not self.background_thread.is_alive():
                     raise self.GridEngineThreadException("Grid engine thread failed unexpectedly") from self.background_thread.exception
                 continue
