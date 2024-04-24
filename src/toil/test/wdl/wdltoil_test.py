@@ -86,7 +86,7 @@ class WDLConformanceTests(BaseWDLTest):
     @slow
     def test_conformance_tests_integration(self):
         ids_to_run = "encode,tut01,tut02,tut03,tut04"
-        p = subprocess.run(self.base_command + ["-v", "1.1", "--id", tests_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.1", "--id", ids_to_run], capture_output=True)
         
         if p.returncode != 0:
             print(p.stdout.decode('utf-8', errors='replace'))
