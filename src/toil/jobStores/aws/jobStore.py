@@ -1152,12 +1152,16 @@ class AWSJobStore(AbstractJobStore):
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
                     residual_chunk_names = [self._chunkName(i) for i in residualChunks]
                     # boto3 requires providing the value as well as the name in the attribute, and we don't store it locally
-                    delete_attributes = [{"Name": chunk_name} for chunk_name in residual_chunk_names]
+                    # the php sdk resolves this issue by not requiring the Value key https://github.com/aws/aws-sdk-php/issues/185
+                    # but this doesnt extend to boto3
+                    delete_attributes = self.outer.db.get_attributes(DomainName=self.outer.files_domain_name,
+                                                                     ItemName=compat_bytes(self.fileID),
+                                                                     AttributeNames=[chunk for chunk in residual_chunk_names]).get("Attributes")
                     for attempt in retry_sdb():
                         with attempt:
                             self.outer.db.delete_attributes(DomainName=self.outer.files_domain_name,
                                                             ItemName=compat_bytes(self.fileID),
-                                                            Attributes=delete_attributes) # noqa, this is allowed https://github.com/aws/aws-sdk-php/issues/185
+                                                            Attributes=delete_attributes)
                     self.outer.db.get_attributes(DomainName=self.outer.files_domain_name, ItemName=compat_bytes(self.fileID))
 
                 self._numContentChunks = numNewContentChunks
