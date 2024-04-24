@@ -668,7 +668,7 @@ class AbstractJobStoreTest:
                 :param int size: the size of the file to test importing/exporting with
                 """
                 # Prepare test file in other job store
-                self.jobstore_initialized.partSize = cls.mpTestPartSize
+                self.jobstore_initialized.part_size = cls.mpTestPartSize
                 self.jobstore_initialized.moveExports = moveExports
 
                 # Test assumes imports are not linked
@@ -724,7 +724,7 @@ class AbstractJobStoreTest:
                        to import from or export to
                 """
                 # Prepare test file in other job store
-                self.jobstore_initialized.partSize = cls.mpTestPartSize
+                self.jobstore_initialized.part_size = cls.mpTestPartSize
                 other = otherCls('testSharedFiles')
                 store = other._externalStore()
 

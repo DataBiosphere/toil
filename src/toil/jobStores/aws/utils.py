@@ -148,7 +148,7 @@ class SDBHelper:
         return attributes
 
     @classmethod
-    def attributeDictToBoto3(cls, attributes: Dict[str, str]) -> List[AttributeTypeDef]:
+    def attributeDictToList(cls, attributes: Dict[str, str]) -> List[AttributeTypeDef]:
         """
         Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
         to be compatible with boto3 argument syntax
@@ -158,10 +158,10 @@ class SDBHelper:
         return [{"Name": name, "Value": value} for name, value in attributes.items()]
 
     @classmethod
-    def attributeBoto3ToDict(cls, attributes: List[AttributeTypeDef]) -> Dict[str, str]:
+    def attributeListToDict(cls, attributes: List[AttributeTypeDef]) -> Dict[str, str]:
         """
         Convert the attribute boto3 representation of list of attribute typed dicts
-        back to a boto2-like attribute dict
+        back to a dictionary with name, value pairs
         :param attribute: List[AttributeTypeDef, attribute in typed dict form
         :return: Dict[str, str], attribute in dict form
         """

@@ -60,7 +60,7 @@ from toil.lib.aws.utils import (create_s3_bucket,
                                 get_object_for_url,
                                 list_objects_for_url,
                                 retry_s3,
-                                retryable_s3_errors, boto3_pager)
+                                retryable_s3_errors, boto3_pager, get_item_from_attributes)
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
@@ -85,6 +85,12 @@ CONSISTENCY_TIME = 1
 
 class ChecksumError(Exception):
     """Raised when a download from AWS does not contain the correct data."""
+
+
+class DomainDoesNotExist(Exception):
+    """Raised when a domain that is expected to exist does not exist."""
+    def __init__(self, domain_name):
+        super().__init__(f"Expected domain {domain_name} to exist!")
 
 
 class AWSJobStore(AbstractJobStore):
@@ -136,12 +142,12 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Instantiating %s for region %s and name prefix '%s'",
                      self.__class__, region, namePrefix)
         self.region = region
-        self.namePrefix = namePrefix
-        self.partSize = partSize
-        self.jobsDomainName: Optional[str] = None
-        self.filesDomainName: Optional[str] = None
-        self.filesBucket = None
-        self.db = self._connectSimpleDB()
+        self.name_prefix = namePrefix
+        self.part_size = partSize
+        self.jobs_domain_name: Optional[str] = None
+        self.files_domain_name: Optional[str] = None
+        self.files_bucket = None
+        self.db = boto3_session.client(service_name="sdb", region_name=region)
 
         self.s3_resource = boto3_session.resource('s3', region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
@@ -173,21 +179,23 @@ class AWSJobStore(AbstractJobStore):
     def _bind(self, create: bool = False, block: bool = True, check_versioning_consistency: bool = True) -> None:
         def qualify(name):
             assert len(name) <= self.maxNameLen
-            return self.namePrefix + self.nameSeparator + name
+            return self.name_prefix + self.nameSeparator + name
 
         # The order in which this sequence of events happens is important.  We can easily handle the
         # inability to bind a domain, but it is a little harder to handle some cases of binding the
         # jobstore bucket.  Maintaining this order allows for an easier `destroy` method.
-        if self.jobsDomainName is None:
-            self.jobsDomainName = self._bindDomain(qualify('jobs'), create=create, block=block)
-        if self.filesDomainName is None:
-            self.filesDomainName = self._bindDomain(qualify('files'), create=create, block=block)
-        if self.filesBucket is None:
-            self.filesBucket = self._bindBucket(qualify('files'),
-                                                create=create,
-                                                block=block,
-                                                versioning=True,
-                                                check_versioning_consistency=check_versioning_consistency)
+        if self.jobs_domain_name is None:
+            self.jobs_domain_name = qualify("jobs")
+            self._bindDomain(self.jobs_domain_name, create=create, block=block)
+        if self.files_domain_name is None:
+            self.files_domain_name = qualify("files")
+            self._bindDomain(self.files_domain_name, create=create, block=block)
+        if self.files_bucket is None:
+            self.files_bucket = self._bindBucket(qualify('files'),
+                                                 create=create,
+                                                 block=block,
+                                                 versioning=True,
+                                                 check_versioning_consistency=check_versioning_consistency)
 
     @property
     def _registered(self) -> Optional[bool]:
@@ -207,48 +215,48 @@ class AWSJobStore(AbstractJobStore):
         # store destruction, indicates a job store in transition, reflecting the fact that 3.3.0
         # may leak buckets or domains even though the registry reports 'False' for them. We
         # can't handle job stores that were partially created by 3.3.0, though.
-        registry_domain_name = self._bindDomain(domain_name='toil-registry',
-                                                create=False,
-                                                block=False)
-        if registry_domain_name is None:
+        registry_domain_name = "toil-registry"
+        try:
+            self._bindDomain(domain_name=registry_domain_name,
+                             create=False,
+                             block=False)
+        except DomainDoesNotExist:
             return False
-        else:
-            for attempt in retry_sdb():
-                with attempt:
-                    get_result = self.db.get_attributes(DomainName=registry_domain_name,
-                                                        ItemName=self.namePrefix,
-                                                        AttributeNames=['exists'],
-                                                        ConsistentRead=True)
-                    attributes: List[AttributeTypeDef] = get_result.get("Attributes", [])  # the documentation says 'Attributes' should always exist, but this is not true
-                    try:
-                        assert "exists" in (attribute["Name"] for attribute in attributes)
-                    except AssertionError:
-                        return False
-                    else:
-                        exists = next(attribute["Value"] for attribute in attributes if attribute["Name"] == "exists")
-                        if exists == 'True':
-                            return True
-                        elif exists == 'False':
-                            return None
-                        else:
-                            assert False
+
+        for attempt in retry_sdb():
+            with attempt:
+                get_result = self.db.get_attributes(DomainName=registry_domain_name,
+                                                    ItemName=self.name_prefix,
+                                                    AttributeNames=['exists'],
+                                                    ConsistentRead=True)
+                attributes: List[AttributeTypeDef] = get_result.get("Attributes", [])  # the documentation says 'Attributes' should always exist, but this is not true
+                exists: Optional[str] = get_item_from_attributes(attributes=attributes, name="exists")
+                if exists is None:
+                    return False
+                elif exists == 'True':
+                    return True
+                elif exists == 'False':
+                    return None
+                else:
+                    assert False
 
     @_registered.setter
     def _registered(self, value: bool) -> None:
-
-        registry_domain_name = self._bindDomain(domain_name='toil-registry',
-                                                # Only create registry domain when registering or
-                                                # transitioning a store
-                                                create=value is not False,
-                                                block=False)
-        if registry_domain_name is None and value is False:
+        registry_domain_name = "toil-registry"
+        try:
+            self._bindDomain(domain_name=registry_domain_name,
+                             # Only create registry domain when registering or
+                             # transitioning a store
+                             create=value is not False,
+                             block=False)
+        except DomainDoesNotExist:
             pass
         else:
             for attempt in retry_sdb():
                 with attempt:
                     if value is False:
                         self.db.delete_attributes(DomainName=registry_domain_name,
-                                                  ItemName=self.namePrefix)
+                                                  ItemName=self.name_prefix)
                     else:
                         if value is True:
                             attributes: List[ReplaceableAttributeTypeDef] = [{"Name": "exists", "Value": "True", "Replace": True}]
@@ -257,7 +265,7 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             assert False
                         self.db.put_attributes(DomainName=registry_domain_name,
-                                               ItemName=self.namePrefix,
+                                               ItemName=self.name_prefix,
                                                Attributes=attributes)
 
     def _checkItem(self, item: ItemTypeDef, enforce: bool = True) -> None:
@@ -271,7 +279,7 @@ class AWSJobStore(AbstractJobStore):
         self._checkAttributes(item["Attributes"], enforce)
 
     def _checkAttributes(self, attributes: List[AttributeTypeDef], enforce: bool = True) -> None:
-        if "overlargeID" not in (attribute["Name"] for attribute in attributes):
+        if get_item_from_attributes(attributes=attributes, name="overlargeID") is None:
             logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
                          "corrupt or jobstore is from an extremely old Toil: %s", attributes)
             if enforce:
@@ -285,7 +293,7 @@ class AWSJobStore(AbstractJobStore):
         :return: Toil job
         """
         self._checkAttributes(attributes)
-        overlarge_id_value = next((attribute["Value"] for attribute in attributes if attribute["Name"] == "overlargeID"), None)
+        overlarge_id_value = get_item_from_attributes(attributes=attributes, name="overlargeID")
         if overlarge_id_value:
             assert self.file_exists(overlarge_id_value)
             # This is an overlarge job, download the actual attributes
@@ -320,7 +328,7 @@ class AWSJobStore(AbstractJobStore):
         else:
             item = SDBHelper.binaryToAttributes(binary)
             item["overlargeID"] = ""
-        return SDBHelper.attributeDictToBoto3(item)
+        return SDBHelper.attributeDictToList(item)
 
     def _awsJobToItem(self, job: JobDescription, name: str) -> ItemTypeDef:
         return {"Name": name, "Attributes": self._awsJobToAttributes(job)}
@@ -351,7 +359,7 @@ class AWSJobStore(AbstractJobStore):
 
             for attempt in retry_sdb():
                 with attempt:
-                    self.db.batch_put_attributes(DomainName=self.jobsDomainName, Items=items)
+                    self.db.batch_put_attributes(DomainName=self.jobs_domain_name, Items=items)
         self._batchedUpdates = None
 
     def assign_job_id(self, job_description: JobDescription) -> None:
@@ -370,7 +378,7 @@ class AWSJobStore(AbstractJobStore):
     def job_exists(self, job_id: Union[bytes, str]) -> bool:
         for attempt in retry_sdb():
             with attempt:
-                return len(self.db.get_attributes(DomainName=self.jobsDomainName,
+                return len(self.db.get_attributes(DomainName=self.jobs_domain_name,
                                                   ItemName=compat_bytes(job_id),
                                                   AttributeNames=[SDBHelper.presenceIndicator()],
                                                   ConsistentRead=True).get("Attributes", [])) > 0
@@ -382,7 +390,7 @@ class AWSJobStore(AbstractJobStore):
                 job_items = boto3_pager(self.db.select,
                                         "Items",
                                         ConsistentRead=True,
-                                        SelectExpression="select * from `%s`" % self.jobsDomainName)
+                                        SelectExpression="select * from `%s`" % self.jobs_domain_name)
         assert job_items is not None
         for jobItem in job_items:
             yield self._awsJobFromItem(jobItem)
@@ -391,7 +399,7 @@ class AWSJobStore(AbstractJobStore):
         item_attributes = None
         for attempt in retry_sdb():
             with attempt:
-                item_attributes = self.db.get_attributes(DomainName=self.jobsDomainName,
+                item_attributes = self.db.get_attributes(DomainName=self.jobs_domain_name,
                                                          ItemName=compat_bytes(job_id),
                                                          ConsistentRead=True).get("Attributes", [])
         if not item_attributes:
@@ -410,7 +418,7 @@ class AWSJobStore(AbstractJobStore):
                                                                 for attribute in job_attributes]
         for attempt in retry_sdb():
             with attempt:
-                self.db.put_attributes(DomainName=self.jobsDomainName, ItemName=compat_bytes(job_description.jobStoreID), Attributes=update_attributes)
+                self.db.put_attributes(DomainName=self.jobs_domain_name, ItemName=compat_bytes(job_description.jobStoreID), Attributes=update_attributes)
 
     itemsPerBatchDelete = 25
 
@@ -421,27 +429,27 @@ class AWSJobStore(AbstractJobStore):
         # If the job is overlarge, delete its file from the filestore
         for attempt in retry_sdb():
             with attempt:
-                attributes = self.db.get_attributes(DomainName=self.jobsDomainName,
+                attributes = self.db.get_attributes(DomainName=self.jobs_domain_name,
                                                     ItemName=compat_bytes(job_id),
                                                     ConsistentRead=True).get("Attributes", [])
         # If the overlargeID has fallen off, maybe we partially deleted the
         # attributes of the item? Or raced on it? Or hit SimpleDB being merely
         # eventually consistent? We should still be able to get rid of it.
         self._checkAttributes(attributes, enforce=False)
-        overlarge_id_value = next((attribute["Value"] for attribute in attributes if attribute["Name"] == "overlargeID"), None)
+        overlarge_id_value = get_item_from_attributes(attributes=attributes, name="overlargeID")
         if overlarge_id_value:
             logger.debug("Deleting job from filestore")
             self.delete_file(overlarge_id_value)
         for attempt in retry_sdb():
             with attempt:
-                self.db.delete_attributes(DomainName=self.jobsDomainName, ItemName=compat_bytes(job_id))
+                self.db.delete_attributes(DomainName=self.jobs_domain_name, ItemName=compat_bytes(job_id))
         items: Optional[List[ItemTypeDef]] = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(boto3_pager(self.db.select,
                                          "Items",
                                          ConsistentRead=True,
-                                         SelectExpression=f"select version from `{self.filesDomainName}` where ownerID='{job_id}'"))
+                                         SelectExpression=f"select version from `{self.files_domain_name}` where ownerID='{job_id}'"))
         assert items is not None
         if items:
             logger.debug("Deleting %d file(s) associated with job %s", len(items), job_id)
@@ -451,18 +459,18 @@ class AWSJobStore(AbstractJobStore):
                 delete_items: List[DeletableItemTypeDef] = [{"Name": item["Name"]} for item in batch]
                 for attempt in retry_sdb():
                     with attempt:
-                        self.db.batch_delete_attributes(DomainName=self.filesDomainName, Items=delete_items)
+                        self.db.batch_delete_attributes(DomainName=self.files_domain_name, Items=delete_items)
             for item in items:
                 item: ItemTypeDef
-                version = next((attribute["Value"] for attribute in item["Attributes"] if attribute["Name"] == "version"), None)
+                version = get_item_from_attributes(attributes=item["Attributes"], name="version")
                 for attempt in retry_s3():
                     with attempt:
                         if version:
-                            self.s3_client.delete_object(Bucket=self.filesBucket.name,
+                            self.s3_client.delete_object(Bucket=self.files_bucket.name,
                                                          Key=compat_bytes(item["Name"]),
                                                          VersionId=version)
                         else:
-                            self.s3_client.delete_object(Bucket=self.filesBucket.name,
+                            self.s3_client.delete_object(Bucket=self.files_bucket.name,
                                                          Key=compat_bytes(item["Name"]))
 
     def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None) -> FileID:
@@ -678,7 +686,7 @@ class AWSJobStore(AbstractJobStore):
                 items = boto3_pager(self.db.select,
                                     "Items",
                                     ConsistentRead=True,
-                                    SelectExpression="select * from `{}` where ownerID='{}'".format(self.filesDomainName, str(ownerId)))
+                                    SelectExpression="select * from `{}` where ownerID='{}'".format(self.files_domain_name, str(ownerId)))
         assert items is not None
         for item in items:
             info = self.FileInfo.fromItem(item)
@@ -695,10 +703,10 @@ class AWSJobStore(AbstractJobStore):
             with info.uploadStream(allowInlining=False) as f:
                 f.write(info.content)
 
-        self.filesBucket.Object(compat_bytes(jobStoreFileID)).Acl().put(ACL='public-read')
+        self.files_bucket.Object(compat_bytes(jobStoreFileID)).Acl().put(ACL='public-read')
 
         url = self.s3_client.generate_presigned_url('get_object',
-                                                    Params={'Bucket': self.filesBucket.name,
+                                                    Params={'Bucket': self.files_bucket.name,
                                                             'Key': compat_bytes(jobStoreFileID),
                                                             'VersionId': info.version},
                                                     ExpiresIn=self.publicUrlExpiration.total_seconds())
@@ -722,17 +730,6 @@ class AWSJobStore(AbstractJobStore):
     def get_shared_public_url(self, shared_file_name):
         self._requireValidSharedFileName(shared_file_name)
         return self.get_public_url(self._shared_file_id(shared_file_name))
-
-    def _connectSimpleDB(self) -> SimpleDBClient:
-        """
-        :rtype: SimpleDBClient
-        """
-        sdb = boto3_session.client(service_name="sdb", region_name=self.region)
-        # db = boto.sdb.connect_to_region(self.region)
-        if sdb is None:
-            raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB region." % self.region)
-        # monkeyPatchSdbConnection(db)
-        return sdb
 
     def _bindBucket(self,
                     bucket_name: str,
@@ -863,7 +860,7 @@ class AWSJobStore(AbstractJobStore):
 
                 return bucket
 
-    def _bindDomain(self, domain_name: str, create: bool = False, block: bool = True) -> Optional[str]:
+    def _bindDomain(self, domain_name: str, create: bool = False, block: bool = True) -> None:
         """
         Return the Boto3 domain name representing the SDB domain. When create=True, it will
         create the domain if it does not exist.
@@ -874,11 +871,11 @@ class AWSJobStore(AbstractJobStore):
 
         :param bool create: True if domain should be created if it doesn't exist
 
-        :param bool block: If False, return None if the domain doesn't exist. If True, wait until
+        :param bool block: If False, raise DomainDoesNotExist if the domain doesn't exist. If True, wait until
                domain appears. This parameter is ignored if create is True.
 
-        :rtype: str domain_name | None
-        :raises SDBResponseError: If `block` is True and the domain still doesn't exist after the
+        :rtype: None
+        :raises ClientError: If `block` is True and the domain still doesn't exist after the
                 retry timeout expires.
         """
         logger.debug("Binding to job store domain '%s'.", domain_name)
@@ -889,16 +886,16 @@ class AWSJobStore(AbstractJobStore):
             with attempt:
                 try:
                     self.db.domain_metadata(DomainName=domain_name)
-                    return domain_name
+                    return
                 except ClientError as e:
                     if no_such_sdb_domain(e):
                         if create:
                             self.db.create_domain(DomainName=domain_name)
-                            return domain_name
+                            return
                         elif block:
                             raise
                         else:
-                            return None
+                            raise DomainDoesNotExist(domain_name)
                     else:
                         raise
 
@@ -1021,7 +1018,7 @@ class AWSJobStore(AbstractJobStore):
         def exists(cls, jobStoreFileID):
             for attempt in retry_sdb():
                 with attempt:
-                    return bool(cls.outer.db.get_attributes(DomainName=cls.outer.filesDomainName,
+                    return bool(cls.outer.db.get_attributes(DomainName=cls.outer.files_domain_name,
                                                             ItemName=compat_bytes(jobStoreFileID),
                                                             AttributeNames=[cls.presenceIndicator()],
                                                             ConsistentRead=True).get("Attributes", []))
@@ -1033,9 +1030,10 @@ class AWSJobStore(AbstractJobStore):
                     self = cls.fromItem(
                         {
                             "Name": compat_bytes(jobStoreFileID),
-                            "Attributes": cls.outer.db.get_attributes(DomainName=cls.outer.filesDomainName,
+                            "Attributes": cls.outer.db.get_attributes(DomainName=cls.outer.files_domain_name,
                                                                       ItemName=compat_bytes(jobStoreFileID),
-                                                                      ConsistentRead=True).get("Attributes", [])})
+                                                                      ConsistentRead=True).get("Attributes", [])
+                        })
                     return self
 
         @classmethod
@@ -1097,9 +1095,7 @@ class AWSJobStore(AbstractJobStore):
 
         def toItem(self) -> Tuple[Dict[str, str], int]:
             """
-            Convert this instance to an attribute dictionary suitable for SDB put_attributes().
-
-            :rtype: (dict,int)
+            Convert this instance to a dictionary of attribute names to values
 
             :return: the attributes dict and an integer specifying the the number of chunk
                      attributes in the dictionary that are used for storing inlined content.
@@ -1130,7 +1126,7 @@ class AWSJobStore(AbstractJobStore):
 
         def save(self):
             attributes, numNewContentChunks = self.toItem()
-            attributes_boto3 = SDBHelper.attributeDictToBoto3(attributes)
+            attributes_boto3 = SDBHelper.attributeDictToList(attributes)
             # False stands for absence
             if self.previousVersion is None:
                 expected: UpdateConditionTypeDef = {"Name": 'version', "Exists": False}
@@ -1139,7 +1135,7 @@ class AWSJobStore(AbstractJobStore):
             try:
                 for attempt in retry_sdb():
                     with attempt:
-                        self.outer.db.put_attributes(DomainName=self.outer.filesDomainName,
+                        self.outer.db.put_attributes(DomainName=self.outer.files_domain_name,
                                                      ItemName=compat_bytes(self.fileID),
                                                      Attributes=[{"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
                                                                  for attribute in attributes_boto3],
@@ -1148,7 +1144,7 @@ class AWSJobStore(AbstractJobStore):
                 if self.previousVersion and (self.previousVersion != self.version):
                     for attempt in retry_s3():
                         with attempt:
-                            self.outer.s3_client.delete_object(Bucket=self.outer.filesBucket.name,
+                            self.outer.s3_client.delete_object(Bucket=self.outer.files_bucket.name,
                                                                Key=compat_bytes(self.fileID),
                                                                VersionId=self.previousVersion)
                 self._previousVersion = self._version
@@ -1156,15 +1152,13 @@ class AWSJobStore(AbstractJobStore):
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
                     residual_chunk_names = [self._chunkName(i) for i in residualChunks]
                     # boto3 requires providing the value as well as the name in the attribute, and we don't store it locally
-                    delete_attributes = self.outer.db.get_attributes(DomainName=self.outer.filesDomainName,
-                                                                     ItemName=compat_bytes(self.fileID),
-                                                                     AttributeNames=[chunk for chunk in residual_chunk_names]).get("Attributes")
+                    delete_attributes = [{"Name": chunk_name} for chunk_name in residual_chunk_names]
                     for attempt in retry_sdb():
                         with attempt:
-                            self.outer.db.delete_attributes(DomainName=self.outer.filesDomainName,
+                            self.outer.db.delete_attributes(DomainName=self.outer.files_domain_name,
                                                             ItemName=compat_bytes(self.fileID),
-                                                            Attributes=delete_attributes)
-                    res = self.outer.db.get_attributes(DomainName=self.outer.filesDomainName, ItemName=compat_bytes(self.fileID))
+                                                            Attributes=delete_attributes) # noqa, this is allowed https://github.com/aws/aws-sdk-php/issues/185
+                    self.outer.db.get_attributes(DomainName=self.outer.files_domain_name, ItemName=compat_bytes(self.fileID))
 
                 self._numContentChunks = numNewContentChunks
             except ClientError as e:
@@ -1188,10 +1182,10 @@ class AWSJobStore(AbstractJobStore):
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
                 self.version = uploadFromPath(localFilePath,
                                               resource=resource,
-                                              bucketName=self.outer.filesBucket.name,
+                                              bucketName=self.outer.files_bucket.name,
                                               fileID=compat_bytes(self.fileID),
                                               headerArgs=headerArgs,
-                                              partSize=self.outer.partSize)
+                                              partSize=self.outer.part_size)
 
         def _start_checksum(self, to_match=None, algorithm='sha1'):
             """
@@ -1269,7 +1263,7 @@ class AWSJobStore(AbstractJobStore):
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
                     # Get the first block of data we want to put
-                    buf = readable.read(store.partSize)
+                    buf = readable.read(store.part_size)
                     assert isinstance(buf, bytes)
 
                     if allowInlining and len(buf) <= info.maxInlinedSize():
@@ -1284,7 +1278,7 @@ class AWSJobStore(AbstractJobStore):
                         info._update_checksum(hasher, buf)
 
                         client = store.s3_client
-                        bucket_name = store.filesBucket.name
+                        bucket_name = store.files_bucket.name
                         headerArgs = info._s3EncryptionArgs()
 
                         for attempt in retry_s3():
@@ -1332,7 +1326,7 @@ class AWSJobStore(AbstractJobStore):
                                         parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
 
                                 # Get the next block of data we want to put
-                                buf = readable.read(info.outer.partSize)
+                                buf = readable.read(info.outer.part_size)
                                 assert isinstance(buf, bytes)
                                 if len(buf) == 0:
                                     # Don't allow any part other than the very first to be empty.
@@ -1348,7 +1342,7 @@ class AWSJobStore(AbstractJobStore):
 
                         else:
 
-                            while not store._getBucketVersioning(store.filesBucket.name):
+                            while not store._getBucketVersioning(store.files_bucket.name):
                                 logger.warning('Versioning does not appear to be enabled yet. Deferring multipart '
                                                'upload completion...')
                                 time.sleep(1)
@@ -1405,7 +1399,7 @@ class AWSJobStore(AbstractJobStore):
                         info._update_checksum(hasher, buf)
                         info.checksum = info._finish_checksum(hasher)
 
-                        bucket_name = store.filesBucket.name
+                        bucket_name = store.files_bucket.name
                         headerArgs = info._s3EncryptionArgs()
                         client = store.s3_client
 
@@ -1486,7 +1480,7 @@ class AWSJobStore(AbstractJobStore):
                                                 srcBucketName=compat_bytes(srcObj.bucket_name),
                                                 srcKeyName=compat_bytes(srcObj.key),
                                                 srcKeyVersion=compat_bytes(srcObj.version_id),
-                                                dstBucketName=compat_bytes(self.outer.filesBucket.name),
+                                                dstBucketName=compat_bytes(self.outer.files_bucket.name),
                                                 dstKeyName=compat_bytes(self._fileID),
                                                 sseAlgorithm='AES256',
                                                 sseKey=self._getSSEKey())
@@ -1509,7 +1503,7 @@ class AWSJobStore(AbstractJobStore):
                     # encrypted = True if self.outer.sseKeyPath else False
                     with attempt:
                         copyKeyMultipart(resource,
-                                         srcBucketName=compat_bytes(self.outer.filesBucket.name),
+                                         srcBucketName=compat_bytes(self.outer.files_bucket.name),
                                          srcKeyName=compat_bytes(self.fileID),
                                          srcKeyVersion=compat_bytes(self.version),
                                          dstBucketName=compat_bytes(dstObj.bucket_name),
@@ -1526,7 +1520,7 @@ class AWSJobStore(AbstractJobStore):
                         f.write(self.content)
             elif self.version:
                 headerArgs = self._s3EncryptionArgs()
-                obj = self.outer.filesBucket.Object(compat_bytes(self.fileID))
+                obj = self.outer.files_bucket.Object(compat_bytes(self.fileID))
 
                 for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, ChecksumError)):
                     with attempt:
@@ -1558,7 +1552,7 @@ class AWSJobStore(AbstractJobStore):
                         writable.write(info.content)
                     elif info.version:
                         headerArgs = info._s3EncryptionArgs()
-                        obj = info.outer.filesBucket.Object(compat_bytes(info.fileID))
+                        obj = info.outer.files_bucket.Object(compat_bytes(info.fileID))
                         for attempt in retry_s3():
                             with attempt:
                                 obj.download_fileobj(writable, ExtraArgs={'VersionId': info.version, **headerArgs})
@@ -1608,13 +1602,13 @@ class AWSJobStore(AbstractJobStore):
                 expected: UpdateConditionTypeDef = {"Name": 'version', "Value": cast(str, self.previousVersion)}
                 for attempt in retry_sdb():
                     with attempt:
-                        store.db.delete_attributes(DomainName=store.filesDomainName,
+                        store.db.delete_attributes(DomainName=store.files_domain_name,
                                                    ItemName=compat_bytes(self.fileID),
                                                    Expected=expected)
                 if self.previousVersion:
                     for attempt in retry_s3():
                         with attempt:
-                            store.s3_client.delete_object(Bucket=store.filesBucket.name,
+                            store.s3_client.delete_object(Bucket=store.files_bucket.name,
                                                           Key=compat_bytes(self.fileID),
                                                           VersionId=self.previousVersion)
 
@@ -1627,7 +1621,7 @@ class AWSJobStore(AbstractJobStore):
             elif self.version:
                 for attempt in retry_s3():
                     with attempt:
-                        obj = self.outer.filesBucket.Object(compat_bytes(self.fileID))
+                        obj = self.outer.files_bucket.Object(compat_bytes(self.fileID))
                         return obj.content_length
             else:
                 return 0
@@ -1696,9 +1690,9 @@ class AWSJobStore(AbstractJobStore):
             pass
         # TODO: Add other failure cases to be ignored here.
         self._registered = None
-        if self.filesBucket is not None:
-            self._delete_bucket(self.filesBucket)
-            self.filesBucket = None
+        if self.files_bucket is not None:
+            self._delete_bucket(self.files_bucket)
+            self.files_bucket = None
         for name in 'filesDomainName', 'jobsDomainName':
             domainName = getattr(self, name)
             if domainName is not None:
