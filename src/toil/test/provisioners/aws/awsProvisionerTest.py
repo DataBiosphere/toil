@@ -220,7 +220,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
 
 @integrative
-# @needs_mesos
+@needs_mesos
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
