@@ -140,19 +140,16 @@ class hidden:
             """
             return self.createConfig()
 
-        def _mockJobDescription(self, jobStoreID=None, command=None, **kwargs):
+        def _mockJobDescription(self, jobStoreID=None, **kwargs):
             """
-            Create a mock-up JobDescription with the given ID, command, and other parameters.
+            Create a mock-up JobDescription with the given ID and other parameters.
             """
 
             # TODO: Use a real unittest.Mock? For now we make a real instance and just hack it up.
 
             desc = JobDescription(**kwargs)
-            # Normally we can't pass in a command or ID, and the job
-            # serialization logic takes care of filling them in. We set them
-            # here.
-            if command is not None:
-                desc.command = command
+            # Normally we can't pass in an ID, and the job serialization logic
+            # takes care of filling it in. We set it here.
             if jobStoreID is not None:
                 desc.jobStoreID = jobStoreID
 
@@ -185,12 +182,12 @@ class hidden:
 
         @retry_flaky_test(prepare=[tearDown, setUp])
         def test_run_jobs(self):
-            jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
+            jobDesc1 = self._mockJobDescription(jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
-            jobDesc2 = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+            jobDesc2 = self._mockJobDescription(jobName='test2', unitName=None,
                                                 jobStoreID='2', requirements=defaultRequirements)
-            job1 = self.batchSystem.issueBatchJob(jobDesc1)
-            job2 = self.batchSystem.issueBatchJob(jobDesc2)
+            job1 = self.batchSystem.issueBatchJob('sleep 1000', jobDesc1)
+            job2 = self.batchSystem.issueBatchJob('sleep 1000', jobDesc2)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -219,9 +216,9 @@ class hidden:
             # then check for it having happened, but we can't guarantee that
             # the batch system will run against the same filesystem we are
             # looking at.
-            jobDesc3 = self._mockJobDescription(command="mktemp -d", jobName='test3', unitName=None,
+            jobDesc3 = self._mockJobDescription(jobName='test3', unitName=None,
                                                 jobStoreID='3', requirements=defaultRequirements)
-            job3 = self.batchSystem.issueBatchJob(jobDesc3)
+            job3 = self.batchSystem.issueBatchJob("mktemp -d", jobDesc3)
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
@@ -252,18 +249,18 @@ class hidden:
 
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
-            jobDesc4 = self._mockJobDescription(command=command, jobName='test4', unitName=None,
+            jobDesc4 = self._mockJobDescription(jobName='test4', unitName=None,
                                                 jobStoreID='4', requirements=defaultRequirements)
-            job4 = self.batchSystem.issueBatchJob(jobDesc4)
+            job4 = self.batchSystem.issueBatchJob(command, jobDesc4)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
             self.assertEqual(exitStatus, 42)
             self.assertEqual(jobID, job4)
             # Now set the variable and ensure that it is present
             self.batchSystem.setEnv('FOO', 'bar')
-            jobDesc5 = self._mockJobDescription(command=command, jobName='test5', unitName=None,
+            jobDesc5 = self._mockJobDescription(jobName='test5', unitName=None,
                                                 jobStoreID='5', requirements=defaultRequirements)
-            job5 = self.batchSystem.issueBatchJob(jobDesc5)
+            job5 = self.batchSystem.issueBatchJob(command, jobDesc5)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
             self.assertEqual(jobUpdateInfo.jobID, job5)
@@ -274,18 +271,18 @@ class hidden:
             command = "bash -c \"\\${@}\" bash eval " + script.replace(';', r'\;')
 
             # Issue a job with a job environment variable
-            job_desc_6 = self._mockJobDescription(command=command, jobName='test6', unitName=None,
+            job_desc_6 = self._mockJobDescription(jobName='test6', unitName=None,
                                                   jobStoreID='6', requirements=defaultRequirements)
-            job6 = self.batchSystem.issueBatchJob(job_desc_6, job_environment={
+            job6 = self.batchSystem.issueBatchJob(command, job_desc_6, job_environment={
                 'FOO': 'bar'
             })
             job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(job_update_info.exitStatus, 23)  # this should succeed
             self.assertEqual(job_update_info.jobID, job6)
             # Now check that the environment variable doesn't exist for other jobs
-            job_desc_7 = self._mockJobDescription(command=command, jobName='test7', unitName=None,
+            job_desc_7 = self._mockJobDescription(jobName='test7', unitName=None,
                                                   jobStoreID='7', requirements=defaultRequirements)
-            job7 = self.batchSystem.issueBatchJob(job_desc_7)
+            job7 = self.batchSystem.issueBatchJob(command, job_desc_7)
             job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(job_update_info.exitStatus, 42)
             self.assertEqual(job_update_info.jobID, job7)
@@ -619,9 +616,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
     def testIgnoreNode(self):
         self.batchSystem.ignoreNode('localhost')
-        jobDesc = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+        jobDesc = self._mockJobDescription(jobName='test2', unitName=None,
                                            jobStoreID='1', requirements=defaultRequirements)
-        job = self.batchSystem.issueBatchJob(jobDesc)
+        job = self.batchSystem.issueBatchJob('sleep 1000', jobDesc)
 
         issuedID = self._waitForJobsToIssue(1)
         self.assertEqual(set(issuedID), {job})
@@ -731,8 +728,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 command += ' hide'
 
             # Start the job
-            self.batchSystem.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
-                                                                    jobStoreID='1', requirements=defaultRequirements))
+            self.batchSystem.issueBatchJob(
+                command, 
+                self._mockJobDescription(
+                    jobName='fork',
+                    jobStoreID='1',
+                    requirements=defaultRequirements)
+            )
             # Wait
             time.sleep(10)
 
@@ -863,13 +865,18 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(JobDescription(command=self.scriptCommand(),
-                                                                           requirements=dict(
-                                                                               cores=float(coresPerJob),
-                                                                               memory=1, disk=1,
-                                                                               accelerators=[],
-                                                                               preemptible=preemptible),
-                                                                           jobName=str(i), unitName='')))
+                                desc = JobDescription(
+                                    requirements=dict(
+                                        cores=float(coresPerJob),
+                                        memory=1,
+                                        disk=1,
+                                        accelerators=[],
+                                        preemptible=preemptible
+                                    ),
+                                    jobName=str(i),
+                                    unitName=''
+                                )
+                                jobIds.add(bs.issueBatchJob(self.scriptCommand(), desc))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
@@ -894,7 +901,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
     def testServices(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logDebug = True
+        options.logLevel = "DEBUG"
         options.maxCores = 3
         self.assertTrue(options.maxCores <= SingleMachineBatchSystem.numCores)
         Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)

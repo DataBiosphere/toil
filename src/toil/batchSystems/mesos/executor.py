@@ -196,12 +196,13 @@ class MesosExecutor(Executor):
             """
             if job.userScript:
                 job.userScript.register()
-            log.debug("Invoking command: '%s'", job.command)
+            command = job.command
+            log.debug("Invoking command: '%s'", command)
             # Construct the job's environment
             jobEnv = dict(os.environ, **job.environment)
             log.debug('Using environment variables: %s', jobEnv.keys())
             with self.popenLock:
-                return subprocess.Popen(job.command,
+                return subprocess.Popen(command,
                                         preexec_fn=lambda: os.setpgrp(),
                                         shell=True, env=jobEnv)
 

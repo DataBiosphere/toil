@@ -34,6 +34,7 @@ from typing import (TYPE_CHECKING,
                     Iterator,
                     List,
                     Mapping,
+                    NamedTuple,
                     Optional,
                     Sequence,
                     Set,
@@ -727,13 +728,24 @@ class Requirer:
             parts = ['no requirements']
         return ', '.join(parts)
 
+class JobBodyReference(NamedTuple):
+    """
+    Reference from a job description to its body.
+    """
+    file_store_id: str
+    """File ID (or special shared file name for the root job) of the job's body."""
+    module_string: str 
+    """Stringified description of the module needed to load the body."""
+
 class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a Job.
-
-    (requirements information, dependency information, commands to issue,
-    etc.)
-
+    
+    This includes:
+        * Resource requirements.
+        * Which jobs are children or follow-ons or predecessors of this job.
+        * A reference to the Job object in the job store.
+    
     Can be obtained from an actual (i.e. executable) Job object, and can be
     used to obtain the Job object from the JobStore.
 
@@ -748,8 +760,7 @@ class JobDescription(Requirer):
         requirements: Mapping[str, Union[int, str, bool]],
         jobName: str,
         unitName: Optional[str] = "",
-        displayName: Optional[str] = "",
-        command: Optional[str] = None,
+        displayName: Optional[str] = "",        
         local: Optional[bool] = None
     ) -> None:
         """
@@ -796,14 +807,10 @@ class JobDescription(Requirer):
         # ID of this job description in the JobStore.
         self.jobStoreID: Union[str, TemporaryID] = TemporaryID()
 
-        # Mostly fake, not-really-executable command string that encodes how to
-        # find the Job body data that this JobDescription describes, and the
-        # module(s) needed to unpickle it.
-        #
-        # Gets replaced with/rewritten into the real, executable command when
-        # the leader passes the description off to the batch system to be
-        # executed.
-        self.command: Optional[str] = command
+        # Information that encodes how to find the Job body data that this
+        # JobDescription describes, and the module(s) needed to unpickle it.
+        # None if no body needs to run.
+        self._body: Optional[JobBodyReference] = None
 
         # Set scheduling properties that the leader read to think about scheduling.
 
@@ -971,7 +978,47 @@ class JobDescription(Requirer):
         """
         return list(self.serviceTree.keys())
 
-    def nextSuccessors(self) -> Set[str]:
+    def has_body(self) -> bool:
+        """
+        Returns True if we have a job body associated, and False otherwise.
+        """
+        return self._body is not None
+
+    def attach_body(self, file_store_id: str, user_script: ModuleDescriptor) -> None:
+        """
+        Attach a job body to this JobDescription.
+
+        Takes the file store ID that the body is stored at, and the required
+        user script module.
+
+        The file store ID can also be "firstJob" for the root job, stored as a
+        shared file instead.
+        """
+
+        self._body = JobBodyReference(file_store_id, user_script.toCommand())
+
+    def detach_body(self) -> None:
+        """
+        Drop the body reference from a JobDescription.
+        """
+        self._body = None
+
+    def get_body(self) -> Tuple[str, ModuleDescriptor]:
+        """
+        Get the information needed to load the job body.
+
+        :returns: a file store ID (or magic shared file name "firstJob") and a
+            user script module.
+
+        Fails if no body is attached; check has_body() first.
+        """
+
+        if not self.has_body():
+            raise RuntimeError(f"Cannot load the body of a job {self} without one")
+
+        return self._body.file_store_id, ModuleDescriptor.fromCommand(self._body.module_string)
+
+    def nextSuccessors(self) -> Optional[Set[str]]:
         """
         Return the collection of job IDs for the successors of this job that are ready to run.
 
@@ -982,7 +1029,7 @@ class JobDescription(Requirer):
         empty collection if there are more phases but they can't be entered yet
         (e.g. because we are waiting for the job itself to run).
         """
-        if self.command is not None:
+        if self.has_body():
             # We ourselves need to run. So there's not nothing to do
             # but no successors are ready.
             return set()
@@ -1054,7 +1101,7 @@ class JobDescription(Requirer):
         :returns: True if the job appears to be done, and all related child,
                   follow-on, and service jobs appear to be finished and removed.
         """
-        return self.command == None and next(self.successorsAndServiceHosts(), None) is None
+        return not self.has_body() and next(self.successorsAndServiceHosts(), None) is None
 
     def replace(self, other: "JobDescription") -> None:
         """
@@ -1108,12 +1155,45 @@ class JobDescription(Requirer):
         self._job_version = other._job_version
         self._job_version_writer = os.getpid()
 
-    def check_new_version(self, other: "JobDescription") -> None:
+    def assert_is_not_newer_than(self, other: "JobDescription") -> None:
         """
-        Make sure a prospective new version of the JobDescription is actually moving forward in time and not backward.
+        Make sure this JobDescription is not newer than a prospective new version of the JobDescription.
         """
         if other._job_version < self._job_version:
             raise RuntimeError(f"Cannot replace {self} from PID {self._job_version_writer} with older version {other} from PID {other._job_version_writer}")
+
+    def is_updated_by(self, other: "JobDescription") -> bool:
+        """
+        Return True if the passed JobDescription is a distinct, newer version of this one.
+        """
+
+        if self.jobStoreID != other.jobStoreID:
+            # Not the same job
+            logger.warning(
+                "Found ID %s in job %s from PID %s but expected ID %s to "
+                "update job %s from PID %s",
+                other.jobStoreID,
+                other,
+                other._job_version_writer,
+                self.jobStoreID,
+                self,
+                self._job_version_writer
+            )
+            return False
+
+        if self._job_version >= other._job_version:
+            # Version isn't strictly newer
+            logger.debug(
+                "Expected newer version in job %s from PID %s but it is no "
+                "newer than job %s from PID %s",
+                other,
+                other._job_version_writer,
+                self,
+                self._job_version_writer
+            )
+            return False
+
+        return True
 
     def addChild(self, childID: str) -> None:
         """Make the job with the given ID a child of the described job."""
@@ -1361,11 +1441,28 @@ class CheckpointJobDescription(JobDescription):
 
         # Set checkpoint-specific properties
 
-        # None, or a copy of the original command string used to reestablish the job after failure.
-        self.checkpoint = None
+        # None, or a copy of the original self._body used to reestablish the job after failure.
+        self.checkpoint: Optional[JobBodyReference] = None
 
         # Files that can not be deleted until the job and its successors have completed
         self.checkpointFilesToDelete = []
+
+    def set_checkpoint(self) -> str:
+        """
+        Save a body checkpoint into self.checkpoint
+        """
+
+        if not self.has_body():
+            raise RuntimeError(f"Cannot snapshot the body of a job {self} without one")
+        self.checkpoint = self._body
+
+    def restore_checkpoint(self) -> None:
+        """
+        Restore the body checkpoint from self.checkpoint
+        """
+        if self.checkpoint is None:
+            raise RuntimeError(f"Cannot restore an empty checkpoint for a job {self}")
+        self._body = self.checkpoint
 
     def restartCheckpoint(self, jobStore: "AbstractJobStore") -> List[str]:
         """
@@ -1381,13 +1478,13 @@ class CheckpointJobDescription(JobDescription):
             raise RuntimeError("Cannot restart a checkpoint job. The checkpoint was never set.")
         successorsDeleted = []
         all_successors = list(self.allSuccessors())
-        if len(all_successors) > 0 or self.serviceTree or self.command is not None:
-            if self.command is not None:
-                if self.command != self.checkpoint:
-                    raise RuntimeError("The command and checkpoint are not the same.")
-                logger.debug("Checkpoint job already has command set to run")
+        if len(all_successors) > 0 or self.serviceTree or self.has_body():
+            if self.has_body():
+                if self._body != self.checkpoint:
+                    raise RuntimeError("The stored body reference and checkpoint are not the same.")
+                logger.debug("Checkpoint job already has body set to run")
             else:
-                self.command = self.checkpoint
+                self.restore_checkpoint()
 
             jobStore.update_job(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
@@ -2609,8 +2706,8 @@ class Job:
         # filter_main() in _unpickle( ) do its job of resolving any user-defined type or function.
         userScript = self.getUserScript().globalize()
 
-        # The command connects the body of the job to the JobDescription
-        self._description.command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
+        # Connect the body of the job to the JobDescription
+        self._description.attach_body(fileStoreID, userScript)
 
     def _saveJobGraph(self, jobStore: "AbstractJobStore", saveSelf: bool = False, returnValues: bool = None):
         """
@@ -2739,38 +2836,33 @@ class Job:
 
     @classmethod
     def loadJob(
-        cls, jobStore: "AbstractJobStore", jobDescription: JobDescription
+        cls, job_store: "AbstractJobStore", job_description: JobDescription
     ) -> "Job":
         """
         Retrieves a :class:`toil.job.Job` instance from a JobStore
 
-        :param jobStore: The job store.
-        :param jobDescription: the JobDescription of the job to retrieve.
+        :param job_store: The job store.
+        :param job_description: the JobDescription of the job to retrieve.
         :returns: The job referenced by the JobDescription.
         """
-        # Grab the command that connects the description to the job body
-        command = jobDescription.command
-
-        commandTokens = command.split()
-        if "_toil" != commandTokens[0]:
-            raise RuntimeError("An invalid command was passed into the job.")
-        userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
-        logger.debug('Loading user module %s.', userModule)
-        userModule = cls._loadUserModule(userModule)
-        pickleFile = commandTokens[1]
+        
+        file_store_id, user_module_descriptor = job_description.get_body()
+        logger.debug('Loading user module %s.', user_module_descriptor)
+        user_module = cls._loadUserModule(user_module_descriptor)
 
         #Loads context manager using file stream
-        if pickleFile == "firstJob":
-            manager = jobStore.read_shared_file_stream(pickleFile)
+        if file_store_id == "firstJob":
+            # This one is actually a shared file name and not a file ID.
+            manager = job_store.read_shared_file_stream(file_store_id)
         else:
-            manager = jobStore.read_file_stream(pickleFile)
+            manager = job_store.read_file_stream(file_store_id)
 
         #Open and unpickle
-        with manager as fileHandle:
+        with manager as file_handle:
 
-            job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
+            job = cls._unpickle(user_module, file_handle, requireInstanceOf=Job)
             # Fill in the current description
-            job._description = jobDescription
+            job._description = job_description
 
             # Set up the registry again, so children and follow-ons can be added on the worker
             job._registry = {job.jobStoreID: job}
@@ -2864,7 +2956,7 @@ class Job:
         """
         Run the job, and serialise the next jobs.
 
-        It marks the job as completed (by clearing its command) and creates the
+        It marks the job as completed (by clearing its body) and creates the
         successor relationships to new successors, but it doesn't actually
         commit those updates to the current job into the JobStore.
 
@@ -2899,9 +2991,9 @@ class Job:
         # Serialize the new Jobs defined by the run method to the jobStore
         self._saveJobGraph(jobStore, saveSelf=False, returnValues=returnValues)
 
-        # Clear out the command, because the job is done.
-        self.description.command = None
-
+        # Clear out the body, because the job is done.
+        self.description.detach_body()
+        
         # That and the new child/follow-on relationships will need to be
         # recorded later by an update() of the JobDescription.
 

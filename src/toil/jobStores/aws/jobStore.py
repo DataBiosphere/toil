@@ -319,8 +319,7 @@ class AWSJobStore(AbstractJobStore):
 
     def assign_job_id(self, job_description):
         jobStoreID = self._new_job_id()
-        logger.debug("Assigning ID to job %s for '%s'",
-                     jobStoreID, '<no command>' if job_description.command is None else job_description.command)
+        logger.debug("Assigning ID to job %s", jobStoreID)
         job_description.jobStoreID = jobStoreID
 
     def create_job(self, job_description):

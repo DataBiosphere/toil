@@ -25,18 +25,17 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE
-from toil.job import JobDescription
 from toil.resource import Resource
 from toil.statsAndLogging import configure_root_logger, set_log_level
 
 logger = logging.getLogger(__name__)
 
 
-def pack_job(job_desc: JobDescription, user_script: Optional[Resource] = None, environment: Optional[Dict[str, str]] = None) -> List[str]:
+def pack_job(command: str, user_script: Optional[Resource] = None, environment: Optional[Dict[str, str]] = None) -> List[str]:
     """
-    Create a command that, when run, will execute the given job.
+    Create a command that runs the given command in an environment. 
 
-    :param job_desc: Job description for the job to run.
+    :param command: Worker command to run to run the job.
     :param user_script: User script that will be loaded before the job is run.
     :param environment: Environment variable dict that will be applied before
         the job is run.
@@ -46,7 +45,7 @@ def pack_job(job_desc: JobDescription, user_script: Optional[Resource] = None, e
     """
     # Make a job dict to send to the executor.
     # TODO: Factor out executor setup from here and Kubernetes and TES
-    job: Dict[str, Any] = {"command": job_desc.command}
+    job: Dict[str, Any] = {"command": command}
     if user_script is not None:
         # If there's a user script resource be sure to send it along
         job['userScript'] = user_script
