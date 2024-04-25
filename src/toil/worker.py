@@ -540,7 +540,8 @@ def workerScript(
         # Job wants the worker to stop for debugging
         raise
     except BaseException as e: #Case that something goes wrong in worker, or we are asked to stop
-        logger.critical("Worker crashed with traceback:\n%s", traceback.format_exc())
+        if not isinstance(e, SystemExit):
+            logger.critical("Worker crashed with traceback:\n%s", traceback.format_exc())
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         if isinstance(e, CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION):
             # We need to inform the leader that this is a CWL workflow problem

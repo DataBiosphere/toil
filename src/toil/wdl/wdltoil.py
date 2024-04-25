@@ -90,6 +90,7 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
     try:
         yield
     except (
+        WDL.Error.EvalError,
         WDL.Error.SyntaxError,
         WDL.Error.ImportError,
         WDL.Error.ValidationError,
@@ -102,13 +103,17 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         JobTooBigError
     ) as e:
         # Don't expose tracebacks to the user for exceptions that may be expected
-        log("Could not " + task)
+        log("Could not " + task + " because:")
+        
         # These are the errors that MiniWDL's parser can raise and its reporter
-        # can report. See
+        # can report (plus some extras). See
         # https://github.com/chanzuckerberg/miniwdl/blob/a780b1bf2db61f18de37616068968b2bb4c2d21c/WDL/CLI.py#L91-L97.
         #
         # We are going to use MiniWDL's pretty printer to print them.
+        # Make the MiniWDL stuff on stderr loud so people see it
+        sys.stderr.write("\n" + "🚨" * 3 + "\n")
         print_error(e)
+        sys.stderr.write("🚨" * 3 + "\n\n")
         if exit:
             # Stop right now
             sys.exit(1)
@@ -1399,7 +1404,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         self._namespace = namespace
         self._task_path = task_path
 
-    @report_wdl_errors("evaluate task code")
+    @report_wdl_errors("evaluate task code", exit=True)
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Evaluate inputs and runtime and schedule the task.
@@ -1697,7 +1702,7 @@ class WDLTaskJob(WDLBaseJob):
         """
         return "KUBERNETES_SERVICE_HOST" not in os.environ
 
-    @report_wdl_errors("run task command")
+    @report_wdl_errors("run task command", exit=True)
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Actually run the task.
@@ -1998,11 +2003,17 @@ class WDLTaskJob(WDLBaseJob):
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
         output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
-        # Now we know if the standard output and error were sent somewhere by
-        # the workflow. If not, we should report them to the leader.
-
         # Drop any files from the output which don't actually exist
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
+        for decl in self._task.outputs:
+            if not decl.type.optional and output_bindings[decl.name].value is None:
+                    # We have an unacceptable null value. This can happen if a file
+                    # is missing but not optional. Don't let it out to annoy the
+                    # next task.
+                    raise WDL.Error.EvalError(decl, "non-optional file is missing")
+
+        # Now we know if the standard output and error were sent somewhere by
+        # the workflow. If not, we should report them to the leader.
 
         if not outputs_library.stderr_used() and os.path.exists(host_stderr_txt):
             size = os.path.getsize(host_stderr_txt)
