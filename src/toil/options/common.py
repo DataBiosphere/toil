@@ -588,6 +588,11 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                              help=f"Period of time to wait (in seconds) between checking for missing/overlong jobs, "
                                   f"that is jobs which get lost by the batch system. Expert parameter.  "
                                   f"default=%(default)s")
+    job_options.add_argument("--jobStoreTimeout", dest="job_store_timeout", default=30, type=float,
+                             action=make_open_interval_action(0), metavar="FLOAT",
+                             help=f"Maximum time (in seconds) to wait for a job's update to the job store "
+                                  f"before declaring it failed. default=%(default)s")
+
 
     # Log management options
     log_options = parser.add_argument_group(

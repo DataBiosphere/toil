@@ -156,9 +156,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'AWS Batch can only provide nvidia gpu accelerators.'
                 ])
 
-    def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
-        local_id = self.handleLocalJob(job_desc)
+        local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
             # It is a local job
             return local_id
@@ -184,7 +184,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 environment.update(job_environment)
 
             # Make a command to run it in the executor
-            command_list = pack_job(job_desc, self.user_script)
+            command_list = pack_job(command, self.user_script)
 
             # Compose a job spec to submit
             job_spec = {

@@ -382,16 +382,16 @@ class UtilsTest(ToilTest):
         In this case, the job store should not be destroyed until restart() is called.
         """
         # Run a workflow that will always fail
-        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
+        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1', '--logDebug']
         subprocess.run(cmd)
 
-        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
+        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--logDebug', '--restart']
         subprocess.run(restart_cmd)
 
         # Check the job store exists after restart attempt
         self.assertTrue(os.path.exists(self.toilDir))
 
-        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir,
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', '--logDebug', 'file:' + self.toilDir,
                                   '--restart']
         subprocess.run(successful_cmd)
 
