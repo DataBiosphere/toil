@@ -1859,7 +1859,7 @@ class CachingFileStore(AbstractFileStore):
             logger.debug('Starting commit of %s forked from %s', state_to_commit, self.jobDesc)
             # Make sure the deep copy isn't summoning ghosts of old job
             # versions. It must be as new or newer at this point.
-            self.jobDesc.check_new_version(state_to_commit)
+            self.jobDesc.assert_is_not_newer_than(state_to_commit)
 
             # Bump the original's version since saving will do that too and we
             # don't want duplicate versions.

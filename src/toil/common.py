@@ -209,6 +209,7 @@ class Config:
     doubleMem: bool
     maxJobDuration: int
     rescueJobsFrequency: int
+    job_store_timeout: float
 
     # Log management
     maxLogFileSize: int
@@ -374,6 +375,7 @@ class Config:
         set_option("doubleMem")
         set_option("maxJobDuration")
         set_option("rescueJobsFrequency")
+        set_option("job_store_timeout")
 
         # Log management
         set_option("maxLogFileSize")
