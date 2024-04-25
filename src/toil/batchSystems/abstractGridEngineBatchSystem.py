@@ -399,9 +399,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobDesc)
+        localID = self.handleLocalJob(command, jobDesc)
         if localID is not None:
             return localID
         else:
@@ -415,10 +415,10 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                         gpus = accelerator['count']
             else:
                 gpus = jobDesc.accelerators
-
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, get_job_kind(jobDesc.get_names()),
+            
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, command, get_job_kind(jobDesc.get_names()),
                                    job_environment, gpus))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(jobID),
                          get_job_kind(jobDesc.get_names()))
         return jobID
 
