@@ -743,10 +743,11 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
     functions only allowed in task output sections.
     """
 
-    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, current_directory_override: Optional[str] = None):
+    def __init__(self, file_store: AbstractFileStore, stdout_path: str, stderr_path: str, file_to_mountpoint: Dict[str, str], current_directory_override: Optional[str] = None):
         """
         Set up the standard library for a task output section. Needs to know
-        where standard output and error from the task have been stored.
+        where standard output and error from the task have been stored, and
+        what local paths to pretend are where for resolving symlinks.
 
         If current_directory_override is set, resolves relative paths and globs
         from there instead of from the real current directory.
@@ -763,6 +764,9 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         # Remember that the WDL code has not referenced them yet.
         self._stdout_used = False
         self._stderr_used = False
+
+        # Reverse and store the file mount dict
+        self._mountpoint_to_file = {v: k for k, v in file_to_mountpoint.items()}
 
         # Remember current directory
         self._current_directory_override = current_directory_override
@@ -880,10 +884,34 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         """
 
         if not is_url(filename) and not filename.startswith('/'):
-            # We are getting a bare relative path the supposedly devirtualized side.
+            # We are getting a bare relative path on the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
             work_dir = '.' if not self._current_directory_override else self._current_directory_override
             filename = os.path.join(work_dir, filename)
+
+        if os.path.islink(filename):
+            # Recursively resolve symlinks
+            here = filename
+            # Notice if we have a symlink loop
+            seen = {here}
+            while os.path.islink(here):
+                dest = os.readlink(filename)
+                if not dest.startswith('/'):
+                    # Make it absolute
+                    dest = os.path.join(os.path.dirname(here), dest)
+                here = dest
+                if here in self._mountpoint_to_file:
+                    # This points to something mounted into the container, so use that path instead.
+                    here = self._mountpoint_to_file[here]
+                if here in seen:
+                    raise RuntimeError(f"Symlink {filename} leads to symlink loop at {here}")
+                seen.add(here)
+
+            if os.path.exists(here):
+                logger.debug("Handling symlink %s ultimately to %s", filename, here)
+            else:
+                logger.error("Handling broken symlink %s ultimately to %s", filename, here)
+            filename = here
 
         return super()._virtualize_filename(filename)
 
@@ -1136,8 +1164,10 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
                 logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
                 return None
         else:
+            # Get the absolute path, not resolving symlinks
             effective_path = os.path.abspath(os.path.join(work_dir, filename))
-            if os.path.exists(effective_path):
+            if os.path.islink(effective_path) or os.path.exists(effective_path):
+                # This is a broken symlink or a working symlink or a file.
                 return filename
             else:
                 logger.warning('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
@@ -2000,17 +2030,8 @@ class WDLTaskJob(WDLBaseJob):
         # container-determined strings that are absolute paths to WDL File
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
-        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, current_directory_override=workdir_in_container)
+        outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, current_directory_override=workdir_in_container)
         output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
-
-        # Drop any files from the output which don't actually exist
-        output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
-        for decl in self._task.outputs:
-            if not decl.type.optional and output_bindings[decl.name].value is None:
-                    # We have an unacceptable null value. This can happen if a file
-                    # is missing but not optional. Don't let it out to annoy the
-                    # next task.
-                    raise WDL.Error.EvalError(decl, f"non-optional file {decl.expr} is missing")
 
         # Now we know if the standard output and error were sent somewhere by
         # the workflow. If not, we should report them to the leader.
@@ -2032,10 +2053,14 @@ class WDLTaskJob(WDLBaseJob):
         # Collect output messages from any code Toil injected into the task.
         self.handle_injection_messages(outputs_library)
 
-        # TODO: Check the output bindings against the types of the decls so we
-        # can tell if we have a null in a value that is supposed to not be
-        # nullable. We can't just look at the types on the values themselves
-        # because those are all the non-nullable versions.
+        # Drop any files from the output which don't actually exist
+        output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
+        for decl in self._task.outputs:
+            if not decl.type.optional and output_bindings[decl.name].value is None:
+                    # We have an unacceptable null value. This can happen if a file
+                    # is missing but not optional. Don't let it out to annoy the
+                    # next task.
+                    raise WDL.Error.EvalError(decl, f"non-optional value {decl.name} = {decl.expr} is missing")
 
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
