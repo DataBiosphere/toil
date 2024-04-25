@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import time
 from typing import Dict, Optional, Set
 
 from toil.bus import JobUpdatedMessage, MessageBus
@@ -183,11 +184,69 @@ class ToilState:
         if job_id in self.__job_database:
             # Update the one true copy in place
             old_truth = self.__job_database[job_id]
-            old_truth.check_new_version(new_truth)
+            old_truth.assert_is_not_newer_than(new_truth)
             old_truth.__dict__.update(new_truth.__dict__)
         else:
             # Just keep the new one
             self.__job_database[job_id] = new_truth
+
+    def reset_job_expecting_change(self, job_id: str, timeout: float) -> bool:
+        """
+        Discard any local modifications to a JobDescription.
+
+        Will make modifications from other hosts visible.
+
+        Will wait for up to timeout seconds for a modification (or deletion)
+        from another host to actually be visible.
+
+        Always replaces the JobDescription with what is stored in the job
+        store, even if no modification ends up being visible.
+
+        Returns True if an update was detected in time, and False otherwise.
+        """
+
+        start_time = time.time()
+        wait_time = 0.1
+        initially_known = job_id in self.__job_database
+        new_truth: Optional[JobDescription] = None
+        while True:
+            try:
+                new_truth = self.__job_store.load_job(job_id)
+            except NoSuchJobException:
+                # The job is gone now.
+                if job_id in self.__job_database:
+                    # So forget about it
+                    del self.__job_database[job_id]
+                    # TODO: Other collections may still reference it.
+                if initially_known:
+                    # Job was deleted, that's an update
+                    return True
+            else:
+                if job_id in self.__job_database:
+                    # We have an old version to compare against
+                    old_truth = self.__job_database[job_id]
+                    old_truth.assert_is_not_newer_than(new_truth)
+                    if old_truth.is_updated_by(new_truth):
+                        # Do the update
+                        old_truth.__dict__.update(new_truth.__dict__)
+                        return True
+                else:
+                    # Just keep the new one. That's an update.
+                    self.__job_database[job_id] = new_truth
+                    return True
+            # We looked but didn't get a good update
+            time_elapsed = time.time() - start_time
+            if time_elapsed >= timeout:
+                # We're out of time to check.
+                if new_truth is not None:
+                    # Commit whatever we managed to load to accomplish a real
+                    # reset.
+                    old_truth.__dict__.update(new_truth.__dict__)
+                return False
+            # Wait a little and poll again
+            time.sleep(min(timeout - time_elapsed, wait_time))
+            # Using exponential backoff
+            wait_time *= 2
 
     # The next 3 functions provide tracking of how many successor jobs a given job
     # is waiting on, exposing only legit operations.
@@ -247,10 +306,10 @@ class ToilState:
 
         :param jobDesc: The description for the root job of the workflow being run.
         """
-        # If the job description has a command, is a checkpoint, has services
+        # If the job description has a body, is a checkpoint, has services
         # or is ready to be deleted it is ready to be processed (i.e. it is updated)
         if (
-            jobDesc.command is not None
+            jobDesc.has_body()
             or (
                 isinstance(jobDesc, CheckpointJobDescription)
                 and jobDesc.checkpoint is not None
@@ -259,10 +318,10 @@ class ToilState:
             or jobDesc.nextSuccessors() is None
         ):
             logger.debug(
-                "Found job to run: %s, with command: %s, with checkpoint: %s, with "
+                "Found job to run: %s, with body: %s, with checkpoint: %s, with "
                 "services: %s, with no next successors: %s",
                 jobDesc.jobStoreID,
-                jobDesc.command is not None,
+                jobDesc.has_body(),
                 isinstance(jobDesc, CheckpointJobDescription)
                 and jobDesc.checkpoint is not None,
                 len(jobDesc.services) > 0,
@@ -272,18 +331,18 @@ class ToilState:
             self.bus.publish(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
 
             if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
-                jobDesc.command = jobDesc.checkpoint
+                jobDesc.restore_checkpoint()
 
         else:  # There exist successors
             logger.debug(
                 "Adding job: %s to the state with %s successors",
                 jobDesc.jobStoreID,
-                len(jobDesc.nextSuccessors()),
+                len(jobDesc.nextSuccessors() or set()),
             )
 
             # Record the number of successors
             self.successorCounts[str(jobDesc.jobStoreID)] = len(
-                jobDesc.nextSuccessors()
+                jobDesc.nextSuccessors() or set()
             )
 
             def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
@@ -305,7 +364,7 @@ class ToilState:
                     self._buildToilState(successor)
 
             # For each successor
-            for successorJobStoreID in jobDesc.nextSuccessors():
+            for successorJobStoreID in jobDesc.nextSuccessors() or set():
 
                 # If the successor does not yet point back at a
                 # predecessor we have not yet considered it

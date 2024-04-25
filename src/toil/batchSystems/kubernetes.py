@@ -758,6 +758,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def _create_pod_spec(
             self,
+            command: str,
             job_desc: JobDescription,
             job_environment: Optional[Dict[str, str]] = None
     ) -> V1PodSpec:
@@ -770,7 +771,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             environment.update(job_environment)
 
         # Make a command to run it in the executor
-        command_list = pack_job(job_desc, self.user_script, environment=environment)
+        command_list = pack_job(command, self.user_script, environment=environment)
 
         # The Kubernetes API makes sense only in terms of the YAML format. Objects
         # represent sections of the YAML files. Except from our point of view, all
@@ -1005,9 +1006,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self._release_acquired_resources(resources, notify=resource_notify)
             del self._acquired_resources[job_name]
 
-    def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
-        localID = self.handleLocalJob(job_desc)
+        localID = self.handleLocalJob(command, job_desc)
         if localID is not None:
             # It is a local job
             return localID
@@ -1018,7 +1019,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.check_resource_request(job_desc)
 
         # Make a pod that describes running the job
-        pod_spec = self._create_pod_spec(job_desc, job_environment=job_environment)
+        pod_spec = self._create_pod_spec(command, job_desc, job_environment=job_environment)
 
         # Make a batch system scope job ID
         job_id = self.getNextJobID()
