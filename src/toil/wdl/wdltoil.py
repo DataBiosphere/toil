@@ -2010,7 +2010,7 @@ class WDLTaskJob(WDLBaseJob):
                     # We have an unacceptable null value. This can happen if a file
                     # is missing but not optional. Don't let it out to annoy the
                     # next task.
-                    raise WDL.Error.EvalError(decl, "non-optional file is missing")
+                    raise WDL.Error.EvalError(decl, f"non-optional file {decl.expr} is missing")
 
         # Now we know if the standard output and error were sent somewhere by
         # the workflow. If not, we should report them to the leader.
