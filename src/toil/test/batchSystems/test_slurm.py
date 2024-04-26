@@ -193,7 +193,7 @@ class SlurmTest(ToilTest):
 
     def setUp(self):
         self.monkeypatch = pytest.MonkeyPatch()
-        self.worker = toil.batchSystems.slurm.SlurmBatchSystem.Worker(
+        self.worker = toil.batchSystems.slurm.SlurmBatchSystem.GridEngineThread(
             newJobsQueue=Queue(),
             updatedJobsQueue=Queue(),
             killQueue=Queue(),
