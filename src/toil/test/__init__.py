@@ -761,7 +761,7 @@ def integrative(test_item: MT) -> MT:
         return test_item
     else:
         return unittest.skip(
-            'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
+            'Set TOIL_TEST_INTEGRATIVE=True to include this integration test, '
             "or run `make integration_test_local` to run all integration tests."
         )(test_item)
 
