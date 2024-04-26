@@ -42,13 +42,13 @@ class GCEProvisioner(AbstractProvisioner):
     NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
     SOURCE_IMAGE = b'projects/kinvolk-public/global/images/family/flatcar-stable'
 
-    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey, enable_fuse):
         self.cloud = 'gce'
         self._sseKey = sseKey
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, enable_fuse)
 
     def supportedClusterTypes(self):
         return {'mesos'}
