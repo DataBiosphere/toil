@@ -387,10 +387,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self._getRunningBatchJobIDsCache = {}
 
     @classmethod
-    def supportsWorkerCleanup(cls):
-        return False
-
-    @classmethod
     def supportsAutoDeployment(cls):
         return False
 
