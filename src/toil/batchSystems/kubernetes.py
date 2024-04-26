@@ -47,6 +47,8 @@ from typing import (Any,
                     cast,
                     overload)
 
+from toil.lib.conversions import opt_strtobool
+
 if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
 else:
@@ -83,7 +85,7 @@ from kubernetes.client import (BatchV1Api,
                                V1SecretVolumeSource,
                                V1Toleration,
                                V1Volume,
-                               V1VolumeMount)
+                               V1VolumeMount, V1SecurityContext)
 from kubernetes.client.api_client import ApiClient
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
@@ -878,14 +880,20 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a container definition
         container = V1Container(command=command_list,
-                                                  image=self.docker_image,
-                                                  name="runner-container",
-                                                  resources=resources,
-                                                  volume_mounts=mounts)
+                                image=self.docker_image,
+                                name="runner-container",
+                                resources=resources,
+                                volume_mounts=mounts)
+
+        # In case security context rules are not allowed to be set, we only apply
+        # a security context at all if we need to turn on privileged mode.
+        if self.config.kubernetes_privileged:
+            container.security_context = V1SecurityContext(privileged=self.config.kubernetes_privileged)
+
         # Wrap the container in a spec
         pod_spec = V1PodSpec(containers=[container],
-                                               volumes=volumes,
-                                               restart_policy="Never")
+                             volumes=volumes,
+                             restart_policy="Never")
         # Tell the spec where to land
         placement.apply(pod_spec)
 
@@ -1880,6 +1888,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT", type=float,
                             help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
                                  "(default: %(default)s)")
+        parser.add_argument("--kubernetesPrivileged", dest="kubernetes_privileged", default=False, env_var="TOIL_KUBERNETES_PRIVILEGED", type=opt_strtobool,
+                            help="Whether to ask worker pods to run in privileged mode. This should be used to access "
+                                 "privileged operations, such as FUSE. On Toil-managed clusters with --enableFuse, "
+                                 "this is set to True. (default: %(default)s)")
 
     OptionType = TypeVar('OptionType')
     @classmethod
@@ -1888,4 +1900,5 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         setOption("kubernetes_owner")
         setOption("kubernetes_service_account",)
         setOption("kubernetes_pod_timeout")
+        setOption("kubernetes_privileged")
 
