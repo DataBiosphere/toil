@@ -44,8 +44,8 @@ logger = logging.getLogger(__name__)
 
 class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
-    class Worker(AbstractGridEngineBatchSystem.Worker):
-        """LSF specific AbstractGridEngineWorker methods."""
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+        """LSF specific GridEngineThread methods."""
 
         def getRunningJobIDs(self):
             times = {}
