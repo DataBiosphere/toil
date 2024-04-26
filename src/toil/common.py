@@ -122,6 +122,7 @@ class Config:
     kubernetes_owner: Optional[str]
     kubernetes_service_account: Optional[str]
     kubernetes_pod_timeout: float
+    kubernetes_privileged: bool
     tes_endpoint: str
     tes_user: str
     tes_password: str
@@ -412,8 +413,6 @@ class Config:
             self.workDir = os.getenv('TOIL_COORDINATION_DIR_OVERRIDE')
 
         self.check_configuration_consistency()
-
-        logger.debug("Loaded configuration: %s", vars(options))
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
@@ -814,6 +813,7 @@ class Toil(ContextManager["Toil"]):
         set_logging_from_options(self.options)
         config = Config()
         config.setOptions(self.options)
+        logger.debug("Loaded configuration: %s", vars(self.options))
         if config.jobStore is None:
             raise RuntimeError("No jobstore provided!")
         jobStore = self.getJobStore(config.jobStore)

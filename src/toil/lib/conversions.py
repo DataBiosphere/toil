@@ -4,7 +4,7 @@ Also contains general conversion functions
 """
 
 import math
-from typing import SupportsInt, Tuple, Union
+from typing import SupportsInt, Tuple, Union, Optional
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
@@ -147,3 +147,7 @@ def strtobool(val: str) -> bool:
                 return result
     raise ValueError(f"Cannot convert \"{val}\" to a bool")
 
+
+def opt_strtobool(b: Optional[str]) -> Optional[bool]:
+    """Convert an optional string representation of bool to None or bool"""
+    return b if b is None else strtobool(b)

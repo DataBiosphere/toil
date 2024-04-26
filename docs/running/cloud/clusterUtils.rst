@@ -125,6 +125,11 @@ exist yet, Toil will create it for you.
                         to override the default value from ``--nodeStorage`` for the
                         specified nodeType(s). This is useful for heterogeneous jobs
                         where some tasks require much more disk than others.
+  --allowFuse BOOL
+                        Whether to allow FUSE mounts for faster runtimes with Singularity.
+                        Note: This will result in the Toil container running as privileged.
+                        For Kubernetes, pods will be asked to run as privileged. If this is not
+                        allowed, Singularity containers will use sandbox directories instead.
 
 **Logging Options**
 
