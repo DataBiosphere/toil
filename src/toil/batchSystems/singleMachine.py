@@ -655,6 +655,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # and all its children together. We assume that the
             # process group ID will equal the PID of the process we
             # are starting.
+            logger.debug("Attempting to run job command: %s", jobCommand)
             popen = subprocess.Popen(jobCommand,
                                      shell=True,
                                      env=child_environment,
