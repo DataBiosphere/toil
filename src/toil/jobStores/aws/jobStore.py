@@ -1696,7 +1696,7 @@ class AWSJobStore(AbstractJobStore):
         if self.files_bucket is not None:
             self._delete_bucket(self.files_bucket)
             self.files_bucket = None
-        for name in 'filesDomainName', 'jobsDomainName':
+        for name in 'files_domain_name', 'jobs_domain_name':
             domainName = getattr(self, name)
             if domainName is not None:
                 self._delete_domain(domainName)
