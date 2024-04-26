@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
     # class-specific Worker
-    class Worker(AbstractGridEngineBatchSystem.Worker):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
         def __init__(
             self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss
         ):
