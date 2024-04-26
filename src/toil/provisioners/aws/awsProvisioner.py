@@ -195,7 +195,8 @@ def collapse_tags(instance_tags: List[TagTypeDef]) -> Dict[str, str]:
 
 class AWSProvisioner(AbstractProvisioner):
     def __init__(self, clusterName: Optional[str], clusterType: Optional[str], zone: Optional[str],
-                 nodeStorage: int, nodeStorageOverrides: Optional[List[str]], sseKey: Optional[str]):
+                 nodeStorage: int, nodeStorageOverrides: Optional[List[str]], sseKey: Optional[str],
+                 enable_fuse: bool):
         self.cloud = 'aws'
         self._sseKey = sseKey
         # self._zone will be filled in by base class constructor
@@ -221,7 +222,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, enable_fuse)
 
         if self._zone is None:
             logger.warning("Leader zone was never initialized before creating AWS provisioner. Defaulting to cluster zone.")
