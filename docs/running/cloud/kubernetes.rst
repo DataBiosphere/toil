@@ -188,6 +188,8 @@ To configure your workflow to run on Kubernetes, you will have to configure seve
 
 #. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
 
+#. ``TOIL_KUBERNETES_PRIVILEGED`` **can** be set to True or False. When true, this allows pods to run as privileged, enabling FUSE mounts for Singularity for faster runtimes. If this is not set to true, Singularity will extract images to sandbox directories. This is unset/False by default except in Toil-managed clusters.
+
 Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity in its user-namespace mode, are able to run containers from within containers. If using Singularity to run containerized tools, and you want downloaded container images to persist between Toil jobs, some setup may be required:
 
 **On non-Toil managed clusters:**
