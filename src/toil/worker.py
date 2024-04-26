@@ -159,6 +159,8 @@ def workerScript(
     if config.colored_logs:
         install_log_color()
 
+    logger.debug("Worker started for job %s...", job_name)
+
     ##########################################
     #Create the worker killer, if requested
     ##########################################
@@ -750,7 +752,6 @@ def in_contexts(contexts: List[str]) -> Iterator[None]:
 def main(argv: Optional[List[str]] = None) -> None:
     if argv is None:
         argv = sys.argv
-
     # Parse our command line
     options = parse_args(argv)
 
