@@ -137,6 +137,155 @@ def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] 
         return cast(F, decorated)
     return decorator
 
+def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blanks: bool = True, tolerate_dedents: bool = False) -> WDL.Expr.String:
+    """
+    Remove "common leading whitespace" as defined in the WDL 1.1 spec.
+
+    See <https://github.com/openwdl/wdl/blob/main/versions/1.1/SPEC.md#stripping-leading-whitespace>.
+
+    Operates on a WDL.Expr.String expression that has already been parsed.
+
+    :param tolerate_blanks: If True, don't allow totally blank lines to zero
+        the common whitespace.
+
+    :param tolerate_dedents: If True, remove as much of the whitespace on the
+        first indented line as is found on subesquent lines, regardless of
+        whether later lines are out-dented relative to it.
+    """
+
+    # The expression has a "parts" list consisting of interleaved string
+    # literals and placeholder expressions.
+    #
+    # TODO: We assume that there are no newlines in the placeholders.
+    #
+    # TODO: Look at the placeholders and their line and end_line values and try
+    # and guess if they should reduce the amount of common whitespace.
+
+    # We split the parts list into lines, which are also interleaved string
+    # literals and placeholder expressions.
+    lines: List[List[Union[str, WDL.Expr.Placeholder]]] = [[]]
+    for part in expression.parts:
+        if isinstance(part, str):
+            # It's a string. Split it into lines.
+            part_lines = part.split("\n")
+            # Part before any newline goes at the end of the current line
+            lines[-1].append(part_lines[0])
+            for part_line in part_lines[1:]:
+                # Any part after a newline starts a new line
+                lines.append([part_line])
+        else:
+            # It's a placeholder. Put it at the end of the current line.
+            lines[-1].append(part)
+
+    # Then we compute the common amount of leading whitespace on all the lines,
+    # looking at the first string literal.
+    # This will be the longest common whitespace prefix, or None if not yet detected.
+    common_whitespace_prefix: Optional[str] = None
+    for line in lines:
+        if len(line) == 0:
+            # TODO: how should totally empty lines be handled? Not in the spec!
+            if not tolerate_blanks:
+                # There's no leading whitespace here!
+                common_whitespace_prefix = ""
+            continue
+        elif isinstance(line[0], WDL.Expr.Placeholder):
+            # TODO: How can we convert MiniWDL's column numbers into space/tab counts or sequences?
+            #
+            # For now just skip these too.
+            continue
+        else:
+            # The line starts with a string
+            assert isinstance(line[0], str)
+            if len(line[0]) == 0:
+                # Still totally empty though!
+                if not tolerate_blanks:
+                    # There's no leading whitespace here!
+                    common_whitespace_prefix = ""
+                continue
+            # TODO: There are good algorithms for common prefixes. This is a bad one.
+            # Find the number of leading whitespace characters
+            line_whitespace_end = 0
+            while line_whitespace_end < len(line[0]) and line[0][line_whitespace_end] in (' ', '\t'):
+                line_whitespace_end += 1
+            # Find the string of leading whitespace characters
+            line_whitespace_prefix = line[0][:line_whitespace_end]
+
+            if ' ' in line_whitespace_prefix and '\t' in line_whitespace_prefix:
+                # Warn and don't change anything if spaces and tabs are mixed, per the spec.
+                logger.warning("Line in command at %s mixes leading spaces and tabs! Not removing leading whitespace!", expression.pos)
+                return expression
+
+            if common_whitespace_prefix is None:
+                # This is the first line we found, so it automatically has the common prefic
+                common_whitespace_prefix = line_whitespace_prefix
+            elif not tolerate_dedents:
+                # Trim the common prefix down to what we have for this line
+                if not line_whitespace_prefix.startswith(common_whitespace_prefix):
+                    # Shorten to the real shared prefix.
+                    # Hackily make os.path do it for us,
+                    # character-by-character. See
+                    # <https://stackoverflow.com/a/6718435>
+                    common_whitespace_prefix = os.path.commonprefix([common_whitespace_prefix, line_whitespace_prefix])
+
+    if common_whitespace_prefix is None:
+        common_whitespace_prefix = ""
+
+    # Then we trim that much whitespace off all the leading strings.
+    # We tolerate the common prefix not *actually* being common and remove as
+    # much of it as is there, to support tolerate_dedents.
+
+    def first_mismatch(prefix: str, value: str) -> int:
+        """
+        Get the index of the first character in value that does not match the corresponding character in prefix, or the length of the shorter string.
+        """
+        for n, (c1, c2) in enumerate(zip(prefix, value)):
+            if c1 != c2:
+                return n
+        return min(len(prefix), len(value))
+    
+    # Trim up to the first mismatch vs. the common prefix if the line starts with a string literal.
+    stripped_lines = [
+        (
+            (
+                cast(
+                    List[Union[str, WDL.Expr.Placeholder]],
+                    [line[0][:first_mismatch(common_whitespace_prefix, line[0])]]
+                ) + line[1:]
+            )
+            if len(line) > 0 and isinstance(line[0], str) else
+            line
+        )
+        for line in lines
+    ]
+
+    # Then we reassemble the parts and make a new expression.
+    # Build lists and turn the lists into strings later
+    new_parts: List[Union[List[str], WDL.Expr.Placeholder]] = []
+    for i, line in enumerate(stripped_lines):
+        if i > 0:
+            # This is a second line, so we need to tack on a newline.
+            if len(new_parts) > 0 and isinstance(new_parts[-1], list):
+                # Tack on to existing string collection
+                new_parts[-1].append("\n")
+            else:
+                # Make a new string collection
+                new_parts.append(["\n"])
+        if len(line) > 0 and isinstance(line[0], str) and i > 0:
+            # Line starts with a string we need to merge with the last string.
+            # We know the previous line now ends with a string collection, so tack it on.
+            assert isinstance(new_parts[-1], list)
+            new_parts[-1].append(line[0])
+            # Make all the strings into string collections in the rest of the line
+            new_parts += [([x] if isinstance(x, str) else x) for x in line[1:]]
+        else:
+            # No string merge necessary
+            # Make all the strings into string collections in the whole line
+            new_parts += [([x] if isinstance(x, str) else x) for x in line]
+
+    # Now go back to the alternating strings and placeholders that MiniWDL wants
+    new_parts_merged: List[Union[str, WDL.Expr.Placeholder]] = [("".join(x) if isinstance(x, list) else x) for x in new_parts]
+        
+    return WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
 
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
@@ -1880,42 +2029,8 @@ class WDLTaskJob(WDLBaseJob):
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
 
-            def hacky_dedent(text: str) -> str:
-                """
-                Guess what result we would have gotten if we dedented the
-                command before substituting placeholder expressions, given the
-                command after substituting placeholder expressions. Workaround
-                for mimicking MiniWDL making us also suffer from
-                <https://github.com/chanzuckerberg/miniwdl/issues/674>.
-                """
-
-                # First just run MiniWDL's dedent
-                # Work around wrong types from MiniWDL. See <https://github.com/chanzuckerberg/miniwdl/issues/665>
-                dedent = cast(Callable[[str], Tuple[int, str]], strip_leading_whitespace)
-
-                text = dedent(text)[1]
-
-                # But this can still leave dedenting to do. Find the first
-                # not-all-whitespace line and get its leading whitespace.
-                to_strip: Optional[str] = None
-                for line in text.split("\n"):
-                    if len(line.strip()) > 0:
-                        # This is the first not-all-whitespace line.
-                        # Drop the leading whitespace.
-                        rest = line.lstrip()
-                        # Grab the part that gets removed by lstrip
-                        to_strip = line[0:(len(line) - len(rest))]
-                        break
-                if to_strip is None or len(to_strip) == 0:
-                    # Nothing to cut
-                    return text
-
-                # Cut to_strip off each line that it appears at the start of.
-                return "\n".join((line.removeprefix(to_strip) for line in text.split("\n")))
-
-
             # Work out the command string, and unwrap it
-            command_string: str = hacky_dedent(evaluate_named_expression(self._task, "command", WDL.Type.String(), self._task.command, contained_bindings, command_library).coerce(WDL.Type.String()).value)
+            command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), remove_common_leading_whitespace(self._task.command), contained_bindings, command_library).coerce(WDL.Type.String()).value
 
             # Do any command injection we might need to do
             command_string = self.add_injections(command_string, task_container)
