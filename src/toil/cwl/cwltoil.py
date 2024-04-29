@@ -779,11 +779,34 @@ class ToilPathMapper(PathMapper):
         # TODO: why would we do that?
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
 
-        # Decide where to put the file or directory, as an absolute path.
-        tgt = os.path.join(
-            stagedir,
-            cast(str, obj["basename"]),
-        )
+        if path in self:
+            # If we've already mapped this, map it consistently.
+            tgt = self._pathmap[path].target
+            logger.debug(
+                "ToilPathMapper re-using target %s for path %s",
+                tgt,
+                path,
+            )
+        else:
+            # Decide where to put the file or directory, as an absolute path.
+            tgt = os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
+            if self.reversemap(tgt) is not None:
+                # If the target already exists in the pathmap, but we haven't yet
+                # mapped this, it means we have a conflict.
+                i = 2
+                new_tgt = f"{tgt}_{i}"
+                while self.reversemap(new_tgt) is not None:
+                    i += 1
+                    new_tgt = f"{tgt}_{i}"
+                logger.debug(
+                    "ToilPathMapper resolving mapping conflict: %s is now %s",
+                    tgt,
+                    new_tgt,
+                )
+                tgt = new_tgt
 
         if obj["class"] == "Directory":
             # Whether or not we've already mapped this path, we need to map all
@@ -944,38 +967,14 @@ class ToilPathMapper(PathMapper):
                     # reference, we just pass that along.
 
                     """Link or copy files to their targets. Create them as needed."""
-                    targets: Dict[str, str] = {}
-                    for _, value in self._pathmap.items():
-                        # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
-                        if value.target == tgt:  # Conflict detected in the pathmap
-                            i = 2
-                            new_tgt = f"{tgt}_{i}"
-                            while new_tgt in targets:
-                                i += 1
-                                new_tgt = f"{tgt}_{i}"
-                            targets[new_tgt] = new_tgt
+                    
+                    logger.debug(
+                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                    )
 
-                    for _, value_conflict in targets.items():
-                        logger.debug(
-                            "ToilPathMapper adding file mapping for conflict %s -> %s",
-                            deref,
-                            value_conflict,
-                        )
-                        self._pathmap[path] = MapperEnt(
-                            deref,
-                            value_conflict,
-                            "WritableFile" if copy else "File",
-                            staged,
-                        )
-                    # No conflicts detected so we can write out the original name.
-                    if not targets:
-                        logger.debug(
-                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                        )
-
-                        self._pathmap[path] = MapperEnt(
-                            deref, tgt, "WritableFile" if copy else "File", staged
-                        )
+                    self._pathmap[path] = MapperEnt(
+                        deref, tgt, "WritableFile" if copy else "File", staged
+                    )
 
             # Handle all secondary files that need to be next to this one.
             self.visitlisting(
