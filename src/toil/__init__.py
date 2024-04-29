@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import requests
-from pytz import timezone
+from datetime import timezone
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
@@ -494,7 +494,7 @@ try:
         # argument and we want to be future proof
 
         def __init__(self, name, access_key=None, secret_key=None,
-                     security_token=None, profile_name=None, **kwargs):
+                     security_token=None, profile_name=None, **kwargs) -> None:
             """Create a new BotoCredentialAdapter."""
             # TODO: We take kwargs because new boto2 versions have an 'anon'
             # argument and we want to be future proof
@@ -557,7 +557,7 @@ try:
             self._obtain_credentials_from_cache_or_boto3()
 
         @retry()
-        def _obtain_credentials_from_boto3(self):
+        def _obtain_credentials_from_boto3(self) -> None:
             """
             Fill our credential fields from Boto 3.
 
@@ -585,7 +585,9 @@ try:
             if isinstance(creds, RefreshableCredentials):
                 # Credentials may expire.
                 # Get a naive UTC datetime like boto 2 uses from the boto 3 time.
-                self._credential_expiry_time = creds._expiry_time.astimezone(timezone('UTC')).replace(tzinfo=None)
+                self._credential_expiry_time = creds._expiry_time.astimezone(  # type: ignore[attr-defined]
+                    timezone.utc
+                ).replace(tzinfo=None)
             else:
                 # Credentials never expire
                 self._credential_expiry_time = None
