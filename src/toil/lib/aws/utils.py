@@ -27,6 +27,7 @@ from typing import (Any,
                     cast)
 from urllib.parse import ParseResult
 
+from mypy_boto3_sdb.type_defs import AttributeTypeDef
 from toil.lib.aws import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
@@ -34,10 +35,9 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             get_error_code,
                             get_error_status,
                             old_retry,
-                            retry)
+                            retry, ErrorCondition)
 
 try:
-    from boto.exception import BotoServerError, S3ResponseError
     from botocore.exceptions import ClientError
     from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
@@ -45,7 +45,6 @@ try:
     from mypy_boto3_s3.service_resource import Bucket, Object
     from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
-    BotoServerError = None  # type: ignore
     ClientError = None  # type: ignore
     # AWS/boto extra is not installed
 
@@ -74,7 +73,6 @@ THROTTLED_ERROR_CODES = [
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
     # string passed in, to return exactly the right kind of client or resource.
@@ -137,10 +135,10 @@ def retryable_s3_errors(e: Exception) -> bool:
     Return true if this is an error from S3 that looks like we ought to retry our request.
     """
     return (connection_reset(e)
-            or (isinstance(e, BotoServerError) and e.status in (429, 500))
-            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_status(e) in (429, 500))
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             # boto3 errors
-            or (isinstance(e, (S3ResponseError, ClientError)) and get_error_code(e) in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
@@ -434,3 +432,42 @@ def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
+
+
+def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: str,
+                **kwargs: Any) -> Iterable[Any]:
+    """
+    Yield all the results from calling the given Boto 3 method with the
+    given keyword arguments, paging through the results using the Marker or
+    NextToken, and fetching out and looping over the list in the response
+    with the given attribute name.
+    """
+
+    # Recover the Boto3 client, and the name of the operation
+    client = requestor_callable.__self__  # type: ignore[attr-defined]
+    op_name = requestor_callable.__name__
+
+    # grab a Boto 3 built-in paginator. See
+    # <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html>
+    paginator = client.get_paginator(op_name)
+
+    for page in paginator.paginate(**kwargs):
+        # Invoke it and go through the pages, yielding from them
+        yield from page.get(result_attribute_name, [])
+
+
+def get_item_from_attributes(attributes: List[AttributeTypeDef], name: str) -> Any:
+    """
+    Given a list of attributes, find the attribute associated with the name and return its corresponding value.
+
+    The `attribute_list` will be a list of TypedDict's (which boto3 SDB functions commonly return),
+    where each TypedDict has a "Name" and "Value" key value pair.
+    This function grabs the value out of the associated TypedDict.
+
+    If the attribute with the name does not exist, the function will return None.
+
+    :param attributes: list of attributes as List[AttributeTypeDef]
+    :param name: name of the attribute
+    :return: value of the attribute
+    """
+    return next((attribute["Value"] for attribute in attributes if attribute["Name"] == name), None)
