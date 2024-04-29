@@ -325,8 +325,8 @@ diff_pydocstyle_report: pydocstyle_report.txt
 	diff-quality --compare-branch=master --violations=pycodestyle --fail-under=100 $^
 
 diff_mypy:
-	mypy --cobertura-xml-report . src/toil || true
-	diff-cover --fail-under=100 cobertura.xml
+	mypy --cobertura-xml-report . src/toil > /dev/null || true
+	diff-cover --fail-under=100 --compare-branch origin/master cobertura.xml
 
 pyupgrade: $(PYSOURCES)
 	pyupgrade --exit-zero-even-if-changed --py37-plus $^
