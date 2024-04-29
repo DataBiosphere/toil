@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# import imp
 import os
 import types
 from importlib.machinery import SourceFileLoader
@@ -142,16 +141,6 @@ def import_version():
             }))
         os.rename(f.name, 'src/toil/version.py')
 
-    # Unfortunately, we can't use a straight import here because that would also load the stuff
-    # defined in "src/toil/__init__.py" which imports modules from external dependencies that may
-    # yet to be installed when setup.py is invoked.
-    #
-    # This is also the reason we cannot switch from the "deprecated" imp library
-    # and use:
-    #     from importlib.machinery import SourceFileLoader
-    #     return SourceFileLoader('toil.version', path='src/toil/version.py').load_module()
-    #
-    # Because SourceFileLoader will error and load "src/toil/__init__.py" .
     loader = SourceFileLoader('toil.version', 'src/toil/version.py')
     mod = types.ModuleType(loader.name)
     loader.exec_module(mod)
