@@ -17,7 +17,6 @@ import os
 import threading
 from typing import Dict, Optional, Tuple, cast, Union, Literal, overload, TypeVar
 
-import boto
 import boto3
 import boto3.resources.base
 import botocore
