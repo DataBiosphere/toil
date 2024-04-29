@@ -1388,8 +1388,7 @@ def test_filename_conflict_resolution_3_or_more(tmp_path: Path) -> None:
     cwl = os.path.join(
         os.path.dirname(__file__), "scatter_duplicate_outputs.cwl"
     )
-    cwl_inputs = []
-    cmd = [toil] + options + [cwl] + cwl_inputs
+    cmd = [toil] + options + [cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
