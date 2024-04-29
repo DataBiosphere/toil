@@ -155,7 +155,7 @@ class NoSuchJobStoreException(LocatorException):
 
 class JobStoreExistsException(LocatorException):
     """Indicates that the specified job store already exists."""
-    def __init__(self, prefix: str, locator: str):
+    def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
         """

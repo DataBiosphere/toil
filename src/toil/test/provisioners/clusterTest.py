@@ -38,13 +38,9 @@ class AbstractClusterTest(ToilTest):
         self.clusterType = 'mesos'
         self.zone = get_best_aws_zone()
         assert self.zone is not None, "Could not determine AWS availability zone to test in; is TOIL_AWS_ZONE set?"
-        # We need a boto2 connection to EC2 to check on the cluster.
-        # Since we are protected by needs_aws_ec2 we can import from boto.
-        import boto.ec2
         self.region = zone_to_region(self.zone)
-        self.boto2_ec2 = boto.ec2.connect_to_region(self.region)
 
-        # Get connection to AWS with boto3/boto2
+        # Get connection to AWS
         self.aws = AWSConnectionManager()
 
         # Where should we put our virtualenv?
