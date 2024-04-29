@@ -137,7 +137,7 @@ def report_wdl_errors(task: str, exit: bool = False, log: Callable[[str], None] 
         return cast(F, decorated)
     return decorator
 
-def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blanks: bool = True, tolerate_dedents: bool = False) -> WDL.Expr.String:
+def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blanks: bool = True, tolerate_dedents: bool = False, tolerate_all_whitespace: bool = True, debug: bool = False) -> WDL.Expr.String:
     """
     Remove "common leading whitespace" as defined in the WDL 1.1 spec.
 
@@ -151,6 +151,11 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     :param tolerate_dedents: If True, remove as much of the whitespace on the
         first indented line as is found on subesquent lines, regardless of
         whether later lines are out-dented relative to it.
+
+    :param tolerate_all_whitespace: If True, don't allow all-whitespace lines
+        to reduce the common whitespace prefix.
+
+    :param debug: If True, log intermediate staged of processing.
     """
 
     # The expression has a "parts" list consisting of interleaved string
@@ -160,6 +165,9 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     #
     # TODO: Look at the placeholders and their line and end_line values and try
     # and guess if they should reduce the amount of common whitespace.
+
+    if debug:
+        logger.debug("Parts: %s", expression.parts)
 
     # We split the parts list into lines, which are also interleaved string
     # literals and placeholder expressions.
@@ -176,6 +184,9 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
         else:
             # It's a placeholder. Put it at the end of the current line.
             lines[-1].append(part)
+
+    if debug:
+        logger.debug("Lines: %s", lines)
 
     # Then we compute the common amount of leading whitespace on all the lines,
     # looking at the first string literal.
@@ -201,6 +212,9 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
                 if not tolerate_blanks:
                     # There's no leading whitespace here!
                     common_whitespace_prefix = ""
+                continue
+            if len(line) == 1 and tolerate_all_whitespace and all(x in (' ', '\t') for x in line[0]):
+                # All-whitespace lines shouldn't count
                 continue
             # TODO: There are good algorithms for common prefixes. This is a bad one.
             # Find the number of leading whitespace characters
@@ -229,6 +243,9 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
 
     if common_whitespace_prefix is None:
         common_whitespace_prefix = ""
+    
+    if debug:
+        logger.debug("Common Prefix: '%s'", common_whitespace_prefix)
 
     # Then we trim that much whitespace off all the leading strings.
     # We tolerate the common prefix not *actually* being common and remove as
@@ -249,7 +266,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
             (
                 cast(
                     List[Union[str, WDL.Expr.Placeholder]],
-                    [line[0][:first_mismatch(common_whitespace_prefix, line[0])]]
+                    [line[0][first_mismatch(common_whitespace_prefix, line[0]):]]
                 ) + line[1:]
             )
             if len(line) > 0 and isinstance(line[0], str) else
@@ -257,6 +274,8 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
         )
         for line in lines
     ]
+    if debug:
+        logger.debug("Stripped Lines: %s", stripped_lines)
 
     # Then we reassemble the parts and make a new expression.
     # Build lists and turn the lists into strings later
@@ -282,10 +301,20 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
             # Make all the strings into string collections in the whole line
             new_parts += [([x] if isinstance(x, str) else x) for x in line]
 
+    if debug:
+        logger.debug("New Parts: %s", new_parts)
+
     # Now go back to the alternating strings and placeholders that MiniWDL wants
     new_parts_merged: List[Union[str, WDL.Expr.Placeholder]] = [("".join(x) if isinstance(x, list) else x) for x in new_parts]
+
+    if debug:
+        logger.debug("New Parts Merged: %s", new_parts_merged)
         
-    return WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
+    modified = WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
+    # Fake the type checking of the modified expression.
+    # TODO: Make MiniWDL expose a real way to do this?
+    modified._type = expression._type
+    return modified
 
 
 def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
