@@ -778,14 +778,19 @@ class ToilPathMapper(PathMapper):
         # wherever else we would stage it.
         # TODO: why would we do that?
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
+        
+        if obj["class"] not in ("File", "Directory"):
+            # We only handle files and directories; only they have locations.
+            return
 
-        if path in self:
+        location = cast(str, obj["location"])
+        if location in self:
             # If we've already mapped this, map it consistently.
-            tgt = self._pathmap[path].target
+            tgt = self._pathmap[location].target
             logger.debug(
                 "ToilPathMapper re-using target %s for path %s",
                 tgt,
-                path,
+                location,
             )
         else:
             # Decide where to put the file or directory, as an absolute path.
@@ -811,9 +816,6 @@ class ToilPathMapper(PathMapper):
         if obj["class"] == "Directory":
             # Whether or not we've already mapped this path, we need to map all
             # children recursively.
-
-            # Grab its location
-            location = cast(str, obj["location"])
 
             logger.debug("ToilPathMapper visiting directory %s", location)
 
@@ -908,23 +910,21 @@ class ToilPathMapper(PathMapper):
             )
 
         elif obj["class"] == "File":
-            path = cast(str, obj["location"])
+            logger.debug("ToilPathMapper visiting file %s", location)
 
-            logger.debug("ToilPathMapper visiting file %s", path)
-
-            if path in self._pathmap:
+            if location in self._pathmap:
                 # Don't map the same file twice
                 logger.debug(
                     "ToilPathMapper stopping recursion because we have already "
                     "mapped file: %s",
-                    path,
+                    location,
                 )
                 return
 
-            ab = abspath(path, basedir)
-            if "contents" in obj and path.startswith("_:"):
+            ab = abspath(location, basedir)
+            if "contents" in obj and location.startswith("_:"):
                 # We are supposed to create this file
-                self._pathmap[path] = MapperEnt(
+                self._pathmap[location] = MapperEnt(
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
@@ -942,14 +942,14 @@ class ToilPathMapper(PathMapper):
                     # URI for a local file it downloaded.
                     if self.get_file:
                         deref = self.get_file(
-                            path, obj.get("streamable", False), self.streaming_allowed
+                            location, obj.get("streamable", False), self.streaming_allowed
                         )
                     else:
                         deref = ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urlsplit(deref).scheme in ["http", "https"]:
-                        deref = downloadHttpFile(path)
+                        deref = downloadHttpFile(location)
                     elif urlsplit(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
@@ -972,7 +972,7 @@ class ToilPathMapper(PathMapper):
                         "ToilPathMapper adding file mapping %s -> %s", deref, tgt
                     )
 
-                    self._pathmap[path] = MapperEnt(
+                    self._pathmap[location] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
 

@@ -1351,7 +1351,9 @@ def test_log_dir_echo_stderr(tmp_path: Path) -> None:
     output = open(result).read()
     assert output == "hello\n"
 
-
+# TODO: It's not clear how this test tests filename conflict resolution; it
+# seems like it runs a python script to copy some files and makes sure the
+# workflow doesn't fail.
 @needs_cwl
 @pytest.mark.cwl_small_log_dir
 def test_filename_conflict_resolution(tmp_path: Path) -> None:
@@ -1373,6 +1375,26 @@ def test_filename_conflict_resolution(tmp_path: Path) -> None:
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
+
+@needs_cwl
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_resolution_3_or_more(tmp_path: Path) -> None:
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "scatter_duplicate_outputs.cwl"
+    )
+    cwl_inputs = []
+    cmd = [toil] + options + [cwl] + cwl_inputs
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
+    assert len(os.listdir(out_dir)) == 9, "All 9 files made by the scatter should be in the directory"
 
 @needs_cwl
 @needs_docker
