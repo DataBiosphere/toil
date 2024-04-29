@@ -95,12 +95,15 @@ def get_aws_zone_from_metadata() -> Optional[str]:
 
 def get_aws_zone_from_boto() -> Optional[str]:
     """
-    Get the AWS zone from the Boto config file, if it is configured and the
-    boto module is available.
+    Get the AWS zone from the Boto3 config file or from AWS_DEFAULT_REGION, if it is configured and the
+    boto3 module is available.
     """
     try:
-        import boto
-        zone = boto.config.get('Boto', 'ec2_region_name')
+        import boto3
+        from session import client
+        boto3_session = boto3.session.Session()
+        # this should check AWS_DEFAULT_REGION and ~/.aws/config
+        zone = boto3_session.region_name
         if zone is not None:
             zone += 'a'  # derive an availability zone in the region
         return zone
