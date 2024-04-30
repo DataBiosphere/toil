@@ -22,23 +22,26 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Dict, List, Optional, Set, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import toil
 from toil import worker as toil_worker
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchSystemSupport,
+                                                   InsufficientSystemResources,
                                                    ResourcePool,
                                                    ResourceSet,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
-
-from toil.bus import ExternalBatchIdMessage
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.options import OptionSetter
-
-from toil.common import SYS_MAX_SIZE, Config, Toil, fC
-from toil.job import JobDescription, AcceleratorRequirement, accelerator_satisfies, Requirer
-from toil.lib.accelerators import get_individual_local_accelerators, get_restrictive_environment_for_local_accelerators
+from toil.bus import ExternalBatchIdMessage
+from toil.common import Config, Toil
+from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
+from toil.job import (AcceleratorRequirement,
+                      JobDescription,
+                      Requirer,
+                      accelerator_satisfies)
+from toil.lib.accelerators import (get_individual_local_accelerators,
+                                   get_restrictive_environment_for_local_accelerators)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
@@ -104,7 +107,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 logger.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            if maxMemory != SYS_MAX_SIZE:
+            if maxMemory < SYS_MAX_SIZE:  # todo: looks like humans2bytes converts SYS_MAX_SIZE to SYS_MAX_SIZE+1
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
@@ -112,7 +115,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         workdir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)  # config.workDir may be None; this sets a real directory
         self.physicalDisk = toil.physicalDisk(workdir)
         if maxDisk > self.physicalDisk:
-            if maxDisk != SYS_MAX_SIZE:
+            if maxDisk < SYS_MAX_SIZE:  # same as maxMemory logger.warning
                 # We have an actually specified limit and not the default
                 logger.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
@@ -472,17 +475,17 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # We can actually run in this thread
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:4] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
-            toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
-                                     redirectOutputToLogFile=not self.debugWorker) # Call the worker
+            statusCode = toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID,
+                                     redirect_output_to_log_file=not self.debugWorker) # Call the worker
         else:
             # Run synchronously. If starting or running the command fails, let the exception stop us.
-            subprocess.check_call(jobCommand,
+            statusCode = subprocess.check_call(jobCommand,
                                   shell=True,
                                   env=dict(os.environ, **environment))
 
         self.runningJobs.pop(jobID)
         if not info.killIntended:
-            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
+            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=statusCode, wallTime=time.time() - info.time, exitReason=None))
 
     def getSchedulingStatusMessage(self):
         # Implement the abstractBatchSystem's scheduling status message API
@@ -652,6 +655,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             # and all its children together. We assume that the
             # process group ID will equal the PID of the process we
             # are starting.
+            logger.debug("Attempting to run job command: %s", jobCommand)
             popen = subprocess.Popen(jobCommand,
                                      shell=True,
                                      env=child_environment,
@@ -740,24 +744,24 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         logger.debug('Child %d for job %s succeeded', pid, jobID)
 
-    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
 
         # Apply scale in cores
-        scaled_desc = jobDesc.scale('cores', self.scale)
+        scaled_desc = job_desc.scale('cores', self.scale)
         # Round cores up to multiples of minCores
         scaled_desc.cores = max(math.ceil(scaled_desc.cores / self.minCores) * self.minCores, self.minCores)
 
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
         self.check_resource_request(scaled_desc)
-        logger.debug(f"Issuing the command: {jobDesc.command} with {scaled_desc.requirements_string()}")
+        logger.debug(f"Issuing the command: {command} with {scaled_desc.requirements_string()}")
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
-        self.jobs[jobID] = jobDesc.command
+        self.jobs[jobID] = command
 
         environment = self.environment.copy()
         if job_environment:
@@ -766,10 +770,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if self.debugWorker:
             # Run immediately, blocking for return.
             # Ignore resource requirements; we run one job at a time
-            self._runDebugJob(jobDesc.command, jobID, environment)
+            self._runDebugJob(command, jobID, environment)
         else:
             # Queue the job for later
-            self.inputQueue.put((jobDesc.command, jobID, scaled_desc.cores, scaled_desc.memory,
+            self.inputQueue.put((command, jobID, scaled_desc.cores, scaled_desc.memory,
                                 scaled_desc.disk, scaled_desc.accelerators, environment))
 
         return jobID
@@ -843,7 +847,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--scale", dest="scale", default=1,
+        parser.add_argument("--scale", dest="scale", type=float, default=1, action=make_open_interval_action(0.0),
                             help="A scaling factor to change the value of all submitted tasks's submitted cores.  "
                                  "Used in the single_machine batch system. Useful for running workflows on "
                                  "smaller machines than they were designed for, by setting a value less than 1. "
@@ -851,7 +855,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter):
-        setOption("scale", float, fC(0.0), default=1)
+        setOption("scale")
 
 
 class Info:

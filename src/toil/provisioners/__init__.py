@@ -32,6 +32,7 @@ def cluster_factory(
     nodeStorage: int = 50,
     nodeStorageOverrides: Optional[List[str]] = None,
     sseKey: Optional[str] = None,
+    enable_fuse: bool = False
 ) -> Union["AWSProvisioner", "GCEProvisioner"]:
     """
     Find and instantiate the appropriate provisioner instance to make clusters in the given cloud.
@@ -51,14 +52,14 @@ def cluster_factory(
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise
-        return AWSProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return AWSProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey, enable_fuse)
     elif provisioner == 'gce':
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             logger.error('The google extra must be installed to use this provisioner')
             raise
-        return GCEProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey)
+        return GCEProvisioner(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey, enable_fuse)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
@@ -174,8 +175,13 @@ def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optiona
 
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""
-    def __init__(self, cluster_name):
+    def __init__(self, cluster_name: str) -> None:
         super().__init__(f"The cluster '{cluster_name}' could not be found")
+
+class NoSuchZoneException(Exception):
+    """Indicates that a valid zone could not be found."""
+    def __init__(self) -> None:
+        super().__init__(f"No valid zone could be found!")
 
 
 class ClusterTypeNotSupportedException(Exception):

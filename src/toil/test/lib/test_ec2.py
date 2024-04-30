@@ -13,19 +13,19 @@
 # limitations under the License.
 import logging
 import os
+
 import pytest
-import urllib
 
 from toil.lib.aws.ami import (aws_marketplace_flatcar_ami_search,
-                              get_flatcar_ami,
                               feed_flatcar_ami_release,
-                              flatcar_release_feed_amis)
-from toil.lib.aws.session import establish_boto3_session
-from toil.test import ToilTest, needs_aws_ec2
+                              flatcar_release_feed_amis,
+                              get_flatcar_ami)
+from toil.test import ToilTest, needs_aws_ec2, needs_online
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
+@needs_online
 class FlatcarFeedTest(ToilTest):
     """Test accessing the Flatcar AMI release feed, independent of the AWS API"""
 
@@ -58,6 +58,7 @@ class FlatcarFeedTest(ToilTest):
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
+        from toil.lib.aws.session import establish_boto3_session
         session = establish_boto3_session(region_name='us-west-2')
         cls.ec2_client = session.client('ec2')
 

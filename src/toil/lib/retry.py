@@ -142,7 +142,7 @@ from typing import (Any,
                     Sequence,
                     Tuple,
                     Type,
-                    Union)
+                    Union, TypeVar)
 
 import requests.exceptions
 import urllib3.exceptions
@@ -224,13 +224,16 @@ class ErrorCondition:
                 )
 
 
+# There is a better way to type hint this with python 3.10
+# https://stackoverflow.com/a/68290080
+RT = TypeVar("RT")
 def retry(
     intervals: Optional[List] = None,
     infinite_retries: bool = False,
     errors: Optional[Sequence[Union[ErrorCondition, Type[Exception]]]] = None,
     log_message: Optional[Tuple[Callable, str]] = None,
     prepare: Optional[List[Callable]] = None,
-) -> Callable[[Any], Any]:
+) -> Callable[[Callable[..., RT]], Callable[..., RT]]:
     """
     Retry a function if it fails with any Exception defined in "errors".
 
@@ -281,9 +284,9 @@ def retry(
         if error_condition.retry_on_this_condition:
             retriable_errors.add(error_condition.error)
 
-    def decorate(func):
+    def decorate(func: Callable[..., RT]) -> Callable[..., RT]:
         @functools.wraps(func)
-        def call(*args, **kwargs):
+        def call(*args, **kwargs) -> RT:
             intervals_remaining = copy.deepcopy(intervals)
             while True:
                 try:
@@ -488,13 +491,15 @@ def error_meets_conditions(e, error_conditions):
 DEFAULT_DELAYS = (0, 1, 1, 4, 16, 64)
 DEFAULT_TIMEOUT = 300
 
+E = TypeVar("E", bound=Exception)  # so mypy understands passed through types
+
 # TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
 def old_retry(
     delays: Iterable[float] = DEFAULT_DELAYS,
     timeout: float = DEFAULT_TIMEOUT,
-    predicate: Callable[[Exception], bool] = lambda e: False,
+    predicate: Callable[[E], bool] = lambda e: False,
 ) -> Generator[ContextManager, None, None]:
     """
     Deprecated.
@@ -567,6 +572,8 @@ def old_retry(
     >>> i
     1
     """
+    if timeout is None:
+        timeout = DEFAULT_TIMEOUT
     if timeout > 0:
         go = [ None ]
 

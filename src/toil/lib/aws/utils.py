@@ -12,42 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
-import json
 import logging
 import os
 import socket
-import sys
 from typing import (Any,
                     Callable,
                     ContextManager,
                     Dict,
-                    Hashable,
                     Iterable,
                     Iterator,
                     List,
                     Optional,
                     Set,
-                    Union,
-                    cast,
-                    MutableMapping)
+                    cast)
 from urllib.parse import ParseResult
 
-from toil.lib.aws import session
+from mypy_boto3_sdb.type_defs import AttributeTypeDef
+from toil.lib.aws import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
                             get_error_code,
                             get_error_status,
                             old_retry,
-                            retry)
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+                            retry, ErrorCondition)
 
 try:
-    from boto.exception import BotoServerError, S3ResponseError
     from botocore.exceptions import ClientError
     from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
@@ -55,7 +45,6 @@ try:
     from mypy_boto3_s3.service_resource import Bucket, Object
     from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
-    BotoServerError = None  # type: ignore
     ClientError = None  # type: ignore
     # AWS/boto extra is not installed
 
@@ -80,12 +69,11 @@ THROTTLED_ERROR_CODES = [
         'EC2ThrottledException',
 ]
 
-@retry(errors=[BotoServerError])
+
+@retry(errors=[AWSServerErrors])
 def delete_iam_role(
     role_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    from boto.iam.connection import IAMConnection
-
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
     # string passed in, to return exactly the right kind of client or resource.
@@ -95,9 +83,8 @@ def delete_iam_role(
     # we wanted MyPy to be able to understand us. So at some point we should
     # consider revising our API here to be less annoying to explain to the type
     # checker.
-    iam_client = cast(IAMClient, session.client('iam', region_name=region))
-    iam_resource = cast(IAMServiceResource, session.resource('iam', region_name=region))
-    boto_iam_connection = IAMConnection()
+    iam_client = session.client('iam', region_name=region)
+    iam_resource = session.resource('iam', region_name=region)
     role = iam_resource.Role(role_name)
     # normal policies
     for attached_policy in role.attached_policies.all():
@@ -106,17 +93,16 @@ def delete_iam_role(
     # inline policies
     for inline_policy in role.policies.all():
         printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
-        # couldn't find an easy way to remove inline policies with boto3; use boto
-        boto_iam_connection.delete_role_policy(role.name, inline_policy.policy_name)
+        iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def delete_iam_instance_profile(
     instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    iam_resource = cast(IAMServiceResource, session.resource("iam", region_name=region))
+    iam_resource = session.resource("iam", region_name=region)
     instance_profile = iam_resource.InstanceProfile(instance_profile_name)
     if instance_profile.roles is not None:
         for role in instance_profile.roles:
@@ -126,11 +112,11 @@ def delete_iam_instance_profile(
     printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def delete_sdb_domain(
     sdb_domain_name: str, region: Optional[str] = None, quiet: bool = True
 ) -> None:
-    sdb_client = cast(SimpleDBClient, session.client("sdb", region_name=region))
+    sdb_client = session.client("sdb", region_name=region)
     sdb_client.delete_domain(DomainName=sdb_domain_name)
     printq(f'SBD Domain: "{sdb_domain_name}" successfully deleted.', quiet)
 
@@ -144,16 +130,17 @@ def connection_reset(e: Exception) -> bool:
     # errno is listed as 104. To be safe, we check for both:
     return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
 
+
 # TODO: Replace with: @retry and ErrorCondition
 def retryable_s3_errors(e: Exception) -> bool:
     """
     Return true if this is an error from S3 that looks like we ought to retry our request.
     """
     return (connection_reset(e)
-            or (isinstance(e, BotoServerError) and e.status in (429, 500))
-            or (isinstance(e, BotoServerError) and e.code in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_status(e) in (429, 500))
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             # boto3 errors
-            or (isinstance(e, (S3ResponseError, ClientError)) and get_error_code(e) in THROTTLED_ERROR_CODES)
+            or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             or (isinstance(e, ClientError) and 'BucketNotEmpty' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 409 and 'try again' in str(e))
             or (isinstance(e, ClientError) and e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') in (404, 429, 500, 502, 503, 504)))
@@ -189,7 +176,7 @@ def enable_public_objects(bucket_name: str) -> None:
     would be a very awkward way to do it. So we restore the old behavior.
     """
 
-    s3_client = cast(S3Client, session.client('s3'))
+    s3_client = session.client('s3')
 
     # Even though the new default is for public access to be prohibited, this
     # is implemented by adding new things attached to the bucket. If we remove
@@ -212,7 +199,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
     :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
     """
 
-    s3_client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+    s3_client = session.client('s3', endpoint_url=endpoint_url)
 
     def attempt_get_bucket_location() -> Optional[str]:
         """
@@ -234,7 +221,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         # It could also be because AWS open data buckets (which we tend to
         # encounter this problem for) tend to actually themselves be in
         # us-east-1.
-        backup_s3_client = cast(S3Client, session.client('s3', region_name='us-east-1'))
+        backup_s3_client = session.client('s3', region_name='us-east-1')
         return backup_s3_client.get_bucket_location(Bucket=bucket_name).get('LocationConstraint', None)
 
     def attempt_head_bucket() -> Optional[str]:
@@ -283,15 +270,20 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
     # If we get here we ran out of attempts. Raise whatever the last problem was.
     raise last_error
 
+
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
+
 
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
+
 def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Object":
         """
         Extracts a key (object) from a given parsed s3:// URL.
+
+        If existing is true and the object does not exist, raises FileNotFoundError.
 
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
                 exists and it will be created. If None, the key will be created if it doesn't exist.
@@ -317,11 +309,11 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         try:
             # Get the bucket's region to avoid a redirect per request
             region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-            s3 = cast(S3ServiceResource, session.resource('s3', region_name=region, endpoint_url=endpoint_url))
+            s3 = session.resource('s3', region_name=region, endpoint_url=endpoint_url)
         except ClientError:
             # Probably don't have permission.
             # TODO: check if it is that
-            s3 = cast(S3ServiceResource, session.resource('s3', endpoint_url=endpoint_url))
+            s3 = session.resource('s3', endpoint_url=endpoint_url)
 
         obj = s3.Object(bucket_name, key_name)
         objExists = True
@@ -334,7 +326,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
             else:
                 raise
         if existing is True and not objExists:
-            raise RuntimeError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
+            raise FileNotFoundError(f"Key '{key_name}' does not exist in bucket '{bucket_name}'.")
         elif existing is False and objExists:
             raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 
@@ -343,7 +335,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
         return obj
 
 
-@retry(errors=[BotoServerError])
+@retry(errors=[AWSServerErrors])
 def list_objects_for_url(url: ParseResult) -> List[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be
@@ -368,7 +360,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         if host:
             endpoint_url = f'{protocol}://{host}' + f':{port}' if port else ''
 
-        client = cast(S3Client, session.client('s3', endpoint_url=endpoint_url))
+        client = session.client('s3', endpoint_url=endpoint_url)
 
         listing = []
 
@@ -388,8 +380,48 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         logger.debug('Found in %s items: %s', url, listing)
         return listing
 
+
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
+
+
+def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: str,
+                **kwargs: Any) -> Iterable[Any]:
+    """
+    Yield all the results from calling the given Boto 3 method with the
+    given keyword arguments, paging through the results using the Marker or
+    NextToken, and fetching out and looping over the list in the response
+    with the given attribute name.
+    """
+
+    # Recover the Boto3 client, and the name of the operation
+    client = requestor_callable.__self__  # type: ignore[attr-defined]
+    op_name = requestor_callable.__name__
+
+    # grab a Boto 3 built-in paginator. See
+    # <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/paginators.html>
+    paginator = client.get_paginator(op_name)
+
+    for page in paginator.paginate(**kwargs):
+        # Invoke it and go through the pages, yielding from them
+        yield from page.get(result_attribute_name, [])
+
+
+def get_item_from_attributes(attributes: List[AttributeTypeDef], name: str) -> Any:
+    """
+    Given a list of attributes, find the attribute associated with the name and return its corresponding value.
+
+    The `attribute_list` will be a list of TypedDict's (which boto3 SDB functions commonly return),
+    where each TypedDict has a "Name" and "Value" key value pair.
+    This function grabs the value out of the associated TypedDict.
+
+    If the attribute with the name does not exist, the function will return None.
+
+    :param attributes: list of attributes as List[AttributeTypeDef]
+    :param name: name of the attribute
+    :return: value of the attribute
+    """
+    return next((attribute["Value"] for attribute in attributes if attribute["Name"] == name), None)

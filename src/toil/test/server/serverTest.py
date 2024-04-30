@@ -21,7 +21,7 @@ import uuid
 import zipfile
 from abc import abstractmethod
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 try:

@@ -16,7 +16,7 @@
 
 import os
 import subprocess
-from typing import Dict, List, Optional, Set, Union, cast
+from typing import Dict, List, Set, Union, cast
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -100,13 +100,7 @@ def count_nvidia_gpus() -> int:
                 .firstChild,
             ).data
         )
-    except (
-        FileNotFoundError,
-        subprocess.CalledProcessError,
-        IndexError,
-        ValueError,
-        PermissionError,
-    ):
+    except: 
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some

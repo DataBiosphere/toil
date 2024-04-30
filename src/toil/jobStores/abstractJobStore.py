@@ -27,6 +27,7 @@ from typing import (IO,
                     Callable,
                     ContextManager,
                     Dict,
+                    Iterable,
                     Iterator,
                     List,
                     Optional,
@@ -42,8 +43,8 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 
-from urllib.parse import ParseResult, urlparse
 from urllib.error import HTTPError
+from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen
 from uuid import uuid4
 
@@ -69,6 +70,14 @@ except ImportError:
     class ProxyConnectionError(BaseException):  # type: ignore
         """Dummy class."""
 
+class LocatorException(Exception):
+    """
+    Base exception class for all locator exceptions.
+    For example, job store/aws bucket exceptions where they already exist
+    """
+    def __init__(self, error_msg: str, locator: str, prefix: Optional[str]=None):
+        full_locator = locator if prefix is None else f"{prefix}:{locator}"
+        super().__init__(error_msg % full_locator)
 
 class InvalidImportExportUrlException(Exception):
     def __init__(self, url: ParseResult) -> None:
@@ -135,24 +144,24 @@ class NoSuchFileException(Exception):
         super().__init__(message)
 
 
-class NoSuchJobStoreException(Exception):
+class NoSuchJobStoreException(LocatorException):
     """Indicates that the specified job store does not exist."""
-    def __init__(self, locator: str):
+    def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
         """
-        super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
+        super().__init__("The job store '%s' does not exist, so there is nothing to restart.", locator, prefix)
 
 
-class JobStoreExistsException(Exception):
+class JobStoreExistsException(LocatorException):
     """Indicates that the specified job store already exists."""
-    def __init__(self, locator: str):
+    def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
         """
         super().__init__(
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
-            "the job store with 'toil clean' to start the workflow from scratch." % locator)
+            "the job store with 'toil clean' to start the workflow from scratch.", locator, prefix)
 
 
 class AbstractJobStore(ABC):
@@ -537,6 +546,40 @@ class AbstractJobStore(ABC):
             otherCls._write_to_url(readable, url, executable)
 
     @classmethod
+    def url_exists(cls, src_uri: str) -> bool:
+        """
+        Return True if the file at the given URI exists, and False otherwise.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._url_exists(parseResult)
+
+    @classmethod
+    def get_size(cls, src_uri: str) -> Optional[int]:
+        """
+        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
+
+        :param src_uri: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_size(parseResult)
+
+    @classmethod
+    def get_is_directory(cls, src_uri: str) -> bool:
+        """
+        Return True if the thing at the given URL is a directory, and False if
+        it is a file. The URL may or may not end in '/'.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._get_is_directory(parseResult)
+
+    @classmethod
     def list_url(cls, src_uri: str) -> List[str]:
         """
         List the directory at the given URL. Returned path components can be
@@ -562,14 +605,47 @@ class AbstractJobStore(ABC):
         return otherCls._list_url(parseResult)
 
     @classmethod
-    def get_is_directory(cls, src_uri: str) -> bool:
+    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
         """
-        Return True if the thing at the given URL is a directory, and False if
-        it is a file. The URL may or may not end in '/'.
+        Read the given URL and write its content into the given writable stream.
+
+        Raises FileNotFoundError if the URL doesn't exist.
+
+        :return: The size of the file in bytes and whether the executable permission bit is set
         """
         parseResult = urlparse(src_uri)
         otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._get_is_directory(parseResult)
+        return otherCls._read_from_url(parseResult, writable)
+
+    @classmethod
+    def open_url(cls, src_uri: str) -> IO[bytes]:
+        """
+        Read from the given URI.
+
+        Raises FileNotFoundError if the URL doesn't exist.
+
+        Has a readable stream interface, unlike :meth:`read_from_url` which
+        takes a writable stream.
+        """
+        parseResult = urlparse(src_uri)
+        otherCls = cls._findJobStoreForUrl(parseResult)
+        return otherCls._open_url(parseResult)
+
+    @classmethod
+    @abstractmethod
+    def _url_exists(cls, url: ParseResult) -> bool:
+        """
+        Return True if the item at the given URL exists, and Flase otherwise.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
+        """
+        Get the size of the object at the given URL, or None if it cannot be obtained.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -583,38 +659,7 @@ class AbstractJobStore(ABC):
                in the storage mechanism of a supported URL scheme e.g. a blob
                in an AWS s3 bucket.
         """
-        raise NotImplementedError
-
-    @classmethod
-    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
-        """
-        Read the given URL and write its content into the given writable stream.
-
-        Raises FileNotFoundError if the URL doesn't exist.
-
-        :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
-        """
-        parseResult = urlparse(src_uri)
-        otherCls = cls._findJobStoreForUrl(parseResult)
-        return otherCls._read_from_url(parseResult, writable)
-
-    @classmethod
-    @deprecated(new_function_name='get_size')
-    def getSize(cls, url: ParseResult) -> None:
-        return cls.get_size(url)
-
-    @classmethod
-    @abstractmethod
-    def get_size(cls, src_uri: ParseResult) -> None:
-        """
-        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
-
-        :param src_uri: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
-        """
-        raise NotImplementedError
-
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -622,8 +667,6 @@ class AbstractJobStore(ABC):
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
-
-        Raises FileNotFoundError if the URL doesn't exist.
 
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
@@ -635,9 +678,40 @@ class AbstractJobStore(ABC):
         :param IO[bytes] writable: a writable stream
 
         :return: The size of the file in bytes and whether the executable permission bit is set
-        :rtype: Tuple[int, bool]
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _list_url(cls, url: ParseResult) -> List[str]:
+        """
+        List the contents of the given URL, which may or may not end in '/'
+
+        Returns a list of URL components. Those that end in '/' are meant to be
+        directories, while those that do not are meant to be files.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        :param ParseResult url: URL that points to a directory or prefix in the
+        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
+        bucket.
+
+        :return: The children of the given URL, already URL-encoded if
+        appropriate. (If the URL is a bare path, no encoding is done.)
+        """
+        raise NotImplementedError(f"No implementation for {url}")
+
+    @classmethod
+    @abstractmethod
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        """
+        Get a stream of the object at the specified location.
+
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
+
+        Raises FileNotFoundError if the thing at the URL is not found.
+        """
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -655,26 +729,7 @@ class AbstractJobStore(ABC):
 
         :param bool executable: determines if the file has executable permissions
         """
-        raise NotImplementedError()
-
-    @classmethod
-    @abstractmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
-        """
-        List the contents of the given URL, which may or may not end in '/'
-
-        Returns a list of URL components. Those that end in '/' are meant to be
-        directories, while those that do not are meant to be files.
-
-        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
-
-        :param ParseResult url: URL that points to a directory or prefix in the
-        storage mechanism of a supported URL scheme e.g. a prefix in an AWS s3
-        bucket.
-
-        :return: The children of the given URL, already URL-encoded.
-        """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @classmethod
     @abstractmethod
@@ -690,7 +745,7 @@ class AbstractJobStore(ABC):
 
         :return bool: returns true if the cls supports the URL
         """
-        raise NotImplementedError()
+        raise NotImplementedError(f"No implementation for {url}")
 
     @abstractmethod
     def destroy(self) -> None:
@@ -788,16 +843,17 @@ class AbstractJobStore(ABC):
             root_job_description = self.load_root_job()
             reachable_from_root: Set[str] = set()
 
-            # Add first root job outside of the loop below.
-            reachable_from_root.add(str(root_job_description.jobStoreID))
-            # add all of root's linked service jobs as well
-            for service_jobstore_id in root_job_description.services:
-                if haveJob(service_jobstore_id):
-                    reachable_from_root.add(service_jobstore_id)
-            for merged_jobstore_id in root_job_description.merged_jobs:
+
+            for merged_in in root_job_description.get_chain():
+                # Add the job itself and any other jobs that chained with it.
                 # Keep merged-in jobs around themselves, but don't bother
                 # exploring them, since we took their successors.
-                reachable_from_root.add(merged_jobstore_id)
+                reachable_from_root.add(merged_in.job_store_id)
+            # add all of root's linked service jobs as well
+            for service_job_store_id in root_job_description.services:
+                if haveJob(service_job_store_id):
+                    reachable_from_root.add(service_job_store_id)
+
 
             # Unprocessed means it might have successor jobs we need to add.
             unprocessed_job_descriptions = [root_job_description]
@@ -805,24 +861,21 @@ class AbstractJobStore(ABC):
             while unprocessed_job_descriptions:
                 new_job_descriptions_to_process = []  # Reset.
                 for job_description in unprocessed_job_descriptions:
-                    for successor_jobstore_id in job_description.allSuccessors():
-                        if successor_jobstore_id not in reachable_from_root and haveJob(successor_jobstore_id):
-                            successor_job_description = getJobDescription(successor_jobstore_id)
-
-                            # Add each successor job.
-                            reachable_from_root.add(
-                                str(successor_job_description.jobStoreID)
-                            )
-                            # Add all of the successor's linked service jobs as well.
-                            for service_jobstore_id in successor_job_description.services:
-                                if haveJob(service_jobstore_id):
-                                    reachable_from_root.add(service_jobstore_id)
-
-                            new_job_descriptions_to_process.append(successor_job_description)
-                    for merged_jobstore_id in job_description.merged_jobs:
+                    for merged_in in job_description.get_chain():
+                        # Add the job and anything chained with it.
                         # Keep merged-in jobs around themselves, but don't bother
                         # exploring them, since we took their successors.
-                        reachable_from_root.add(merged_jobstore_id)
+                        reachable_from_root.add(merged_in.job_store_id)
+                    for successor_job_store_id in job_description.allSuccessors():
+                        if successor_job_store_id not in reachable_from_root and haveJob(successor_job_store_id):
+                            successor_job_description = getJobDescription(successor_job_store_id)
+
+                            # Add all of the successor's linked service jobs as well.
+                            for service_job_store_id in successor_job_description.services:
+                                if haveJob(service_job_store_id):
+                                    reachable_from_root.add(service_job_store_id)
+
+                            new_job_descriptions_to_process.append(successor_job_description)
                 unprocessed_job_descriptions = new_job_descriptions_to_process
 
             logger.debug(f"{len(reachable_from_root)} jobs reachable from root.")
@@ -879,11 +932,11 @@ class AbstractJobStore(ABC):
                 jobDescription.filesToDelete = []
                 changed[0] = True
 
-            # For a job whose command is already executed, remove jobs from the
+            # For a job whose body has already executed, remove jobs from the
             # stack that are already deleted. This cleans up the case that the
             # jobDescription had successors to run, but had not been updated to
             # reflect this.
-            if jobDescription.command is None:
+            if not jobDescription.has_body():
 
                 def stackSizeFn() -> int:
                     return len(list(jobDescription.allSuccessors()))
@@ -1697,19 +1750,14 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry(
-        errors=[
-            BadStatusLine,
-            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
-        ]
-    )
-    def get_size(cls, url: ParseResult) -> Optional[int]:
-        if url.scheme.lower() == 'ftp':
-            return None
-        with closing(urlopen(url.geturl())) as readable:
-            # just read the header for content length
-            size = readable.info().get('content-length')
-            return int(size) if size is not None else None
+    def _url_exists(cls, url: ParseResult) -> bool:
+        try:
+            # TODO: Figure out how to HEAD instead of this.
+            with cls._open_url(url):
+                return True
+        except:
+            pass
+        return False
 
     @classmethod
     @retry(
@@ -1718,27 +1766,45 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
         ]
     )
+    def _get_size(cls, url: ParseResult) -> Optional[int]:
+        if url.scheme.lower() == 'ftp':
+            return None
+        with closing(urlopen(url.geturl())) as readable:
+            # just read the header for content length
+            size = readable.info().get('content-length')
+            return int(size) if size is not None else None
+
+    @classmethod
     def _read_from_url(
         cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
     ) -> Tuple[int, bool]:
-        # We can only retry on errors that happen as responses to the request.
-        # If we start getting file data, and the connection drops, we fail.
-        # So we don't have to worry about writing the start of the file twice.
-        try:
-            with closing(urlopen(url.geturl())) as readable:
-                # Make something to count the bytes we get
-                # We need to put the actual count in a container so our
-                # nested function can modify it without creating its own
-                # local with the same name.
-                size = [0]
-                def count(l: int) -> None:
-                    size[0] += l
-                counter = WriteWatchingStream(writable)
-                counter.onWrite(count)
+        # We can't actually retry after we start writing.
+        # TODO: Implement retry with byte range requests
+        with cls._open_url(url) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l: int) -> None:
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
 
-                # Do the download
-                shutil.copyfileobj(readable, counter)
-                return size[0], False
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0], False
+
+    @classmethod
+    @retry(
+        errors=[
+            BadStatusLine,
+            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
+        ]
+    )
+    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        try:
+            return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
             if e.code == 404:
                 # Translate into a FileNotFoundError for detecting

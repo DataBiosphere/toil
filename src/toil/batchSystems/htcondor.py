@@ -24,7 +24,6 @@ import htcondor
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
-
 from toil.job import AcceleratorRequirement
 from toil.lib.retry import retry
 
@@ -49,7 +48,7 @@ schedd_lock = Lock()
 class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
     # When using HTCondor, the Schedd handles scheduling
 
-    class Worker(AbstractGridEngineBatchSystem.Worker):
+    class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
 
         # Override the createJobs method so that we can use htcondor.Submit objects
         # and so that we can get disk allocation requests and ceil the CPU request.
@@ -388,9 +387,9 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return '"' + ' '.join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(self, jobNode, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobNode, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(command, jobNode)
         if localID is not None:
             return localID
         else:
@@ -399,7 +398,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             self.currentJobs.add(jobID)
 
             # Construct our style of job tuple
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, jobNode.command,
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.disk, jobNode.jobName, command,
                                    job_environment or {}, jobNode.accelerators))
-            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+            logger.debug("Issued the job command: %s with job id: %s ", command, str(jobID))
         return jobID

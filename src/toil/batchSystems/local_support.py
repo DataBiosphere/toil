@@ -19,6 +19,7 @@ from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import JobDescription
+from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +29,14 @@ class BatchSystemLocalSupport(BatchSystemSupport):
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+        max_local_jobs = config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
-            config, maxCores, maxMemory, maxDisk, max_jobs=config.max_local_jobs
+            config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
 
-    def handleLocalJob(self, jobDesc: JobDescription) -> Optional[int]:
+    def handleLocalJob(self, command: str, jobDesc: JobDescription) -> Optional[int]:
         """
-        To be called by issueBatchJobs.
+        To be called by issueBatchJob.
 
         Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
@@ -48,7 +50,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             # somehow doesn't error whereas just returning the value complains
             # we're returning an Any. TODO: When singleMachine.py typechecks,
             # remove all these extra variables.
-            local_id: int = self.localBatch.issueBatchJob(jobDesc)
+            local_id: int = self.localBatch.issueBatchJob(command, jobDesc)
             return local_id
         else:
             return None

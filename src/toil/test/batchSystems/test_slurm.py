@@ -4,6 +4,7 @@ from queue import Queue
 import pytest
 
 import toil.batchSystems.slurm
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.test import ToilTest
@@ -16,7 +17,8 @@ def call_sacct(args, **_) -> str:
     The arguments passed to `call_command` when executing `sacct` are:
     ['sacct', '-n', '-j', '<comma-separated list of job-ids>', '--format',
     'JobIDRaw,State,ExitCode', '-P', '-S', '1970-01-01']
-    The multi-line output is something like:
+    The multi-line output is something like::
+
         1234|COMPLETED|0:0
         1234.batch|COMPLETED|0:0
         1235|PENDING|0:0
@@ -46,7 +48,7 @@ def call_sacct(args, **_) -> str:
 def call_scontrol(args, **_) -> str:
     """
     The arguments passed to `call_command` when executing `scontrol` are:
-    ['scontrol', 'show', 'job'] or ['scontrol', 'show', 'job', '<job-id>']
+    ``['scontrol', 'show', 'job']`` or ``['scontrol', 'show', 'job', '<job-id>']``
     """
     job_id = int(args[3]) if len(args) > 3 else None
     # Fake output per fake job-id.
@@ -191,7 +193,7 @@ class SlurmTest(ToilTest):
 
     def setUp(self):
         self.monkeypatch = pytest.MonkeyPatch()
-        self.worker = toil.batchSystems.slurm.SlurmBatchSystem.Worker(
+        self.worker = toil.batchSystems.slurm.SlurmBatchSystem.GridEngineThread(
             newJobsQueue=Queue(),
             updatedJobsQueue=Queue(),
             killQueue=Queue(),
@@ -283,7 +285,7 @@ class SlurmTest(ToilTest):
     def test_getJobExitCode_job_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         job_id = '785023'  # FAILED
-        expected_result = 127
+        expected_result = (127, BatchJobExitReason.FAILED)
         result = self.worker.getJobExitCode(job_id)
         assert result == expected_result, f"{result} != {expected_result}"
 
@@ -302,7 +304,7 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         job_id = '787204'  # COMPLETED
-        expected_result = 0
+        expected_result = (0,  BatchJobExitReason.FINISHED)
         result = self.worker.getJobExitCode(job_id)
         assert result == expected_result, f"{result} != {expected_result}"
 
@@ -328,7 +330,7 @@ class SlurmTest(ToilTest):
     def test_coalesce_job_exit_codes_one_exists(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
         job_ids = ['785023']  # FAILED
-        expected_result = [127]
+        expected_result = [(127,  BatchJobExitReason.FAILED)]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
 
@@ -346,7 +348,14 @@ class SlurmTest(ToilTest):
                    '789724',  # RUNNING,
                    '789868',  # PENDING,
                    '789869']  # COMPLETED
-        expected_result = [0, 1, None, None, 0]  # RUNNING and PENDING jobs should return None
+        # RUNNING and PENDING jobs should return None
+        expected_result = [
+            (EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.KILLED),
+            (1, BatchJobExitReason.FAILED),
+            None,
+            None,
+            (0, BatchJobExitReason.FINISHED)
+        ]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
 
@@ -357,7 +366,14 @@ class SlurmTest(ToilTest):
                    '789724',  # RUNNING,
                    '999999',  # Non-existent,
                    '789869']  # COMPLETED
-        expected_result = [130, 2, None, None, 0]    # RUNNING job should return None
+        # RUNNING job should return None
+        expected_result = [
+            (130, BatchJobExitReason.FAILED),
+            (2, BatchJobExitReason.FAILED),
+            None,
+            None,
+            (0, BatchJobExitReason.FINISHED)
+        ]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
 
@@ -369,7 +385,7 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(self.worker, "_getJobDetailsFromSacct", call_sacct_raises)
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_scontrol)
         job_ids = ['787204']  # COMPLETED
-        expected_result = [0]
+        expected_result = [(0, BatchJobExitReason.FINISHED)]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
 

@@ -52,10 +52,10 @@ depend on a currently installed *feature*, use
 This will run only the tests that don't depend on the ``aws`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
-not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the ``parasol`` feature and the ``aws`` extra, use the following::
+not extras, such as the ``gridengine`` feature.  To skip tests
+involving both the ``gridengine`` feature and the ``aws`` extra, use the following::
 
-    $ make test tests="-m 'not aws and not parasol' src"
+    $ make test tests="-m 'not aws and not gridengine' src"
 
 
 
@@ -66,7 +66,7 @@ Often it is simpler to use pytest directly, instead of calling the ``make`` wrap
 This usually works as expected, but some tests need some manual preparation. To run a specific test with pytest,
 use the following::
 
-    python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
+    python3 -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
 
 For more information, see the `pytest documentation`_.
 
@@ -204,7 +204,8 @@ Here is a general workflow (similar instructions apply when using Docker Hub):
         $ make docker
 
    to automatically build a docker image that can now be uploaded to
-   your personal `Quay`_ account. If you have not installed Toil source
+   your personal `Quay`_ account. On Docker Desktop, containerd `may have to be enabled <https://docs.docker.com/desktop/containerd/#enable-the-containerd-image-store>`_.
+   If you have not installed Toil source
    code yet see :ref:`buildFromSource`.
 
 #. If it's not already you will need Docker installed and need
@@ -309,6 +310,31 @@ with ``worker`` to get shell access in your worker.
     from the host - that way the files are accessible to the sibling container. Note:
     if Docker can't find the file/directory on the host it will silently fail and mount
     in an empty directory.
+
+
+.. admonition:: Enabling FUSE
+
+    When running toil-wdl-runner with Singularity, Singularity will decompress images to sandbox directories
+    by default. This can take time if a workflow has lots of images. To avoid this, access to FUSE can be given
+    to the Docker container at startup. There are 2 main ways to do this. Either run all the Docker
+    containers in privileged mode::
+
+        docker run \
+            -d \
+            --name=toil_leader \
+            --privileged \
+            quay.io/ucsc_cgl/toil:6.2.0
+
+    Or pass through the ``/dev/fuse`` device node into the container::
+
+        docker run \
+            -d \
+            --name=toil_leader \
+            --device=/dev/fuse \
+            quay.io/ucsc_cgl/toil:6.2.0
+
+    toil-wdl-runner will handle the logic from there.
+
 
 .. _Quay: https://quay.io/
 .. _Docker Hub: https://hub.docker.com/

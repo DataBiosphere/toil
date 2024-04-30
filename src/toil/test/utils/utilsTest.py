@@ -39,7 +39,7 @@ from toil.test import (ToilTest,
                        needs_rsync3,
                        slow)
 from toil.test.sort.sortTest import makeFileToSort
-from toil.utils.toilStats import getStats, processData
+from toil.utils.toilStats import get_stats, process_data
 from toil.utils.toilStatus import ToilStatus
 from toil.version import python
 
@@ -114,6 +114,26 @@ class UtilsTest(ToilTest):
         if failIfNotComplete:
             commandTokens.append('--failIfNotComplete')
         return commandTokens
+
+    def test_config_functionality(self):
+        """Ensure that creating and reading back the config file works"""
+        config_file = os.path.abspath("config.yaml")
+        config_command = [self.toilMain, 'config', config_file]
+        # make sure the command `toil config file_path` works
+        try:
+            subprocess.check_call(config_command)
+        except subprocess.CalledProcessError:
+            self.fail("The toil config utility failed!")
+
+        parser = Job.Runner.getDefaultArgumentParser()
+        # make sure that toil can read from the generated config file
+        try:
+            parser.parse_args(["random_jobstore", "--config", config_file])
+        except SystemExit:
+            self.fail("Failed to parse the default generated config file!")
+        finally:
+            os.remove(config_file)
+
 
     @needs_rsync3
     @pytest.mark.timeout(1200)
@@ -278,8 +298,8 @@ class UtilsTest(ToilTest):
         config = Config()
         config.setOptions(options)
         jobStore = Toil.resumeJobStore(config.jobStore)
-        stats = getStats(jobStore)
-        collatedStats = processData(jobStore.config, stats)
+        stats = get_stats(jobStore)
+        collatedStats = process_data(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
 
     def check_status(self, status, status_fn, seconds=20):
@@ -357,21 +377,21 @@ class UtilsTest(ToilTest):
 
     def testRestartAttribute(self):
         """
-        Test that the job store is only destroyed when we observe a succcessful workflow run.
+        Test that the job store is only destroyed when we observe a successful workflow run.
         The following simulates a failing workflow that attempts to resume without restart().
         In this case, the job store should not be destroyed until restart() is called.
         """
         # Run a workflow that will always fail
-        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
+        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1', '--logDebug']
         subprocess.run(cmd)
 
-        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
+        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--logDebug', '--restart']
         subprocess.run(restart_cmd)
 
         # Check the job store exists after restart attempt
         self.assertTrue(os.path.exists(self.toilDir))
 
-        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir,
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', '--logDebug', 'file:' + self.toilDir,
                                   '--restart']
         subprocess.run(successful_cmd)
 

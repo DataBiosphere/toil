@@ -29,14 +29,18 @@ from uuid import uuid4
 import pytest
 
 from toil.common import Toil
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
                                               IllegalDeletionCacheError)
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import ToilTest, needs_aws_ec2, needs_google_project, needs_google_storage, slow
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_google_project,
+                       needs_google_storage,
+                       slow)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -473,7 +477,15 @@ class hidden:
             # the cache hence this test is redundant (caching will be free).
             if not self.options.jobStore.startswith(('aws', 'google')):
                 workDirDev = os.stat(self.options.workDir).st_dev
-                jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
+                if self.options.jobStore.startswith("file:"):
+                    # Before #4538, options.jobStore would have the raw path while the Config object would prepend the
+                    # filesystem to the path (/path/to/file vs file:/path/to/file)
+                    # The options namespace and the Config object now have the exact same behavior
+                    # which means parse_jobstore will be called with argparse rather than with the config object
+                    # so remove the prepended file: scheme
+                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore[5:])).st_dev
+                else:
+                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
                     self.skipTest('Job store and working directory are on the same filesystem.')
 
@@ -629,7 +641,7 @@ class hidden:
             file into cache then rewrites it to the job store triggering an async write since the
             two unique jobstore IDs point to the same local file.  Also, the second write is not
             cached since the first was written to cache, and there "isn't enough space" to cache the
-            second.  Imediately assert that the second write isn't cached, and is being
+            second.  Immediately assert that the second write isn't cached, and is being
             asynchronously written to the job store.
 
             Attempting to get the file from the jobstore should not fail.
@@ -658,20 +670,20 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            job.fileStore.logToMaster('Double writing a file into job store')
+            job.fileStore.log_to_leader('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
             with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            job.fileStore.logToMaster('Writing copy 1 and discarding ID')
+            job.fileStore.log_to_leader('Writing copy 1 and discarding ID')
             job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster('Writing copy 2 and saving ID')
+            job.fileStore.log_to_leader('Writing copy 2 and saving ID')
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.logToMaster(f'Copy 2 ID: {fsID}')
+            job.fileStore.log_to_leader(f'Copy 2 ID: {fsID}')
 
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
 
-            job.fileStore.logToMaster('Writing copy 3 and returning ID')
+            job.fileStore.log_to_leader('Writing copy 3 and returning ID')
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
@@ -683,7 +695,7 @@ class hidden:
             :param fsID: Job store file ID for the read file
             :return: None
             """
-            job.fileStore.logToMaster('Reading the written file')
+            job.fileStore.log_to_leader('Reading the written file')
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
@@ -797,8 +809,7 @@ class hidden:
             """
             Write a local file to the job store (hence adding a copy to cache), then have 10 jobs
             read it. Assert cached file size never goes up, assert unused job
-            required disk space is always:
-                   (a multiple of job reqs) - (number of current file readers * filesize).
+            required disk space is always ``(a multiple of job reqs) - (number of current file readers * filesize)``.
             At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=True)
@@ -808,8 +819,7 @@ class hidden:
             """
             Write a non-local file to the job store(hence no cached copy), then have 10 jobs read
             it. Assert cached file size never goes up, assert unused job
-            required disk space is always:
-                   (a multiple of job reqs) - (number of current file readers * filesize).
+            required disk space is always ``(a multiple of job reqs) - (number of current file readers * filesize)``.
             At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=False)
@@ -1127,7 +1137,7 @@ class hidden:
             """
 
             # Make sure we actually have the disk size we are supposed to
-            job.fileStore.logToMaster('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
+            job.fileStore.log_to_leader('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
             assert job.disk == jobDisk, 'Job was scheduled with %d bytes but requested %d' % (job.disk, jobDisk)
 
             cls = hidden.AbstractCachingFileStoreTest
@@ -1193,7 +1203,7 @@ class hidden:
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except IllegalDeletionCacheError:
-                    job.fileStore.logToMaster('Detected a deleted file %s.' % fileToDelete)
+                    job.fileStore.log_to_leader('Detected a deleted file %s.' % fileToDelete)
                     os.rename(tempfile, outfile)
                 else:
                     # If we are processing the write test, or if we are testing the immutably read

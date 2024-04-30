@@ -3,16 +3,15 @@ import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Set, cast, Union, Sequence
+from typing import Dict, List, Optional, Union, cast
 
 import boto3
 from mypy_boto3_iam import IAMClient
-from mypy_boto3_iam.type_defs import AttachedPolicyTypeDef, PolicyDocumentDictTypeDef
+from mypy_boto3_iam.type_defs import (AttachedPolicyTypeDef,
+                                      PolicyDocumentDictTypeDef)
 from mypy_boto3_sts import STSClient
 
-from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import client as get_client
-from toil.provisioners.aws import get_best_aws_zone
 
 logger = logging.getLogger(__name__)
 
@@ -258,8 +257,8 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
     :param zone: AWS zone to connect to
     """
 
-    iam: IAMClient = cast(IAMClient, get_client('iam', region))
-    sts: STSClient = cast(STSClient, get_client('sts', region))
+    iam: IAMClient = get_client('iam', region)
+    sts: STSClient = get_client('sts', region)
     #TODO Condider effect: deny at some point
     allowed_actions: AllowedActionCollection = defaultdict(lambda: {'Action': [], 'NotAction': []})
     try:

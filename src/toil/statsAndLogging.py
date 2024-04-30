@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gzip
+import io
 import json
 import logging
 import os
@@ -21,8 +22,9 @@ from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
 from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
 
+from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando
-from toil.lib.resources import get_total_cpu_time
+from toil.lib.resources import ResourceMonitor
 
 if TYPE_CHECKING:
     from toil.common import Config
@@ -38,6 +40,7 @@ __loggingFiles = []
 
 class StatsAndLogging:
     """A thread to aggregate statistics and logging."""
+
     def __init__(self, jobStore: 'AbstractJobStore', config: 'Config') -> None:
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
@@ -49,7 +52,7 @@ class StatsAndLogging:
         self._worker.start()
 
     @classmethod
-    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], job_name: Optional[str] = None) -> str:
+    def formatLogStream(cls, stream: Union[IO[str], IO[bytes]], stream_name: str) -> str:
         """
         Given a stream of text or bytes, and the job name, job itself, or some
         other optional stringifyable identity info for the job, return a big
@@ -62,7 +65,7 @@ class StatsAndLogging:
 
         :param stream: The stream of text or bytes to print for the user.
         """
-        lines = [f'Log from job "{job_name}" follows:', '=========>']
+        lines = [f'{stream_name} follows:', '=========>']
 
         for line in stream:
             if isinstance(line, bytes):
@@ -73,15 +76,15 @@ class StatsAndLogging:
 
         return '\n'.join(lines)
 
-
     @classmethod
-    def logWithFormatting(cls, jobStoreID: str, jobLogs: Union[IO[str], IO[bytes]], method: Callable[[str], None] = logger.debug,
-                            message: Optional[str] = None) -> None:
+    def logWithFormatting(cls, stream_name: str, jobLogs: Union[IO[str], IO[bytes]],
+                          method: Callable[[str], None] = logger.debug,
+                          message: Optional[str] = None) -> None:
         if message is not None:
             method(message)
 
-        # Format and log the logs, identifying the job with its job store ID.
-        method(cls.formatLogStream(jobLogs, jobStoreID))
+        # Format and log the logs, identifying the stream with the given name.
+        method(cls.formatLogStream(jobLogs, stream_name))
 
     @classmethod
     def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
@@ -95,11 +98,11 @@ class StatsAndLogging:
             logName = ('failed_' if failed else '') + logName
             counter = 0
             while True:
-                suffix = str(counter).zfill(3) + logExtension
+                suffix = '_' + str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
                 #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
                 if len(fullName) >= 255:
-                    return fullName[:(255-len(suffix))] + suffix
+                    return fullName[:(255 - len(suffix))] + suffix
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
@@ -117,6 +120,9 @@ class StatsAndLogging:
         else:
             # we don't have anywhere to write the logs, return now
             return
+
+        # Make sure the destination exists
+        os.makedirs(path, exist_ok=True)
 
         fullName = createName(path, mainFileName, extension, failed)
         with writeFn(fullName, 'wb') as f:
@@ -141,23 +147,49 @@ class StatsAndLogging:
         """
         #  Overall timing
         startTime = time.time()
-        startClock = get_total_cpu_time()
+        startClock = ResourceMonitor.get_total_cpu_time()
 
         def callback(fileHandle: Union[IO[bytes], IO[str]]) -> None:
             statsStr = fileHandle.read()
             if not isinstance(statsStr, str):
                 statsStr = statsStr.decode()
             stats = json.loads(statsStr, object_hook=Expando)
+            if not stats:
+                return
+
             try:
-                logs = stats.workers.logsToMaster
+                # Handle all the log_to_leader messages
+                logs = stats.workers.logs_to_leader
             except AttributeError:
-                # To be expected if there were no calls to logToMaster()
+                # To be expected if there were no calls to log_to_leader()
                 pass
             else:
                 for message in logs:
                     logger.log(int(message.level),
                                'Got message from job at time %s: %s',
                                time.strftime('%m-%d-%Y %H:%M:%S'), message.text)
+
+            try:
+                # Handle all the user-level text streams reported back (command output, etc.)
+                user_logs = stats.workers.logging_user_streams
+            except AttributeError:
+                # To be expected if there were no calls to log_user_stream()
+                pass
+            else:
+                for stream_entry in user_logs:
+                    try:
+                        # Unpack the stream name and text.
+                        name, text = stream_entry.name, stream_entry.text
+                    except AttributeError:
+                        # Doesn't have a user-provided stream name and stream
+                        # text, so skip it.
+                        continue
+                    # Since this is sent as inline text we need to pretend to stream it.
+                    # TODO: Save these as individual files if they start to get too big?
+                    cls.logWithFormatting(name, io.StringIO(text), logger.info)
+                    # Save it as a log file, as if it were a Toil-level job.
+                    cls.writeLogFiles([name], [text], config=config)
+
             try:
                 logs = stats.logs
             except AttributeError:
@@ -166,7 +198,7 @@ class StatsAndLogging:
                 # we may have multiple jobs per worker
                 jobNames = logs.names
                 messages = logs.messages
-                cls.logWithFormatting(jobNames[0], messages,
+                cls.logWithFormatting(f'Log from job "{jobNames[0]}"', messages,
                                       message='Received Toil worker log. Disable debug level logging to hide this output')
                 cls.writeLogFiles(jobNames, messages, config=config)
 
@@ -180,7 +212,7 @@ class StatsAndLogging:
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(get_total_cpu_time() - startClock)), ensure_ascii=True)
+                               total_clock=str(ResourceMonitor.get_total_cpu_time() - startClock)), ensure_ascii=True)
         jobStore.write_logs(text)
 
     def check(self) -> None:
@@ -206,30 +238,70 @@ def set_log_level(level: str, set_logger: Optional[logging.Logger] = None) -> No
     level = "CRITICAL" if level.upper() == "OFF" else level.upper()
     set_logger = set_logger if set_logger else root_logger
     set_logger.setLevel(level)
-
     # Suppress any random loggers introduced by libraries we use.
     # Especially boto/boto3.  They print too much.  -__-
     suppress_exotic_logging(__name__)
 
 
-def add_logging_options(parser: ArgumentParser) -> None:
-    """Add logging options to set the global log level."""
+def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
+    """Make logs colored."""
+    # Most of this code is taken from miniwdl
+    # delayed import
+    import coloredlogs  # type: ignore[import-untyped]
+
+    level_styles = dict(coloredlogs.DEFAULT_LEVEL_STYLES)
+    level_styles["debug"]["color"] = 242
+    level_styles["notice"] = {"color": "green", "bold": True}
+    level_styles["error"]["bold"] = True
+    level_styles["warning"]["bold"] = True
+    level_styles["info"] = {}
+    field_styles = dict(coloredlogs.DEFAULT_FIELD_STYLES)
+    field_styles["asctime"] = {"color": "blue"}
+    field_styles["name"] = {"color": "magenta"}
+    field_styles["levelname"] = {"color": "blue"}
+    field_styles["threadName"] = {"color": "blue"}
+    fmt = "[%(asctime)s] [%(threadName)s] [%(levelname).1s] [%(name)s] %(message)s"  # mimic old toil logging format
+    set_logger = set_logger if set_logger else root_logger
+    coloredlogs.install(
+        level=set_logger.getEffectiveLevel(),
+        logger=set_logger,
+        level_styles=level_styles,
+        field_styles=field_styles,
+        datefmt="%Y-%m-%dT%H:%M:%S%z",  # mimic old toil date format
+        fmt=fmt,
+    )
+
+
+def add_logging_options(parser: ArgumentParser, default_level: Optional[int] = None) -> None:
+    """
+    Add logging options to set the global log level.
+
+    :param default_level: A logging level, like logging.INFO, to use as the default.
+    """
+    if default_level is None:
+        # Make sure we have a log levle to make the default
+        default_level = DEFAULT_LOGLEVEL
+    default_level_name = logging.getLevelName(default_level)
+
     group = parser.add_argument_group("Logging Options")
-    default_loglevel = logging.getLevelName(DEFAULT_LOGLEVEL)
 
     levels = ['Critical', 'Error', 'Warning', 'Debug', 'Info']
     for level in levels:
-        group.add_argument(f"--log{level}", dest="logLevel", default=default_loglevel, action="store_const",
-                           const=level, help=f"Turn on loglevel {level}.  Default: {default_loglevel}.")
+        group.add_argument(f"--log{level}", dest="logLevel", default=default_level_name, action="store_const",
+                           const=level, help=f"Turn on loglevel {level}.  Default: {default_level_name}.")
 
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
-    group.add_argument("--logOff", dest="logLevel", default=default_loglevel,
+    group.add_argument("--logOff", dest="logLevel", default=default_level_name,
                        action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
-    group.add_argument("--logLevel", dest="logLevel", default=default_loglevel, choices=levels,
-                       help=f"Set the log level. Default: {default_loglevel}.  Options: {levels}.")
+    # Maybe deprecate the above in favor of --logLevel?
+
+    group.add_argument("--logLevel", dest="logLevel", default=default_level_name, choices=levels,
+                       help=f"Set the log level. Default: {default_level_name}.  Options: {levels}.")
     group.add_argument("--logFile", dest="logFile", help="File to log in.")
     group.add_argument("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                        help="Turn on rotating logging, which prevents log files from getting too big.")
+    group.add_argument("--logColors", dest="colored_logs", default=True, type=strtobool, metavar="BOOL",
+                       help="Enable or disable colored logging. Default: %(default)s")
 
 
 def configure_root_logger() -> None:
@@ -260,6 +332,8 @@ def set_logging_from_options(options: Union["Config", Namespace]) -> None:
     configure_root_logger()
     options.logLevel = options.logLevel or logging.getLevelName(root_logger.getEffectiveLevel())
     set_log_level(options.logLevel)
+    if options.colored_logs:
+        install_log_color()
     logger.debug(f"Root logger is at level '{logging.getLevelName(root_logger.getEffectiveLevel())}', "
                  f"'toil' logger at level '{logging.getLevelName(toil_logger.getEffectiveLevel())}'.")
 

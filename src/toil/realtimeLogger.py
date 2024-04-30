@@ -168,7 +168,8 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     def _stopLeader(cls) -> None:
         """Stop the server on the leader."""
         with cls.lock:
-            assert cls.initialized > 0
+            if cls.initialized == 0:
+                raise RuntimeError("Can't stop the server on the leader as the leader was never initialized.")
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:

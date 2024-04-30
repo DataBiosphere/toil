@@ -11,13 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-# https://pytest.org/latest/example/pythoncollection.html
-
-collect_ignore = []
-
-try:
-    import wdlparse
-    print(wdlparse.__file__)  # keep this import from being removed
-except ImportError:
-    collect_ignore.append("toilwdl.py")

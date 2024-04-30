@@ -31,10 +31,9 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
 # in order to import properly. Import them later, in tests
 # protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
-from toil.batchSystems.parasol import ParasolBatchSystem
-from toil.batchSystems.registry import (BATCH_SYSTEM_FACTORY_REGISTRY,
-                                        BATCH_SYSTEMS,
-                                        addBatchSystemFactory,
+from toil.batchSystems.registry import (add_batch_system_factory,
+                                        get_batch_system,
+                                        get_batch_systems,
                                         restore_batch_system_plugin_state,
                                         save_batch_system_plugin_state)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
@@ -52,12 +51,9 @@ from toil.test import (ToilTest,
                        needs_kubernetes_installed,
                        needs_lsf,
                        needs_mesos,
-                       needs_parasol,
                        needs_slurm,
-                       needs_tes,
                        needs_torque,
                        slow)
-from toil.test.batchSystems.parasolTestSupport import ParasolTestSupport
 
 logger = logging.getLogger(__name__)
 
@@ -88,16 +84,16 @@ class BatchSystemPluginTest(ToilTest):
         restore_batch_system_plugin_state(self.__state)
         super().tearDown()
 
-    def testAddBatchSystemFactory(self):
+    def test_add_batch_system_factory(self):
         def test_batch_system_factory():
             # TODO: Adding the same batch system under multiple names means we
             # can't actually create Toil options, because each version tries to
             # add its arguments.
             return SingleMachineBatchSystem
 
-        addBatchSystemFactory('testBatchSystem', test_batch_system_factory)
-        assert ('testBatchSystem', test_batch_system_factory) in BATCH_SYSTEM_FACTORY_REGISTRY.items()
-        assert 'testBatchSystem' in BATCH_SYSTEMS
+        add_batch_system_factory('testBatchSystem', test_batch_system_factory)
+        assert 'testBatchSystem' in get_batch_systems()
+        assert get_batch_system('testBatchSystem') == SingleMachineBatchSystem
 
 class hidden:
     """
@@ -144,19 +140,16 @@ class hidden:
             """
             return self.createConfig()
 
-        def _mockJobDescription(self, jobStoreID=None, command=None, **kwargs):
+        def _mockJobDescription(self, jobStoreID=None, **kwargs):
             """
-            Create a mock-up JobDescription with the given ID, command, and other parameters.
+            Create a mock-up JobDescription with the given ID and other parameters.
             """
 
             # TODO: Use a real unittest.Mock? For now we make a real instance and just hack it up.
 
             desc = JobDescription(**kwargs)
-            # Normally we can't pass in a command or ID, and the job
-            # serialization logic takes care of filling them in. We set them
-            # here.
-            if command is not None:
-                desc.command = command
+            # Normally we can't pass in an ID, and the job serialization logic
+            # takes care of filling it in. We set it here.
             if jobStoreID is not None:
                 desc.jobStoreID = jobStoreID
 
@@ -189,12 +182,12 @@ class hidden:
 
         @retry_flaky_test(prepare=[tearDown, setUp])
         def test_run_jobs(self):
-            jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
+            jobDesc1 = self._mockJobDescription(jobName='test1', unitName=None,
                                                 jobStoreID='1', requirements=defaultRequirements)
-            jobDesc2 = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+            jobDesc2 = self._mockJobDescription(jobName='test2', unitName=None,
                                                 jobStoreID='2', requirements=defaultRequirements)
-            job1 = self.batchSystem.issueBatchJob(jobDesc1)
-            job2 = self.batchSystem.issueBatchJob(jobDesc2)
+            job1 = self.batchSystem.issueBatchJob('sleep 1000', jobDesc1)
+            job2 = self.batchSystem.issueBatchJob('sleep 1000', jobDesc2)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -223,9 +216,9 @@ class hidden:
             # then check for it having happened, but we can't guarantee that
             # the batch system will run against the same filesystem we are
             # looking at.
-            jobDesc3 = self._mockJobDescription(command="mktemp -d", jobName='test3', unitName=None,
+            jobDesc3 = self._mockJobDescription(jobName='test3', unitName=None,
                                                 jobStoreID='3', requirements=defaultRequirements)
-            job3 = self.batchSystem.issueBatchJob(jobDesc3)
+            job3 = self.batchSystem.issueBatchJob("mktemp -d", jobDesc3)
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
@@ -248,10 +241,6 @@ class hidden:
             self.batchSystem.killBatchJobs([10])
 
         def test_set_env(self):
-            # Parasol disobeys shell rules and splits the command at the space
-            # character into arguments before exec'ing it, whether the space is
-            # quoted, escaped or not.
-
             # Start with a relatively safe script
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
@@ -260,18 +249,18 @@ class hidden:
 
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
-            jobDesc4 = self._mockJobDescription(command=command, jobName='test4', unitName=None,
+            jobDesc4 = self._mockJobDescription(jobName='test4', unitName=None,
                                                 jobStoreID='4', requirements=defaultRequirements)
-            job4 = self.batchSystem.issueBatchJob(jobDesc4)
+            job4 = self.batchSystem.issueBatchJob(command, jobDesc4)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
             self.assertEqual(exitStatus, 42)
             self.assertEqual(jobID, job4)
             # Now set the variable and ensure that it is present
             self.batchSystem.setEnv('FOO', 'bar')
-            jobDesc5 = self._mockJobDescription(command=command, jobName='test5', unitName=None,
+            jobDesc5 = self._mockJobDescription(jobName='test5', unitName=None,
                                                 jobStoreID='5', requirements=defaultRequirements)
-            job5 = self.batchSystem.issueBatchJob(jobDesc5)
+            job5 = self.batchSystem.issueBatchJob(command, jobDesc5)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
             self.assertEqual(jobUpdateInfo.jobID, job5)
@@ -282,18 +271,18 @@ class hidden:
             command = "bash -c \"\\${@}\" bash eval " + script.replace(';', r'\;')
 
             # Issue a job with a job environment variable
-            job_desc_6 = self._mockJobDescription(command=command, jobName='test6', unitName=None,
+            job_desc_6 = self._mockJobDescription(jobName='test6', unitName=None,
                                                   jobStoreID='6', requirements=defaultRequirements)
-            job6 = self.batchSystem.issueBatchJob(job_desc_6, job_environment={
+            job6 = self.batchSystem.issueBatchJob(command, job_desc_6, job_environment={
                 'FOO': 'bar'
             })
             job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(job_update_info.exitStatus, 23)  # this should succeed
             self.assertEqual(job_update_info.jobID, job6)
             # Now check that the environment variable doesn't exist for other jobs
-            job_desc_7 = self._mockJobDescription(command=command, jobName='test7', unitName=None,
+            job_desc_7 = self._mockJobDescription(jobName='test7', unitName=None,
                                                   jobStoreID='7', requirements=defaultRequirements)
-            job7 = self.batchSystem.issueBatchJob(job_desc_7)
+            job7 = self.batchSystem.issueBatchJob(command, job_desc_7)
             job_update_info = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(job_update_info.exitStatus, 42)
             self.assertEqual(job_update_info.jobID, job7)
@@ -575,23 +564,6 @@ class KubernetesBatchSystemBenchTest(ToilTest):
         self.assertEqual(str(spec.tolerations), "None")
 
 
-@needs_tes
-@needs_fetchable_appliance
-class TESBatchSystemTest(hidden.AbstractBatchSystemTest):
-    """
-    Tests against the TES batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def createBatchSystem(self):
-        # Import the batch system when we know we have it.
-        # Doesn't really matter for TES right now, but someday it might.
-        from toil.batchSystems.tes import TESBatchSystem
-        return TESBatchSystem(config=self.config,
-                              maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-
 @needs_aws_batch
 @needs_fetchable_appliance
 class AWSBatchBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -644,9 +616,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
     def testIgnoreNode(self):
         self.batchSystem.ignoreNode('localhost')
-        jobDesc = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+        jobDesc = self._mockJobDescription(jobName='test2', unitName=None,
                                            jobStoreID='1', requirements=defaultRequirements)
-        job = self.batchSystem.issueBatchJob(jobDesc)
+        job = self.batchSystem.issueBatchJob('sleep 1000', jobDesc)
 
         issuedID = self._waitForJobsToIssue(1)
         self.assertEqual(set(issuedID), {job})
@@ -756,8 +728,13 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
                 command += ' hide'
 
             # Start the job
-            self.batchSystem.issueBatchJob(self._mockJobDescription(command=command, jobName='fork',
-                                                                    jobStoreID='1', requirements=defaultRequirements))
+            self.batchSystem.issueBatchJob(
+                command, 
+                self._mockJobDescription(
+                    jobName='fork',
+                    jobStoreID='1',
+                    requirements=defaultRequirements)
+            )
             # Wait
             time.sleep(10)
 
@@ -888,13 +865,18 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(JobDescription(command=self.scriptCommand(),
-                                                                           requirements=dict(
-                                                                               cores=float(coresPerJob),
-                                                                               memory=1, disk=1,
-                                                                               accelerators=[],
-                                                                               preemptible=preemptible),
-                                                                           jobName=str(i), unitName='')))
+                                desc = JobDescription(
+                                    requirements=dict(
+                                        cores=float(coresPerJob),
+                                        memory=1,
+                                        disk=1,
+                                        accelerators=[],
+                                        preemptible=preemptible
+                                    ),
+                                    jobName=str(i),
+                                    unitName=''
+                                )
+                                jobIds.add(bs.issueBatchJob(self.scriptCommand(), desc))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
@@ -919,7 +901,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
     def testServices(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logDebug = True
+        options.logLevel = "DEBUG"
         options.maxCores = 3
         self.assertTrue(options.maxCores <= SingleMachineBatchSystem.numCores)
         Job.Runner.startToil(Job.wrapJobFn(parentJob, self.scriptCommand()), options)
@@ -964,82 +946,6 @@ class Service(Job.Service):
 
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
-
-
-@slow
-@needs_parasol
-class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
-    """
-    Tests the Parasol batch system
-    """
-
-    def supportsWallTime(self):
-        return True
-
-    def _createConfig(self):
-        config = super()._createConfig()
-        # can't use _getTestJobStorePath since that method removes the directory
-        config.jobStore = self._createTempDir('jobStore')
-        return config
-
-    def createBatchSystem(self) -> AbstractBatchSystem:
-        memory = int(3e9)
-        self._startParasol(numCores=numCores, memory=memory)
-
-        return ParasolBatchSystem(config=self.config,
-                                  maxCores=numCores,
-                                  maxMemory=memory,
-                                  maxDisk=1001)
-
-    def tearDown(self):
-        super().tearDown()
-        self._stopParasol()
-
-    def testBatchResourceLimits(self):
-        jobDesc1 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=1 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job1 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job1)
-        jobDesc2 = JobDescription(command="sleep 1000",
-                                  requirements=dict(memory=2 << 30, cores=1,
-                                                    disk=1000, accelerators=[],
-                                                    preemptible=preemptible),
-                                  jobName='testResourceLimits')
-        job2 = self.batchSystem.issueBatchJob(jobDesc2)
-        self.assertIsNotNone(job2)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 2)
-        # It would be better to directly check that the batches have the correct memory and cpu
-        # values, but Parasol seems to slightly change the values sometimes.
-        self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
-        # Need to kill one of the jobs because there are only two cores available
-        self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob(jobDesc1)
-        self.assertIsNotNone(job3)
-        batches = self._getBatchList()
-        self.assertEqual(len(batches), 1)
-
-    def _parseBatchString(self, batchString):
-        import re
-        batchInfo = dict()
-        memPattern = re.compile(r"(\d+\.\d+)([kgmbt])")
-        items = batchString.split()
-        batchInfo["cores"] = int(items[7])
-        memMatch = memPattern.match(items[8])
-        ramValue = float(memMatch.group(1))
-        ramUnits = memMatch.group(2)
-        ramConversion = {'b': 1e0, 'k': 1e3, 'm': 1e6, 'g': 1e9, 't': 1e12}
-        batchInfo["ram"] = ramValue * ramConversion[ramUnits]
-        return batchInfo
-
-    def _getBatchList(self):
-        # noinspection PyUnresolvedReferences
-        exitStatus, batchLines = self.batchSystem._runParasol(['list', 'batches'])
-        self.assertEqual(exitStatus, 0)
-        return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
 @slow

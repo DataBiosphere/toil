@@ -1,17 +1,17 @@
 import os
 import subprocess
-import tempfile
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.io import mkdtemp
 
 
 def initialize_jobs(job):
-    job.fileStore.logToMaster('initialize_jobs')
+    job.fileStore.log_to_leader('initialize_jobs')
 
 
 def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, output_num):
-    job.fileStore.logToMaster("runQC")
+    job.fileStore.log_to_leader("runQC")
     tempDir = job.fileStore.getLocalTempDir()
 
     cwl = job.fileStore.readGlobalFile(cwl_file, userPath=os.path.join(tempDir, cwl_filename))
@@ -26,7 +26,7 @@ def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, outp
 
 
 if __name__ == "__main__":
-    jobstore: str = tempfile.mkdtemp("tutorial_cwlexample")
+    jobstore: str = mkdtemp("tutorial_cwlexample")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"

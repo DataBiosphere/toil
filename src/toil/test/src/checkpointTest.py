@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from toil.exceptions import FailedJobsException
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.exceptions import FailedJobsException
 from toil.test import ToilTest, slow
 
 
@@ -82,7 +82,7 @@ class CheckRetryCount(Job):
 
     def run(self, fileStore):
         retryCount = self.getNumRetries(fileStore)
-        fileStore.logToMaster(str(retryCount))
+        fileStore.log_to_leader(str(retryCount))
         if retryCount < self.numFailuresBeforeSuccess:
             self.addChild(AlwaysFail())
 

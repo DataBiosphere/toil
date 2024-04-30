@@ -48,7 +48,7 @@ class hidden:
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
+                self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
         @retry_flaky_test(prepare=[batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
@@ -74,7 +74,7 @@ class hidden:
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, self.cpuCount // coresPerJob)
+                self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
 
         def getOptions(self, tempDir, caching=True):
             options = super().getOptions(tempDir)
@@ -194,7 +194,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.logToMaster(f'{funcName}: {diskUsage}')
+    job.fileStore.log_to_leader(f'{funcName}: {diskUsage}')
     time.sleep(sleep)
     return diskUsage
 

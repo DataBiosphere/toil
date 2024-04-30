@@ -21,6 +21,7 @@ from toil import applianceSelf
 
 from toil.lib.aws import tags_from_env
 from toil.common import parser_with_common_options
+from toil.lib.conversions import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
                                parse_node_types)
@@ -32,15 +33,20 @@ logger = logging.getLogger(__name__)
 def create_tags_dict(tags: List[str]) -> Dict[str, str]:
     tags_dict = dict()
     for tag in tags:
-        key, value = tag.split('=')
+        try:
+            key, value = tag.split('=')
+        except ValueError:
+            logger.error("Tag specification '%s' must contain '='", tag)
+            raise
         tags_dict[key] = value
     return tags_dict
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil launch-cluster")
     parser.add_argument("-T", "--clusterType", dest="clusterType",
-                        choices=['mesos', 'kubernetes'], default='mesos',
+                        choices=['mesos', 'kubernetes'],
+                        default=None,  # TODO: change default to "kubernetes" when we are ready.
                         help="Cluster scheduler to use.")
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptible node type to use for the cluster leader.")
@@ -114,6 +120,10 @@ def main() -> None:
                         help="Any additional security groups to attach to EC2 instances. Note that a security group "
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
+    parser.add_argument("--allowFuse", type=opt_strtobool, default=True,
+                        help="Enable both the leader and worker nodes to be able to run Singularity with FUSE. For "
+                             "Kubernetes, this will make the leader privileged and ask workers to run as privileged. "
+                             "(default: %(default)s)")
     #TODO Set Aws Profile in CLI options
     options = parser.parse_args()
     set_logging_from_options(options)
@@ -161,6 +171,16 @@ def main() -> None:
         raise RuntimeError(f'Please provide a value for --zone or set a default in the '
                            f'TOIL_{options.provisioner.upper()}_ZONE environment variable.')
 
+    if options.clusterType == "mesos":
+        logger.warning('You are using a Mesos cluster, which is no longer recommended as Toil is '
+                       'transitioning to Kubernetes-based clusters. Consider switching to '
+                       '--clusterType=kubernetes instead.')
+
+    if options.clusterType is None:
+        logger.warning('Argument --clusterType is not set... using "mesos". '
+                       'In future versions of Toil, the default cluster scheduler will be '
+                       'set to "kubernetes" if the cluster type is not specified.')
+        options.clusterType = "mesos"
 
     logger.info('Creating cluster %s...', options.clusterName)
 
@@ -168,7 +188,8 @@ def main() -> None:
                               clusterName=options.clusterName,
                               clusterType=options.clusterType,
                               zone=options.zone,
-                              nodeStorage=options.nodeStorage)
+                              nodeStorage=options.nodeStorage,
+                              enable_fuse=options.allowFuse)
 
     cluster.launchCluster(leaderNodeType=options.leaderNodeType,
                           leaderStorage=options.leaderStorage,

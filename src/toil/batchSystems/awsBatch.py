@@ -34,25 +34,25 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, Iterator, List, Optional, Set, Union
 
-from boto.exception import BotoServerError
+from botocore.exceptions import ClientError
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    BatchJobExitReason,
-                                                   UpdatedBatchJobInfo,
-                                                   InsufficientSystemResources)
-from toil.batchSystems.options import OptionSetter
+                                                   InsufficientSystemResources,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.bus import ExternalBatchIdMessage, MessageBus, MessageOutbox
+from toil.batchSystems.options import OptionSetter
+from toil.bus import ExternalBatchIdMessage
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
-from toil.lib.aws import get_current_aws_region, zone_to_region
+from toil.lib.aws import get_current_aws_region
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.conversions import b_to_mib, mib_to_b
-from toil.lib.misc import slow_down, unix_now_ms, utc_now
+from toil.lib.conversions import b_to_mib
+from toil.lib.misc import slow_down, unix_now_ms
 from toil.lib.retry import retry
 from toil.resource import Resource
 
@@ -156,9 +156,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'AWS Batch can only provide nvidia gpu accelerators.'
                 ])
 
-    def issueBatchJob(self, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Try the job as local
-        local_id = self.handleLocalJob(job_desc)
+        local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
             # It is a local job
             return local_id
@@ -184,7 +184,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 environment.update(job_environment)
 
             # Make a command to run it in the executor
-            command_list = pack_job(job_desc, self.user_script)
+            command_list = pack_job(command, self.user_script)
 
             # Compose a job spec to submit
             job_spec = {
@@ -376,7 +376,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Get rid of the job definition we are using if we can.
         self._destroy_job_definition()
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _try_terminate(self, aws_id: str) -> None:
         """
         Internal function. Should not be called outside this class.
@@ -392,7 +392,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Kill the AWS Batch job
         self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _wait_until_stopped(self, aws_id: str) -> None:
         """
         Internal function. Should not be called outside this class.
@@ -418,7 +418,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             logger.info('Waiting for killed job %s to stop', self.aws_id_to_bs_id.get(aws_id, aws_id))
             time.sleep(2)
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _get_or_create_job_definition(self) -> str:
         """
         Internal function. Should not be called outside this class.
@@ -482,7 +482,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
         return self.job_definition
 
-    @retry(errors=[BotoServerError])
+    @retry(errors=[ClientError])
     def _destroy_job_definition(self) -> None:
         """
         Internal function. Should not be called outside this class.
@@ -559,17 +559,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None,
+        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
                             help="The AWS region containing the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None,
+        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
                             help="The name or ARN of the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None,
+        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
                             help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
                                   "can e.g. access a job store. Must be assumable by "
                                   "ecs-tasks.amazonaws.com."))
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("aws_batch_region", default=None)
-        setOption("aws_batch_queue", default=None, env=["TOIL_AWS_BATCH_QUEUE"])
-        setOption("aws_batch_job_role_arn", default=None, env=["TOIL_AWS_BATCH_JOB_ROLE_ARN"])
+        setOption("aws_batch_region")
+        setOption("aws_batch_queue")
+        setOption("aws_batch_job_role_arn")

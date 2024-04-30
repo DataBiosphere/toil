@@ -28,7 +28,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import even standard modules at global scope without renaming them
 #    to have leading/trailing underscores
 
-baseVersion = '5.13.0a1'
+baseVersion = '7.0.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
@@ -64,10 +64,6 @@ def mainCacheTag():
 
 def distVersion():
     """The distribution version identifying a published release on PyPI."""
-    from pkg_resources import parse_version
-    if isinstance(parse_version(baseVersion), tuple):
-        raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
-                           "'pip install setuptools --upgrade'")
     return baseVersion
 
 

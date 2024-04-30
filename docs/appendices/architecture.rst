@@ -3,7 +3,7 @@ Toil Architecture
 
 The following diagram layouts out the software architecture of Toil.
 
-.. figure:: toil_architecture.jpg
+.. figure:: toil_architecture.png
     :align: center
     :alt: Toil's architecture is composed of the leader, the job store, the worker
           processes, the batch system, the node provisioner, and the stats and
@@ -36,7 +36,7 @@ These components are described below:
         If the job defines successor jobs the worker may choose to immediately run them
         (see `Job Chaining`_ below).
     * the batch-system:
-        Responsible for scheduling the jobs given to it by the leader, creating
+        Responsible for scheduling the jobs given to it by the leader, running
         a worker command for each job. The batch-system is defined by the
         :class:`~toil.batchSystems.abstractBatchSystem.AbstractBatchSystem` class.
         Toil uses multiple existing batch systems to schedule jobs, including
@@ -56,14 +56,14 @@ Jobs and JobDescriptions
 ------------------------
 
 As noted in :ref:`jobBasics`, a job is the atomic unit of work in a Toil workflow.
-User scripts inherit from the :class:`~toil.job.Job` class to define units of work.
+Workflows extend the :class:`~toil.job.Job` class to define units of work.
 These jobs are pickled and stored in the job-store by the leader, and are retrieved
 and un-pickled by the worker when they are scheduled to run.
 
 During scheduling, Toil does not work with the actual Job objects. Instead,
 :class:`~toil.job.JobDescription` objects are used to store all the information
 that the Toil Leader ever needs to know about the Job. This includes requirements
-information, dependency information, commands to issue, etc.
+information, dependency information, body object to run, worker command to issue, etc.
 
 Internally, the JobDescription object is referenced by its jobStoreID, which is
 often not human readable. However, the Job and JobDescription objects contain
@@ -84,16 +84,64 @@ several human-readable names that are useful for logging and identification:
 | unitName         | Name of this *instance* of this kind of job. If set by the user,   |
 |                  | it will appear with the jobName in logging.                        |
 |                  |                                                                    |
-|                  | For a CWL workflow, the unitName is set to a descriptive name that |
-|                  | includes the CWL file name and the ID in the file if set.          |
+|                  | For a CWL workflow, the unitName is the dotted path from the       |
+|                  | workflow down to the task being run, including numbers for scatter |
+|                  | steps.                                                             |
 +------------------+--------------------------------------------------------------------+
 | displayName      | A human-readable name to identify this particular job instance.    |
 |                  | Used as an identifier of the job class in the stats report.        |
 |                  | Defaults to the job class's name if no real user-defined name is   |
 |                  | available.                                                         |
 |                  |                                                                    |
-|                  | For a CWL workflow, the displayName is the absolute workflow URI.  |
+|                  | For CWL workflows, this includes the jobName and the unitName.     |
 +------------------+--------------------------------------------------------------------+
+
+Statistics and Logging
+----------------------
+
+Toil's statistics and logging system is implemented in a joint class
+:class:`~toil.statsAndLogging.StatsAndLogging`. The class can be instantiated
+and run as a thread on the leader, where it polls for new log files in the job
+store with the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.read_logs` method.
+These are JSON files, which contain structured data. Structured log messages
+from user Python code, stored under ``workers.logs_to_leader``, from the file
+store's
+:meth:`~toil.fileStores.abstractFileStore.AbstractFileStore.log_to_leader`
+method, will be logged at the appropriate level. The text output that the
+worker captured for all its chained jobs, in ``logs.messages``, will be logged
+at debug level in the worker's output. If ``--writeLogs`` or
+``--writeLogsGzip`` is provided, the received worker logs will also be stored
+by the StatsAndLogging thread into per-job files inside the job store, using
+:meth:`~toil.statsAndLogging.StatsAndLogging.writeLogFiles`.
+
+Note that the worker only fills this in if running with debug logging on, or if
+``--writeLogsFromAllJobs`` is set. Otherwise, logs from successful jobs are not
+persisted. Logs from failed jobs are persisted differently; they are written
+to the file store, and the log file is made available through
+:meth:`toil.job.JobDescription.getLogFileHandle`. The leader thread retrieves
+these logs and calls back into :class:`~toil.statsAndLogging.StatsAndLogging`
+to print or locally save them as appropriate.
+
+The CWL and WDL interpreters use
+:meth:`~toil.fileStores.abstractFileStore.AbstractFileStore.log_user_stream` to
+inject CWL and WDL task-level logs into the stats and logging logging system.
+The full text of those logs gets stored in the JSON stats files, and when the
+StatsAndLogging thread sees them it reports and saves them, similarly to how it
+treats Toil job logs.
+
+To ship the statistics and the non-failed-job logs around, the job store has a
+logs mailbox system: the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.write_logs` method
+deposits a string, and the
+:meth:`~toil.jobStores.abstractJobStore.AbstractJobStore.read_logs` method on
+the leader passes the strings to a callback. It tracks a concept of new and
+old, based on whether the string has been read already by anyone, and one can
+read only the new values, or all values observed. The stats and logging system
+uses this to pass around structured JSON holding both log data and
+worker-measured stats, and expects the
+:class:`~toil.statsAndLogging.StatsAndLogging` thread to be the only live
+reader.
 
 
 Optimizations
@@ -160,7 +208,7 @@ To optimize time taken, The pipeline is written such that mutations are called o
 basis from the whole-exome bams and are merged into a complete vcf. Running mutect in parallel on
 whole exome bams requires each mutect job to download the complete Tumor and Normal Bams to their
 working directories -- An operation that quickly fills the disk and limits the parallelizability of
-jobs. The script was run in Toil, with and without caching, and Figure 2 shows that the workflow
+jobs. The workflow was run in Toil, with and without caching, and Figure 2 shows that the workflow
 finishes faster in the cached case while using less disk on average than the uncached run. We
 believe that benefits of caching arising from file transfers will be much higher on magnetic
 disk-based storage systems as compared to the SSD systems we tested this on.

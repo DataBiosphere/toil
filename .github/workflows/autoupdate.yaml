@@ -1,0 +1,24 @@
+# Auto-update PRs when other PRs are merged.
+# See https://github.com/marketplace/actions/auto-update
+
+name: autoupdate
+on:
+  push:
+    branches:
+      - master
+jobs:
+  autoupdate:
+    name: autoupdate
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: docker://chinthakagodawita/autoupdate-action:v1
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          # Work on PRs against branches that are protected (so they need to be
+          # up to date)
+          PR_FILTER: "protected"
+          # Don't work on draft PRs
+          PR_READY_STATE: "ready_for_review"
+          # Don't fail on the triggering commit if it makes a merge conflict
+          # with a PR and the PR can't update
+          MERGE_CONFLICT_ACTION: "ignore"

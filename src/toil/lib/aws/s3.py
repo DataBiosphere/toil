@@ -99,6 +99,7 @@ def delete_s3_bucket(
     Note: 'quiet' is False when used for a clean up utility script (contrib/admin/cleanup_aws_resources.py)
          that prints progress rather than logging.  Logging should be used for all other internal Toil usage.
     """
+    assert isinstance(bucket_name, str), f'{bucket_name} is not a string ({type(bucket_name)}).'
     logger.debug("Deleting bucket '%s'.", bucket_name)
     printq(f'\n * Deleting s3 bucket: {bucket_name}\n\n', quiet)
 

@@ -26,7 +26,7 @@ from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.lib.conversions import human2bytes
-from toil.lib.util.compatibility import compat_bytes_recursive
+from toil.lib.compatibility import compat_bytes_recursive
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -42,13 +42,13 @@ class GCEProvisioner(AbstractProvisioner):
     NODE_BOTO_PATH = "/root/.boto"  # boto file path on instances
     SOURCE_IMAGE = b'projects/kinvolk-public/global/images/family/flatcar-stable'
 
-    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey):
+    def __init__(self, clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, sseKey, enable_fuse):
         self.cloud = 'gce'
         self._sseKey = sseKey
 
         # Call base class constructor, which will call createClusterSettings()
         # or readClusterSettings()
-        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides)
+        super().__init__(clusterName, clusterType, zone, nodeStorage, nodeStorageOverrides, enable_fuse)
 
     def supportedClusterTypes(self):
         return {'mesos'}
@@ -197,7 +197,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.debug('Launched leader')
 
-    def getNodeShape(self, instance_type: str, preemptible=False):
+    def getNodeShape(self, instance_type: str, preemptible=False) -> Shape:
         # TODO: read this value only once
         sizes = self._gceDriver.list_sizes(location=self._zone)
         sizes = [x for x in sizes if x.name == instance_type]

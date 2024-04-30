@@ -15,7 +15,7 @@ include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, docker, and push_docker.
+Supported targets: prepare, develop, docs, dist, clean, test, docker, and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -29,10 +29,11 @@ list of supported extras. To install Toil in develop mode with all extras, run
 
 	make develop extras=[all]
 
-The 'sdist' target creates a source distribution of Toil. It is used for some unit tests and for
-installing the currently checked out version of Toil into the appliance image.
+The 'dist' target creates a source distribution and a wheel of Toil. It is used
+for some unit tests and for installing the currently checked out version of Toil
+into the appliance image.
 
-The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', and 'docker'
+The 'clean' target cleans up the side effects of 'develop', 'dist', 'docs', and 'docker'
 on this machine. It does not undo externally visible effects like removing packages already
 uploaded to PyPI.
 
@@ -91,7 +92,7 @@ extras=
 # You can say make develop packages=xxx to install packages in the same Python
 # environment as Toil itself without creating dependency conflicts with Toil
 packages=
-sdist_name:=toil-$(shell python version_template.py distVersion).tar.gz
+sdist_name:=toil-$(shell python3 version_template.py distVersion).tar.gz
 
 green=\033[0;32m
 normal=\033[0m
@@ -114,11 +115,12 @@ clean_develop: check_venv
 uninstall:
 	- pip uninstall -y toil
 
+dist: sdist
 sdist: dist/$(sdist_name)
 
-dist/$(sdist_name): check_venv
+dist/$(sdist_name):
 	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
-	python setup.py sdist
+	python3 -m build
 	@test -f dist/$(sdist_name).old \
 	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
 	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
@@ -133,7 +135,11 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
+
+test_debug: check_venv check_build_reqs
+	TOIL_OWNER_TAG="$(whoami)" \
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native --maxfail=1
 
 
 # This target will skip building docker and all docker based tests
@@ -141,6 +147,7 @@ test: check_venv check_build_reqs
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
+	TOIL_SKIP_ONLINE=True \
 	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
@@ -232,7 +239,7 @@ push_docker: docker
 
 load_docker: docker
 	cd docker ; docker buildx build --platform $(arch) --load --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../.docker-cache/toil -f Dockerfile .
-	cd dashboard/prometheus ; docker buildx build --platform $(arch) --load --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../../.docker-cache/prometheus -f Dockerfile . 
+	cd dashboard/prometheus ; docker buildx build --platform $(arch) --load --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../../.docker-cache/prometheus -f Dockerfile .
 	cd dashboard/grafana ; docker buildx build --platform $(arch) --load --tag=$(grafana_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../../.docker-cache/grafana -f Dockerfile .
 	cd dashboard/mtail ; docker buildx build --platform $(arch) --load --tag=$(mtail_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../../.docker-cache/mtail -f Dockerfile .
 
@@ -245,7 +252,6 @@ endif
 
 
 docs: check_venv check_build_reqs
-	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && ${MAKE} html
 
 clean_docs: check_venv
@@ -254,7 +260,7 @@ clean_docs: check_venv
 clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
-	@(python -c 'import mock; import pytest' && which sphinx-build >/dev/null) \
+	@(python -c 'import pytest' && which sphinx-build >/dev/null) \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
 prepare: check_venv
@@ -295,13 +301,11 @@ remove_unused_imports: $(PYSOURCES)
 remove_trailing_whitespace:
 	$(CURDIR)/contrib/admin/remove_trailing_whitespace.py
 
-format: $(wildcard src/toil/cwl/*.py)
+format: $(PYSOURCES)
 	black $^ contrib/mypy-stubs
 
 mypy:
-	mypy --ignore-missing-imports --no-strict-optional \
-		--warn-redundant-casts --warn-unused-ignores \
-		$(CURDIR)/src/toil/cwl/cwltoil.py
+	MYPYPATH=$(CURDIR)/contrib/mypy-stubs mypy --strict $(CURDIR)/src/toil/{cwl/cwltoil.py,test/cwl/cwlTest.py}
 	$(CURDIR)/contrib/admin/mypy-with-ignore.py
 	
 # This target will check any modified files for pylint errors.

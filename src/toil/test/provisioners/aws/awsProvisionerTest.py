@@ -19,9 +19,13 @@ import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
+from typing import Optional, List
 from uuid import uuid4
 
+import botocore.exceptions
 import pytest
+from mypy_boto3_ec2 import EC2Client
+from mypy_boto3_ec2.type_defs import EbsInstanceBlockDeviceTypeDef, InstanceTypeDef, InstanceBlockDeviceMappingTypeDef, FilterTypeDef, DescribeVolumesResultTypeDef, VolumeTypeDef
 
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -29,6 +33,7 @@ from toil.test import (ToilTest,
                        integrative,
                        needs_aws_ec2,
                        needs_fetchable_appliance,
+                       needs_mesos,
                        slow,
                        timeLimit)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
@@ -112,15 +117,20 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
-    def getRootVolID(self):
-        instances = self.cluster._get_nodes_in_cluster()
-        instances.sort(key=lambda x: x.launch_time)
-        leader = instances[0]  # assume leader was launched first
+    def getRootVolID(self) -> str:
+        instances: List[InstanceTypeDef] = self.cluster._get_nodes_in_cluster_boto3()
+        instances.sort(key=lambda x: x.get("LaunchTime"))
+        leader: InstanceTypeDef = instances[0]  # assume leader was launched first
 
-        from boto.ec2.blockdevicemapping import BlockDeviceType
-        rootBlockDevice = leader.block_device_mapping["/dev/xvda"]
-        assert isinstance(rootBlockDevice, BlockDeviceType)
-        return rootBlockDevice.volume_id
+        bdm: Optional[List[InstanceBlockDeviceMappingTypeDef]] = leader.get("BlockDeviceMappings")
+        assert bdm is not None
+        root_block_device: Optional[EbsInstanceBlockDeviceTypeDef] = None
+        for device in bdm:
+            if device["DeviceName"] == "/dev/xvda":
+                root_block_device = device["Ebs"]
+        assert root_block_device is not None  # There should be a device named "/dev/xvda"
+        assert root_block_device.get("VolumeId") is not None
+        return root_block_device["VolumeId"]
 
     @abstractmethod
     def _getScript(self):
@@ -171,9 +181,6 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', self.venvDir]
         self.sshUtil(venv_command)
 
-        upgrade_command = [self.pip(), 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
-        self.sshUtil(upgrade_command)
-
         log.info('Set up script...')
         self._getScript()
 
@@ -193,27 +200,27 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
         assert len(self.cluster._getRoleNames()) == 1
 
-        from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
         self.cluster.destroyCluster()
+        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
+        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [volumeID]}
+        volumes: Optional[List[VolumeTypeDef]] = None
         for attempt in range(6):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
-            try:
-                self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])
-                time.sleep(10)
-            except EC2ResponseError as e:
-                if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
-                    break
-                else:
-                    raise
-        else:
+            volumes = boto3_ec2.describe_volumes(Filters=[volume_filter])["Volumes"]
+            if len(volumes) == 0:
+                # None are left, so they have been properly deleted
+                break
+            time.sleep(10)
+        if volumes is None or len(volumes) > 0:
             self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
 
         assert len(self.cluster._getRoleNames()) == 0
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -247,16 +254,19 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         # add arguments to test that we can specify leader storage
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage)])
 
-    def getRootVolID(self):
+    def getRootVolID(self) -> str:
         """
         Adds in test to check that EBS volume is build with adequate size.
         Otherwise is functionally equivalent to parent.
         :return: volumeID
         """
         volumeID = super().getRootVolID()
-        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[volumeID])[0]
+        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
+        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [volumeID]}
+        volumes: DescribeVolumesResultTypeDef = boto3_ec2.describe_volumes(Filters=[volume_filter])
+        root_volume: VolumeTypeDef = volumes["Volumes"][0]  # should be first
         # test that the leader is given adequate storage
-        self.assertGreaterEqual(rootVolume.size, self.requestedLeaderStorage)
+        self.assertGreaterEqual(root_volume["Size"], self.requestedLeaderStorage)
         return volumeID
 
     @integrative
@@ -282,6 +292,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(2400)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
@@ -290,8 +301,6 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from boto.ec2.blockdevicemapping import BlockDeviceType
-
         from toil.lib.ec2 import wait_instances_running
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes),
@@ -303,8 +312,8 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # visible to EC2 read requests immediately after the create returns,
         # which is the last thing that starting the cluster does.
         time.sleep(10)
-        nodes = self.cluster._get_nodes_in_cluster()
-        nodes.sort(key=lambda x: x.launch_time)
+        nodes: List[InstanceTypeDef] = self.cluster._get_nodes_in_cluster_boto3()
+        nodes.sort(key=lambda x: x.get("LaunchTime"))
         # assuming that leader is first
         workers = nodes[1:]
         # test that two worker nodes were created
@@ -312,11 +321,22 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        worker = next(wait_instances_running(self.boto2_ec2, [worker]))
-        rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
-        self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
-        rootVolume = self.boto2_ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
-        self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
+        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
+
+        worker: InstanceTypeDef = next(wait_instances_running(boto3_ec2, [worker]))
+
+        bdm: Optional[List[InstanceBlockDeviceMappingTypeDef]] = worker.get("BlockDeviceMappings")
+        assert bdm is not None
+        root_block_device: Optional[EbsInstanceBlockDeviceTypeDef] = None
+        for device in bdm:
+            if device["DeviceName"] == "/dev/xvda":
+                root_block_device = device["Ebs"]
+        assert root_block_device is not None
+        assert root_block_device.get("VolumeId") is not None  # TypedDicts cannot have runtime type checks
+
+        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [root_block_device["VolumeId"]]}
+        root_volume: VolumeTypeDef = boto3_ec2.describe_volumes(Filters=[volume_filter])["Volumes"][0]  # should be first
+        self.assertGreaterEqual(root_volume.get("Size"), self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
         # Autoscale even though we have static nodes
@@ -337,9 +357,6 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
-        from boto.ec2.blockdevicemapping import BlockDeviceType  # noqa
-
-        from toil.lib.ec2 import wait_instances_running  # noqa
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes),
                                      '--workers', ",".join([f'0-{c}' for c in self.numWorkers]),
@@ -357,6 +374,7 @@ class AWSManagedAutoscaleTest(AWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -396,6 +414,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """This test insures autoscaling works on a restarted Toil run."""
@@ -412,8 +431,9 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def _getScript(self):
         def restartScript():
-            import argparse
             import os
+
+            from configargparse import ArgumentParser
 
             from toil.job import Job
 
@@ -422,7 +442,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                     raise RuntimeError('failed on purpose')
 
             if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
+                parser = ArgumentParser()
                 Job.Runner.addToilOptions(parser)
                 options = parser.parse_args()
                 rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')
@@ -458,6 +478,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
 
 @integrative
+@needs_mesos
 @pytest.mark.timeout(1200)
 class PreemptibleDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):

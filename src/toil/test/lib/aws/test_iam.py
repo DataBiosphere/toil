@@ -11,11 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import json
 import logging
 import boto3
-import json
 
-from moto import mock_iam
+from moto import mock_aws
 
 from toil.lib.aws import iam
 from toil.test import ToilTest
@@ -26,7 +26,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
-
     def test_permissions_iam(self):
         granted_perms = {'*': {'Action': ['ec2:*', 'iam:*', 's3:*', 'sdb:*'], 'NotAction': []}}
         assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True
@@ -46,7 +45,7 @@ class IAMTest(ToilTest):
         assert iam.permission_matches_any("iam:*", ["*"]) is True
         assert iam.permission_matches_any("ec2:*", ['iam:*']) is False
 
-    @mock_iam
+    @mock_aws
     def test_get_policy_permissions(self):
         mock_iam = boto3.client("iam")
 

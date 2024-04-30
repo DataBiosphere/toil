@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import stat
+import tempfile
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
@@ -9,6 +10,26 @@ from typing import IO, Any, Callable, Iterator, Optional, Union
 
 logger = logging.getLogger(__name__)
 
+def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None) -> str:
+    """
+    Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
+
+    The permissions on the directory will be 711 instead of 700, allowing the
+    group and all other users to traverse the directory. This is necessary if
+    the directory is on NFS and the Docker daemon would like to mount it or a
+    file inside it into a container, because on NFS even the Docker daemon
+    appears bound by the file permissions.
+
+    See <https://github.com/DataBiosphere/toil/issues/4644>, and
+    <https://stackoverflow.com/a/67928880> which talks about a similar problem
+    but in the context of user namespaces.
+    """
+    # Make the directory
+    result = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
+    # Grant all the permissions: full control for user, and execute for group and other
+    os.chmod(result, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    # Return the path created
+    return result
 
 def robust_rmtree(path: Union[str, bytes]) -> None:
     """
@@ -138,14 +159,26 @@ def atomic_copyobj(src_fh: BytesIO, dest_path: str, length: int = 16384, executa
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 
-def make_public_dir(in_directory: Optional[str] = None) -> str:
+def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> str:
     """
+    Make a publicly-accessible directory in the given directory.
+
+    :param suggested_name: Use this directory name first if possible.
+
     Try to make a random directory name with length 4 that doesn't exist, with the given prefix.
     Otherwise, try length 5, length 6, etc, up to a max of 32 (len of uuid4 with dashes replaced).
     This function's purpose is mostly to avoid having long file names when generating directories.
     If somehow this fails, which should be incredibly unlikely, default to a normal uuid4, which was
     our old default.
     """
+    if suggested_name is not None:
+        generated_dir_path: str = os.path.join(in_directory, suggested_name)
+        try:
+            os.mkdir(generated_dir_path)
+            os.chmod(generated_dir_path, 0o777)
+            return generated_dir_path
+        except FileExistsError:
+            pass
     for i in range(4, 32 + 1):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
         for _ in range(10):  # make 10 attempts for each length
             truncated_uuid: str = str(uuid.uuid4()).replace('-', '')[:i]
@@ -161,17 +194,43 @@ def make_public_dir(in_directory: Optional[str] = None) -> str:
     os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
 
-def try_path(path: str) -> Optional[str]:
+def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
     """
     Try to use the given path. Return it if it exists or can be made,
     and we can make things within it, or None otherwise.
+
+    :param min_size: Reject paths on filesystems smaller than this many bytes.
     """
+
     try:
         os.makedirs(path, exist_ok=True)
     except OSError:
         # Maybe we lack permissions
         return None
-    return path if os.path.exists(path) and os.access(path, os.W_OK) else None
+
+    if not os.path.exists(path):
+        # We didn't manage to make it
+        return None
+
+    if not os.access(path, os.W_OK):
+        # It doesn't look writable
+        return None
+
+    try:
+        stats = os.statvfs(path)
+    except OSError:
+        # Maybe we lack permissions
+        return None
+
+    # Is the filesystem big enough?
+    # We need to look at the FS size and not the free space so we don't change
+    # over to a different filesystem when this one fills up.
+    fs_size = stats.f_frsize * stats.f_blocks
+    if fs_size < min_size:
+        # Too small
+        return None
+
+    return path
 
 
 class WriteWatchingStream:

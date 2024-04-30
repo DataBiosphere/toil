@@ -15,16 +15,16 @@
 import logging
 import os
 from threading import Thread, current_thread
-from typing import Optional
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-from toil.bus import JobCompletedMessage, JobIssuedMessage, MessageBus, replay_message_bus
+from toil.bus import (JobCompletedMessage,
+                      JobIssuedMessage,
+                      MessageBus,
+                      replay_message_bus)
 from toil.common import Toil
-from toil.job import Job
 from toil.exceptions import FailedJobsException
+from toil.job import Job
 from toil.test import ToilTest, get_temp_file
-
-
 
 logger = logging.getLogger(__name__)
 

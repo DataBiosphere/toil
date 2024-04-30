@@ -17,14 +17,15 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.bus import ExternalBatchIdMessage
-from toil.job import JobDescription, AcceleratorRequirement
+from toil.bus import ExternalBatchIdMessage, get_job_kind
+from toil.job import AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
+from toil.lib.retry import old_retry, DEFAULT_DELAYS
 
 logger = logging.getLogger(__name__)
 
@@ -44,26 +45,29 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     A partial implementation of BatchSystemSupport for batch systems run on a
     standard HPC cluster. By default auto-deployment is not implemented.
     """
+    class GridEngineThreadException(Exception):
+        pass
 
-    class Worker(Thread, metaclass=ABCMeta):
-
+    class GridEngineThread(Thread, metaclass=ABCMeta):
         def __init__(self, newJobsQueue: Queue, updatedJobsQueue: Queue, killQueue: Queue, killedJobsQueue: Queue, boss: 'AbstractGridEngineBatchSystem') -> None:
             """
-            Abstract worker interface class. All instances are created with five
+            Abstract thread interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
 
             :param newJobsQueue: a Queue of new (unsubmitted) jobs
             :param updatedJobsQueue: a Queue of jobs that have been updated
             :param killQueue: a Queue of active jobs that need to be killed
-            :param killedJobsQueue: Queue of killed jobs for this worker
+            :param killedJobsQueue: Queue of killed jobs for this thread
             :param boss: the AbstractGridEngineBatchSystem instance that
-                         controls this AbstractGridEngineWorker
+                         controls this GridEngineThread
 
             """
             Thread.__init__(self)
             self.boss = boss
             self.boss.config.statePollingWait = \
                 self.boss.config.statePollingWait or self.boss.getWaitDuration()
+            self.boss.config.state_polling_timeout = \
+                self.boss.config.state_polling_timeout or self.boss.config.statePollingWait * 10
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
@@ -74,6 +78,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.batchJobIDs: Dict[int, str] = dict()
             self._checkOnJobsCache = None
             self._checkOnJobsTimestamp = None
+            self.exception = None
 
         def getBatchSystemID(self, jobID: int) -> str:
             """
@@ -107,7 +112,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             """
             Create a new job with the given attributes.
 
-            Implementation-specific; called by AbstractGridEngineWorker.run()
+            Implementation-specific; called by GridEngineThread.run()
             """
             activity = False
             # Load new job id if present:
@@ -143,7 +148,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         def killJobs(self):
             """
-            Kill any running jobs within worker
+            Kill any running jobs within thread
             """
             killList = list()
             while True:
@@ -175,7 +180,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.boss.with_retries(self.getJobExitCode, batchJobID) is not None:
+                    exit_code = self.boss.with_retries(self.getJobExitCode, batchJobID)
+                    if exit_code is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
@@ -225,23 +231,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             return activity
 
         def _handle_job_status(
-            self, job_id: int, status: Union[int, None], activity: bool
+            self, job_id: int, status: Union[int, Tuple[int, Optional[BatchJobExitReason]], None], activity: bool
         ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
             """
             if status is not None:
+                if isinstance(status, int):
+                    code = status
+                    reason = None
+                else:
+                    code, reason = status
                 self.updatedJobsQueue.put(
                     UpdatedBatchJobInfo(
-                        jobID=job_id, exitStatus=status, exitReason=None, wallTime=None
-                    )
-                )
-                self.forgetJob(job_id)
-                return True
-            if status is not None and isinstance(status, BatchJobExitReason):
-                self.updatedJobsQueue.put(
-                    UpdatedBatchJobInfo(
-                        jobID=job_id, exitStatus=1, exitReason=status, wallTime=None
+                        jobID=job_id, exitStatus=code, exitReason=reason, wallTime=None
                     )
                 )
                 self.forgetJob(job_id)
@@ -276,14 +279,17 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 while self._runStep():
                     pass
             except Exception as ex:
-                logger.error("GridEngine like batch system failure", exc_info=ex)
-                raise
+                self.exception = ex
+                logger.error("GridEngine like batch system failure: %s", ex)
+                # don't raise exception as is_alive will still be set to false,
+                # signalling exception in the thread as we expect the thread to
+                # always be running for the duration of the workflow
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
             """
-            Returns exit codes for a list of jobs.
+            Returns exit codes and possibly exit reasons for a list of jobs, or None if they are running.
 
-            Called by AbstractGridEngineWorker.checkOnJobs().
+            Called by GridEngineThread.checkOnJobs().
 
             This is an optional part of the interface. It should raise
             NotImplementedError if not actually implemented for a particular
@@ -344,23 +350,26 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         def killJob(self, jobID):
             """
             Kill specific job with the Toil job ID. Implementation-specific; called
-            by AbstractGridEngineWorker.killJobs()
+            by GridEngineThread.killJobs()
 
             :param string jobID: Toil job ID
             """
             raise NotImplementedError()
 
         @abstractmethod
-        def getJobExitCode(self, batchJobID):
+        def getJobExitCode(self, batchJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
-            Returns job exit code or an instance of abstractBatchSystem.BatchJobExitReason.
-            if something else happened other than the job exiting.
-            Implementation-specific; called by AbstractGridEngineWorker.checkOnJobs()
+            Returns job exit code and possibly an instance of abstractBatchSystem.BatchJobExitReason.
+
+            Returns None if the job is still running.
+
+            If the job is not running but the exit code is not available, it
+            will be EXIT_STATUS_UNAVAILABLE_VALUE. Implementation-specific;
+            called by GridEngineThread.checkOnJobs().
+
+            The exit code will only be 0 if the job affirmatively succeeded.
 
             :param string batchjobID: batch system job ID
-
-            :rtype: int|toil.batchSystems.abstractBatchSystem.BatchJobExitReason: exit code int
-                    or BatchJobExitReason if something else happened other than job exiting.
             """
             raise NotImplementedError()
 
@@ -375,24 +384,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
         self.killedJobsQueue = Queue()
-        # get the associated worker class here
-        self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue,
-                                  self.killQueue, self.killedJobsQueue, self)
-        self.worker.start()
+        # get the associated thread class here
+        self.background_thread = self.GridEngineThread(self.newJobsQueue, self.updatedJobsQueue,
+                                                       self.killQueue, self.killedJobsQueue, self)
+        self.background_thread.start()
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
-
-    @classmethod
-    def supportsWorkerCleanup(cls):
-        return False
 
     @classmethod
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, jobDesc, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobDesc, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(jobDesc)
+        localID = self.handleLocalJob(command, jobDesc)
         if localID is not None:
             return localID
         else:
@@ -406,11 +411,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                         gpus = accelerator['count']
             else:
                 gpus = jobDesc.accelerators
-
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, jobDesc.command, jobDesc.get_job_kind(),
+            
+            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, command, get_job_kind(jobDesc.get_names()),
                                    job_environment, gpus))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobDesc.command, str(jobID),
-                         jobDesc.get_job_kind())
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(jobID),
+                         get_job_kind(jobDesc.get_names()))
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -424,7 +429,12 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         for jobID in jobIDs:
             self.killQueue.put(jobID)
         while jobIDs:
-            killedJobId = self.killedJobsQueue.get()
+            try:
+                killedJobId = self.killedJobsQueue.get(timeout=10)
+            except Empty:
+                if not self.background_thread.is_alive():
+                    raise self.GridEngineThreadException("Grid engine thread failed unexpectedly") from self.background_thread.exception
+                continue
             if killedJobId is None:
                 break
             jobIDs.remove(killedJobId)
@@ -456,7 +466,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            batchIds = self.with_retries(self.worker.getRunningJobIDs)
+            batchIds = self.with_retries(self.background_thread.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
@@ -464,6 +474,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         local_tuple = self.getUpdatedLocalJob(0)
+
+        if not self.background_thread.is_alive():
+            # kill remaining jobs on the thread
+            self.background_thread.killJobs()
+            raise self.GridEngineThreadException("Unexpected GridEngineThread failure") from self.background_thread.exception
         if local_tuple:
             return local_tuple
         else:
@@ -477,14 +492,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def shutdown(self) -> None:
         """
-        Signals worker to shutdown (via sentinel) then cleanly joins the thread
+        Signals thread to shutdown (via sentinel) then cleanly joins the thread
         """
         self.shutdownLocal()
         newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
 
         newJobsQueue.put(None)
-        self.worker.join()
+        self.background_thread.join()
 
     def setEnv(self, name, value=None):
         if value and ',' in value:
@@ -503,21 +518,20 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def with_retries(self, operation, *args, **kwargs):
         """
-        Call operation with args and kwargs. If one of the calls to an SGE
-        command fails, sleep and try again for a set number of times.
+        Call operation with args and kwargs. If one of the calls to a
+        command fails, sleep and try again.
         """
-        maxTries = 3
-        tries = 0
-        while True:
-            tries += 1
-            try:
-                return operation(*args, **kwargs)
-            except CalledProcessErrorStderr as err:
-                if tries < maxTries:
-                    logger.error("Will retry errored operation %s, code %d: %s",
+        for attempt in old_retry(
+            # Don't retry more often than the state polling wait.
+            delays=[max(delay, self.config.statePollingWait) for delay in DEFAULT_DELAYS],
+            timeout=self.config.state_polling_timeout,
+            predicate=lambda e: isinstance(e, CalledProcessErrorStderr)
+        ):
+            with attempt:
+                try:
+                    return operation(*args, **kwargs)
+                except CalledProcessErrorStderr as err:
+                    logger.error("Errored operation %s, code %d: %s",
                                  operation.__name__, err.returncode, err.stderr)
-                    time.sleep(self.config.statePollingWait)
-                else:
-                    logger.error("Failed operation %s, code %d: %s",
-                                 operation.__name__, err.returncode, err.stderr)
+                    # Raise up to the retry logic, which will retry until timeout
                     raise err

@@ -60,7 +60,6 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "sphinx.ext.autosummary",
-    "sphinx.ext.inheritance_diagram",
     "autoapi.extension",
     "sphinx_autodoc_typehints",
     "sphinxcontrib.autoprogram",
@@ -146,12 +145,11 @@ autodoc_member_order = "bysource"
 autoapi_dirs = ["../src/toil"]
 autodoc_typehints = "description"
 autoapi_keep_files = True
-autoapi_ignore = ["*.pyi"]
+autoapi_ignore = ["*.pyi", "*/test/cwl/spec*/*.py", "*/fake_mpi_run.py", "*/tutorial_*.py", "*/example_*.py", "*/mkFile.py", "*/debugWorkflow.py"]
 autoapi_options = [
     "members",
     "undoc-members",
     "show-inheritance",
-    "show-inheritance-diagram",
     "show-module-summary",
     "imported-members",
     "special-members",
@@ -171,7 +169,7 @@ html_theme_options = {
 }
 
 # The name of an image file (relative to this directory) to place at the top of the sidebar.
-html_logo = "_static/logo.png"
+html_logo = "_static/logo.jpeg"
 
 # The name of an image file (within the static path) to use as favicon of the
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32

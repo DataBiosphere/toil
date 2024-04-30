@@ -1,8 +1,8 @@
-import argparse
+from configargparse import ArgumentParser
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Creates a file and writes into it.')
+    parser = ArgumentParser(description='Creates a file and writes into it.')
     parser.add_argument('file_name', help='File name to be written to.')
     parser.add_argument('contents', help='A string to be written into the file.')
 

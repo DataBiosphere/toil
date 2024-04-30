@@ -188,7 +188,18 @@ To configure your workflow to run on Kubernetes, you will have to configure seve
 
 #. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
 
-Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity in its user-namespace mode, are able to run containers from within containers. If using Singularity to run containerized tools, and you want downloaded container images to persist between Toil jobs, you will also want to set ``TOIL_KUBERNETES_HOST_PATH`` and make sure that Singularity is downloading its containers under the Toil work directory (``/var/lib/toil`` buy default) by setting ``SINGULARITY_CACHEDIR``. However, you will need to make sure that no two jobs try to download the same container at the same time; Singularity has no synchronization or locking around its cache, but the cache is also not safe for simultaneous access by multiple Singularity invocations. Some Toil workflows use their own custom workaround logic for this problem; this work is likely to be made part of Toil in a future release.
+#. ``TOIL_KUBERNETES_PRIVILEGED`` **can** be set to True or False. When true, this allows pods to run as privileged, enabling FUSE mounts for Singularity for faster runtimes. If this is not set to true, Singularity will extract images to sandbox directories. This is unset/False by default except in Toil-managed clusters.
+
+Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity in its user-namespace mode, are able to run containers from within containers. If using Singularity to run containerized tools, and you want downloaded container images to persist between Toil jobs, some setup may be required:
+
+**On non-Toil managed clusters:**
+You will also want to set ``TOIL_KUBERNETES_HOST_PATH``, and make sure that Singularity is downloading its containers under the Toil work directory (``/var/lib/toil`` by default) by setting ``SINGULARITY_CACHEDIR``.
+
+**On Toil-managed clusters:**
+On clusters created with the ``launch-cluster`` command, no setup is required. ``TOIL_KUBERNETES_HOST_PATH`` is already set to ``/var/lib/toil``. ``SINGULARITY_CACHEDIR`` is set to ``/var/lib/toil/singularity`` which is a shared location; however, you may need to implement Singularity locking as shown below or change the Singularity cache location to somewhere else.
+
+If using ``toil-wdl-runner``, all the necessary locking for Singularity is already in place and no work should be necessary.
+Else, for both Toil managed and non-Toil managed clusters, you will need to make sure that no two jobs try to download the same container at the same time; Singularity has no synchronization or locking around its cache, but the cache is also not safe for simultaneous access by multiple Singularity invocations. Some Toil workflows use their own custom workaround logic for this problem; for example, `see this section in toil-wdl-runner <https://github.com/DataBiosphere/toil/blob/1821782b9ec40431e8afa36030fb8ee5df943003/src/toil/wdl/wdltoil.py#L1675-L1679>`_.
 
 Running workflows
 -----------------
@@ -202,7 +213,7 @@ Option 1: Running the Leader Inside Kubernetes
 
 Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML so that they can be used from the leader as well.
 
-Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
+Note that the leader pod will need your workflow, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:5.5.0``.
 
 Here's an example YAML file to run a test workflow: ::
 
@@ -266,7 +277,7 @@ Here's an example YAML file to run a test workflow: ::
             # This Bash script will set up Toil and the workflow to run, and run them.
             set -e
             # We make sure to create a work directory; Toil can't hot-deploy a
-            # script from the root of the filesystem, which is where we start.
+            # Python file from the root of the filesystem, which is where we start.
             mkdir /tmp/work
             cd /tmp/work
             # We make a virtual environment to allow workflow dependencies to be
@@ -280,7 +291,7 @@ Here's an example YAML file to run a test workflow: ::
             virtualenv --python python3 --system-site-packages venv
             . venv/bin/activate
             # Now we install the workflow. Here we're using a demo workflow
-            # script from Toil itself.
+            # from Toil itself.
             wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
             # Now we run the workflow. We make sure to use the Kubernetes batch
             # system and an AWS job store, and we set some generally useful

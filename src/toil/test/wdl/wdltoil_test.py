@@ -3,31 +3,49 @@ import os
 import shutil
 import subprocess
 import unittest
+from uuid import uuid4
+from typing import Optional
+
 from unittest.mock import patch
-import uuid
-import zipfile
 from typing import Any, Dict, List, Set
-from urllib.request import urlretrieve
 
 import pytest
 
-from toil.test import ToilTest, needs_docker_cuda, needs_google_storage, needs_java, needs_singularity_or_docker, slow
+from toil.provisioners import cluster_factory
+from toil.test import (ToilTest,
+                       needs_docker_cuda,
+                       needs_google_storage,
+                       needs_singularity_or_docker,
+                       needs_wdl,
+                       slow, integrative)
 from toil.version import exactPython
-# Don't import the test case directly or pytest will test it again.
-import toil.test.wdl.toilwdlTest
-
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
 
-class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
+@needs_wdl
+class BaseWDLTest(ToilTest):
+    """Base test class for WDL tests."""
+
+    def setUp(self) -> None:
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid4()))
+        os.makedirs(self.output_dir)
+
+    def tearDown(self) -> None:
+        if os.path.exists(self.output_dir):
+            shutil.rmtree(self.output_dir)
+
+
+class WDLConformanceTests(BaseWDLTest):
     """
-    New WDL conformance tests for Toil
+    WDL conformance tests for Toil.
     """
     wdl_dir = "wdl-conformance-tests"
+
     @classmethod
     def setUpClass(cls) -> None:
 
         url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "032fb99a1458d456b6d5f17d27928469ec1a1c68"
+        commit = "c87b62b4f460e009fd42edec13669c4db14cf90c"
 
         p = subprocess.Popen(
             f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",
@@ -46,7 +64,7 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v10(self):
-        tests_to_run = "0,1,5-7,9-15,17,22-24,26,28-30,32-40,53,57-59,62,67-69"
+        tests_to_run = "0-15,17-20,22-71,73-77"
         p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
 
         if p.returncode != 0:
@@ -57,9 +75,19 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v11(self):
-        tests_to_run = "2-11,13-15,17-20,22-24,26,29,30,32-40,53,57-59,62,67-69"
+        tests_to_run = "1-63,65-71,73-75,77"
         p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
 
+        if p.returncode != 0:
+            print(p.stdout.decode('utf-8', errors='replace'))
+
+        p.check_returncode()
+
+    @slow
+    def test_conformance_tests_integration(self):
+        ids_to_run = "encode,tut01,tut02,tut03,tut04"
+        p = subprocess.run(self.base_command + ["-v", "1.0", "--id", ids_to_run], capture_output=True)
+        
         if p.returncode != 0:
             print(p.stdout.decode('utf-8', errors='replace'))
 
@@ -72,10 +100,8 @@ class ToilConformanceTests(toil.test.wdl.toilwdlTest.BaseToilWdlTest):
         shutil.rmtree("wdl-conformance-tests")
 
 
-class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
-    """
-    Version of the old Toil WDL tests that tests the new MiniWDL-based implementation.
-    """
+class WDLTests(BaseWDLTest):
+    """Tests for Toil's MiniWDL-based implementation."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -85,13 +111,14 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
     # We inherit a testMD5sum but it is going to need Singularity or Docker
     # now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity_or_docker
-    def testMD5sum(self):
+    def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
         result = json.loads(result_json)
 
         assert 'ga4ghMd5.value' in result
@@ -99,25 +126,23 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
+    def test_missing_output_directory(self):
+        """
+        Test if Toil can run a WDL workflow into a new directory.
+        """
         wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
-
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
-
-        assert retval != 0
-        assert b'Could not find' in stderr
+        json_file = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
+        subprocess.check_call(self.base_command + [wdl, json_file, '-o', os.path.join(self.output_dir, "does", "not", "exist"), '--logDebug', '--retryCount=0'])
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self):
+    def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/self_test.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/inputs.json')
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '--logDebug', '-o', self.output_dir, '--outputDialect',
+                                 'miniwdl'] + (extra_args or []))
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -134,12 +159,19 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert isinstance(outputs['hello_caller.message_files'], list)
         assert len(outputs['hello_caller.message_files']) == 2
         for item in outputs['hello_caller.message_files']:
-            # All the files should be strings in the "out" direcotry
+            # All the files should be strings in the "out" directory
             assert isinstance(item, str)
             assert item.startswith(out_dir)
 
         assert 'hello_caller.messages' in outputs
         assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
+
+    @needs_singularity_or_docker
+    def test_miniwdl_self_test_by_reference(self) -> None:
+        """
+        Test if the MiniWDL self test works when passing input files by URL reference.
+        """
+        self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
 
     @slow
     @needs_docker_cuda
@@ -167,7 +199,8 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                 "GiraffeDeepVariant.runDeepVariantCallVariants.in_dv_gpu_container": "google/deepvariant:1.3.0-gpu"
             })
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl'])
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -195,7 +228,9 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
 
-        result_json = subprocess.check_output(self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale', '0.1'])
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale',
+                                 '0.1'])
         result = json.loads(result_json)
 
         # Expect MiniWDL-style output with a designated "dir"
@@ -226,18 +261,6 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         assert isinstance(result['ga4ghMd5.value'], str)
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
-
-    def test_empty_file_path(self):
-        """Test if empty File type inputs are protected against"""
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.1.0.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/md5sum/empty_file.json')
-
-        p = subprocess.Popen(self.base_command + [wdl, json_file, '-o', self.output_dir, '--logDebug'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = p.communicate()
-        retval = p.wait()
-
-        assert retval != 0
-        assert b'Could not find' in stderr
 
     def test_coalesce(self):
         """
@@ -272,7 +295,6 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
         # worth extracting a base type for this interface.
         with patch.object(WDLWorkflowGraph, 'is_decl', mock_is_decl):
             with patch.object(WDLWorkflowGraph, 'get_transitive_dependencies', mock_get_transitive_dependencies):
-
                 with self.subTest(msg="Two unrelated decls can coalesce"):
                     # Set up two unrelated decls
                     all_decls = {"decl1", "decl2"}
@@ -282,7 +304,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     }
 
                     result = WDLSectionJob.coalesce_nodes(["decl1", "decl2"], WDLWorkflowGraph([]))
-                    
+
                     # Make sure they coalesced
                     assert len(result) == 1
                     assert "decl1" in result[0]
@@ -296,11 +318,10 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     }
 
                     result = WDLSectionJob.coalesce_nodes(["decl", "nondecl"], WDLWorkflowGraph([]))
-                    
+
                     assert len(result) == 2
                     assert len(result[0]) == 1
                     assert len(result[1]) == 1
-
 
                 with self.subTest(msg="Two adjacent decls with a common dependency can coalesce"):
                     all_decls = {"decl1", "decl2"}
@@ -311,7 +332,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     }
 
                     result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
-                    
+
                     assert len(result) == 2
                     assert "base" in result[0]
                     assert "decl1" in result[1]
@@ -326,7 +347,7 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     }
 
                     result = WDLSectionJob.coalesce_nodes(["base", "decl1", "decl2"], WDLWorkflowGraph([]))
-                    
+
                     assert len(result) == 3
                     assert "base" in result[0]
 
@@ -339,11 +360,12 @@ class WdlToilTest(toil.test.wdl.toilwdlTest.ToilWdlTest):
                     }
 
                     result = WDLSectionJob.coalesce_nodes(["decl1", "decl2", "successor"], WDLWorkflowGraph([]))
-                    
+
                     assert len(result) == 2
                     assert "decl1" in result[0]
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

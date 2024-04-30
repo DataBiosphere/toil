@@ -21,26 +21,28 @@ from contextlib import contextmanager
 from typing import (IO,
                     Any,
                     Callable,
+                    ContextManager,
                     DefaultDict,
                     Dict,
                     Generator,
                     Iterator,
                     List,
+                    Literal,
                     Optional,
                     Union,
-                    cast)
+                    cast,
+                    overload)
 
 import dill
 
-from toil.common import getDirSizeRecursively, getFileSystemSize
+from toil.common import getFileSystemSize
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
-from toil.lib.conversions import bytes2human
 from toil.lib.io import make_public_dir, robust_rmtree
-from toil.lib.retry import retry, ErrorCondition
+from toil.lib.retry import ErrorCondition, retry
 from toil.lib.threading import get_process_name, process_name_exists
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -99,9 +101,8 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
-        jobReqs = job.disk
         startingDir = os.getcwd()
-        self.localTempDir: str = make_public_dir(in_directory=self.localTempDir)
+        self.localTempDir: str = make_public_dir(self.localTempDir, suggested_name="job")
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
         self.check_for_state_corruption()
@@ -113,20 +114,14 @@ class NonCachingFileStore(AbstractFileStore):
             with super().open(job):
                 yield
         finally:
-            disk = getDirSizeRecursively(self.localTempDir)
-            percent = float(disk) / jobReqs * 100 if jobReqs > 0 else 0.0
-            disk_usage = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(disk)}B [{disk}B] used, "
-                          f"{bytes2human(jobReqs)}B [{jobReqs}B] requested).")
-            if disk > jobReqs:
-                self.logToMaster("Job used more disk than requested. For CWL, consider increasing the outdirMin "
-                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
-                                 level=logging.WARNING)
-            else:
-                self.logToMaster(disk_usage, level=logging.DEBUG)
             os.chdir(startingDir)
             # Finally delete the job from the worker
             self.check_for_state_corruption()
-            os.remove(self.jobStateFile)
+            try:
+                os.remove(self.jobStateFile)
+            except FileNotFoundError:
+                logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
+                pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
@@ -152,7 +147,25 @@ class NonCachingFileStore(AbstractFileStore):
         self.logAccess(fileStoreID, localFilePath)
         return localFilePath
 
-    @contextmanager
+    @overload
+    def readGlobalFileStream(
+        self,
+        fileStoreID: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> ContextManager[IO[bytes]]:
+        ...
+
+    @overload
+    def readGlobalFileStream(
+        self, fileStoreID: str, encoding: str, errors: Optional[str] = None
+    ) -> ContextManager[IO[str]]:
+        ...
+
+    # TODO: This seems to hit https://github.com/python/mypy/issues/11373
+    # But that is supposedly fixed.
+
+    @contextmanager # type: ignore
     def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
         with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
             self.logAccess(fileStoreID)
@@ -303,6 +316,10 @@ class NonCachingFileStore(AbstractFileStore):
                     # This is a FileNotFoundError.
                     # job finished & deleted its jobState file since the jobState files were discovered
                     continue
+                elif e.errno == 5:
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # on network file system sometimes)
+                    continue
                 else:
                     raise
 
@@ -333,7 +350,10 @@ class NonCachingFileStore(AbstractFileStore):
         jobState = {'jobProcessName': get_process_name(self.coordination_dir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
-        (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        try:
+            (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+        except Exception as e:
+            raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
         with open(fd, 'wb') as fH:
             # Write data
             dill.dump(jobState, fH)

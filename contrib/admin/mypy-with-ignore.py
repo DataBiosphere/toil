@@ -33,25 +33,15 @@ def main():
         'src/toil/__init__.py',
         'src/toil/deferred.py',
         'src/toil/version.py',
-        'src/toil/wdl/utils.py',
-        'src/toil/wdl/wdl_synthesis.py',
-        'src/toil/wdl/wdl_analysis.py',
-        'src/toil/wdl/wdl_functions.py',
-        'src/toil/wdl/toilwdl.py',
-        'src/toil/wdl/versions/draft2.py',
-        'src/toil/wdl/versions/v1.py',
-        'src/toil/wdl/versions/dev.py',
         'src/toil/provisioners/abstractProvisioner.py',
         'src/toil/provisioners/gceProvisioner.py',
         'src/toil/provisioners/__init__.py',
         'src/toil/provisioners/node.py',
         'src/toil/provisioners/aws/boto2Context.py',
-        'src/toil/provisioners/aws/awsProvisioner.py',
         'src/toil/provisioners/aws/__init__.py',
         'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
-        'src/toil/batchSystems/parasol.py',
         'src/toil/batchSystems/torque.py',
         'src/toil/batchSystems/options.py',
         'src/toil/batchSystems/registry.py',
@@ -104,7 +94,6 @@ def main():
             if file_path.startswith(prefix):
                 return True
         return False
-        
 
     filtered_files_to_check = []
     for file_path in all_files_to_check:

@@ -18,14 +18,14 @@ import sys
 from typing import List
 
 from toil.common import parser_with_common_options
-from toil.provisioners import cluster_factory
+from toil.provisioners import cluster_factory, NoSuchClusterException
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False)
+    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil ssh-cluster")
     parser.add_argument("--insecure", action='store_true',
                         help="Temporarily disable strict host key checking.")
     parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',
@@ -54,5 +54,9 @@ def main() -> None:
     sshOptions.extend(['-L', f'{options.grafana_port}:localhost:3000',
                        '-L', '9090:localhost:9090'])
 
-    cluster.getLeader().sshAppliance(*command, strict=not options.insecure, tty=sys.stdin.isatty(),
-                                     sshOptions=sshOptions)
+    try:
+        cluster.getLeader().sshAppliance(*command, strict=not options.insecure, tty=sys.stdin.isatty(),
+                                         sshOptions=sshOptions)
+    except NoSuchClusterException as e:
+        logger.error(e)
+        sys.exit(1)

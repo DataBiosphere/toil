@@ -3,13 +3,13 @@ import subprocess
 import time
 from contextlib import contextmanager
 
+from toil.exceptions import FailedJobsException
 from toil.lib.iterables import concat
 from toil.test import (ApplianceTestSupport,
                        needs_local_appliance,
                        needs_mesos,
                        slow)
 from toil.version import exactPython
-from toil.exceptions import FailedJobsException
 
 logger = logging.getLogger(__name__)
 
@@ -207,28 +207,28 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def testDeferralWithConcurrentEncapsulation(self):
         """
-        Ensure that the following DAG succeeds:
+        Ensure that the following DAG succeeds::
 
-                      ┌───────────┐
-                      │ Root (W1) │
-                      └───────────┘
-                            │
-                 ┌──────────┴─────────┐
-                 ▼                    ▼
-        ┌────────────────┐ ┌────────────────────┐
-        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════╗
-        └────────────────┘ └────────────────────┘               ║
-                                      │                         ║
-                                      ▼                         ▼
-                            ┌───────────────────┐      ┌────────────────┐
-                            │ Encapsulated (W3) │      │ Follow-on (W6) │
-                            └───────────────────┘      └────────────────┘
-                                      │                         │
-                              ┌───────┴────────┐                │
-                              ▼                ▼                ▼
-                      ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
-                      │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
-                      └──────────────┘ └──────────────┘ └──────────────┘
+                          ┌───────────┐
+                          │ Root (W1) │
+                          └───────────┘
+                                │
+                     ┌──────────┴─────────┐
+                     ▼                    ▼
+            ┌────────────────┐ ┌────────────────────┐
+            │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════╗
+            └────────────────┘ └────────────────────┘               ║
+                                          │                         ║
+                                          ▼                         ▼
+                                ┌───────────────────┐      ┌────────────────┐
+                                │ Encapsulated (W3) │      │ Follow-on (W6) │
+                                └───────────────────┘      └────────────────┘
+                                          │                         │
+                                  ┌───────┴────────┐                │
+                                  ▼                ▼                ▼
+                          ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+                          │ Dummy 1 (W4) │ │ Dummy 2 (W5) │ │  Last (W6)   │
+                          └──────────────┘ └──────────────┘ └──────────────┘
 
         The Wn numbers denote the worker processes that a particular job is run in. `Deferring`
         adds a deferred function and then runs for a long time. The deferred function will be
@@ -243,7 +243,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
         3) it is an instance of Job (and so does not introduce the user script to sys.path itself),
 
-        … it might cause problems with deserializing a defered function defined in the user script.
+        … it might cause problems with deserializing a deferred function defined in the user script.
 
         `Encapsulated` has two children to ensure that `Follow-on` is run in a separate worker.
         """
@@ -313,28 +313,28 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
     def testDeferralWithFailureAndEncapsulation(self):
         """
-        Ensure that the following DAG succeeds:
+        Ensure that the following DAG succeeds::
 
-                      ┌───────────┐
-                      │ Root (W1) │
-                      └───────────┘
-                            │
-                 ┌──────────┴─────────┐
-                 ▼                    ▼
-        ┌────────────────┐ ┌────────────────────┐
-        │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════════════╗
-        └────────────────┘ └────────────────────┘                       ║
-                                      │                                 ║
-                                      ▼                                 ▼
-                            ┌───────────────────┐              ┌────────────────┐
-                            │ Encapsulated (W3) │════════════╗ │ Follow-on (W7) │
-                            └───────────────────┘            ║ └────────────────┘
-                                      │                      ║
-                               ┌──────┴──────┐               ║
-                               ▼             ▼               ▼
-                        ┌────────────┐┌────────────┐ ┌──────────────┐
-                        │ Dummy (W4) ││ Dummy (W5) │ │ Trigger (W6) │
-                        └────────────┘└────────────┘ └──────────────┘
+                          ┌───────────┐
+                          │ Root (W1) │
+                          └───────────┘
+                                │
+                     ┌──────────┴─────────┐
+                     ▼                    ▼
+            ┌────────────────┐ ┌────────────────────┐
+            │ Deferring (W2) │ │ Encapsulating (W3) │═══════════════════════╗
+            └────────────────┘ └────────────────────┘                       ║
+                                          │                                 ║
+                                          ▼                                 ▼
+                                ┌───────────────────┐              ┌────────────────┐
+                                │ Encapsulated (W3) │════════════╗ │ Follow-on (W7) │
+                                └───────────────────┘            ║ └────────────────┘
+                                          │                      ║
+                                   ┌──────┴──────┐               ║
+                                   ▼             ▼               ▼
+                            ┌────────────┐┌────────────┐ ┌──────────────┐
+                            │ Dummy (W4) ││ Dummy (W5) │ │ Trigger (W6) │
+                            └────────────┘└────────────┘ └──────────────┘
 
         `Trigger` causes `Deferring` to crash. `Follow-on` runs next, detects `Deferring`'s
         left-overs and runs the deferred function. `Follow-on` is an instance of `Job` and the

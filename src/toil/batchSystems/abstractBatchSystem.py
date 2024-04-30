@@ -15,19 +15,19 @@ import enum
 import logging
 import os
 import shutil
+import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
 from contextlib import contextmanager
 from threading import Condition
-import time
 from typing import (Any,
                     ContextManager,
                     Dict,
-                    List,
-                    Set,
                     Iterator,
+                    List,
                     NamedTuple,
                     Optional,
+                    Set,
                     Union,
                     cast)
 
@@ -37,6 +37,7 @@ from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import JobDescription, ParsedRequirement, Requirer
+from toil.lib.memoize import memoize
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,27 @@ class BatchJobExitReason(enum.IntEnum):
     """Internal error."""
     MEMLIMIT: int = 6
     """Job hit batch system imposed memory limit."""
+    MISSING: int = 7
+    """Job disappeared from the scheduler without actually stopping, so Toil killed it."""
+    MAXJOBDURATION: int = 8
+    """Job ran longer than --maxJobDuration, so Toil killed it."""
+    PARTITION: int = 9
+    """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
+
+
+    @classmethod
+    def to_string(cls, value: int) -> str:
+        """
+        Convert to human-readable string.
+
+        Given an int that may be or may be equal to a value from the enum,
+        produce the string value of its matching enum entry, or a stringified
+        int.
+        """
+        try:
+            return cls(value).name
+        except ValueError:
+            return str(value)
 
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: int
@@ -64,7 +86,8 @@ class UpdatedBatchJobInfo(NamedTuple):
     """
     The exit status (integer value) of the job. 0 implies successful.
 
-    EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+    EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available
+    (e.g. job is lost, or otherwise died but actual exit code was not reported).
     """
 
     exitReason: Optional[BatchJobExitReason]
@@ -106,6 +129,8 @@ class AbstractBatchSystem(ABC):
     @abstractmethod
     def supportsWorkerCleanup(cls) -> bool:
         """
+        Whether this batch system supports worker cleanup.
+
         Indicates whether this batch system invokes
         :meth:`BatchSystemSupport.workerCleanup` after the last job for a
         particular workflow invocation finishes. Note that the term *worker*
@@ -119,7 +144,9 @@ class AbstractBatchSystem(ABC):
 
     def setUserScript(self, userScript: Resource) -> None:
         """
-        Set the user script for this workflow. This method must be called before the first job is
+        Set the user script for this workflow.
+
+        This method must be called before the first job is
         issued to this batch system, and only if :meth:`.supportsAutoDeployment` returns True,
         otherwise it will raise an exception.
 
@@ -134,20 +161,21 @@ class AbstractBatchSystem(ABC):
         bus, so that it can send informational messages about the jobs it is
         running to other Toil components.
         """
-        pass
 
     @abstractmethod
-    def issueBatchJob(self, jobDesc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         """
         Issues a job with the specified command to the batch system and returns
-        a unique jobID.
+        a unique job ID number.
 
-        :param jobDesc: a toil.job.JobDescription
+        :param command: the command to execute somewhere to run the Toil
+            worker process
+        :param job_desc: the JobDescription for the job being run
         :param job_environment: a collection of job-specific environment
-                                variables to be set on the worker.
+            variables to be set on the worker.
 
-        :return: a unique jobID that can be used to reference the newly issued
-                 job
+        :return: a unique job ID number that can be used to reference the newly
+            issued job
         """
         raise NotImplementedError()
 
@@ -169,20 +197,20 @@ class AbstractBatchSystem(ABC):
         """
         Gets all currently issued jobs
 
-        :return: A list of jobs (as jobIDs) currently issued (may be running, or may be
-                 waiting to be run). Despite the result being a list, the ordering should not
-                 be depended upon.
+        :return: A list of jobs (as job ID numbers) currently issued (may be
+            running, or may be waiting to be run). Despite the result being a
+            list, the ordering should not be depended upon.
         """
         raise NotImplementedError()
 
     @abstractmethod
     def getRunningBatchJobIDs(self) -> Dict[int, float]:
         """
-        Gets a map of jobs as jobIDs that are currently running (not just waiting)
-        and how long they have been running, in seconds.
+        Gets a map of jobs as job ID numbers that are currently running (not
+        just waiting) and how long they have been running, in seconds.
 
-        :return: dictionary with currently running jobID keys and how many seconds they have
-                 been running as the value
+        :return: dictionary with currently running job ID number keys and how
+            many seconds they have been running as the value
         """
         raise NotImplementedError()
 
@@ -263,7 +291,6 @@ class AbstractBatchSystem(ABC):
             setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
             returning nothing, used to update run configuration as a side effect.
         """
-        pass
 
     def getWorkerContexts(self) -> List[ContextManager[Any]]:
         """
@@ -372,7 +399,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param name: the environment variable to be set on the worker.
 
         :param value: if given, the environment variable given by name will be set to this value.
-        if None, the variable's current value will be used as the value on the worker
+            If None, the variable's current value will be used as the value on the worker
 
         :raise RuntimeError: if value is None and the name cannot be found in the environment
         """
@@ -392,6 +419,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         # We do in fact send messages to the message bus.
         self._outbox = message_bus.outbox()
 
+    @memoize
     def get_batch_logs_dir(self) -> str:
         """
         Get the directory where the backing batch system should save its logs.
@@ -404,6 +432,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if self.config.batch_logs_dir:
             # Use what is specified
+            if not os.path.isdir(self.config.batch_logs_dir):
+                # But if it doesn't exist, make it exist
+                os.makedirs(self.config.batch_logs_dir, exist_ok=True)
             return self.config.batch_logs_dir
         # And if nothing is specified use the workDir.
         return Toil.getToilWorkDir(self.config.workDir)
@@ -430,7 +461,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         file_name: str = f'toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log'
         logs_dir: str = self.get_batch_logs_dir()
         return os.path.join(logs_dir, file_name)
-    
+
     def format_std_out_err_glob(self, toil_job_id: int) -> str:
         """
         Get a glob string that will match all file paths generated by format_std_out_err_path for a job.
@@ -438,11 +469,13 @@ class BatchSystemSupport(AbstractBatchSystem):
         file_glob: str = f'toil_{self.config.workflowID}.{toil_job_id}.*.log'
         logs_dir: str = self.get_batch_logs_dir()
         return os.path.join(logs_dir, file_glob)
-        
+
     @staticmethod
     def workerCleanup(info: WorkerCleanupInfo) -> None:
         """
-        Cleans up the worker node on batch system shutdown. Also see :meth:`supportsWorkerCleanup`.
+        Cleans up the worker node on batch system shutdown.
+
+        Also see :meth:`supportsWorkerCleanup`.
 
         :param WorkerCleanupInfo info: A named tuple consisting of all the relevant information
                for cleaning up the worker.
@@ -498,8 +531,10 @@ class NodeInfo:
 
 class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
-    A batch system that supports a variable number of worker nodes. Used by :class:`toil.
-    provisioners.clusterScaler.ClusterScaler` to scale the number of worker nodes in the cluster
+    A batch system that supports a variable number of worker nodes.
+
+    Used by :class:`toil.provisioners.clusterScaler.ClusterScaler`
+    to scale the number of worker nodes in the cluster
     up or down depending on overall load.
     """
 

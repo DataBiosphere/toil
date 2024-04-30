@@ -12,12 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tool for reporting on job status."""
-from collections import defaultdict
 import logging
 import os
 import sys
-from functools import reduce
-import json
 from typing import Any, Dict, List, Optional, Set
 
 from toil.bus import replay_message_bus
@@ -85,7 +82,7 @@ class ToilStatus:
                 with job.getLogFileHandle(self.jobStore) as fH:
                     # TODO: This looks intended to be machine-readable, but the format is
                     #  unspecified and no escaping is done. But keep these tags around.
-                    print(StatsAndLogging.formatLogStream(fH, job_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
+                    print(StatsAndLogging.formatLogStream(fH, stream_name=f"LOG_FILE_OF_JOB:{job} LOG:"))
             else:
                 print(f"LOG_FILE_OF_JOB: {job} LOG: Job has no log file")
 
@@ -97,65 +94,99 @@ class ToilStatus:
                 children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
-    def printAggregateJobStats(self, properties: List[str], childNumber: int) -> None:
-        """Prints a job's ID, log file, remaining tries, and other properties."""
-        for job in self.jobsToReport:
+    def printAggregateJobStats(self, properties: List[Set[str]], childNumber: List[int]) -> None:
+        """
+        Prints each job's ID, log file, remaining tries, and other properties.
+
+        :param properties: A set of string flag names for each job in self.jobsToReport.
+        :param childNumber: A list of child counts for each job in self.jobsToReport.
+        """
+        for job, job_properties, job_child_number in zip(self.jobsToReport, properties, childNumber):
 
             def lf(x: str) -> str:
-                return f"{x}:{str(x in properties)}"
-            print("\t".join(("JOB:%s" % job,
-                             "LOG_FILE:%s" % job.logJobStoreFileID,
-                             "TRYS_REMAINING:%i" % job.remainingTryCount,
-                             "CHILD_NUMBER:%s" % childNumber,
-                             lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
-                             lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+                return f"{x}:{str(x in job_properties)}"
+            # We use a sort of not-really-machine-readable key:value TSV format here.
+            # But we only include important keys to help the humans, and flags
+            # don't have a value, just a key.
+            parts = [f"JOB:{job}"]
+            for flag in ["COMPLETELY_FAILED", "READY_TO_RUN", "IS_ZOMBIE", "HAS_SERVICES", "IS_SERVICE"]:
+                if flag in job_properties:
+                    parts.append(flag)
+            if job.logJobStoreFileID:
+                parts.append(f"LOG_FILE:{job.logJobStoreFileID}")
+            if job.remainingTryCount > 0:
+                parts.append(f"TRYS_REMAINING:{job.remainingTryCount}")
+            if job_child_number > 0:
+                parts.append(f"CHILD_NUMBER:{job_child_number}")
+
+            print("\t".join(parts))
 
     def report_on_jobs(self) -> Dict[str, Any]:
         """
         Gathers information about jobs such as its child jobs and status.
 
-        :returns jobStats: Pairings of a useful category and a list of jobs which fall into it.
-        :rtype dict:
+        :returns jobStats: Dict containing some lists of jobs by category, and
+            some lists of job properties for each job in self.jobsToReport.
         """
+        # These are lists of the matching jobs
         hasChildren = []
         readyToRun = []
         zombies = []
         hasLogFile: List[JobDescription] = []
         hasServices = []
         services: List[ServiceJobDescription] = []
-        properties = set()
+        completely_failed = []
+
+        # These are stats for jobs in self.jobsToReport
+        child_number: List[int] = []
+        properties: List[Set[str]] = []
+
+        # TODO: This mix of semantics is confusing and made per-job status be
+        # wrong for multiple years because it was not understood. Redesign it!
 
         for job in self.jobsToReport:
+            job_properties: Set[str] = set()
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
-            childNumber = len(list(job.allSuccessors()))
-            if childNumber > 0:  # Total number of successors > 0
+            job_child_number = len(list(job.allSuccessors()))
+            child_number.append(job_child_number)
+            if job_child_number > 0:  # Total number of successors > 0
                 hasChildren.append(job)
-                properties.add("HAS_CHILDREN")
-            elif job.command is not None:
-                # Job has no children and a command to run. Indicates job could be run.
+                job_properties.add("HAS_CHILDREN")
+            elif job.has_body():
+                # Job has no children and a body to run. Indicates job could be run.
                 readyToRun.append(job)
-                properties.add("READY_TO_RUN")
+                job_properties.add("READY_TO_RUN")
             else:
                 # Job has no successors and no command, so is a zombie job.
                 zombies.append(job)
-                properties.add("IS_ZOMBIE")
+                job_properties.add("IS_ZOMBIE")
             if job.services:
                 hasServices.append(job)
-                properties.add("HAS_SERVICES")
+                job_properties.add("HAS_SERVICES")
             if isinstance(job, ServiceJobDescription):
                 services.append(job)
-                properties.add("IS_SERVICE")
+                job_properties.add("IS_SERVICE")
+            if job.remainingTryCount == 0:
+                # Job is out of tries (and thus completely failed)
+                job_properties.add("COMPLETELY_FAILED")
+                completely_failed.append(job)
+            properties.append(job_properties)
 
-        jobStats = {'hasChildren': hasChildren,
-                    'readyToRun': readyToRun,
-                    'zombies': zombies,
-                    'hasServices': hasServices,
-                    'services': services,
-                    'hasLogFile': hasLogFile,
-                    'properties': properties,
-                    'childNumber': childNumber}
+        jobStats = {
+            # These are lists of the mathcing jobs
+            'hasChildren': hasChildren,
+            'readyToRun': readyToRun,
+            'zombies': zombies,
+            'hasServices': hasServices,
+            'services': services,
+            'hasLogFile': hasLogFile,
+            'completelyFailed': completely_failed,
+            # These are stats for jobs in self.jobsToReport
+            'properties': properties,
+            'childNumber': child_number
+        }
         return jobStats
 
     @staticmethod
@@ -254,8 +285,9 @@ class ToilStatus:
         """
         try:
             return self.jobStore.load_root_job()
-        except JobException:
-            print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
+        except JobException as e:
+            logger.info(e)
+            print('Root job is absent. The workflow has may have completed successfully.')
             raise
 
     def fetchUserJobs(self, jobs: List[str]) -> List[JobDescription]:
@@ -320,7 +352,7 @@ class ToilStatus:
 
 def main() -> None:
     """Reports the state of a Toil workflow."""
-    parser = parser_with_common_options()
+    parser = parser_with_common_options(prog="toil status")
     parser.add_argument("--failIfNotComplete", action="store_true",
                         help="Return exit value of 1 if toil jobs not all completed. default=%(default)s",
                         default=False)
@@ -329,7 +361,7 @@ def main() -> None:
                         help="Do not print overall, aggregate status of workflow.",
                         default=True)
 
-    parser.add_argument("--printDot", action="store_true",
+    parser.add_argument("--dot", "--printDot", dest="print_dot", action="store_true",
                         help="Print dot formatted description of the graph. If using --jobs will "
                              "restrict to subgraph including only those jobs. default=%(default)s",
                         default=False)
@@ -338,20 +370,24 @@ def main() -> None:
                         help="Restrict reporting to the following jobs (allows subsetting of the report).",
                         default=None)
 
-    parser.add_argument("--printPerJobStats", action="store_true",
+    parser.add_argument("--perJob", "--printPerJobStats", dest="print_per_job_stats", action="store_true",
                         help="Print info about each job. default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printLogs", action="store_true",
+    parser.add_argument("--logs", "--printLogs", dest="print_logs", action="store_true",
                         help="Print the log files of jobs (if they exist). default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printChildren", action="store_true",
+    parser.add_argument("--children", "--printChildren", dest="print_children", action="store_true",
                         help="Print children of each job. default=%(default)s",
                         default=False)
 
-    parser.add_argument("--printStatus", action="store_true",
+    parser.add_argument("--status", "--printStatus", dest="print_status", action="store_true",
                         help="Determine which jobs are currently running and the associated batch system ID")
+
+    parser.add_argument("--failed", "--printFailed", dest="print_failed", action="store_true",
+                        help="List jobs which seem to have failed to run")
+
     options = parser.parse_args()
     set_logging_from_options(options)
 
@@ -359,13 +395,10 @@ def main() -> None:
         parser.print_help()
         sys.exit(0)
 
-    config = Config()
-    config.setOptions(options)
-
     try:
-        status = ToilStatus(config.jobStore, options.jobs)
+        status = ToilStatus(options.jobStore, options.jobs)
     except NoSuchJobStoreException:
-        print('No job store found.')
+        print(f'The job store {options.jobStore} was not found.')
         return
     except JobException:  # Workflow likely complete, user informed in ToilStatus()
         return
@@ -373,34 +406,44 @@ def main() -> None:
     jobStats = status.report_on_jobs()
 
     # Info to be reported.
+    # These are lists of matching jobs.
     hasChildren = jobStats['hasChildren']
     readyToRun = jobStats['readyToRun']
     zombies = jobStats['zombies']
     hasServices = jobStats['hasServices']
     services = jobStats['services']
     hasLogFile = jobStats['hasLogFile']
+    completely_failed = jobStats['completelyFailed']
+    # These are results for corresponding jobs in status.jobsToReport
     properties = jobStats['properties']
     childNumber = jobStats['childNumber']
 
-    if options.printPerJobStats:
+    if options.print_per_job_stats:
         status.printAggregateJobStats(properties, childNumber)
-    if options.printLogs:
+    if options.print_logs:
         status.printJobLog()
-    if options.printChildren:
+    if options.print_children:
         status.printJobChildren()
-    if options.printDot:
+    if options.print_dot:
         status.print_dot_chart()
+    if options.print_failed:
+        print("Failed jobs:")
+        for job in completely_failed:
+            print(job)
     if options.stats:
         print('Of the %i jobs considered, '
-              'there are %i jobs with children, '
+              'there are '
+              '%i completely failed jobs, '
+              '%i jobs with children, '
               '%i jobs ready to run, '
               '%i zombie jobs, '
               '%i jobs with services, '
               '%i services, '
               'and %i jobs with log files currently in %s.' %
-              (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
-               len(hasServices), len(services), len(hasLogFile), status.jobStore))
-    if options.printStatus:
+              (len(status.jobsToReport), len(completely_failed), len(hasChildren),
+               len(readyToRun), len(zombies), len(hasServices), len(services),
+               len(hasLogFile), status.jobStore))
+    if options.print_status:
         status.print_bus_messages()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
