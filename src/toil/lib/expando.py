@@ -16,7 +16,7 @@
 
 class Expando(dict):
     """
-    Pass inital attributes to the constructor:
+    Pass initial attributes to the constructor:
 
     >>> o = Expando(foo=42)
     >>> o.foo

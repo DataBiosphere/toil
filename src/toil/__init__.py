@@ -210,7 +210,7 @@ def customDockerInitCmd() -> str:
     private docker registries). Any single quotes are escaped and the command cannot contain a
     set of blacklisted chars (newline or tab).
 
-    :returns: The custom commmand, or an empty string is returned if the environment variable is not set.
+    :returns: The custom command, or an empty string is returned if the environment variable is not set.
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
