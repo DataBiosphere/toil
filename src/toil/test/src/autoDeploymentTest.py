@@ -243,7 +243,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
         3) it is an instance of Job (and so does not introduce the user script to sys.path itself),
 
-        … it might cause problems with deserializing a defered function defined in the user script.
+        … it might cause problems with deserializing a deferred function defined in the user script.
 
         `Encapsulated` has two children to ensure that `Follow-on` is run in a separate worker.
         """
