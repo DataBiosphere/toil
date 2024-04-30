@@ -139,5 +139,6 @@ class ToilDocumentationTest(ToilTest):
     def testStaging(self):
         self.checkExitCode("tutorial_staging.py")
 
+
 if __name__ == "__main__":
     unittest.main()
