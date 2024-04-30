@@ -1324,7 +1324,7 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     duplicates are removed.
 
     TODO: Duplicative with WDL.runtime.task._fspaths, except that is internal
-    and supports Direcotry objects.
+    and supports Directory objects.
     """
 
     paths = []

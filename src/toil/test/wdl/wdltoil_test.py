@@ -159,7 +159,7 @@ class WDLTests(BaseWDLTest):
         assert isinstance(outputs['hello_caller.message_files'], list)
         assert len(outputs['hello_caller.message_files']) == 2
         for item in outputs['hello_caller.message_files']:
-            # All the files should be strings in the "out" direcotry
+            # All the files should be strings in the "out" directory
             assert isinstance(item, str)
             assert item.startswith(out_dir)
 
