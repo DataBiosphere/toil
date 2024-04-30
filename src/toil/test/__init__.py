@@ -373,14 +373,15 @@ def needs_aws_s3(test_item: MT) -> MT:
     # TODO: we just check for generic access to the AWS account
     test_item = _mark_test('aws-s3', needs_online(test_item))
     try:
-        from boto import config
-        boto_credentials = config.get('Credentials', 'aws_access_key_id')
+        from boto3 import Session
+        session = Session()
+        boto3_credentials = session.get_credentials()
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
             test_item
         )
     from toil.lib.aws import running_on_ec2
-    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
+    if not (boto3_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
     return test_item
 

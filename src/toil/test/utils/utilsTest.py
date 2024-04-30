@@ -377,7 +377,7 @@ class UtilsTest(ToilTest):
 
     def testRestartAttribute(self):
         """
-        Test that the job store is only destroyed when we observe a succcessful workflow run.
+        Test that the job store is only destroyed when we observe a successful workflow run.
         The following simulates a failing workflow that attempts to resume without restart().
         In this case, the job store should not be destroyed until restart() is called.
         """
