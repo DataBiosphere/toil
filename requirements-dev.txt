@@ -5,7 +5,6 @@ stubserver>=1.1,<2
 setuptools>=65.5.1,<70
 sphinx>=7,<8
 sphinx-autoapi>=3,<4
-# astroid 3 won't work until some sphinx-autoapi release after 2.1.1
 astroid>=3,<4
 sphinx-autodoc-typehints>=1.24.0,<3
 sphinxcontrib-autoprogram==0.1.9
