@@ -3,7 +3,7 @@ Toil Architecture
 
 The following diagram layouts out the software architecture of Toil.
 
-.. figure:: toil_architecture.jpg
+.. figure:: toil_architecture.png
     :align: center
     :alt: Toil's architecture is composed of the leader, the job store, the worker
           processes, the batch system, the node provisioner, and the stats and
