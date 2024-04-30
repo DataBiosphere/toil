@@ -16,7 +16,7 @@ def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Opt
 
     The permissions on the directory will be 711 instead of 700, allowing the
     group and all other users to traverse the directory. This is necessary if
-    the direcotry is on NFS and the Docker daemon would like to mount it or a
+    the directory is on NFS and the Docker daemon would like to mount it or a
     file inside it into a container, because on NFS even the Docker daemon
     appears bound by the file permissions.
 
