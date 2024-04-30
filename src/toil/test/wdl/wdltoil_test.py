@@ -45,7 +45,7 @@ class WDLConformanceTests(BaseWDLTest):
     def setUpClass(cls) -> None:
 
         url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "c87b62b4f460e009fd42edec13669c4db14cf90c"
+        commit = "7c7f82c0dd426f5be708f7a858e448cfb0fea91b"
 
         p = subprocess.Popen(
             f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",

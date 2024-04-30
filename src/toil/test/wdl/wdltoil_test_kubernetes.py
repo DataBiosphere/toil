@@ -51,7 +51,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
         self.leader = self.cluster.getLeader()
 
         url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "09b9659cd01473e836738a2e0dd205df0adb49c5"
+        commit = "7c7f82c0dd426f5be708f7a858e448cfb0fea91b"
         wdl_dir = "wdl_conformance_tests"
 
         # get the wdl-conformance-tests repo to get WDL tasks to run
