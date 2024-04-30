@@ -696,6 +696,7 @@ def main() -> None:
     except NoSuchJobStoreException:
         logger.critical("The job store %s does not exist", config.jobStore)
         sys.exit(1)
+    logger.info('Gathering stats from jobstore... depending on the number of jobs, this may take a while (e.g. 10 jobs ~= 3 seconds; 100,000 jobs ~= 3,000 seconds or 50 minutes).')
     stats = get_stats(jobStore)
     collatedStatsTag = process_data(jobStore.config, stats)
     report_data(collatedStatsTag, options)
