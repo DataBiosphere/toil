@@ -244,7 +244,7 @@ def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> Acce
     of them. Knows that "gpu" is a kind, and "cuda" is an API, and "nvidia"
     is a brand.
 
-    :raises ValueError: if it gets somethign it can't parse
+    :raises ValueError: if it gets something it can't parse
     :raises TypeError: if it gets something it can't parse because it's the wrong type.
     """
     KINDS = {'gpu'}

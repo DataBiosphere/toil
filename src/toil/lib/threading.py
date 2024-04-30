@@ -41,7 +41,7 @@ class ExceptionalThread(threading.Thread):
     A thread whose join() method re-raises exceptions raised during run(). While join() is
     idempotent, the exception is only during the first invocation of join() that successfully
     joined the thread. If join() times out, no exception will be re reraised even though an
-    exception might already have occured in run().
+    exception might already have occurred in run().
 
     When subclassing this thread, override tryRun() instead of run().
 
