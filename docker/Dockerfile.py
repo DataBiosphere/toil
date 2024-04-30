@@ -179,7 +179,7 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh && chmod 777 /usr/bin/singularity
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN {python} -m ensurepip --upgrade
+    RUN curl -sS https://bootstrap.pypa.io/get-pip.py | {python}
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
     RUN {pip} install --upgrade virtualenv==20.25.1
