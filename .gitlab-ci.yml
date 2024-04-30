@@ -191,6 +191,12 @@ py310_main:
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
 py311_appliance_build:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+    - if: $CI_COMMIT_BRANCH =~ /.*3\.11.*/
   stage: basic_tests
   script:
     - pwd
