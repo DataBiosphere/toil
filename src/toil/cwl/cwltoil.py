@@ -1772,7 +1772,7 @@ def import_files(
     doesn't exist), fails, unless mark_broken is set, in which case it applies
     a sentinel location.
 
-    Also does some miscelaneous normalization.
+    Also does some miscellaneous normalization.
 
     :param import_function: The function used to upload a URI and get a
         Toil FileID for it.
@@ -2176,7 +2176,7 @@ def toilStageFiles(
     :param destBucket: If set, export to this base URL instead of to the local
            filesystem.
 
-    :param log_level: Log each file transfered at the given level.
+    :param log_level: Log each file transferred at the given level.
     """
 
     def _collectDirEntries(

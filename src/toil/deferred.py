@@ -178,7 +178,7 @@ class DeferredFunctionManager:
 
         try:
             def defer(deferredFunction):
-                # Just serialize defered functions one after the other.
+                # Just serialize deferred functions one after the other.
                 # If serializing later ones fails, eariler ones will still be intact.
                 # We trust dill to protect sufficiently against partial reads later.
                 logger.debug("Deferring function %s" % repr(deferredFunction))
