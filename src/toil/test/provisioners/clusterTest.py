@@ -20,7 +20,7 @@ from uuid import uuid4
 from typing import Optional, List
 
 from toil.lib.retry import retry
-from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance
+from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance, slow
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import AWSConnectionManager
 from toil.provisioners.aws import get_best_aws_zone
@@ -182,7 +182,7 @@ class CWLOnARMTest(AbstractClusterTest):
     """Run the CWL 1.2 conformance tests on ARM specifically."""
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
-        self.clusterName = "cwl-test-" + str(uuid.uuid4())
+        self.clusterName = f'cwl-test-{uuid.uuid4()}'
         self.leaderNodeType = "t4g.2xlarge"
         self.clusterType = "kubernetes"
         # We need to be running in a directory which Flatcar and the Toil Appliance both have
