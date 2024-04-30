@@ -43,7 +43,7 @@ class LocalThrottle:
         thread as necessary to ensure that no less than the configured minimum interval has
         passed since the last invocation of this method in the current thread returned True.
 
-        If the wait parameter is False, this method immediatly returns True (if at least the
+        If the wait parameter is False, this method immediatley returns True (if at least the
         configured minimum interval has passed since the last time this method returned True in
         the current thread) or False otherwise.
         """
