@@ -39,7 +39,7 @@ Cromwell::
 
 you can instead run with ``toil-wdl-runner``::
 
-    toil-wdl-runner myWorkflow.wdl --inputs myWorkflow_inputs.json
+    toil-wdl-runner myWorkflow.wdl --input myWorkflow_inputs.json
 
 .. _`official WDL tutorials`: https://wdl-docs.readthedocs.io/en/stable/
 .. _`executing your workflow`: https://wdl-docs.readthedocs.io/en/stable/WDL/execute/
