@@ -87,7 +87,7 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
 
     if args.cors:
         # enable cross origin resource sharing
-        from flask_cors import CORS  # type: ignore
+        from flask_cors import CORS
         CORS(flask_app.app, resources={r"/ga4gh/*": {"origins": args.cors_origins}})
 
     # add workflow execution service (WES) API endpoints
