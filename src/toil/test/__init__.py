@@ -46,12 +46,13 @@ from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-import pytz
 
 if sys.version_info >= (3, 8):
     from typing import Literal
+    import zoneinfo
 else:
     from typing_extensions import Literal
+    from backports import zoneinfo
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
@@ -85,8 +86,8 @@ class ToilTest(unittest.TestCase):
     _tempDirs: List[str] = []
 
     def setup_method(self, method: Any) -> None:
-        western = pytz.timezone('America/Los_Angeles')
-        california_time = western.localize(datetime.datetime.now())
+        western = zoneinfo.ZoneInfo("America/Los_Angeles")
+        california_time = datetime.datetime.now(tz=western)
         timestamp = california_time.strftime("%b %d %Y %H:%M:%S:%f %Z")
         print(f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n")
 
