@@ -22,7 +22,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import requests
-from pytz import timezone
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
@@ -210,7 +209,7 @@ def customDockerInitCmd() -> str:
     private docker registries). Any single quotes are escaped and the command cannot contain a
     set of blacklisted chars (newline or tab).
 
-    :returns: The custom commmand, or an empty string is returned if the environment variable is not set.
+    :returns: The custom command, or an empty string is returned if the environment variable is not set.
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
@@ -475,5 +474,6 @@ try:
         datetime.datetime(1970, 1, 1, 0, 0)
         """
         return datetime.strptime(s, datetime_format)
+
 except ImportError:
     pass

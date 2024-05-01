@@ -268,7 +268,7 @@ class JobTest(ToilTest):
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
         identifies leaf vertices incorrectly
 
-        Test verification of new checkpoint jobs being leaf verticies,
+        Test verification of new checkpoint jobs being leaf vertices,
         starting with the following baseline workflow::
 
             Parent
