@@ -382,9 +382,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
 
 
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
-    """
-    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
-    """
+    """Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts."""
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
 
 
