@@ -713,7 +713,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
                             help="WDL document URI")
         parser.add_argument("inputs_uri", type=str, nargs='?',
                             help="WDL input JSON URI")
-        parser.add_argument("--input", "-i", dest="inputs_uri", type=str,
+        parser.add_argument("--input", "--inputs", "-i", dest="inputs_uri", type=str,
                             help="WDL input JSON URI")
         check_arguments(typ="wdl")
 
