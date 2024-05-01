@@ -24,15 +24,18 @@ Instead of running a workflow with Cromwell::
 
 You can run the workflow with ``toil-wdl-runner``::
 
-    toil-wdl-runner myWorkflow.wdl --inputs myWorkflow_inputs.json
+    toil-wdl-runner myWorkflow.wdl --input myWorkflow_inputs.json
+
+(We're here running Toil with ``--input``, but it can also accept the
+Cromwell-style ``--inputs``.)
 
 This will default to executing on the current machine, with a job store in an
 automatically determined temporary location, but you can add a few Toil options
 to use other Toil-supported batch systems, such as Kubernetes::
 
-    toil-wdl-runner --jobStore aws:us-west-2:wdl-job-store --batchSystem kubernetes myWorkflow.wdl --inputs myWorkflow_inputs.json
+    toil-wdl-runner --jobStore aws:us-west-2:wdl-job-store --batchSystem kubernetes myWorkflow.wdl --input myWorkflow_inputs.json
 
-For Toil, the ``--inputs`` is optional, and inputs can be passed as a positional
+For Toil, the ``--input`` is optional, and inputs can be passed as a positional
 argument::
 
     toil-wdl-runner myWorkflow.wdl myWorkflow_inputs.json
@@ -58,7 +61,7 @@ directory.
 ``-m`` or ``--outputFile``: Specifies a JSON file name or URI to save workflow
 output values at. Defaults to standard output.
 
-``-i`` or ``--input``: Alternative to the positional argument for the
+``-i``, ``--input``, or ``--inputs``: Alternative to the positional argument for the
 input JSON file, for compatibility with other WDL runners.
 
 ``--outputDialect``: Specifies an output format dialect. Can be
