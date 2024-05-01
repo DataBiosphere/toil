@@ -234,7 +234,7 @@ py312_main:
   stage: basic_tests
   script:
     - pwd
-    - python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==10.2.3'
+    - python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && pip install -U pip wheel && make prepare && make develop extras=[all] packages='htcondor==23.6.1'
     - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
