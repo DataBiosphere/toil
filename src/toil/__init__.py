@@ -22,7 +22,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Optional, Tuple
 
 import requests
-from pytz import timezone
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
@@ -475,5 +474,6 @@ try:
         datetime.datetime(1970, 1, 1, 0, 0)
         """
         return datetime.strptime(s, datetime_format)
+
 except ImportError:
     pass
