@@ -223,7 +223,7 @@ py312_appliance_build:
   stage: basic_tests
   script:
     - pwd
-    - python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 &&  pip install -U pip wheel && pip install -U build && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==10.2.3'
+    - python3.12 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 &&  pip install -U pip wheel && pip install -U build && make prepare && pip install pycparser && make develop extras=[all] packages='htcondor==23.6.1'
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
