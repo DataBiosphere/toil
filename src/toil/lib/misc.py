@@ -11,8 +11,6 @@ import typing
 from contextlib import closing
 from typing import Iterator, List, Optional
 
-import pytz
-
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +54,7 @@ def get_user_name() -> str:
 
 def utc_now() -> datetime.datetime:
     """Return a datetime in the UTC timezone corresponding to right now."""
-    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+    return datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
 
 def unix_now_ms() -> float:
     """Return the current time in milliseconds since the Unix epoch."""

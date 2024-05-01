@@ -28,7 +28,7 @@ import traceback
 from contextlib import contextmanager
 from typing import Dict, Iterator, Optional, Union, cast
 
-import psutil  # type: ignore
+import psutil
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
