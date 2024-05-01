@@ -137,8 +137,14 @@ def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, f
                 func = fC(min, max)
             try:
                 if not func(values):
-                    raise parser.error(
-                        f"{option_string} ({values}) must be within the range: [{min}, {'infinity' if max is None else max})")
+                    if max is None:
+                        raise parser.error(
+                            f"{option_string} ({values}) must be at least {min}"
+                        )
+                    else:
+                        raise parser.error(
+                            f"{option_string} ({values}) must be at least {min} and strictly less than {max})"
+                        )
             except AssertionError:
                 raise RuntimeError(f"The {option_string} option has an invalid value: {values}")
             setattr(namespace, self.dest, values)
