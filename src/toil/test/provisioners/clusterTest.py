@@ -11,21 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import logging
 import os
 import subprocess
 import time
+
 from uuid import uuid4
 from typing import Optional, List
 
+from toil.lib.retry import retry
+from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance, slow, needs_env_var
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import AWSConnectionManager
-from toil.lib.retry import retry
 from toil.provisioners.aws import get_best_aws_zone
-from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance
 
 log = logging.getLogger(__name__)
+
 
 @needs_aws_ec2
 @needs_fetchable_appliance
@@ -33,7 +34,7 @@ class AbstractClusterTest(ToilTest):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AWS_KEYNAME').strip() or 'id_rsa'
-        self.clusterName = 'aws-provisioner-test-' + str(uuid4())
+        self.clusterName = f'aws-provisioner-test-{uuid4()}'
         self.leaderNodeType = 't2.medium'
         self.clusterType = 'mesos'
         self.zone = get_best_aws_zone()
@@ -172,3 +173,81 @@ class AbstractClusterTest(ToilTest):
 
     def launchCluster(self) -> None:
         self.createClusterUtil()
+
+
+@needs_aws_ec2
+@needs_fetchable_appliance
+@slow
+class CWLOnARMTest(AbstractClusterTest):
+    """Run the CWL 1.2 conformance tests on ARM specifically."""
+    def __init__(self, methodName: str) -> None:
+        super().__init__(methodName=methodName)
+        self.clusterName = f'cwl-test-{uuid4()}'
+        self.leaderNodeType = "t4g.2xlarge"
+        self.clusterType = "kubernetes"
+        # We need to be running in a directory which Flatcar and the Toil Appliance both have
+        self.cwl_test_dir = "/tmp/toil/cwlTests"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.jobStore = f"aws:{self.awsRegion()}:cluster-{uuid4()}"
+
+    @needs_env_var("CI_COMMIT_SHA", "a git commit sha")
+    def test_cwl_on_arm(self) -> None:
+        # Make a cluster
+        self.launchCluster()
+        # get the leader so we know the IP address - we don't need to wait since create cluster
+        # already ensures the leader is running
+        self.cluster = cluster_factory(
+            provisioner="aws", zone=self.zone, clusterName=self.clusterName
+        )
+        self.leader = self.cluster.getLeader()
+
+        commit = os.environ["CI_COMMIT_SHA"]
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git",
+            ]
+        )
+
+        # We use CI_COMMIT_SHA to retrieve the Toil version needed to run the CWL tests
+        self.sshUtil(
+            ["bash", "-c", f"cd {self.cwl_test_dir}/toil && git checkout {commit}"]
+        )
+
+        # --never-download prevents silent upgrades to pip, wheel and setuptools
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"virtualenv --system-site-packages --never-download {self.venvDir}",
+            ]
+        )
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]",
+            ]
+        )
+
+        # Runs the CWLv12Test on an ARM instance
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance",
+            ]
+        )
+
+        # We know if it succeeds it should save a junit XML for us to read.
+        # Bring it back to be an artifact.
+        self.rsync_util(
+            f":{self.cwl_test_dir}/toil/conformance-1.2.junit.xml",
+            os.path.join(
+                self._projectRootPath(),
+                "arm-conformance-1.2.junit.xml"
+            )
+        )

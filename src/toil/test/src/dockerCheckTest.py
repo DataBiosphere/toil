@@ -14,7 +14,7 @@
 import unittest
 
 from docker.errors import ImageNotFound
-from toil import checkDockerImageExists, parseDockerAppliance
+from toil import checkDockerImageExists, parseDockerAppliance, retry
 from toil.test import ToilTest, needs_docker
 
 
@@ -76,6 +76,7 @@ class DockerCheckTest(ToilTest):
         google_repo = 'gcr.io/google-containers/busybox:latest'
         assert checkDockerImageExists(google_repo)
 
+    @retry(errors=[TimeoutError])  # see: https://github.com/DataBiosphere/toil/issues/4902
     def testBadGoogleRepo(self):
         """Bad repo and tag.  This should raise."""
         nonexistent_google_repo = 'gcr.io/google-containers/--------:---'
