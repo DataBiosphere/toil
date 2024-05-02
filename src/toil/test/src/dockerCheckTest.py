@@ -13,7 +13,6 @@
 # limitations under the License.
 import unittest
 
-import urllib3.exceptions
 from docker.errors import ImageNotFound
 from toil import checkDockerImageExists, parseDockerAppliance, retry
 from toil.test import ToilTest, needs_docker
