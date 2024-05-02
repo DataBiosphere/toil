@@ -38,7 +38,7 @@ from toil.lib.retry import (DEFAULT_DELAYS,
                             retry, ErrorCondition)
 
 try:
-    from botocore.exceptions import ClientError
+    from botocore.exceptions import ClientError, EndpointConnectionError
     from mypy_boto3_iam import IAMClient, IAMServiceResource
     from mypy_boto3_s3 import S3Client, S3ServiceResource
     from mypy_boto3_s3.literals import BucketLocationConstraintType
@@ -46,6 +46,7 @@ try:
     from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
     ClientError = None  # type: ignore
+    EndpointConnectionError = None  # type: ignore
     # AWS/boto extra is not installed
 
 logger = logging.getLogger(__name__)
@@ -129,12 +130,20 @@ def connection_reset(e: Exception) -> bool:
     # errno is listed as 104. To be safe, we check for both:
     return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
 
+def connection_error(e: Exception) -> bool:
+    """
+    Return True if an error represents a failure to make a network connection.
+    """
+    return (connection_reset(e)
+            or isinstance(e, EndpointConnectionError))
+
+
 # TODO: Replace with: @retry and ErrorCondition
 def retryable_s3_errors(e: Exception) -> bool:
     """
     Return true if this is an error from S3 that looks like we ought to retry our request.
     """
-    return (connection_reset(e)
+    return (connection_error(e)
             or (isinstance(e, ClientError) and get_error_status(e) in (429, 500))
             or (isinstance(e, ClientError) and get_error_code(e) in THROTTLED_ERROR_CODES)
             # boto3 errors

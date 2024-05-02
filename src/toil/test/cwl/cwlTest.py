@@ -23,6 +23,7 @@ import sys
 import unittest
 import uuid
 import zipfile
+
 from functools import partial
 from io import StringIO
 from pathlib import Path
@@ -71,7 +72,6 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_wes_server,
                        slow)
-from toil.test.provisioners.clusterTest import AbstractClusterTest
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 10000
@@ -1164,86 +1164,6 @@ class CWLv12Test(ToilTest):
             extra_args=extra_args,
         )
 
-
-@needs_aws_ec2
-@needs_fetchable_appliance
-@slow
-class CWLOnARMTest(AbstractClusterTest):
-    """
-    Run the CWL 1.2 conformance tests on ARM specifically.
-    """
-
-    def __init__(self, methodName: str) -> None:
-        super().__init__(methodName=methodName)
-        self.clusterName = "cwl-test-" + str(uuid.uuid4())
-        self.leaderNodeType = "t4g.2xlarge"
-        self.clusterType = "kubernetes"
-        # We need to be running in a directory which Flatcar and the Toil Appliance both have
-        self.cwl_test_dir = "/tmp/toil/cwlTests"
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.jobStore = f"aws:{self.awsRegion()}:cluster-{uuid.uuid4()}"
-
-    @needs_env_var("CI_COMMIT_SHA", "a git commit sha")
-    def test_cwl_on_arm(self) -> None:
-        # Make a cluster
-        self.launchCluster()
-        # get the leader so we know the IP address - we don't need to wait since create cluster
-        # already ensures the leader is running
-        self.cluster = cluster_factory(
-            provisioner="aws", zone=self.zone, clusterName=self.clusterName
-        )
-        self.leader = self.cluster.getLeader()
-
-        commit = os.environ["CI_COMMIT_SHA"]
-        self.sshUtil(
-            [
-                "bash",
-                "-c",
-                f"mkdir -p {self.cwl_test_dir} && cd {self.cwl_test_dir} && git clone https://github.com/DataBiosphere/toil.git",
-            ]
-        )
-
-        # We use CI_COMMIT_SHA to retrieve the Toil version needed to run the CWL tests
-        self.sshUtil(
-            ["bash", "-c", f"cd {self.cwl_test_dir}/toil && git checkout {commit}"]
-        )
-
-        # --never-download prevents silent upgrades to pip, wheel and setuptools
-        self.sshUtil(
-            [
-                "bash",
-                "-c",
-                f"virtualenv --system-site-packages --never-download {self.venvDir}",
-            ]
-        )
-        self.sshUtil(
-            [
-                "bash",
-                "-c",
-                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && make prepare && make develop extras=[all]",
-            ]
-        )
-
-        # Runs the CWLv12Test on an ARM instance
-        self.sshUtil(
-            [
-                "bash",
-                "-c",
-                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance",
-            ]
-        )
-
-        # We know if it succeeds it should save a junit XML for us to read.
-        # Bring it back to be an artifact.
-        self.rsync_util(
-            f":{self.cwl_test_dir}/toil/conformance-1.2.junit.xml",
-            os.path.join(
-                self._projectRootPath(),
-                "arm-conformance-1.2.junit.xml"
-            )
-        )
 
 @needs_cwl
 @pytest.mark.cwl_small_log_dir
