@@ -31,7 +31,7 @@ from mypy_boto3_s3.service_resource import Bucket
 from mypy_boto3_sdb import SimpleDBClient
 from mypy_boto3_sdb.type_defs import ReplaceableItemTypeDef, ReplaceableAttributeTypeDef, SelectResultTypeDef, ItemTypeDef, AttributeTypeDef, DeletableItemTypeDef, UpdateConditionTypeDef
 
-from toil.lib.aws.utils import flatten_tags
+from toil.lib.aws.utils import flatten_tags, enable_public_objects
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription

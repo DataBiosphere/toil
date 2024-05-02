@@ -23,7 +23,7 @@ from typing import (Any,
 
 from toil.lib.retry import retry, get_error_status
 from toil.lib.misc import printq
-from toil.lib.aws import tags_from_env
+from . import tags_from_env
 from toil.lib.aws.utils import enable_public_objects, flatten_tags
 
 if sys.version_info >= (3, 8):

@@ -28,7 +28,7 @@ from typing import (Any,
 from urllib.parse import ParseResult
 
 from mypy_boto3_sdb.type_defs import AttributeTypeDef
-from toil.lib.aws import session, AWSRegionName, AWSServerErrors
+from . import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
