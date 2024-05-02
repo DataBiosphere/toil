@@ -36,6 +36,7 @@ from typing import (Any,
                     Dict,
                     Generator,
                     List,
+                    Literal,
                     Optional,
                     Tuple,
                     Type,
@@ -47,11 +48,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
+if sys.version_info >= (3, 9):
     import zoneinfo
 else:
-    from typing_extensions import Literal
     from backports import zoneinfo
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
