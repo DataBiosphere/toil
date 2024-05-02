@@ -23,12 +23,6 @@ class ToilDocumentationTest(ToilTest):
 
     def tearDown(self) -> None:
         super(ToilTest, self).tearDown()
-        # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
-        output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
-        for output in output_files:
-            output_file = os.path.join(self.directory, 'scripts/cwlExampleFiles', output)
-            if os.path.exists(output_file):
-                os.remove(output_file)
 
         jobstores = ['/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
         for jobstore in jobstores:
@@ -66,10 +60,6 @@ class ToilDocumentationTest(ToilTest):
         pattern = re.compile(expectedPattern, re.DOTALL)
         n = re.search(pattern, outerr)
         self.assertNotEqual(n, None, f"Pattern:\n{expectedPattern}\nOutput:\n{outerr}")
-
-    @needs_cwl
-    def testCwlexample(self):
-        self.checkExitCode("tutorial_cwlexample.py")
 
     def testStats(self):
         # This script asks for 4 cores but we might need to run the tests in only 3.
@@ -148,6 +138,7 @@ class ToilDocumentationTest(ToilTest):
 
     def testStaging(self):
         self.checkExitCode("tutorial_staging.py")
+
 
 if __name__ == "__main__":
     unittest.main()

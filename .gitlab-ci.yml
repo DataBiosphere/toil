@@ -80,7 +80,7 @@ cwl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/docs/scriptsTest.py::ToilDocumentationTest::testCwlexample
+    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_revsort
 
 wdl_dependency_is_stand_alone:
   rules:
