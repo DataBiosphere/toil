@@ -575,9 +575,9 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
         with self.app.test_client() as client:
             rv = client.post("/ga4gh/wes/v1/runs", data={
                 "workflow_url": "https://raw.githubusercontent.com/DataBiosphere/toil/releases/5.4.x/src/toil"
-                                "/test/docs/scripts/cwlExampleFiles/hello.cwl",
+                                "/test/cwl/echo.cwl",
                 "workflow_type": "CWL",
-                "workflow_type_version": "v1.0",
+                "workflow_type_version": "v1.2",
                 "workflow_params": json.dumps({"message": "Hello, world!"}),
             })
             # workflow is submitted successfully
