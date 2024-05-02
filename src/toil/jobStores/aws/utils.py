@@ -25,7 +25,7 @@ from botocore.exceptions import ClientError
 from mypy_boto3_sdb.type_defs import ItemTypeDef, AttributeTypeDef
 
 from toil.lib.aws import session, AWSServerErrors
-from toil.lib.aws.utils import connection_reset, get_bucket_region
+from toil.lib.aws.utils import connection_error, get_bucket_region
 from toil.lib.compatibility import compat_bytes
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
@@ -480,7 +480,7 @@ def retryable_ssl_error(e):
 def retryable_sdb_errors(e):
     return (sdb_unavailable(e)
             or no_such_sdb_domain(e)
-            or connection_reset(e)
+            or connection_error(e)
             or retryable_ssl_error(e))
 
 
