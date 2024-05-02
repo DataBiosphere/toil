@@ -360,7 +360,7 @@ class hidden:
 
         cpuCount = cpu_count()
         allocatedCores = sorted({1, 2, cpuCount})
-        sleepTime = 5
+        sleepTime = 30
 
         @abstractmethod
         def getBatchSystemName(self):
