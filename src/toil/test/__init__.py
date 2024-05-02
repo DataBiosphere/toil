@@ -47,7 +47,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
-if sys.version_info >= (3, 8):
+if sys.version_info >= (3, 9):
     from typing import Literal
     import zoneinfo
 else:
