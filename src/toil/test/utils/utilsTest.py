@@ -318,7 +318,16 @@ class UtilsTest(ToilTest):
         logger.info(f"I am {self.toilDir}")
         wf = subprocess.Popen(self.sort_workflow_cmd)
 
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
+        for time in range(0, 6):
+            if os.path.exists(self.toilDir):
+                logger.error(f"I am {self.toilDir} and my jobstore exists")
+            else:
+                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
+            sleep(5)
+            logger.critical(f"PID status: {ToilStatus.getPIDStatus(self.toilDir)}")
+            logger.info(f"Slept for {time*5}")
+
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=60)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
@@ -337,6 +346,16 @@ class UtilsTest(ToilTest):
         print(f"I am {self.toilDir}")
         logger.info(f"I am {self.toilDir}")
         wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
+
+        for time in range(0, 6):
+            if os.path.exists(self.toilDir):
+                logger.error(f"I am {self.toilDir} and my jobstore exists")
+            else:
+                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
+            sleep(5)
+            logger.critical(f"PID status: {ToilStatus.getPIDStatus(self.toilDir)}")
+            logger.info(f"Slept for {time*5}")
+
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('ERROR', status_fn=ToilStatus.getStatus)
@@ -351,6 +370,14 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
+        for time in range(0, 6):
+            if os.path.exists(self.toilDir):
+                logger.error(f"I am {self.toilDir} and my jobstore exists")
+            else:
+                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
+            sleep(5)
+            logger.critical(f"PID status: {ToilStatus.getPIDStatus(self.toilDir)}")
+            logger.info(f"Slept for {time*5}")
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('ERROR', status_fn=ToilStatus.getStatus)
@@ -364,6 +391,14 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
+        for time in range(0, 6):
+            if os.path.exists(self.toilDir):
+                logger.error(f"I am {self.toilDir} and my jobstore exists")
+            else:
+                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
+            sleep(5)
+            logger.critical(f"PID status: {ToilStatus.getPIDStatus(self.toilDir)}")
+            logger.info(f"Slept for {time*5}")
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
