@@ -1,4 +1,4 @@
-pytest>=6.2.1,<9
+pytest>=6.2.1,<9,!=8.2.0
 pytest-cov>=2.12.1,<6
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
