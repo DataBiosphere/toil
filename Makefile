@@ -211,8 +211,8 @@ push_docker: docker
 	cd docker ; \
 	for i in $$(seq 1 6); do \
 		if [[ $$i == "6" ]] ; then exit 1 ; fi ; \
-		docker buildx debug --invoke /bin/bash build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../.docker-cache/toil --cache-to type=inline -f Dockerfile . && \
-			docker buildx debug --invoke /bin/bash build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../.docker-cache/toil -f Dockerfile . && \
+		docker buildx build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_CACHE_TAG) --cache-from type=local,src=../.docker-cache/toil --cache-to type=inline -f Dockerfile . && \
+			docker buildx build --platform $(arch) --push --tag=$(docker_image):$(TOIL_DOCKER_TAG) --cache-from type=local,src=../.docker-cache/toil -f Dockerfile . && \
 			break || sleep 60; \
 	done
 	cd dashboard/prometheus ; \
