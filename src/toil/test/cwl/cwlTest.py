@@ -502,7 +502,7 @@ class CWLWorkflowTest(ToilTest):
             "src/toil/test/cwl/seqtk_seq.cwl",
             "src/toil/test/cwl/seqtk_seq_job.json",
             self._expected_seqtk_output(self.outDir),
-            main_args=["--default-container", "quay.io/biocontainers/seqtk:r93--0"],
+            main_args=["--default-container", "quay.io/biocontainers/seqtk:1.4--he4a0461_1"],
             out_name="output1",
         )
 
