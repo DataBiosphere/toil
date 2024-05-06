@@ -314,20 +314,8 @@ class UtilsTest(ToilTest):
 
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
-        print(f"I am {self.toilDir}")
-        logger.info(f"I am {self.toilDir}")
         wf = subprocess.Popen(self.sort_workflow_cmd)
-
-        for t in range(0, 6):
-            if os.path.exists(self.toilDir):
-                logger.error(f"I am {self.toilDir} and my jobstore exists")
-            else:
-                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
-            time.sleep(5)
-            logger.critical(f"PID status: {ToilStatus.getPIDStatus(self.toilDir)}")
-            logger.info(f"Slept for {t*5}")
-
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=60)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
@@ -343,19 +331,7 @@ class UtilsTest(ToilTest):
         opportunity to test the 'RUNNING' functionality of getStatus().
         """
         # --badWorker is set to force failure.
-        print(f"I am {self.toilDir}")
-        logger.info(f"I am {self.toilDir}")
         wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
-
-        for t in range(0, 6):
-            if os.path.exists(self.toilDir):
-                logger.error(f"I am {self.toilDir} and my jobstore exists")
-            else:
-                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
-            time.sleep(5)
-            logger.critical(f"PID status: {ToilStatus.getStatus(self.toilDir)}")
-            logger.info(f"Slept for {t*5}")
-
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('ERROR', status_fn=ToilStatus.getStatus)
@@ -365,19 +341,9 @@ class UtilsTest(ToilTest):
     def testGetStatusFailedCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
         # --badWorker is set to force failure.
-        print(f"I am {self.toilDir}")
-        logger.info(f"I am {self.toilDir}")
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        for t in range(0, 6):
-            if os.path.exists(self.toilDir):
-                logger.error(f"I am {self.toilDir} and my jobstore exists")
-            else:
-                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
-            time.sleep(5)
-            logger.critical(f"PID status: {ToilStatus.getStatus(self.toilDir)}")
-            logger.info(f"Slept for {t*5}")
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('ERROR', status_fn=ToilStatus.getStatus)
@@ -386,19 +352,9 @@ class UtilsTest(ToilTest):
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
-        print(f"I am {self.toilDir}")
-        logger.info(f"I am {self.toilDir}")
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        for t in range(0, 6):
-            if os.path.exists(self.toilDir):
-                logger.error(f"I am {self.toilDir} and my jobstore exists")
-            else:
-                logger.error(f"I am {self.toilDir} and my jobstore DOES NOT exists")
-            time.sleep(5)
-            logger.critical(f"PID status: {ToilStatus.getStatus(self.toilDir)}")
-            logger.info(f"Slept for {t*5}")
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
