@@ -135,11 +135,11 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
 
 test_debug: check_venv check_build_reqs
 	TOIL_OWNER_TAG="$(whoami)" \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native --maxfail=1 --color=yes
+	    python -m pytest --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native --maxfail=1
 
 
 # This target will skip building docker and all docker based tests
@@ -148,12 +148,12 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TOIL_SKIP_ONLINE=True \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
+	    python -m pytest -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)"
 
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)" --color=yes
+	    python -m pytest -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)"
 
 ifdef TOIL_DOCKER_REGISTRY
 
