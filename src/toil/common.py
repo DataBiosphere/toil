@@ -240,6 +240,8 @@ class Config:
 
     # CWL
     cwl: bool
+    # cwltool arguments that we want to respect
+    tmpdir_prefix: Optional[str]
 
     def __init__(self) -> None:
         # only default options that are not CLI options defined here (thus CLI options are centralized)
@@ -403,6 +405,9 @@ class Config:
         set_option("badWorkerFailInterval")
         set_option("logLevel")
         set_option("colored_logs")
+
+        # cwltool options that should be respected
+        set_option("tmpdir_prefix")
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
@@ -1268,6 +1273,25 @@ class Toil(ContextManager["Toil"]):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
 
+    @staticmethod
+    def get_working_tmpdir(tmp_override: Optional[str] = None) -> Optional[str]:
+        # Priority will be: TMPDIR > TEMP > TMP > /tmp
+        # gettempdir returns the current working directory as a last resort
+        # but we don't want that, so return None if the cwd is reached
+        tmp = tmp_override or tempfile.gettempdir()
+        # gettempdir does this under the hood
+        try:
+            cwd = os.getcwd()
+        except (AttributeError, OSError):
+            cwd = os.curdir
+
+        if os.path.samefile(tmp, os.path.abspath(cwd)):
+            return None
+        else:
+            # under the hood, gettempdir will try to create a file to the found tmp
+            # dir to see if it is writable, so try_path isn't necessary
+            return tmp
+
     @classmethod
     def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
         """
@@ -1306,9 +1330,9 @@ class Toil(ContextManager["Toil"]):
                     os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
                 # Try under /run/lock. It might be a temp dir style sticky directory.
                 try_path('/run/lock') or
-                # Before trying the workdir, try the /tmp directory as tmp directories
-                # should be local to the node and not shared like a work directoy might be
-                try_path('/tmp/toil_coordination') or
+                # Before trying the workdir, try the some tmp directories as they are more
+                # likely to be local to the node compared to the work dir
+                cls.get_working_tmpdir(cls.config.tmpdir_prefix) or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )

@@ -119,7 +119,7 @@ class Leader:
         if self.config.write_messages is None:
             # The user hasn't specified a place for the message bus so we
             # should make one.
-            self.config.write_messages = gen_message_bus_path()
+            self.config.write_messages = gen_message_bus_path(config.tmpdir_prefix)
 
         # Message bus messages need to go to the given file.
         # Keep a reference to the return value so the listener stays alive.
