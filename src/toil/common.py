@@ -1306,6 +1306,9 @@ class Toil(ContextManager["Toil"]):
                     os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
                 # Try under /run/lock. It might be a temp dir style sticky directory.
                 try_path('/run/lock') or
+                # Before trying the workdir, try the /tmp directory as tmp directories
+                # should be local to the node and not shared like a work directoy might be
+                try_path('/tmp/toil_coordination') or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
