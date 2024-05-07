@@ -741,12 +741,12 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
 
     return job_statuses
 
-def gen_message_bus_path(tmpdir_override: Optional[str] = None) -> str:
+def gen_message_bus_path(tmpdir_prefix: Optional[str] = None) -> str:
     """
     Return a file path in tmp to store the message bus at.
     Calling function is responsible for cleaning the generated file.
     """
-    fd, path = tempfile.mkstemp(dir=tmpdir_override)
+    fd, path = tempfile.mkstemp(prefix=tmpdir_prefix)
     os.close(fd)
     return path
     #TODO Might want to clean up the tmpfile at some point after running the workflow

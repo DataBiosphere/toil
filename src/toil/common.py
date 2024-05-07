@@ -1274,11 +1274,22 @@ class Toil(ContextManager["Toil"]):
         return workDir
 
     @staticmethod
-    def get_working_tmpdir(tmp_override: Optional[str] = None) -> Optional[str]:
+    def get_working_tmpdir(tmpdir_prefix: Optional[str] = None) -> Optional[str]:
+        """
+        Get a working temp directory, testing if it is accessible
+        If tmpdir_prefix is given, assuming it is accessible, it will return its parent directory
+        if the path itself is not a directory path
+        :param tmpdir_prefix: tmp directory to override
+        :return: Path or none
+        """
+        # if tmpdir_prefix exists, return its parent or None depending on if it is accessible
+        if tmpdir_prefix is not None:
+            return tmpdir_prefix if os.path.isdir(tmpdir_prefix) else os.path.dirname(tmpdir_prefix)
+
         # Priority will be: TMPDIR > TEMP > TMP > /tmp
         # gettempdir returns the current working directory as a last resort
         # but we don't want that, so return None if the cwd is reached
-        tmp = tmp_override or tempfile.gettempdir()
+        tmp = tempfile.gettempdir()
         # gettempdir does this under the hood
         try:
             cwd = os.getcwd()
