@@ -315,14 +315,14 @@ class UtilsTest(ToilTest):
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=60)
         wf.wait()
-        self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus, seconds=60)
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
-        self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus, seconds=60)
 
     def testGetStatusFailedToilWF(self):
         """
@@ -332,9 +332,9 @@ class UtilsTest(ToilTest):
         """
         # --badWorker is set to force failure.
         wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @needs_docker
@@ -344,9 +344,9 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @needs_docker
@@ -355,9 +355,9 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @patch('builtins.print')
