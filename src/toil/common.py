@@ -1274,7 +1274,7 @@ class Toil(ContextManager["Toil"]):
         return workDir
 
     @classmethod
-    def get_working_tmpdir(cls, tmpdir_prefix: Optional[str] = None, workflow_id: Optional[str] = None) -> Optional[str]:
+    def get_working_tmpdir(cls, workflow_id: str, tmpdir_prefix: Optional[str] = None) -> Optional[str]:
         """
         Get a path to a working temp directory, testing if it is accessible but not creating it
         Returns a path to a temp directory where tmpdir_prefix is the prefix
@@ -1338,7 +1338,7 @@ class Toil(ContextManager["Toil"]):
                 try_path('/run/lock') or
                 # Before trying the workdir, try the some tmp directories as they are more
                 # likely to be local to the node compared to the work dir
-                cls.get_working_tmpdir(cls.config.tmpdir_prefix, workflow_id) or
+                cls.get_working_tmpdir(workflow_id, cls.config.tmpdir_prefix) or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
