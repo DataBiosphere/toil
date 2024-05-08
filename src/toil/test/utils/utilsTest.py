@@ -376,6 +376,7 @@ class UtilsTest(ToilTest):
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
 
+    @pytest.mark.timeout(1200)
     def testRestartAttribute(self):
         """
         Test that the job store is only destroyed when we observe a successful workflow run.
