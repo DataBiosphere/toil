@@ -1273,38 +1273,31 @@ class Toil(ContextManager["Toil"]):
             raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
         return workDir
 
-    @staticmethod
-    def get_working_tmpdir(tmpdir_prefix: Optional[str] = None) -> Optional[str]:
+    @classmethod
+    def get_working_tmpdir(cls, tmpdir_prefix: Optional[str] = None, workflow_id: Optional[str] = None) -> Optional[str]:
         """
-        Get a working temp directory, testing if it is accessible
-        If tmpdir_prefix is given, assuming it is accessible, it will return its parent directory
-        if the path itself is not a directory path
-        :param tmpdir_prefix: tmp directory to override
+        Get a path to a working temp directory, testing if it is accessible but not creating it
+        Returns a path to a temp directory where tmpdir_prefix is the prefix
+        :param tmpdir_prefix: override with a provided path prefix
+        :param workflow_id: workflow_id to create the full directory path. Is appended to the tmpdir_prefix if it exists
         :return: Path or none
         """
-        # if tmpdir_prefix exists, return its parent or None depending on if it is accessible
-        if tmpdir_prefix is not None:
-            return tmpdir_prefix if os.path.isdir(tmpdir_prefix) else os.path.dirname(tmpdir_prefix)
-
+        # if tmpdir_prefix exists and works, return it
+        if tmpdir_prefix is not None and try_path(os.path.split(tmpdir_prefix)[0]):
+            if os.path.isdir(tmpdir_prefix):
+                return tmpdir_prefix
+            else:
+                # we need to return a full directory path and not a prefix
+                # but each call within a workflow must be consistent across nodes
+                # in order for proper batchsystem cleanup, so use the workflow_id
+                return tmpdir_prefix + workflow_id
+        # else, return a working tmpdir
         # Priority will be: TMPDIR > TEMP > TMP > /tmp
-        # gettempdir returns the current working directory as a last resort
-        # but we don't want that, so return None if the cwd is reached
-        tmp = tempfile.gettempdir()
-        # gettempdir does this under the hood
-        try:
-            cwd = os.getcwd()
-        except (AttributeError, OSError):
-            cwd = os.curdir
-
-        if os.path.samefile(tmp, os.path.abspath(cwd)):
-            return None
-        else:
-            # under the hood, gettempdir will try to create a file to the found tmp
-            # dir to see if it is writable, so try_path isn't necessary
-            return tmp
+        # gettempdir tests if the directory is accessible already
+        return tempfile.gettempdir()
 
     @classmethod
-    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
+    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str], workflow_id: str) -> str:
         """
         Return a path to a writable directory, which will be in memory if
         convenient. Ought to be used for file locking and coordination.
@@ -1313,6 +1306,8 @@ class Toil(ContextManager["Toil"]):
                --workDir flag
         :param config_coordination_dir: Value passed to the program using the
                --coordinationDir flag
+        :param workflow_id: Used if a tmpdir_prefix exists to create full
+               directory paths unique per workflow
 
         :return: Path to the Toil coordination directory. Ought to be on a
                  POSIX filesystem that allows directories containing open files to be
@@ -1343,7 +1338,7 @@ class Toil(ContextManager["Toil"]):
                 try_path('/run/lock') or
                 # Before trying the workdir, try the some tmp directories as they are more
                 # likely to be local to the node compared to the work dir
-                cls.get_working_tmpdir(cls.config.tmpdir_prefix) or
+                cls.get_working_tmpdir(cls.config.tmpdir_prefix, workflow_id) or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
@@ -1419,10 +1414,11 @@ class Toil(ContextManager["Toil"]):
         """
 
         # Start with the base coordination or work dir
-        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
+        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir, workflow_id)
 
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls.get_workflow_path_component(workflow_id))
+
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
         # TODO: May interfere with workflow directory creation logging if it's the same directory.

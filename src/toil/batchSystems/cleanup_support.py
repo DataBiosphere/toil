@@ -72,7 +72,8 @@ class WorkerCleanupContext:
         self.arena = LastProcessStandingArena(
             Toil.get_toil_coordination_dir(
                 self.workerCleanupInfo.work_dir,
-                self.workerCleanupInfo.coordination_dir
+                self.workerCleanupInfo.coordination_dir,
+                self.workerCleanupInfo.workflow_id
             ),
             Toil.get_workflow_path_component(self.workerCleanupInfo.workflow_id) + "-cleanup"
         )
