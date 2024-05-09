@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import fcntl
+import errno
 import logging
 import os
 import tempfile
@@ -20,9 +20,11 @@ from contextlib import contextmanager
 
 import dill
 
+
 from toil.lib.io import robust_rmtree
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
+from toil.threading import safe_lock, safe_unlock_and_close
 
 logger = logging.getLogger(__name__)
 
@@ -128,18 +130,22 @@ class DeferredFunctionManager:
 
         # Lock the state file. The lock will automatically go away if our process does.
         try:
-            fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            safe_lock(self.stateFD, block=False)
         except OSError as e:
-            # Someone else might have locked it even though they should not have.
-            raise RuntimeError(f"Could not lock deferred function state file {self.stateFileName}: {str(e)}")
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                # Someone else locked it even though they should not have.
+                raise RuntimeError(f"Could not lock deferred function state file {self.stateFileName}") from e
+            else:
+                # Something else went wrong
+                raise
 
         # Rename it to remove the suffix
         os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
         self.stateFileName = self.stateFileName[:-len(self.WIP_SUFFIX)]
 
-        # Wrap the FD in a Python file object, which we will use to actually use it.
+        # Get a Python file object for the file, which we will use to actually use it.
         # Problem: we can't be readable and writable at the same time. So we need two file objects.
-        self.stateFileOut = os.fdopen(self.stateFD, 'wb')
+        self.stateFileOut = open(self.stateFileName, 'wb')
         self.stateFileIn = open(self.stateFileName, 'rb')
 
         logger.debug("Opened with own state file %s" % self.stateFileName)
@@ -157,10 +163,7 @@ class DeferredFunctionManager:
             os.unlink(self.stateFileName)
 
         # Unlock it
-        fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
-
-        # Don't bother with close, destroying will close and it seems to maybe
-        # have been GC'd already anyway.
+        safe_unlock_and_close(self.stateFD)
 
     @contextmanager
     def open(self):
@@ -318,11 +321,16 @@ class DeferredFunctionManager:
                     continue
 
                 try:
-                    fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except OSError:
-                    # File is still locked by someone else.
-                    # Look at the next file instead
-                    continue
+                    safe_lock(fd, block=False)
+                except OSError as e:
+                    if e.errno in (errno.EACCES, errno.EAGAIN):
+                        # File is still locked by someone else.
+                        # Look at the next file instead
+                        continue
+                    else:
+                        # Something else went wrong
+                        os.close(fd)
+                        raise
 
                 logger.debug("Locked file %s" % fullFilename)
 
@@ -330,7 +338,7 @@ class DeferredFunctionManager:
                 foundFiles = True
 
                 # Actually run all the stored deferred functions
-                fileObj = os.fdopen(fd, 'rb')
+                fileObj = open(fullFilename, 'rb')
                 self._runAllDeferredFunctions(fileObj)
                 states_handled += 1
 
@@ -342,10 +350,6 @@ class DeferredFunctionManager:
                     pass
 
                 # Unlock it
-                fcntl.lockf(fd, fcntl.LOCK_UN)
-
-                # Now close it. This closes the backing file descriptor. See
-                # <https://stackoverflow.com/a/24984929>
-                fileObj.close()
+                safe_unlock_and_close(fd)
 
         logger.debug("Ran orphaned deferred functions from %d abandoned state files", states_handled)
