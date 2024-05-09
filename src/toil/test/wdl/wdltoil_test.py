@@ -9,6 +9,7 @@ from typing import Optional
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
 
+import logging
 import pytest
 
 from toil.provisioners import cluster_factory
@@ -20,6 +21,8 @@ from toil.test import (ToilTest,
                        slow, integrative)
 from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
+
+logger = logging.getLogger(__name__)
 
 @needs_wdl
 class BaseWDLTest(ToilTest):
@@ -45,7 +48,7 @@ class WDLConformanceTests(BaseWDLTest):
     def setUpClass(cls) -> None:
 
         url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "7c7f82c0dd426f5be708f7a858e448cfb0fea91b"
+        commit = "b2b4bf952785a9b69724880793ff0d9e41df6309"
 
         p = subprocess.Popen(
             f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",
@@ -55,43 +58,45 @@ class WDLConformanceTests(BaseWDLTest):
         p.communicate()
 
         if p.returncode > 0:
-            raise RuntimeError
+            raise RuntimeError("Could not clone WDL conformance tests")
 
         os.chdir(cls.wdl_dir)
 
         cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
 
+    def check(self, p: subprocess.CompletedProcess) -> None:
+        """
+        Make sure a call completed or explain why it failed.
+        """
+
+        if p.returncode != 0:
+            logger.error("Failed process standard output: %s", p.stdout.decode('utf-8', errors='replace'))
+            logger.error("Failed process standard error: %s", p.stderr.decode('utf-8', errors='replace'))
+
+        p.check_returncode()
+
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v10(self):
-        tests_to_run = "0-15,17-20,22-71,73-77"
-        p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
-
-        if p.returncode != 0:
-            print(p.stdout.decode('utf-8', errors='replace'))
-
-        p.check_returncode()
+        tests_to_run = "0-15,17-20,22-71,73-78"
+        subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
+        
+        self.check(p)
 
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v11(self):
-        tests_to_run = "1-63,65-71,73-75,77"
+        tests_to_run = "1-63,65-71,73-76,78"
         p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
 
-        if p.returncode != 0:
-            print(p.stdout.decode('utf-8', errors='replace'))
-
-        p.check_returncode()
+        self.check(p)
 
     @slow
     def test_conformance_tests_integration(self):
         ids_to_run = "encode,tut01,tut02,tut03,tut04"
         p = subprocess.run(self.base_command + ["-v", "1.0", "--id", ids_to_run], capture_output=True)
         
-        if p.returncode != 0:
-            print(p.stdout.decode('utf-8', errors='replace'))
-
-        p.check_returncode()
+        self.check(p)
 
     @classmethod
     def tearDownClass(cls) -> None:
