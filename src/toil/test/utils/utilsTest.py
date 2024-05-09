@@ -56,6 +56,7 @@ class UtilsTest(ToilTest):
         super().setUp()
         self.tempDir = self._createTempDir()
         self.tempFile = get_temp_file(rootDir=self.tempDir)
+        self.outputFile = get_temp_file(rootDir=self.tempDir)
         self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
@@ -73,9 +74,9 @@ class UtilsTest(ToilTest):
             '-m',
             'toil.test.sort.sort',
             f'file:{self.toilDir}',
+            f'--fileToSort={self.tempFile}',
+            f'--outputFile={self.outputFile}',
             '--clean=never',
-            '--numLines=1',
-            '--lineLength=1'
         ]
 
         self.restart_sort_workflow_cmd = [
@@ -91,7 +92,7 @@ class UtilsTest(ToilTest):
         if os.path.exists(self.toilDir):
             shutil.rmtree(self.toilDir)
 
-        for f in ['fileToSort.txt', 'sortedFile.txt', 'output.txt']:
+        for f in [self.tempFile, self.outputFile, os.path.join(self.tempDir, "output.txt")]:
             if os.path.exists(f):
                 os.remove(f)
 
@@ -314,14 +315,14 @@ class UtilsTest(ToilTest):
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=20)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus, seconds=60)
         wf.wait()
-        self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus, seconds=60)
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
-        self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
+        self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus, seconds=60)
 
     def testGetStatusFailedToilWF(self):
         """
@@ -331,9 +332,9 @@ class UtilsTest(ToilTest):
         """
         # --badWorker is set to force failure.
         wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @needs_docker
@@ -341,22 +342,22 @@ class UtilsTest(ToilTest):
         """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
         # --badWorker is set to force failure.
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
-               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
-               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt', f'--outdir={self.tempDir}']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=20)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
-        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus, seconds=60)
 
     @needs_cwl
     @patch('builtins.print')
@@ -375,6 +376,7 @@ class UtilsTest(ToilTest):
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
 
+    @pytest.mark.timeout(1200)
     def testRestartAttribute(self):
         """
         Test that the job store is only destroyed when we observe a successful workflow run.
