@@ -58,7 +58,8 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
             elif e.errno == errno.EIO:
                 # Sometimes Ceph produces IO errors when talking to lock files.
                 # Back off and try again.
-                # TODO: Should we eventually give up if the disk really is broken?
+                # TODO: Should we eventually give up if the disk really is
+                # broken? If so we should use the retry system.
                 logger.error("IO error talking to lock file. Retrying after %s seconds.", error_backoff)
                 time.sleep(error_backoff)
                 error_backoff = min(60, error_backoff * 2)
