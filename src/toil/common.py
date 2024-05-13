@@ -240,8 +240,6 @@ class Config:
 
     # CWL
     cwl: bool
-    # cwltool arguments that we want to respect
-    tmpdir_prefix: Optional[str]
 
     def __init__(self) -> None:
         # only default options that are not CLI options defined here (thus CLI options are centralized)
@@ -405,9 +403,6 @@ class Config:
         set_option("badWorkerFailInterval")
         set_option("logLevel")
         set_option("colored_logs")
-
-        # cwltool options that should be respected
-        set_option("tmpdir_prefix")
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
@@ -1297,7 +1292,7 @@ class Toil(ContextManager["Toil"]):
         return tempfile.gettempdir()
 
     @classmethod
-    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str], workflow_id: str) -> str:
+    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
         """
         Return a path to a writable directory, which will be in memory if
         convenient. Ought to be used for file locking and coordination.
@@ -1336,9 +1331,6 @@ class Toil(ContextManager["Toil"]):
                     os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
                 # Try under /run/lock. It might be a temp dir style sticky directory.
                 try_path('/run/lock') or
-                # Before trying the workdir, try the some tmp directories as they are more
-                # likely to be local to the node compared to the work dir
-                cls.get_working_tmpdir(workflow_id, cls.config.tmpdir_prefix) or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
@@ -1414,7 +1406,7 @@ class Toil(ContextManager["Toil"]):
         """
 
         # Start with the base coordination or work dir
-        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir, workflow_id)
+        base = cls.get_toil_coordination_dir(config_work_dir, config_coordination_dir)
 
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls.get_workflow_path_component(workflow_id))

@@ -741,23 +741,16 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
 
     return job_statuses
 
-def gen_message_bus_path(tmpdir_prefix: Optional[str] = None) -> str:
+def gen_message_bus_path(tmpdir: Optional[str] = None) -> str:
     """
     Return a file path in tmp to store the message bus at.
     Calling function is responsible for cleaning the generated file.
 
-    The tmpdir_prefix argument can either be an absolute path or a relative path.
-    If the path is relative, it will be created relative to the current working directory,
-    mimicking the behavior of cwltool.
-    If the path is absolute, this will return a prefixed file path with the parent directory as
-    the prefix's directory name
+    The tmpdir argument will override the directory that the
+    message bus will be made in. If not provided, the standard tempfile
+    order will be used.
     """
-    if tmpdir_prefix is None:
-        fd, path = tempfile.mkstemp()
-    else:
-        tmp_dir, tmp_prefix = os.path.split(tmpdir_prefix)
-        os.makedirs(tmp_dir, exist_ok=True)
-        fd, path = tempfile.mkstemp(dir=tmp_dir, prefix=tmp_prefix)
+    fd, path = tempfile.mkstemp(dir=tmpdir)
     os.close(fd)
     return path
     #TODO Might want to clean up the tmpfile at some point after running the workflow
