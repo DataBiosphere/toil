@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+import pytest
 
 from typing import List
 
@@ -65,6 +66,7 @@ class ToilDocumentationTest(ToilTest):
         # This script asks for 4 cores but we might need to run the tests in only 3.
         self.checkExitCode("tutorial_stats.py", ["--scale=0.5"])
 
+    @pytest.mark.timeout(1200)
     def testDynamic(self):
         self.checkExitCode("tutorial_dynamic.py")
 
@@ -110,6 +112,7 @@ class ToilDocumentationTest(ToilTest):
                                   "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                   " I have a message: last")
 
+    @pytest.mark.timeout(1200)
     def testPromises2(self):
         self.checkExpectedOut("tutorial_promises2.py",
                               "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111',"
