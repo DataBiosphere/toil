@@ -170,6 +170,22 @@ Some extras can't install without additional dependencies. If you need any of th
 
 .. _buildFromSource:
 
+Installing Plugins
+--------------------
+Toil also supports plugins that allow Toil to run on different types of batch systems.
+
+To install a plugin from pypi, simply run::
+
+  $ pip install [toil-batchsystem-plugin]
+
+To use the batch system, pass the batch system name to the ``--batchSystem`` argument::
+
+  $ python sort.py --batchSystem=[batchsystem_name] ...
+
+The current batch system plugins are:
+
+- Task Execution Service (`TES <https://ga4gh.github.io/task-execution-schemas/docs/>`_): `toil_batch_system_tes <https://github.com/adamnovak/toil_batch_system_tes>`_
+
 Building from Source
 --------------------
 
