@@ -79,7 +79,7 @@ class WDLConformanceTests(BaseWDLTest):
     @slow
     def test_conformance_tests_v10(self):
         tests_to_run = "0-15,17-20,22-71,73-78"
-        subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
         
         self.check(p)
 
