@@ -1269,29 +1269,6 @@ class Toil(ContextManager["Toil"]):
         return workDir
 
     @classmethod
-    def get_working_tmpdir(cls, workflow_id: str, tmpdir_prefix: Optional[str] = None) -> Optional[str]:
-        """
-        Get a path to a working temp directory, testing if it is accessible but not creating it
-        Returns a path to a temp directory where tmpdir_prefix is the prefix
-        :param tmpdir_prefix: override with a provided path prefix
-        :param workflow_id: workflow_id to create the full directory path. Is appended to the tmpdir_prefix if it exists
-        :return: Path or none
-        """
-        # if tmpdir_prefix exists and works, return it
-        if tmpdir_prefix is not None and try_path(os.path.split(tmpdir_prefix)[0]):
-            if os.path.isdir(tmpdir_prefix):
-                return tmpdir_prefix
-            else:
-                # we need to return a full directory path and not a prefix
-                # but each call within a workflow must be consistent across nodes
-                # in order for proper batchsystem cleanup, so use the workflow_id
-                return tmpdir_prefix + workflow_id
-        # else, return a working tmpdir
-        # Priority will be: TMPDIR > TEMP > TMP > /tmp
-        # gettempdir tests if the directory is accessible already
-        return tempfile.gettempdir()
-
-    @classmethod
     def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
         """
         Return a path to a writable directory, which will be in memory if
@@ -1331,6 +1308,9 @@ class Toil(ContextManager["Toil"]):
                     os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
                 # Try under /run/lock. It might be a temp dir style sticky directory.
                 try_path('/run/lock') or
+                # Try all possible temp directories, falling back to the current working
+                # directory
+                tempfile.gettempdir() or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
