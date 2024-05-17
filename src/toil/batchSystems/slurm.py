@@ -514,7 +514,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 partition_name, gres, time, priority, cpus, memory = line.split(" ")
                 self.partitions.append((partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
 
-def _check_accelerator_request(self, requirer: Requirer) -> None:
+    def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu':
                 raise InsufficientSystemResources(requirer, 'accelerators', details=
