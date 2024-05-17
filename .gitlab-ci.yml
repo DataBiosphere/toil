@@ -267,9 +267,10 @@ cwl_v1.2:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     # Run CWL integration tests excluded from cwl_misc
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
-    # Run CWL conformance tests, with file store bypassed
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
+    - time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
+    # Run CWL conformance tests, with file store bypassed.
+    # Only one test so do just one thread and log live.
+    - time make test threads=1 tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
   artifacts:
     reports:
       junit: "*.junit.xml"

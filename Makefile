@@ -105,6 +105,18 @@ marker=""
 # Number of tests to run in parallel.
 threads:="auto"
 
+# Only pass the threading options if running parallel tests. Otherwise we lose
+# live logging. See <https://stackoverflow.com/q/62533239>
+ifeq "$(threads)" "auto"
+	threadopts=-n $(threads) --dist loadscope
+else
+ifeq "$(threads)" "1"
+	threadopts=
+else
+	threadopts=-n $(threads) --dist loadscope
+endif
+endif
+
 develop: check_venv
 	pip install -e .$(extras) $(packages)
 
@@ -135,7 +147,7 @@ clean_sdist:
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG --log-cli-level INFO -r s $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -o log_cli=true --log-cli-level INFO -r s $(cov) $(threadopts) $(tests) -m "$(marker)" --color=yes
 
 test_debug: check_venv check_build_reqs
 	TOIL_OWNER_TAG="$(whoami)" \
