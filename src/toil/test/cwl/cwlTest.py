@@ -193,13 +193,17 @@ def run_conformance_tests(
 
             # Once it's done writing, amke sure it succeeded.
             child.wait()
-            child.check_returncode()
+            log.info("CWL tests finished with exit code %s", child.returncode)
+            if child.returncode != 0:
+                # Act like check_output and raise an error.
+                raise subprocess.CalledProcessError(child.returncode, ' '.join(cmd))
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
                 subprocess.run(["toil", "clean", job_store_override])
 
     except subprocess.CalledProcessError as e:
+        log.info("CWL test runner return code was unsuccessful")
         only_unsupported = False
         # check output -- if we failed but only have unsupported features, we're okay
         p = re.compile(
@@ -215,6 +219,7 @@ def run_conformance_tests(
         if (not only_unsupported) or must_support_all_features:
             log.error("CWL tests gave unacceptable output:\n%s", '\n'.join(output_lines))
             raise e
+        log.info("Unsuccessful return code is OK")
 
 
 TesterFuncType = Callable[[str, str, "CWLObjectType"], None]
@@ -1104,9 +1109,9 @@ class CWLv12Test(ToilTest):
         """
         self.test_run_conformance(
             extra_args=["--bypass-file-store"], must_support_all_features=True,
-            #junit_file = os.path.join(
-            #    self.rootDir, "in-place-update-conformance-1.2.junit.xml"
-            #)
+            junit_file = os.path.join(
+                self.rootDir, "in-place-update-conformance-1.2.junit.xml"
+            )
         )
 
     @slow
