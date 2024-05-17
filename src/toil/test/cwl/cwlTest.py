@@ -181,8 +181,19 @@ def run_conformance_tests(
         cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
+        output_lines: List[str] = []
         try:
-            output = subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+            child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            for line in child.stdout:
+                # Pass through all the logs at debug level
+                text_line = line.decode('utf-8', errors='replace').rstrip()
+                output_lines.append(text_line)
+                log.debug(text_line)
+
+            # Once it's done writing, amke sure it succeeded.
+            child.wait()
+            child.check_returncode()
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
@@ -195,15 +206,14 @@ def run_conformance_tests(
             r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features"
         )
 
-        error_log = e.output.decode("utf-8")
-        for line in error_log.split("\n"):
+        for line in output_lines:
             m = p.search(line)
             if m:
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                     only_unsupported = True
                     break
         if (not only_unsupported) or must_support_all_features:
-            print(error_log)
+            log.error("CWL tests gave unacceptable output:\n%s", '\n'.join(output_lines))
             raise e
 
 
@@ -1094,9 +1104,9 @@ class CWLv12Test(ToilTest):
         """
         self.test_run_conformance(
             extra_args=["--bypass-file-store"], must_support_all_features=True,
-            junit_file = os.path.join(
-                self.rootDir, "in-place-update-conformance-1.2.junit.xml"
-            )
+            #junit_file = os.path.join(
+            #    self.rootDir, "in-place-update-conformance-1.2.junit.xml"
+            #)
         )
 
     @slow
