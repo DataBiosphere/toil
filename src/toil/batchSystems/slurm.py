@@ -398,8 +398,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # responded to this signal and use the right exit reason for it.
             sbatch_line.append("--signal=B:INT@30")
 
-            if gpus:
-                sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
             environment = {}
             environment.update(self.boss.environment)
             if job_environment:
@@ -444,6 +442,37 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
+            if gpus:
+                sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
+
+                lowest_priority_gpus = sorted([i for i in self.boss.partitions if i[1]], key=lambda x: x[4])
+                new_partition_name = lowest_priority_gpus[0][0]  # get name of lowest priority partition that supports gpus
+                if not any(line.startswith("--partition") for line in sbatch_line):
+                    # no partition specified, so specify one
+                    sbatch_line.append(f"--partition={new_partition_name}")
+                else:
+                    # there is a partition specified already, check if the partition has GPUs
+                    for i, line in enumerate(sbatch_line):
+                        if line.startswith("--partition"):
+                            # grab the partition name depending on if it's specified via an "=" or a space
+                            if "=" in line:
+                                separated = False
+                                partition_name = line[len("--partition=")]
+                            else:
+                                separated = True
+                                partition_name = line[i+1]
+
+                            if not any(partition_name == partition for partition in lowest_priority_gpus):
+                                # the specified partition is not compatible, so override with a gpu supported partition
+                                logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. Overriding with partition {new_partition_name}.")
+                                # remove old partition from sbatch line
+                                sbatch_line.pop(i)
+                                if separated:
+                                    sbatch_line.pop(i)
+                                # add new partition to sbatch line
+                                sbatch_line.append(f"--partition={new_partition_name}")
+                            break
+
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
             stderrfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
@@ -467,7 +496,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 pass  # slurm may return INVALID instead of a time
             return total_seconds
 
-    def _check_accelerator_request(self, requirer: Requirer) -> None:
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+        self._get_partition_info()
+
+    def _get_partition_info(self):
+        sinfo_command = ["sinfo",
+                         "-a",
+                         "-o",
+                         "%P %G %l %p %c %m"]
+
+        sinfo = call_command(sinfo_command)
+
+        self.partitions = []
+        for line in sinfo.split("\n")[1:]:
+            if line.strip():
+                partition_name, gres, time, priority, cpus, memory = line.split(" ")
+                self.partitions.append((partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
+
+def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu':
                 raise InsufficientSystemResources(requirer, 'accelerators', details=
