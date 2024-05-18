@@ -298,7 +298,7 @@ cwl_on_arm:
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
     # Run CWL conformance tests, on an ARM cluster on AWS, using the file store
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLOnARMTest
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/provisioners/clusterTest.py::CWLOnARMTest
   artifacts:
     reports:
       junit: "*.junit.xml"
@@ -422,7 +422,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/wdl/wdltoil_test.py::WDLKubernetesClusterTest"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/sort/sortTest.py src/toil/test/provisioners/clusterScalerTest.py src/toil/test/utils/utilsTest.py::UtilsTest::testAWSProvisionerUtils src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSProvisionerBenchTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSManagedAutoscaleTest src/toil/test/wdl/wdltoil_test_kubernetes.py::WDLKubernetesClusterTest"
 #    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
 
 google_jobstore:
