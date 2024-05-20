@@ -23,6 +23,7 @@ from toil.lib.retry import retry
 from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance, slow, needs_env_var
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import AWSConnectionManager
+from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
 
 log = logging.getLogger(__name__)
