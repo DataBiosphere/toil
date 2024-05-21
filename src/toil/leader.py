@@ -119,7 +119,12 @@ class Leader:
         if self.config.write_messages is None:
             # The user hasn't specified a place for the message bus so we
             # should make one.
-            self.config.write_messages = gen_message_bus_path()
+            # pass in coordination_dir for toil-cwl-runner; we want to obey --tmpdir-prefix
+            # from cwltool and we change the coordination_dir when detected. we don't want
+            # to make another config attribute so put the message bus in the already prefixed dir
+            # if a coordination_dir is provided normally, we can still put the bus in there
+            # as the coordination dir should serve a similar purpose to the tmp directory
+            self.config.write_messages = gen_message_bus_path(config.coordination_dir)
 
         # Message bus messages need to go to the given file.
         # Keep a reference to the return value so the listener stays alive.
