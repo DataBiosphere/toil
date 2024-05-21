@@ -1278,6 +1278,8 @@ class Toil(ContextManager["Toil"]):
                --workDir flag
         :param config_coordination_dir: Value passed to the program using the
                --coordinationDir flag
+        :param workflow_id: Used if a tmpdir_prefix exists to create full
+               directory paths unique per workflow
 
         :return: Path to the Toil coordination directory. Ought to be on a
                  POSIX filesystem that allows directories containing open files to be
@@ -1306,9 +1308,9 @@ class Toil(ContextManager["Toil"]):
                     os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
                 # Try under /run/lock. It might be a temp dir style sticky directory.
                 try_path('/run/lock') or
-                # Before trying the workdir, try the /tmp directory as tmp directories
-                # should be local to the node and not shared like a work directoy might be
-                try_path('/tmp/toil_coordination') or
+                # Try all possible temp directories, falling back to the current working
+                # directory
+                tempfile.gettempdir() or
                 # Finally, fall back on the work dir and hope it's a legit filesystem.
                 cls.getToilWorkDir(config_work_dir)
         )
@@ -1388,6 +1390,7 @@ class Toil(ContextManager["Toil"]):
 
         # Make a per-workflow and node subdirectory
         subdir = os.path.join(base, cls.get_workflow_path_component(workflow_id))
+
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
