@@ -3618,6 +3618,10 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         #
         # If set, workDir needs to exist, so we directly use the prefix
         options.workDir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
+    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.coordination_dir is None:
+        # override coordination_dir as default Toil will pick somewhere else
+        # ignoring --tmpdir_prefix
+        options.coordination_dir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
 
     if options.batchSystem == "kubernetes":
         # Containers under Kubernetes can only run in Singularity
