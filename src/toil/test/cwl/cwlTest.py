@@ -186,11 +186,11 @@ def run_conformance_tests(
             child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
             if child.stdout is not None:
-                for line in child.stdout:
+                for line_bytes in child.stdout:
                     # Pass through all the logs
-                    text_line = line.decode('utf-8', errors='replace').rstrip()
-                    output_lines.append(text_line)
-                    log.info(text_line)
+                    line_text = line_bytes.decode('utf-8', errors='replace').rstrip()
+                    output_lines.append(line_text)
+                    log.info(line_text)
 
             # Once it's done writing, amke sure it succeeded.
             child.wait()
@@ -211,8 +211,8 @@ def run_conformance_tests(
             r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features"
         )
 
-        for line in output_lines:
-            m = p.search(line)
+        for line_text in output_lines:
+            m = p.search(line_text)
             if m:
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                     only_unsupported = True
