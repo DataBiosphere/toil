@@ -24,6 +24,7 @@ from typing import (Any,
                     List,
                     Optional,
                     Set,
+                    Tuple,
                     cast)
 from urllib.parse import ParseResult
 
@@ -305,6 +306,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         strategies.append(attempt_get_bucket_location_from_us_east_1)
     strategies.append(attempt_head_bucket)
 
+    error_logs: List[Tuple[int, str]] = []
     for attempt in retry_s3():
         with attempt:
             for i, strategy in enumerate(strategies):
@@ -312,10 +314,13 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
                     # We want to test running without this strategy.
                     continue
                 try:
-                    return bucket_location_to_region(strategy())
+                    location = bucket_location_to_region(strategy())
+                    logger.debug('Got bucket location from strategy %d', i + 1)
+                    return location
                 except ClientError as e:
                     if get_error_code(e) == 'AccessDenied' and not endpoint_url:
-                        logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                        logger.debug('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                        error_logs.append((i + 1, str(e)))
                         last_error: Exception = e
                         # We were blocked with this strategy. Move on to the
                         # next strategy which might work.
@@ -324,8 +329,12 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
                         raise
                 except KeyError as e:
                     # If we get a weird head response we will have a KeyError
-                    logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                    logger.debug('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                    error_logs.append((i + 1, str(e)))
                     last_error = e
+
+    for rank, message in error_logs:
+        logger.error("Strategy %d failed to get bucket location because: %s", rank, message)
     # If we get here we ran out of attempts. Raise whatever the last problem was.
     raise last_error
 
