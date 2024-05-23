@@ -1940,7 +1940,10 @@ class WDLTaskJob(WDLBaseJob):
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
                             if accelerator['kind'] == 'gpu':
-                                if accelerator['brand'] == 'nvidia':
+                                if accelerator.get('brand') is None:
+                                    # Base WDL syntax doesn't specify the GPU type/brand
+                                    extra_flags.add('--nv')
+                                elif accelerator['brand'] == 'nvidia':
                                     # Tell Singularity to expose nvidia GPUs
                                     extra_flags.add('--nv')
                                 elif accelerator['api'] == 'rocm':
