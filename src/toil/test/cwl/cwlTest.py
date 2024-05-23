@@ -185,11 +185,12 @@ def run_conformance_tests(
         try:
             child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
-            for line in child.stdout:
-                # Pass through all the logs
-                text_line = line.decode('utf-8', errors='replace').rstrip()
-                output_lines.append(text_line)
-                log.info(text_line)
+            if child.stdout is not None:
+                for line in child.stdout:
+                    # Pass through all the logs
+                    text_line = line.decode('utf-8', errors='replace').rstrip()
+                    output_lines.append(text_line)
+                    log.info(text_line)
 
             # Once it's done writing, amke sure it succeeded.
             child.wait()
