@@ -1942,7 +1942,9 @@ class WDLTaskJob(WDLBaseJob):
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
                             if accelerator['kind'] == 'gpu':
-                                local_gpus = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
+                                # Grab detected GPUs
+                                local_gpus: List[Optional[str]] = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
+                                # Tell singularity the GPU type
                                 gpu_brand = accelerator.get('brand') or local_gpus[0]
                                 if gpu_brand == 'nvidia':
                                     # Tell Singularity to expose nvidia GPUs

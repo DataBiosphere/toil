@@ -142,7 +142,7 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     accelerator assignment API.
     """
 
-    gpus = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
+    gpus: List[AcceleratorRequirement] = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
     gpus.extend([{'kind': 'gpu', 'brand': 'amd', 'api': 'rocm', 'count': 1} for _ in range(count_amd_gpus())])
     return gpus
 
