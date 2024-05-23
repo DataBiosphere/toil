@@ -257,15 +257,16 @@ class NonCachingFileStore(AbstractFileStore):
                 # We need to have a race to pick someone to clean up.
 
                 try:
-                    # Open the directory
+                    # Open the directory.
+                    # We can't open a directory for write, only for read.
                     dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
                 except FileNotFoundError:
                     # The cleanup has happened and we can't contest for it
                     continue
 
                 try:
-                    # Try and lock it
-                    safe_lock(dirFD)
+                    # Try and lock it non-blocking
+                    safe_lock(dirFD, block=False)
                 except OSError as e:
                     os.close(dirFD)
                     if e.errno not in (errno.EACCES, errno.EAGAIN):

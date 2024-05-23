@@ -49,7 +49,8 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
     while True:
         try:
             # Wait until we can exclusively lock it.
-            fcntl.lockf(fd, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | (fcntl.LOCK_NB if not block else 0))
+            lock_mode = (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | (fcntl.LOCK_NB if not block else 0)
+            fcntl.flock(fd, lock_mode)
             return
         except OSError as e:
             if e.errno in (errno.EACCES, errno.EAGAIN):
@@ -72,7 +73,7 @@ def safe_unlock_and_close(fd: int) -> None:
     Release an fcntl lock and close the file descriptor, while handling fcntl IO errors.
     """
     try:
-        fcntl.lockf(fd, fcntl.LOCK_UN)
+        fcntl.flock(fd, fcntl.LOCK_UN)
     except OSError as e:
         if e.errno != errno.EIO:
             raise
