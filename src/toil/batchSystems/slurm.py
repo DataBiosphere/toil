@@ -457,7 +457,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                             # grab the partition name depending on if it's specified via an "=" or a space
                             if "=" in line:
                                 separated = False
-                                partition_name = line[len("--partition=")]
+                                partition_name = line[len("--partition="):]
                             else:
                                 separated = True
                                 partition_name = line[i+1]
