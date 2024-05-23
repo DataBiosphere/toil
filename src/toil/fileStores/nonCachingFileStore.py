@@ -267,13 +267,12 @@ class NonCachingFileStore(AbstractFileStore):
                     # Try and lock it
                     safe_lock(dirFD)
                 except OSError as e:
-                    if e.errno in (errno.EACCES, errno.EAGAIN):
-                        # We lost the race. Someone else is alive and has it locked.
-                        os.close(dirFD)
-                    else:
+                    os.close(dirFD)
+                    if e.errno not in (errno.EACCES, errno.EAGAIN):
                         # Something went wrong
-                        os.close(dirFD)
                         raise
+                    # Otherwise, we lost the race. Someone else is alive and
+                    # has it locked. So loop around again.
                 else:
                     # We got it
                     logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '

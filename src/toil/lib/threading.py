@@ -74,13 +74,11 @@ def safe_unlock_and_close(fd: int) -> None:
     try:
         fcntl.lockf(fd, fcntl.LOCK_UN)
     except OSError as e:
-        if e.errno == errno.EIO:
-            # Sometimes Ceph produces these. We don't need to retry because
-            # we're going to close the FD and after that the file can't remain
-            # locked by us.
-            pass
-        else:
+        if e.errno != errno.EIO:
             raise
+        # Sometimes Ceph produces EIO. We don't need to retry then because
+        # we're going to close the FD and after that the file can't remain
+        # locked by us.
     os.close(fd)
 
 class ExceptionalThread(threading.Thread):
