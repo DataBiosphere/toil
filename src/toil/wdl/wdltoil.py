@@ -69,6 +69,7 @@ from toil.job import (AcceleratorRequirement,
                       unwrap_all)
 from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
                                              InvalidImportExportUrlException, LocatorException)
+from toil.lib.accelerators import count_nvidia_gpus, get_individual_local_accelerators
 from toil.lib.conversions import convert_units, human2bytes, strtobool
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
@@ -1937,18 +1938,18 @@ class WDLTaskJob(WDLBaseJob):
 
                     extra_flags: Set[str] = set()
                     accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators
+                    local_accelerators = get_individual_local_accelerators()
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
                             if accelerator['kind'] == 'gpu':
-                                if accelerator.get('brand') is None:
-                                    # Base WDL syntax doesn't specify the GPU type/brand
-                                    extra_flags.add('--nv')
-                                elif accelerator['brand'] == 'nvidia':
+                                local_gpus = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
+                                gpu_brand = accelerator.get('brand') or local_gpus[0]
+                                if gpu_brand == 'nvidia':
                                     # Tell Singularity to expose nvidia GPUs
                                     extra_flags.add('--nv')
-                                elif accelerator['api'] == 'rocm':
+                                elif gpu_brand == 'amd':
                                     # Tell Singularity to expose ROCm GPUs
-                                    extra_flags.add('--nv')
+                                    extra_flags.add('--rocm')
                                 else:
                                     raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
 
