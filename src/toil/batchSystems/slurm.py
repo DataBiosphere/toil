@@ -23,8 +23,8 @@ from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
 from toil.job import Requirer
-from toil.lib.logging import TRACE
 from toil.lib.misc import CalledProcessErrorStderr, call_command
+from toil.statsAndLogging import TRACE
 
 logger = logging.getLogger(__name__)
 
