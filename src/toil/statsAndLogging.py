@@ -26,6 +26,9 @@ from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor
 
+# Make sure trace log level is installed
+from toil.lib.logging import TRACE
+
 if TYPE_CHECKING:
     from toil.common import Config
     from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -250,6 +253,11 @@ def install_log_color(set_logger: Optional[logging.Logger] = None) -> None:
     import coloredlogs  # type: ignore[import-untyped]
 
     level_styles = dict(coloredlogs.DEFAULT_LEVEL_STYLES)
+    level_styles["trace"] = dict(level_styles["debug"])
+    
+    # TODO: What if these fixed colors aren't right for the terminal background?
+    # It might be light or dark or even grey.
+    level_styles["trace"]["color"] = 242
     level_styles["debug"]["color"] = 242
     level_styles["notice"] = {"color": "green", "bold": True}
     level_styles["error"]["bold"] = True
@@ -285,14 +293,14 @@ def add_logging_options(parser: ArgumentParser, default_level: Optional[int] = N
 
     group = parser.add_argument_group("Logging Options")
 
-    levels = ['Critical', 'Error', 'Warning', 'Debug', 'Info']
+    levels = ['Critical', 'Error', 'Warning', 'Info', 'Debug', 'Trace']
     for level in levels:
         group.add_argument(f"--log{level}", dest="logLevel", default=default_level_name, action="store_const",
-                           const=level, help=f"Turn on loglevel {level}.  Default: {default_level_name}.")
+                           const=level, help=f"Set logging level to {level}. Default: {default_level_name}.")
 
     levels += [l.lower() for l in levels] + [l.upper() for l in levels]
     group.add_argument("--logOff", dest="logLevel", default=default_level_name,
-                       action="store_const", const="CRITICAL", help="Same as --logCRITICAL.")
+                       action="store_const", const="CRITICAL", help="Same as --logCritical.")
     # Maybe deprecate the above in favor of --logLevel?
 
     group.add_argument("--logLevel", dest="logLevel", default=default_level_name, choices=levels,

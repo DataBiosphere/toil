@@ -23,6 +23,7 @@ from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
 from toil.job import Requirer
+from toil.lib.logging import TRACE
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             "<job>[.<task>]".
             :return: list of job exit codes or exit code, exit reason pairs associated with the list of job IDs.
             """
-            logger.debug("Getting exit codes for slurm jobs: %s", batch_job_id_list)
+            logger.log(TRACE, "Getting exit codes for slurm jobs: %s", batch_job_id_list)
             # Convert batch_job_id_list to list of integer job IDs.
             job_id_list = [int(id.split('.')[0]) for id in batch_job_id_list]
             status_dict = self._get_job_details(job_id_list)
@@ -160,7 +161,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             :param batchJobID: string of the form "<job>[.<task>]".
             :return: integer job exit code.
             """
-            logger.debug("Getting exit code for slurm job: %s", batchJobID)
+            logger.log(TRACE, "Getting exit code for slurm job: %s", batchJobID)
             # Convert batchJobID to an integer job ID.
             job_id = int(batchJobID.split('.')[0])
             status_dict = self._get_job_details([job_id])
@@ -272,7 +273,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     continue
                 job_id_raw, state, exitcode = values
                 state = self._canonicalize_state(state)
-                logger.debug("%s state of job %s is %s", args[0], job_id_raw, state)
+                logger.log(TRACE, "%s state of job %s is %s", args[0], job_id_raw, state)
                 # JobIDRaw is in the form JobID[.JobStep]; we're not interested in job steps.
                 job_id_parts = job_id_raw.split(".")
                 if len(job_id_parts) > 1:
@@ -282,10 +283,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
-                logger.debug("%s exit code of job %d is %s, return status %d",
+                logger.log(TRACE, "%s exit code of job %d is %s, return status %d",
                              args[0], job_id, exitcode, status)
                 job_statuses[job_id] = state, status
-            logger.debug("%s returning job statuses: %s", args[0], job_statuses)
+            logger.log(TRACE, "%s returning job statuses: %s", args[0], job_statuses)
             return job_statuses
 
         def _getJobDetailsFromScontrol(self, job_id_list: list) -> dict:
@@ -341,13 +342,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     # of this record, if we're not interested in this job.
                     job_id = int(job['JobId'])
                     if job_id not in job_id_list:
-                        logger.debug("%s job %d is not in the list", args[0], job_id)
+                        logger.log(TRACE, "%s job %d is not in the list", args[0], job_id)
                         break
                 if job_id not in job_id_list:
                     continue
                 state = job['JobState']
                 state = self._canonicalize_state(state)
-                logger.debug("%s state of job %s is %s", args[0], job_id, state)
+                logger.log(TRACE, "%s state of job %s is %s", args[0], job_id, state)
                 try:
                     exitcode = job['ExitCode']
                     if exitcode is not None:
@@ -355,7 +356,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         if signal > 0:
                             # A non-zero signal may indicate e.g. an out-of-memory killed job
                             status = 128 + signal
-                        logger.debug("%s exit code of job %d is %s, return status %d",
+                        logger.log(TRACE, "%s exit code of job %d is %s, return status %d",
                                      args[0], job_id, exitcode, status)
                         rc = status
                     else:
@@ -363,7 +364,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 except KeyError:
                     rc = None
                 job_statuses[job_id] = (state, rc)
-            logger.debug("%s returning job statuses: %s", args[0], job_statuses)
+            logger.log(TRACE, "%s returning job statuses: %s", args[0], job_statuses)
             return job_statuses
 
         ###
