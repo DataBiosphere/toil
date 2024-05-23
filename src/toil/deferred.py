@@ -323,13 +323,13 @@ class DeferredFunctionManager:
                 try:
                     safe_lock(fd, block=False)
                 except OSError as e:
+                    os.close(fd)
                     if e.errno in (errno.EACCES, errno.EAGAIN):
                         # File is still locked by someone else.
                         # Look at the next file instead
                         continue
                     else:
                         # Something else went wrong
-                        os.close(fd)
                         raise
 
                 logger.debug("Locked file %s" % fullFilename)
