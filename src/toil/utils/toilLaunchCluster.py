@@ -22,7 +22,7 @@ from toil.common import parser_with_common_options
 try:
     from toil.lib.aws import build_tag_dict_from_env
 except ModuleNotFoundError:
-    build_tag_dict_from_env = lambda _: {}  # noqa
+    build_tag_dict_from_env: Dict[str, str] = lambda _: {}  # type: ignore[no-redef]
 from toil.lib.conversions import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
