@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import errno
-import fcntl
 import logging
 import os
 import tempfile
@@ -43,7 +42,7 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.io import make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
-from toil.lib.threading import get_process_name, process_name_exists
+from toil.lib.threading import get_process_name, process_name_exists, safe_lock, safe_unlock_and_close
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -258,18 +257,23 @@ class NonCachingFileStore(AbstractFileStore):
                 # We need to have a race to pick someone to clean up.
 
                 try:
-                    # Open the directory
+                    # Open the directory.
+                    # We can't open a directory for write, only for read.
                     dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
                 except FileNotFoundError:
                     # The cleanup has happened and we can't contest for it
                     continue
 
                 try:
-                    # Try and lock it
-                    fcntl.lockf(dirFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    # Try and lock it non-blocking
+                    safe_lock(dirFD, block=False)
                 except OSError as e:
-                    # We lost the race. Someone else is alive and has it locked.
                     os.close(dirFD)
+                    if e.errno not in (errno.EACCES, errno.EAGAIN):
+                        # Something went wrong
+                        raise
+                    # Otherwise, we lost the race. Someone else is alive and
+                    # has it locked. So loop around again.
                 else:
                     # We got it
                     logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
@@ -283,8 +287,7 @@ class NonCachingFileStore(AbstractFileStore):
                             # cleanup. Leave that to the batch system cleanup code.
                             robust_rmtree(jobState['jobDir'])
                     finally:
-                        fcntl.lockf(dirFD, fcntl.LOCK_UN)
-                        os.close(dirFD)
+                        safe_unlock_and_close(dirFD)
 
     @classmethod
     def _getAllJobStates(cls, coordination_dir: str) -> Iterator[Dict[str, str]]:
