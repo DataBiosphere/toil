@@ -23,6 +23,7 @@ import math
 import os
 import sys
 import tempfile
+import time
 import threading
 import traceback
 from contextlib import contextmanager
@@ -35,6 +36,51 @@ from toil.lib.io import robust_rmtree
 
 logger = logging.getLogger(__name__)
 
+def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
+    """
+    Get an fcntl lock, while retrying on IO errors.
+
+    Raises OSError with EACCES or EAGAIN when a nonblocking lock is not
+    immediately available.
+    """
+
+    error_backoff = 1
+
+    while True:
+        try:
+            # Wait until we can exclusively lock it.
+            lock_mode = (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | (fcntl.LOCK_NB if not block else 0)
+            fcntl.flock(fd, lock_mode)
+            return
+        except OSError as e:
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                # Nonblocking lock not available.
+                raise
+            elif e.errno == errno.EIO:
+                # Sometimes Ceph produces IO errors when talking to lock files.
+                # Back off and try again.
+                # TODO: Should we eventually give up if the disk really is
+                # broken? If so we should use the retry system.
+                logger.error("IO error talking to lock file. Retrying after %s seconds.", error_backoff)
+                time.sleep(error_backoff)
+                error_backoff = min(60, error_backoff * 2)
+                continue
+            else:
+                raise
+
+def safe_unlock_and_close(fd: int) -> None:
+    """
+    Release an fcntl lock and close the file descriptor, while handling fcntl IO errors.
+    """
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError as e:
+        if e.errno != errno.EIO:
+            raise
+        # Sometimes Ceph produces EIO. We don't need to retry then because
+        # we're going to close the FD and after that the file can't remain
+        # locked by us.
+    os.close(fd)
 
 class ExceptionalThread(threading.Thread):
     """
@@ -280,10 +326,14 @@ def get_process_name(base_dir: str) -> str:
 
         # Lock the file. The lock will automatically go away if our process does.
         try:
-            fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            safe_lock(nameFD, block=False)
         except OSError as e:
-            # Someone else might have locked it even though they should not have.
-            raise RuntimeError(f"Could not lock process name file {nameFileName}: {str(e)}")
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                # Someone else locked it even though they should not have.
+                raise RuntimeError(f"Could not lock process name file {nameFileName}") from e
+            else:
+                # Something else is wrong
+                raise
 
         # Save the basename
         current_process_name_for[base_dir] = os.path.basename(nameFileName)
@@ -328,13 +378,18 @@ def process_name_exists(base_dir: str, name: str) -> bool:
             # Otherwise see if we can lock it shared, for which we need an FD, but
             # only for reading.
             nameFD = os.open(nameFileName, os.O_RDONLY)
-            fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except FileNotFoundError as e:
             # File has vanished
             return False
+        try:
+            safe_lock(nameFD, block=False, shared=True)
         except OSError as e:
-            # Could not lock. Process is alive.
-            return True
+            if e.errno in (errno.EACCES, errno.EAGAIN):
+                # Could not lock. Process is alive.
+                return True
+            else:
+                # Something else went wrong
+                raise
         else:
             # Could lock. Process is dead.
             # Remove the file. We race to be the first to do so.
@@ -342,8 +397,8 @@ def process_name_exists(base_dir: str, name: str) -> bool:
                 os.remove(nameFileName)
             except:
                 pass
-            # Unlock
-            fcntl.lockf(nameFD, fcntl.LOCK_UN)
+            safe_unlock_and_close(nameFD)
+            nameFD = None
             # Report process death
             return False
     finally:
@@ -381,12 +436,28 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
     # there's a race where someone can open the file before we unlink it and
     # get a lock on the deleted file.
 
+    error_backoff = 1
+
     while True:
         # Try to create the file, ignoring if it exists or not.
         fd = os.open(lock_filename, os.O_CREAT | os.O_WRONLY)
 
-        # Wait until we can exclusively lock it.
-        fcntl.lockf(fd, fcntl.LOCK_EX)
+        try:
+            # Wait until we can exclusively lock it.
+            safe_lock(fd)
+        except OSError as e:
+            if e.errno == errno.EIO:
+                # Sometimes Ceph produces IO errors when talking to lock files.
+                os.close(fd)
+                # Back off and try again
+                logger.error("IO error talking to lock file %s. Retrying after %s seconds.", lock_filename, error_backoff)
+                time.sleep(error_backoff)
+                error_backoff = min(60, error_backoff * 2)
+                continue
+            else:
+                # Something unexpected went wrong
+                os.close(fd)
+                raise
 
         # Holding the lock, make sure we are looking at the same file on disk still.
         try:
@@ -394,16 +465,14 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
             fd_stats = os.fstat(fd)
         except OSError as e:
             if e.errno == errno.ESTALE:
-                # The file handle has gone stale, because somebody removed the file.
+                # The file handle has gone stale, because somebody removed the
+                # file.
                 # Try again.
-                try:
-                    fcntl.lockf(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-                os.close(fd)
+                safe_unlock_and_close(fd)
                 continue
             else:
                 # Something else broke
+                os.close(fd)
                 raise
 
         try:
@@ -417,8 +486,7 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
             # any). This usually happens, because before someone releases a
             # lock, they delete the file. Go back and contend again. TODO: This
             # allows a lot of queue jumping on our mutex.
-            fcntl.lockf(fd, fcntl.LOCK_UN)
-            os.close(fd)
+            safe_unlock_and_close(fd)
             continue
         else:
             # We have a lock on the file that the name points to. Since we
@@ -466,8 +534,7 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         # might have opened it before we unlinked it and will wake up when they
         # get the worthless lock on the now-unlinked file. We have to do some
         # stat gymnastics above to work around this.
-        fcntl.lockf(fd, fcntl.LOCK_UN)
-        os.close(fd)
+        safe_unlock_and_close(fd)
 
 
 class LastProcessStandingArena:
@@ -548,7 +615,7 @@ class LastProcessStandingArena:
             except Exception as e:
                 raise RuntimeError("Could not make lock file in " + self.lockfileDir) from e
             # Nobody can see it yet, so lock it right away
-            fcntl.lockf(self.lockfileFD, fcntl.LOCK_EX) # type: ignore
+            safe_lock(self.lockfileFD) # type: ignore
 
             # Now we're properly in, so release the global mutex
 
@@ -583,8 +650,7 @@ class LastProcessStandingArena:
             except:
                 pass
             self.lockfileName = None
-            fcntl.lockf(self.lockfileFD, fcntl.LOCK_UN)
-            os.close(self.lockfileFD)
+            safe_unlock_and_close(self.lockfileFD)
             self.lockfileFD = None
 
             for item in os.listdir(self.lockfileDir):
@@ -598,17 +664,22 @@ class LastProcessStandingArena:
                     continue
 
                 try:
-                    fcntl.lockf(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    safe_lock(fd, block=False, shared=True)
                 except OSError as e:
-                    # Could not lock. It's alive!
-                    break
+                    if e.errno in (errno.EACCES, errno.EAGAIN):
+                        # Could not lock. It's alive!
+                        break
+                    else:
+                        # Something else is wrong
+                        os.close(fd)
+                        raise
                 else:
                     # Could lock. Process is dead.
                     try:
                         os.remove(full_path)
                     except:
                         pass
-                    fcntl.lockf(fd, fcntl.LOCK_UN)
+                    safe_unlock_and_close(fd)
                     # Continue with the loop normally.
             else:
                 # Nothing alive was found. Nobody will come in while we hold
