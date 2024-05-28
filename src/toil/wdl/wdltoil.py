@@ -1580,7 +1580,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
             total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
-        if runtime_bindings.has_binding('gpu') or runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
+        # The gpu field is the WDL 1.1 standard, so this field will be the absolute truth on whether to use GPUs or not
+        # Fields such as gpuType and gpuCount will be considered optional attributes
+        if runtime_bindings.get('gpu') is True:
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
             # Get the GPU count if set, or 1 if not,
@@ -1941,6 +1943,10 @@ class WDLTaskJob(WDLBaseJob):
                     local_accelerators = get_individual_local_accelerators()
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
+                            # This logic will not work if a workflow needs to specify multiple GPUs of different types
+                            # Right now this assumes all GPUs on the node are the same; we only look at the first available GPU
+                            # and assume homogeneity
+                            # This shouldn't cause issues unless a user has a very odd machine setup, which should be rare
                             if accelerator['kind'] == 'gpu':
                                 # Grab detected GPUs
                                 local_gpus: List[Optional[str]] = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]

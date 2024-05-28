@@ -116,6 +116,8 @@ def count_amd_gpus() -> int:
     try:
         # see if the amd-smi CLI tool is installed
         # we believe this is the expected output for amd-smi, but we don't actually have and amd gpu to test against
+        # so we assume the output from the amd-smi documentation:
+        # https://rocm.docs.amd.com/projects/amdsmi/en/latest/how-to/using-AMD-SMI-CLI-tool.html
         out = subprocess.check_output((["amd-smi", "static"]))
         gpu_count = len([line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")])
         return gpu_count
@@ -124,6 +126,8 @@ def count_amd_gpus() -> int:
         # if a different exception is raised, something other than the subprocess call is wrong
         pass
     try:
+        # similarly, since we don't have an AMD gpu to test against, assume the output from the rocm-smi documentation:
+        # https://rocm.blogs.amd.com/software-tools-optimization/affinity/part-2/README.html#gpu-numa-configuration-rocm-smi-showtoponuma
         out = subprocess.check_output(["rocm-smi"])
         gpu_count = len([line for line in out.decode("utf-8").split("\n") if len(line)> 0 and line[0] in string.digits])
         return gpu_count
