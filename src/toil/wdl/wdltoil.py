@@ -3018,7 +3018,7 @@ class WDLRootJob(WDLSectionJob):
         if isinstance(self._target, WDL.Tree.Workflow):
             # Create a workflow job. We rely in this to handle entering the input
             # namespace if needed, or handling free-floating inputs.
-            job = WDLWorkflowJob(self._target, [self._inputs], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
+            job: WDLBaseJob = WDLWorkflowJob(self._target, [self._inputs], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
         else:
             # There is no workflow. Create a task job.
             job = WDLTaskWrapperJob(self._target, [], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
@@ -3097,7 +3097,7 @@ def main() -> None:
 
             # See if we're going to run a workflow or a task
             # MiniWDL will handle all the checks
-            target = runner_exe(document)
+            target: Union[WDL.Tree.Workflow, WDL.Tree.Task] = runner_exe(document)  # type: ignore[no-untyped-call]
 
             if options.inputs_uri:
                 # Load the inputs. Use the same loading mechanism, which means we
