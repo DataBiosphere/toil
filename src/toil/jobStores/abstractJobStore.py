@@ -445,6 +445,7 @@ class AbstractJobStore(ABC):
         # subclasses of AbstractJobStore.
         parseResult = urlparse(src_uri)
         otherCls = self._findJobStoreForUrl(parseResult)
+        logger.info("Importing input %s...", src_uri)
         return self._import_file(otherCls,
                                  parseResult,
                                  shared_file_name=shared_file_name,
