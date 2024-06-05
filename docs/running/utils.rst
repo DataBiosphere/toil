@@ -35,9 +35,9 @@ Running an Example
 
 We can run an example workflow and record stats::
 
-    python3 workflow.py file:my-jobstore --stats
+    python3 tutorial_stats.py file:my-jobstore --stats
 
-Where ``workflow.py`` is the following:
+Where ``tutorial_stats.py`` is the following:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_stats.py
 
@@ -204,7 +204,7 @@ Status Command
 
 Continuing the example from the stats section above, if we ran our workflow with the command ::
 
-    python3 workflow.py file:my-jobstore --stats
+    python3 tutorial_stats.py file:my-jobstore --stats
 
 We could interrogate our jobstore with the status command, for example::
 
@@ -222,6 +222,21 @@ Otherwise, the ``toil status`` command will return something like the following:
     Of the 3 jobs considered, there are 1 completely failed jobs, 1 jobs with children, 2 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in FileJobStore(/Users/anovak/workspace/toil/tree).
 
 The ``toil status`` command supports several useful flags, including ``--perJob`` to get per-job status information, ``--logs`` to print stored worker logs, and ``--failed`` to list all failed jobs in the workflow. For more information, run ``toil status --help``.
+
+One use case of ``toil status`` is with the ``--printStatus`` argument. Running ``toil status --printStatus file:my-jobstore`` at any point of the workflow's lifecycle can tell you the progress of the workflow.
+Note: This command will output all current running jobs but not any finished or failed jobs.
+
+For example, after running ``workflow.py`` in another terminal::
+
+    $ toil status --printStatus file:my-jobstore
+    [2024-05-31T13:59:13-0700] [MainThread] [I] [toil.utils.toilStatus] Traversing the job graph gathering jobs. This may take a couple of minutes.
+    Of the 2 jobs considered, there are 0 completely failed jobs, 1 jobs with children, 1 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in FileJobStore(/path/to/my-jobstore).
+
+    Message bus path:  /tmp/tmp9cnaq3bm
+    Job ID kind-TimeWaster/instance-zvdsdkm_ with name TimeWaster is running on SingleMachineBatchSystem as ID 101349.
+    Job ID kind-TimeWaster/instance-7clm8cv2 with name TimeWaster is running on SingleMachineBatchSystem as ID 101350.
+
+At this moment in time, two jobs with the name "TimeWaster" is running on my local machine.
 
 .. _cli_clean:
 

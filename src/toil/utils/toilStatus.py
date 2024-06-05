@@ -252,21 +252,24 @@ class ToilStatus:
                 pass
         return 'RUNNING'
 
-    def print_bus_messages(self) -> None:
+    def print_running_jobs(self) -> None:
         """
-        Goes through bus messages, returns a list of tuples which have correspondence between
-        PID on assigned batch system and
-
         Prints a list of the currently running jobs
         """
 
         print("\nMessage bus path: ", self.message_bus_path)
         if self.message_bus_path is not None:
             if os.path.exists(self.message_bus_path):
-                replayed_messages = replay_message_bus(self.message_bus_path)
-                for key in replayed_messages:
-                    if replayed_messages[key].exit_code != 0:
-                        print(replayed_messages[key])
+                all_job_statuses = replay_message_bus(self.message_bus_path)
+
+                for job_status in all_job_statuses.values():
+                    if job_status.is_running():
+                        status_line = [f"Job ID {job_status.job_store_id} with name {job_status.name} is running"]
+                        if job_status.batch_system != "":
+                            # batch system exists
+                            status_line.append(f" on {job_status.batch_system} as ID {job_status.external_batch_id}")
+                        status_line.append(".")
+                        print("".join(status_line))
             else:
                 print("Message bus file is missing!")
 
@@ -383,7 +386,7 @@ def main() -> None:
                         default=False)
 
     parser.add_argument("--status", "--printStatus", dest="print_status", action="store_true",
-                        help="Determine which jobs are currently running and the associated batch system ID")
+                        help="Determine which jobs are currently running and the associated batch system ID, if any")
 
     parser.add_argument("--failed", "--printFailed", dest="print_failed", action="store_true",
                         help="List jobs which seem to have failed to run")
@@ -444,7 +447,7 @@ def main() -> None:
                len(readyToRun), len(zombies), len(hasServices), len(services),
                len(hasLogFile), status.jobStore))
     if options.print_status:
-        status.print_bus_messages()
+        status.print_running_jobs()
     if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)
