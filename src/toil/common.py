@@ -72,7 +72,7 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage)
+                      QueueSizeMessage, gen_message_bus_path)
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
 from toil.lib.io import try_path, AtomicFileCreate
@@ -383,6 +383,16 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
+
+        if self.write_messages is None:
+            # The user hasn't specified a place for the message bus so we
+            # should make one.
+            # pass in coordination_dir for toil-cwl-runner; we want to obey --tmpdir-prefix
+            # from cwltool and we change the coordination_dir when detected. we don't want
+            # to make another config attribute so put the message bus in the already prefixed dir
+            # if a coordination_dir is provided normally, we can still put the bus in there
+            # as the coordination dir should serve a similar purpose to the tmp directory
+            self.write_messages = gen_message_bus_path(self.coordination_dir)
 
         # Misc
         set_option("environment")
