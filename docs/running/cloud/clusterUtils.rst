@@ -144,9 +144,11 @@ exist yet, Toil will create it for you.
                         INFO)
   --logDebug            Turn on logging at level DEBUG and above. (default is
                         INFO)
-  --logLevel LOGLEVEL   Log at given level (may be either OFF (or CRITICAL),
-                        ERROR, WARN (or WARNING), INFO or DEBUG). (default is
+  --logDebug            Turn on logging at level TRACE and above. (default is
                         INFO)
+  --logLevel LOGLEVEL   Log at given level (may be either OFF (or CRITICAL),
+                        ERROR, WARN (or WARNING), INFO, DEBUG, or TRACE).
+                        (default is INFO)
   --logFile LOGFILE     File to log in.
   --rotatingLogging     Turn on rotating logging, which prevents log files
                         getting too big.
