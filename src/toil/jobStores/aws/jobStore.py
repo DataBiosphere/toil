@@ -60,7 +60,10 @@ from toil.lib.aws.utils import (create_s3_bucket,
                                 get_object_for_url,
                                 list_objects_for_url,
                                 retry_s3,
-                                retryable_s3_errors, boto3_pager, get_item_from_attributes)
+                                retryable_s3_errors,
+                                boto3_pager,
+                                get_item_from_attributes,
+                                NoBucketLocationError)
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
@@ -498,8 +501,8 @@ class AWSJobStore(AbstractJobStore):
                 info.copyFrom(srcObj)
                 info.save()
                 return FileID(info.fileID, size) if shared_file_name is None else None
-        except ServerSideCopyProhibitedError:
-            # AWS refuses to do this copy for us
+        except (NoBucketLocationError, ServerSideCopyProhibitedError):
+            # AWS refuses to tell us where the bucket is or do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
 
         # copy if exception
@@ -512,8 +515,8 @@ class AWSJobStore(AbstractJobStore):
                 info = self.FileInfo.loadOrFail(file_id)
                 info.copyTo(dstObj)
                 return
-        except ServerSideCopyProhibitedError:
-            # AWS refuses to do this copy for us
+        except (NoBucketLocationError, ServerSideCopyProhibitedError):
+            # AWS refuses to tell us where the bucket is or do this copy for us
             logger.warning("Falling back to copying via the local machine. This could get expensive!")
         else:
             super()._default_export_file(otherCls, file_id, uri)
