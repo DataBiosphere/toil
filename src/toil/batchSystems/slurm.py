@@ -11,19 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import logging
 import math
 import os
 from argparse import ArgumentParser, _ArgumentGroup
-from collections import namedtuple
 from shlex import quote
-from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union
+from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
-from toil.job import Requirer
+from toil.job import Requirer, parse_accelerator
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.statsAndLogging import TRACE
 
@@ -68,9 +69,61 @@ NONTERMINAL_STATES: Set[str] = {
     "STAGE_OUT",
     "STOPPED",
     "SUSPENDED"
-} 
+}
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
+    class PartitionInfo(NamedTuple):
+        partition_name: str
+        gres: bool
+        time: str
+        priority: str
+        cpus: str
+        memory: str
+
+    class PartitionSet:
+        """
+        Set of available partitions detected on the slurm batch system
+        """
+        default_gpu_partition: Optional[SlurmBatchSystem.PartitionInfo]
+        all_partitions: List[SlurmBatchSystem.PartitionInfo]
+        gpu_partitions: List[SlurmBatchSystem.PartitionInfo]
+
+        def __init__(self) -> None:
+            self._get_partition_info()
+            self._get_gpu_partitions()
+
+        def _get_gpu_partitions(self) -> None:
+            """
+            Get all available GPU partitions. Also get the default GPU partition.
+            :return: None
+            """
+            self.gpu_partitions = [partition for partition in self.all_partitions if partition.gres]
+            # Grab the lowest priority GPU partition
+            # If no GPU partitions are available, then set the default to None
+            self.default_gpu_partition = None
+            if len(self.gpu_partitions) > 0:
+                self.default_gpu_partition = sorted(self.gpu_partitions, key=lambda x: x.priority)[0]
+
+        def _get_partition_info(self) -> None:
+            """
+            Call the Slurm batch system with sinfo to grab all available partitions.
+            Then parse the output and store all available Slurm partitions
+            :return: None
+            """
+            sinfo_command = ["sinfo",
+                             "-a",
+                             "-o",
+                             "%P %G %l %p %c %m"]
+
+            sinfo = call_command(sinfo_command)
+
+            parsed_partitions = []
+            for line in sinfo.split("\n")[1:]:
+                if line.strip():
+                    partition_name, gres, time, priority, cpus, memory = line.split(" ")
+                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
+            self.all_partitions = parsed_partitions
+
 
     class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
 
@@ -447,11 +500,15 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if gpus:
                 # This block will add a gpu supported partition only if no partition is supplied by the user
                 sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
-                lowest_priority_gpus = sorted([i for i in self.boss.partitions if i["gres"]], key=lambda x: x["priority"])
-                new_partition_name = lowest_priority_gpus[0][0]  # get name of lowest priority partition that supports gpus
                 if not any(option.startswith("--partition") for option in sbatch_line):
                     # no partition specified, so specify one
-                    sbatch_line.append(f"--partition={new_partition_name}")
+                    # try to get the name of the lowest priority gpu supported partition
+                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition
+                    if lowest_gpu_partition is None:
+                        # no gpu partitions are available, raise an error
+                        required_gpus = Requirer(dict(accelerator=parse_accelerator(gpus)))
+                        raise InsufficientSystemResources(required_gpus, "accelerators", [], details=["Could not find a Slurm partition that supports GPUs!"])
+                    sbatch_line.append(f"--partition={lowest_gpu_partition}")
                 else:
                     # there is a partition specified already, check if the partition has GPUs
                     for i, option in enumerate(sbatch_line):
@@ -461,10 +518,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                                 partition_name = option[len("--partition="):]
                             else:
                                 partition_name = option[i+1]
-
-                            if not any(partition_name == partition for partition in lowest_priority_gpus):
-                                # the specified partition is not compatible, so override with a gpu supported partition
-                                logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work.")
+                            available_gpu_partitions = self.boss.partitions.gpu_partitions
+                            if not any(partition_name == partition for partition in available_gpu_partitions):
+                                # the specified partition is not compatible, so warn the user that the job may not work
+                                logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work."
+                                               f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}.")
                             break
 
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
@@ -492,22 +550,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super().__init__(config, maxCores, maxMemory, maxDisk)
-        self._get_partition_info()
-
-    def _get_partition_info(self):
-        sinfo_command = ["sinfo",
-                         "-a",
-                         "-o",
-                         "%P %G %l %p %c %m"]
-
-        sinfo = call_command(sinfo_command)
-
-        self.partitions = []
-        PartitionInfo = namedtuple("PartitionInfo", ["partition_name", "gres", "time", "priority", "cpus", "memory"])
-        for line in sinfo.split("\n")[1:]:
-            if line.strip():
-                partition_name, gres, time, priority, cpus, memory = line.split(" ")
-                self.partitions.append(PartitionInfo(partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
+        self.partitions = SlurmBatchSystem.PartitionSet()
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
