@@ -3096,8 +3096,15 @@ def main() -> None:
             document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
             # See if we're going to run a workflow or a task
-            # MiniWDL will handle all the checks
-            target: Union[WDL.Tree.Workflow, WDL.Tree.Task] = runner_exe(document)  # type: ignore[no-untyped-call]
+            target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
+            if document.workflow:
+                target = document.workflow
+            elif len(document.tasks) == 1:
+                target = document.tasks[0]
+            elif len(document.tasks) > 1:
+                raise WDL.Error.InputError("Multiple tasks found with no workflow! Either add a workflow or keep one task.")
+            else:
+                raise WDL.Error.InputError("WDL document is empty!")
 
             if options.inputs_uri:
                 # Load the inputs. Use the same loading mechanism, which means we
