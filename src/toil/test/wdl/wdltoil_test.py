@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import unittest
@@ -20,7 +21,10 @@ from toil.test import (ToilTest,
                        needs_wdl,
                        slow, integrative)
 from toil.version import exactPython
-from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph
+from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, remove_common_leading_whitespace
+
+import WDL.Expr
+import WDL.Error
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,7 @@ class WDLConformanceTests(BaseWDLTest):
     def test_conformance_tests_v10(self):
         tests_to_run = "0-15,17-20,22-71,73-78"
         p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
-        
+
         self.check(p)
 
     # estimated running time: 2 minutes
@@ -95,7 +99,7 @@ class WDLConformanceTests(BaseWDLTest):
     def test_conformance_tests_integration(self):
         ids_to_run = "encode,tut01,tut02,tut03,tut04"
         p = subprocess.run(self.base_command + ["-v", "1.0", "--id", ids_to_run], capture_output=True)
-        
+
         self.check(p)
 
     @classmethod
@@ -267,6 +271,10 @@ class WDLTests(BaseWDLTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
+
+class WDLToilBenchTests(ToilTest):
+    """Tests for Toil's MiniWDL-based implementation that don't run workflows."""
+
     def test_coalesce(self):
         """
         Test if WDLSectionJob can coalesce WDL decls.
@@ -370,6 +378,135 @@ class WDLTests(BaseWDLTest):
                     assert "decl1" in result[0]
                     assert "decl2" in result[0]
                     assert "successor" in result[1]
+
+
+    def make_string_expr(self, to_parse: str) -> WDL.Expr.String:
+        """
+        Parse pseudo-WDL for testing whitespace removal.
+        """
+
+        pos = WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0)
+
+        parts: List[Union[str, WDL.Expr.Placeholder]] = re.split("(~{[^}]*})", to_parse)
+        for i in range(1, len(parts), 2):
+            parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
+
+        return WDL.Expr.String(pos, parts)
+
+    def test_remove_common_leading_whitespace(self):
+        """
+        Make sure leading whitespace removal works properly.
+        """
+
+        # For a single line, we remove its leading whitespace
+        expr = self.make_string_expr(" a ~{b} c")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "a "
+        assert trimmed.parts[2] == " c"
+
+        # Whitespace removed isn't affected by totally blank lines
+        expr = self.make_string_expr("    \n\n    a\n    ~{stuff}\n    b\n\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\n\na\n"
+        assert trimmed.parts[2] == "\nb\n\n"
+
+        # Unless blank toleration is off
+        expr = self.make_string_expr("    \n\n    a\n    ~{stuff}\n    b\n\n")
+        trimmed = remove_common_leading_whitespace(expr, tolerate_blanks=False)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "    \n\n    a\n    "
+        assert trimmed.parts[2] == "\n    b\n\n"
+
+        # Whitespace is still removed if the first line doesn't have it before the newline
+        expr = self.make_string_expr("\n    a\n    ~{stuff}\n    b\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\na\n"
+        assert trimmed.parts[2] == "\nb\n"
+
+        # Whitespace is not removed if actual content is dedented
+        expr = self.make_string_expr("    \n\n    a\n    ~{stuff}\nuhoh\n    b\n\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "    \n\n    a\n    "
+        assert trimmed.parts[2] == "\nuhoh\n    b\n\n"
+
+        # Unless dedents are tolerated
+        expr = self.make_string_expr("    \n\n    a\n    ~{stuff}\nuhoh\n    b\n\n")
+        trimmed = remove_common_leading_whitespace(expr, tolerate_dedents=True)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\n\na\n"
+        assert trimmed.parts[2] == "\nuhoh\nb\n\n"
+
+        # Whitespace is still removed if all-whitespace lines have less of it
+        expr = self.make_string_expr("\n    a\n    ~{stuff}\n  \n    b\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\na\n"
+        assert trimmed.parts[2] == "\n\nb\n"
+
+        # Unless all-whitespace lines are not tolerated
+        expr = self.make_string_expr("\n    a\n    ~{stuff}\n  \n    b\n")
+        trimmed = remove_common_leading_whitespace(expr, tolerate_all_whitespace=False)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\n  a\n  "
+        assert trimmed.parts[2] == "\n\n  b\n"
+
+        # When mixed tabs and spaces are detected, nothing is changed.
+        expr = self.make_string_expr("\n    a\n\t~{stuff}\n    b\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\n    a\n\t"
+        assert trimmed.parts[2] == "\n    b\n"
+
+        # When mixed tabs and spaces are not in the prefix, whitespace is removed.
+        expr = self.make_string_expr("\n\ta\n\t~{stuff} \n\tb\n")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == "\na\n"
+        assert trimmed.parts[2] == " \nb\n"
+
+        # An empty string works
+        expr = self.make_string_expr("")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 1
+        assert trimmed.parts[0] == ""
+
+        # A string of only whitespace is preserved as an all-whitespece line
+        expr = self.make_string_expr("\t\t\t")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 1
+        assert trimmed.parts[0] == "\t\t\t"
+
+        # A string of only whitespace is trimmed when all-whitespace lines are not tolerated
+        expr = self.make_string_expr("\t\t\t")
+        trimmed = remove_common_leading_whitespace(expr, tolerate_all_whitespace=False)
+        assert len(trimmed.parts) == 1
+        assert trimmed.parts[0] == ""
+
+        # An empty expression works
+        expr = WDL.Expr.String(WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0), [])
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 0
+
+        # An expression of only placeholders works
+        expr = self.make_string_expr("~{AAA}")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert len(trimmed.parts) == 3
+        assert trimmed.parts[0] == ""
+        assert trimmed.parts[2] == ""
+
+        # The command flag is preserved
+        expr = self.make_string_expr(" a ~{b} c")
+        trimmed = remove_common_leading_whitespace(expr)
+        assert trimmed.command == False
+        expr.command = True
+        trimmed = remove_common_leading_whitespace(expr)
+        assert trimmed.command == True
+
+
 
 
 if __name__ == "__main__":
