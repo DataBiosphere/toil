@@ -7,6 +7,7 @@ import pytest
 
 from toil.provisioners import cluster_factory
 from toil.test import (slow, integrative)
+from toil.test.wdl.wdltoil_test import WDL_CONFORMANCE_TEST_REPO, WDL_CONFORMANCE_TEST_COMMIT
 
 @integrative
 @slow
@@ -50,15 +51,13 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
         )
         self.leader = self.cluster.getLeader()
 
-        url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "7c7f82c0dd426f5be708f7a858e448cfb0fea91b"
         wdl_dir = "wdl_conformance_tests"
 
         # get the wdl-conformance-tests repo to get WDL tasks to run
         self.sshUtil([
             "bash",
             "-c",
-            f"git clone {url} {wdl_dir} && cd {wdl_dir} && git checkout {commit}"
+            f"git clone {WDL_CONFORMANCE_TEST_REPO} {wdl_dir} && cd {wdl_dir} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}"
         ])
 
         # run on kubernetes batchsystem

@@ -38,6 +38,9 @@ class BaseWDLTest(ToilTest):
             shutil.rmtree(self.output_dir)
 
 
+WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
+WDL_CONFORMANCE_TEST_COMMIT = "b2b4bf952785a9b69724880793ff0d9e41df6309"
+
 class WDLConformanceTests(BaseWDLTest):
     """
     WDL conformance tests for Toil.
@@ -47,11 +50,8 @@ class WDLConformanceTests(BaseWDLTest):
     @classmethod
     def setUpClass(cls) -> None:
 
-        url = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-        commit = "b2b4bf952785a9b69724880793ff0d9e41df6309"
-
         p = subprocess.Popen(
-            f"git clone {url} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {commit}",
+            f"git clone {WDL_CONFORMANCE_TEST_REPO} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}",
             shell=True,
         )
 
