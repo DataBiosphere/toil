@@ -160,7 +160,8 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     :param tolerate_all_whitespace: If True, don't allow all-whitespace lines
         to reduce the common whitespace prefix.
 
-    :param debug: If True, log intermediate staged of processing.
+    :param debug: If True, the function will show its work by logging at debug
+        level. 
     """
 
     # The expression has a "parts" list consisting of interleaved string
