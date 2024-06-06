@@ -78,6 +78,11 @@ def printHelp(modules: Dict[str, types.ModuleType]) -> None:
 
 def printVersion() -> None:
     try:
-        print(metadata_version('toil'))
+        detected_version = metadata_version('toil')
+        if "a" in detected_version:
+            # This probably means Toil is installed as development
+            print(version)
+        else:
+            print(detected_version)
     except:
         print(f'Version gathered from toil.version: {version}')

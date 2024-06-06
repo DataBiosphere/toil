@@ -138,26 +138,30 @@ Toil hides stdout and stderr by default except in case of job failure. Log
 levels in toil are based on priority from the logging module:
 
   --logOff
-                        Only CRITICAL log levels are shown.
+                        Only CRITICAL log messages are shown.
                         Equivalent to ``--logLevel=OFF`` or ``--logLevel=CRITICAL``.
   --logCritical
-                        Only CRITICAL log levels are shown.
+                        Only CRITICAL log messages are shown.
                         Equivalent to ``--logLevel=OFF`` or ``--logLevel=CRITICAL``.
   --logError
-                        Only ERROR, and CRITICAL log levels are shown.
+                        Only ERROR, and CRITICAL log messages are shown.
                         Equivalent to ``--logLevel=ERROR``.
   --logWarning
-                        Only WARN, ERROR, and CRITICAL log levels are shown.
+                        Only WARN, ERROR, and CRITICAL log messages are shown.
                         Equivalent to ``--logLevel=WARNING``.
   --logInfo
-                        All log statements are shown, except DEBUG.
+                        All non-debugging-related log messages are shown.
                         Equivalent to ``--logLevel=INFO``.
   --logDebug
-                        All log statements are shown.
+                        Log messages at DEBUG level and above are shown.
                         Equivalent to ``--logLevel=DEBUG``.
+  --logTrace
+                        Log messages at TRACE level and above are shown.
+                        Equivalent to ``--logLevel=TRACE``.
   --logLevel=LOGLEVEL
                         May be set to: ``OFF`` (or ``CRITICAL``),
-                        ``ERROR``, ``WARN`` (or ``WARNING``), ``INFO``, or ``DEBUG``.
+                        ``ERROR``, ``WARN`` (or ``WARNING``), ``INFO``, ``DEBUG``,
+                        or ``TRACE``.
   --logFile FILEPATH
                         Specifies a file path to write the logging output to.
   --rotatingLogging

@@ -673,6 +673,8 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
 class JobStatus:
     """
     Records the status of a job.
+
+    When exit_code is -1, this means the job is either not observed or currently running.
     """
 
     job_store_id: str
@@ -685,6 +687,9 @@ class JobStatus:
 
     def __repr__(self) -> str:
         return json.dumps(self, default= lambda o: o.__dict__, indent=4)
+
+    def is_running(self) -> bool:
+        return self.exit_code < 0 and self.job_store_id != ""  # if the exit code is -1 and the job id is specified, we assume the job is running
 
 def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     """
@@ -710,7 +715,7 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
             for event in MessageBus.scan_bus_messages(log_stream, [JobUpdatedMessage, JobIssuedMessage, JobCompletedMessage,
                                                                    JobFailedMessage, JobAnnotationMessage, ExternalBatchIdMessage]):
                 # And for each of them
-                logger.info('Got message from workflow: %s', event)
+                logger.debug('Got message from workflow: %s', event)
 
                 if isinstance(event, JobUpdatedMessage):
                     # Apply the latest return code from the job with this ID.
@@ -741,12 +746,16 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
 
     return job_statuses
 
-def gen_message_bus_path() -> str:
+def gen_message_bus_path(tmpdir: Optional[str] = None) -> str:
     """
     Return a file path in tmp to store the message bus at.
     Calling function is responsible for cleaning the generated file.
+
+    The tmpdir argument will override the directory that the
+    message bus will be made in. If not provided, the standard tempfile
+    order will be used.
     """
-    fd, path = tempfile.mkstemp()
+    fd, path = tempfile.mkstemp(dir=tmpdir)
     os.close(fd)
     return path
     #TODO Might want to clean up the tmpfile at some point after running the workflow

@@ -24,6 +24,7 @@ from typing import (Any,
                     List,
                     Optional,
                     Set,
+                    Tuple,
                     cast)
 from urllib.parse import ParseResult
 
@@ -248,10 +249,17 @@ def enable_public_objects(bucket_name: str) -> None:
     # Stop using an ownership controls setting that prohibits ACLs.
     s3_client.delete_bucket_ownership_controls(Bucket=bucket_name)
 
+class NoBucketLocationError(Exception):
+    """
+    Error to represent that we could not get a location for a bucket.
+    """
+    pass
 
 def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
     """
-    Get the AWS region name associated with the given S3 bucket.
+    Get the AWS region name associated with the given S3 bucket, or raise NoBucketLocationError.
+
+    Does not log at info level or above when this does not work; failures are expected in some contexts.
 
     Takes an optional S3 API URL override.
 
@@ -305,6 +313,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         strategies.append(attempt_get_bucket_location_from_us_east_1)
     strategies.append(attempt_head_bucket)
 
+    error_logs: List[Tuple[int, str]] = []
     for attempt in retry_s3():
         with attempt:
             for i, strategy in enumerate(strategies):
@@ -312,10 +321,13 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
                     # We want to test running without this strategy.
                     continue
                 try:
-                    return bucket_location_to_region(strategy())
+                    location = bucket_location_to_region(strategy())
+                    logger.debug('Got bucket location from strategy %d', i + 1)
+                    return location
                 except ClientError as e:
                     if get_error_code(e) == 'AccessDenied' and not endpoint_url:
-                        logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                        logger.debug('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                        error_logs.append((i + 1, str(e)))
                         last_error: Exception = e
                         # We were blocked with this strategy. Move on to the
                         # next strategy which might work.
@@ -324,10 +336,15 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
                         raise
                 except KeyError as e:
                     # If we get a weird head response we will have a KeyError
-                    logger.warning('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                    logger.debug('Strategy %d to get bucket location did not work: %s', i + 1, e)
+                    error_logs.append((i + 1, str(e)))
                     last_error = e
-    # If we get here we ran out of attempts. Raise whatever the last problem was.
-    raise last_error
+
+    error_messages = []
+    for rank, message in error_logs:
+        error_messages.append(f"Strategy {rank} failed to get bucket location because: {message}")
+    # If we get here we ran out of attempts.
+    raise NoBucketLocationError("Could not get bucket location: " + "\n".join(error_messages)) from last_error
 
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
@@ -366,9 +383,11 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Ob
             # Get the bucket's region to avoid a redirect per request
             region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
             s3 = session.resource('s3', region_name=region, endpoint_url=endpoint_url)
-        except ClientError:
+        except NoBucketLocationError as e:
             # Probably don't have permission.
             # TODO: check if it is that
+            logger.debug("Couldn't get bucket location: %s", e)
+            logger.debug("Fall back to not specifying location")
             s3 = session.resource('s3', endpoint_url=endpoint_url)
 
         obj = s3.Object(bucket_name, key_name)

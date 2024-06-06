@@ -19,7 +19,10 @@ from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
-from toil.lib.aws import build_tag_dict_from_env
+try:
+    from toil.lib.aws import build_tag_dict_from_env
+except ModuleNotFoundError:
+    build_tag_dict_from_env: Dict[str, str] = lambda _: {}  # type: ignore[no-redef]
 from toil.lib.conversions import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,

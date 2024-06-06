@@ -4,8 +4,8 @@
 
 Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline management system,
 written entirely in Python, and designed around the principles of functional
-programming. It supports running workflows written in either Common Workflow Language (`CWL`_) or 
-Workflow Description Language (`WDL`_), as well as having its own rich Python API for writing workflows against. 
+programming. It supports running workflows written in either Common Workflow Language (`CWL`_) 1.0-1.2 or 
+Workflow Description Language (`WDL`_) 1.0-1.1, as well as having its own rich Python API for writing workflows against. 
 It supports running workflows locally on your system (e.g. a laptop), on an HPC cluster, or in the cloud. 
 
 * Check the `website`_ for a description of Toil and its features.
