@@ -83,11 +83,14 @@ rst_epilog = """
 
 def skip(app, what, name, obj, skip, options):
     """
-    Decide what to automaticxally generate documentation for.
+    Decide what to automatically generate documentation for.
     """
 
     # See
     # <https://sphinx-autoapi.readthedocs.io/en/latest/reference/config.html#event-autoapi-skip-member>
+
+    # TODO: It's not clear that the contidions used here are a good idea. Why
+    # are they like this?
 
     # Always document __init__
     return name != "__init__" and (
