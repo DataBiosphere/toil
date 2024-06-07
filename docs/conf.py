@@ -151,7 +151,6 @@ autoapi_options = [
     "undoc-members",
     "show-inheritance",
     "show-module-summary",
-    "imported-members",
     "special-members",
 ]
 always_document_param_types = True
