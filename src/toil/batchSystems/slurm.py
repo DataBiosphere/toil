@@ -396,8 +396,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         # a key without a value, we consider that key part of the previous value.
                         bits = item.split('=', 1)
                         if len(bits) == 1:
-                            key = bits[0]
-                            job[key] += ' ' + bits[0]
+                            job[key] += ' ' + bits[0]  # type: ignore[has-type]  # we depend on the previous iteration to populate key
                         else:
                             key = bits[0]
                             job[key] = bits[1]
