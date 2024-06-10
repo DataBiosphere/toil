@@ -102,10 +102,6 @@ def skip(app, what, name, obj, skip, options):
             name.startswith("_")
             and not inspect.ismodule(obj)
         )
-        # Or the imported aliases of things that are imported by name from
-        # other files (see
-        # <https://github.com/readthedocs/sphinx-autoapi/issues/447#issuecomment-2155563695>)
-        or "original_path" in obj
     )
 
 
@@ -170,7 +166,6 @@ autoapi_options = [
     "undoc-members",
     "show-inheritance",
     "show-module-summary",
-    "imported-members",
     "special-members",
 ]
 always_document_param_types = True
