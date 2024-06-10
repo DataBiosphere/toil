@@ -50,7 +50,7 @@ import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
 from WDL._util import byte_size_units, strip_leading_whitespace
-from WDL.CLI import print_error
+from WDL.CLI import print_error, runner_exe
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
@@ -3156,15 +3156,14 @@ class WDLRootJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, inputs: WDLBindings, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
 
         # The root workflow names the root namespace and task path.
-        super().__init__(workflow.name, workflow.name, wdl_options=wdl_options, **kwargs)
-
-        self._workflow = workflow
+        super().__init__(target.name, target.name, wdl_options=wdl_options, **kwargs)
+        self._target = target
         self._inputs = inputs
 
     @report_wdl_errors("run root job")
@@ -3173,14 +3172,19 @@ class WDLRootJob(WDLSectionJob):
         Actually build the subgraph.
         """
         super().run(file_store)
+        if isinstance(self._target, WDL.Tree.Workflow):
+            # Create a workflow job. We rely in this to handle entering the input
+            # namespace if needed, or handling free-floating inputs.
+            job: WDLBaseJob = WDLWorkflowJob(self._target, [self._inputs], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
+        else:
+            # There is no workflow. Create a task job.
+            job = WDLTaskWrapperJob(self._target, [], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
+        # Run the task or workflow
+        job.then_namespace(self._namespace)
+        self.addChild(job)
+        self.defer_postprocessing(job)
+        return job.rv()
 
-        # Run the workflow. We rely in this to handle entering the input
-        # namespace if needed, or handling free-floating inputs.
-        workflow_job = WDLWorkflowJob(self._workflow, [self._inputs], [self._workflow.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
-        workflow_job.then_namespace(self._namespace)
-        self.addChild(workflow_job)
-        self.defer_postprocessing(workflow_job)
-        return workflow_job.rv()
 
 @contextmanager
 def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, None, None]:
@@ -3248,11 +3252,16 @@ def main() -> None:
             # Load the WDL document
             document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
-            if document.workflow is None:
-                # Complain that we need a workflow.
-                # We need the absolute path or URL to raise the error
-                wdl_abspath = options.wdl_uri if not os.path.exists(options.wdl_uri) else os.path.abspath(options.wdl_uri)
-                raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.wdl_uri, wdl_abspath, 0, 0, 0, 1), "No workflow found in document")
+            # See if we're going to run a workflow or a task
+            target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
+            if document.workflow:
+                target = document.workflow
+            elif len(document.tasks) == 1:
+                target = document.tasks[0]
+            elif len(document.tasks) > 1:
+                raise WDL.Error.InputError("Multiple tasks found with no workflow! Either add a workflow or keep one task.")
+            else:
+                raise WDL.Error.InputError("WDL document is empty!")
 
             if options.inputs_uri:
                 # Load the inputs. Use the same loading mechanism, which means we
@@ -3277,9 +3286,9 @@ def main() -> None:
             WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
             input_bindings = WDL.values_from_json(
                 inputs,
-                cast(WDLTypeDeclBindings, document.workflow.available_inputs),
-                cast(Optional[WDLTypeDeclBindings], document.workflow.required_inputs),
-                document.workflow.name
+                cast(WDLTypeDeclBindings, target.available_inputs),
+                cast(Optional[WDLTypeDeclBindings], target.required_inputs),
+                target.name
             )
 
             # Determine where to look for files referenced in the inputs, in addition to here.
@@ -3309,7 +3318,7 @@ def main() -> None:
             assert wdl_options.get("container") is not None
 
             # Run the workflow and get its outputs namespaced with the workflow name.
-            root_job = WDLRootJob(document.workflow, input_bindings, wdl_options=wdl_options)
+            root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
             output_bindings = toil.start(root_job)
         if not isinstance(output_bindings, WDL.Env.Bindings):
             raise RuntimeError("The output of the WDL job is not a binding.")
