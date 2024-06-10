@@ -19,6 +19,7 @@ from queue import Empty, Queue
 from threading import Lock, Thread
 from typing import Dict, List, Optional, Tuple, Union
 
+from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
@@ -373,7 +374,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             """
             raise NotImplementedError()
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(
             config, maxCores, maxMemory, maxDisk)
         self.config = config
