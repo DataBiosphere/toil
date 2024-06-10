@@ -15,6 +15,7 @@
 """Accelerator (i.e. GPU) utilities for Toil"""
 
 import os
+import string
 import subprocess
 from typing import Dict, List, Set, Union, cast
 from xml.dom import minidom
@@ -106,6 +107,34 @@ def count_nvidia_gpus() -> int:
     # TODO: Parse each gpu > product_name > text content and convert to some
     # kind of "model" that agrees with e.g. Kubernetes naming.
 
+@memoize
+def count_amd_gpus() -> int:
+    """
+    Return the number of amd GPUs seen by rocm-smi, or 0 if it is not working.
+    :return:
+    """
+    try:
+        # see if the amd-smi CLI tool is installed
+        # we believe this is the expected output for amd-smi, but we don't actually have and amd gpu to test against
+        # so we assume the output from the amd-smi documentation:
+        # https://rocm.docs.amd.com/projects/amdsmi/en/latest/how-to/using-AMD-SMI-CLI-tool.html
+        out = subprocess.check_output((["amd-smi", "static"]))
+        gpu_count = len([line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")])
+        return gpu_count
+    except (FileNotFoundError, subprocess.SubprocessError):
+        # if the amd-smi command fails, try rocm-smi
+        # if a different exception is raised, something other than the subprocess call is wrong
+        pass
+    try:
+        # similarly, since we don't have an AMD gpu to test against, assume the output from the rocm-smi documentation:
+        # https://rocm.blogs.amd.com/software-tools-optimization/affinity/part-2/README.html#gpu-numa-configuration-rocm-smi-showtoponuma
+        out = subprocess.check_output(["rocm-smi"])
+        gpu_count = len([line for line in out.decode("utf-8").split("\n") if len(line)> 0 and line[0] in string.digits])
+        return gpu_count
+    except (FileNotFoundError, subprocess.SubprocessError):
+        pass
+    return 0
+
 
 @memoize
 def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
@@ -117,8 +146,9 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     accelerator assignment API.
     """
 
-    # For now we only know abput nvidia GPUs
-    return [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
+    gpus: List[AcceleratorRequirement] = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
+    gpus.extend([{'kind': 'gpu', 'brand': 'amd', 'api': 'rocm', 'count': 1} for _ in range(count_amd_gpus())])
+    return gpus
 
 def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Union[Set[int], List[int]]) -> Dict[str, str]:
     """

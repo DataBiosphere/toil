@@ -39,7 +39,6 @@ def main():
         'src/toil/provisioners/node.py',
         'src/toil/provisioners/aws/boto2Context.py',
         'src/toil/provisioners/aws/__init__.py',
-        'src/toil/batchSystems/slurm.py',
         'src/toil/batchSystems/gridengine.py',
         'src/toil/batchSystems/singleMachine.py',
         'src/toil/batchSystems/torque.py',
