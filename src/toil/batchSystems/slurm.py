@@ -11,13 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import logging
 import math
 import os
 from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
-from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union
+from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
 
+from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
@@ -67,17 +70,70 @@ NONTERMINAL_STATES: Set[str] = {
     "STAGE_OUT",
     "STOPPED",
     "SUSPENDED"
-} 
+}
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
+    class PartitionInfo(NamedTuple):
+        partition_name: str
+        gres: bool
+        time: str
+        priority: str
+        cpus: str
+        memory: str
+
+    class PartitionSet:
+        """
+        Set of available partitions detected on the slurm batch system
+        """
+        default_gpu_partition: Optional[SlurmBatchSystem.PartitionInfo]
+        all_partitions: List[SlurmBatchSystem.PartitionInfo]
+        gpu_partitions: Set[str]
+
+        def __init__(self) -> None:
+            self._get_partition_info()
+            self._get_gpu_partitions()
+
+        def _get_gpu_partitions(self) -> None:
+            """
+            Get all available GPU partitions. Also get the default GPU partition.
+            :return: None
+            """
+            gpu_partitions = [partition for partition in self.all_partitions if partition.gres]
+            self.gpu_partitions = {p.partition_name for p in gpu_partitions}
+            # Grab the lowest priority GPU partition
+            # If no GPU partitions are available, then set the default to None
+            self.default_gpu_partition = None
+            if len(gpu_partitions) > 0:
+                self.default_gpu_partition = sorted(gpu_partitions, key=lambda x: x.priority)[0]
+
+        def _get_partition_info(self) -> None:
+            """
+            Call the Slurm batch system with sinfo to grab all available partitions.
+            Then parse the output and store all available Slurm partitions
+            :return: None
+            """
+            sinfo_command = ["sinfo",
+                             "-a",
+                             "-o",
+                             "%P %G %l %p %c %m"]
+
+            sinfo = call_command(sinfo_command)
+
+            parsed_partitions = []
+            for line in sinfo.split("\n")[1:]:
+                if line.strip():
+                    partition_name, gres, time, priority, cpus, memory = line.split(" ")
+                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
+            self.all_partitions = parsed_partitions
+
 
     class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
 
-        def getRunningJobIDs(self):
+        def getRunningJobIDs(self) -> Dict[int, int]:
             # Should return a dictionary of Job IDs and number of seconds
             times = {}
             with self.runningJobsLock:
-                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
+                currentjobs: Dict[str, int] = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
             # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
             # squeue arguments:
             # -h for no header
@@ -95,7 +151,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return times
 
-        def killJob(self, jobID):
+        def killJob(self, jobID: int) -> None:
             call_command(['scancel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self,
@@ -110,7 +166,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # worker instead of having an intervening Bash
             return self.prepareSbatch(cpu, memory, jobID, jobName, job_environment, gpus) + [f'--wrap=exec {command}']
 
-        def submitJob(self, subLine):
+        def submitJob(self, subLine: List[str]) -> int:
             try:
                 # Slurm is not quite clever enough to follow the XDG spec on
                 # its own. If the submission command sees e.g. XDG_RUNTIME_DIR
@@ -139,7 +195,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.error(f"sbatch command failed with error: {e}")
                 raise e
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
+        def coalesce_job_exit_codes(self, batch_job_id_list: List[str]) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
             """
             Collect all job exit codes in a single call.
             :param batch_job_id_list: list of Job ID strings, where each string has the form
@@ -150,7 +206,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Convert batch_job_id_list to list of integer job IDs.
             job_id_list = [int(id.split('.')[0]) for id in batch_job_id_list]
             status_dict = self._get_job_details(job_id_list)
-            exit_codes = []
+            exit_codes: List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]] = []
             for _, status in status_dict.items():
                 exit_codes.append(self._get_job_return_code(status))
             return exit_codes
@@ -168,7 +224,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             status = status_dict[job_id]
             return self._get_job_return_code(status)
 
-        def _get_job_details(self, job_id_list: list) -> dict:
+        def _get_job_details(self, job_id_list: List[int]) -> Dict[int, Tuple[Optional[str], Optional[int]]]:
             """
             Helper function for `getJobExitCode` and `coalesce_job_exit_codes`.
             Fetch job details from Slurm's accounting system or job control system.
@@ -182,7 +238,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 status_dict = self._getJobDetailsFromScontrol(job_id_list)
             return status_dict
 
-        def _get_job_return_code(self, status: tuple) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def _get_job_return_code(self, status: Tuple[Optional[str], Optional[int]]) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Given a Slurm return code, status pair, summarize them into a Toil return code, exit reason pair.
 
@@ -216,7 +272,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # The only state that should produce a 0 ever is COMPLETED. So
                 # if the job is COMPLETED and the exit reason is thus FINISHED,
                 # pass along the code it has.
-                return (rc, exit_reason)
+                return (rc, exit_reason)  # type: ignore[return-value] # mypy doesn't understand enums well
 
             if rc == 0:
                 # The job claims to be in a state other than COMPLETED, but
@@ -225,7 +281,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 return (EXIT_STATUS_UNAVAILABLE_VALUE, exit_reason)
 
             # If the code is nonzero, pass it along.
-            return (rc, exit_reason)
+            return (rc, exit_reason)  # type: ignore[return-value] # mypy doesn't understand enums well
 
         def _canonicalize_state(self, state: str) -> str:
             """
@@ -245,7 +301,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             
             return state_token
 
-        def _getJobDetailsFromSacct(self, job_id_list: list) -> dict:
+        def _getJobDetailsFromSacct(self, job_id_list: List[int]) -> Dict[int, Tuple[Optional[str], Optional[int]]]:
             """
             Get SLURM job exit codes for the jobs in `job_id_list` by running `sacct`.
             :param job_id_list: list of integer batch job IDs.
@@ -263,7 +319,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
-            job_statuses = {}
+            job_statuses: Dict[int, Tuple[Optional[str], Optional[int]]] = {}
             for job_id in job_id_list:
                 job_statuses[job_id] = (None, None)
 
@@ -271,6 +327,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 values = line.strip().split('|')
                 if len(values) < 3:
                     continue
+                state: str
                 job_id_raw, state, exitcode = values
                 state = self._canonicalize_state(state)
                 logger.log(TRACE, "%s state of job %s is %s", args[0], job_id_raw, state)
@@ -279,6 +336,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if len(job_id_parts) > 1:
                     continue
                 job_id = int(job_id_parts[0])
+                status: int
+                signal: int
                 status, signal = (int(n) for n in exitcode.split(':'))
                 if signal > 0:
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
@@ -289,7 +348,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             logger.log(TRACE, "%s returning job statuses: %s", args[0], job_statuses)
             return job_statuses
 
-        def _getJobDetailsFromScontrol(self, job_id_list: list) -> dict:
+        def _getJobDetailsFromScontrol(self, job_id_list: List[int]) -> Dict[int, Tuple[Optional[str], Optional[int]]]:
             """
             Get SLURM job exit codes for the jobs in `job_id_list` by running `scontrol`.
             :param job_id_list: list of integer batch job IDs.
@@ -307,6 +366,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             stdout = call_command(args, quiet=True)
 
             # Job records are separated by a blank line.
+            job_records = None
             if isinstance(stdout, str):
                 job_records = stdout.strip().split('\n\n')
             elif isinstance(stdout, bytes):
@@ -314,7 +374,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `scontrol`.
-            job_statuses = {}
+            job_statuses: Dict[int, Tuple[Optional[str], Optional[int]]] = {}
+            job_id: Optional[int]
             for job_id in job_id_list:
                 job_statuses[job_id] = (None, None)
 
@@ -324,7 +385,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 return job_statuses
 
             for record in job_records:
-                job = {}
+                job: Dict[str, str] = {}
+                job_id = None
                 for line in record.splitlines():
                     for item in line.split():
                         # Output is in the form of many key=value pairs, multiple pairs on each line
@@ -334,7 +396,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         # a key without a value, we consider that key part of the previous value.
                         bits = item.split('=', 1)
                         if len(bits) == 1:
-                            job[key] += ' ' + bits[0]
+                            job[key] += ' ' + bits[0]  # type: ignore[has-type]  # we depend on the previous iteration to populate key
                         else:
                             key = bits[0]
                             job[key] = bits[1]
@@ -344,7 +406,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     if job_id not in job_id_list:
                         logger.log(TRACE, "%s job %d is not in the list", args[0], job_id)
                         break
-                if job_id not in job_id_list:
+                if job_id is None or job_id not in job_id_list:
                     continue
                 state = job['JobState']
                 state = self._canonicalize_state(state)
@@ -399,8 +461,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # responded to this signal and use the right exit reason for it.
             sbatch_line.append("--signal=B:INT@30")
 
-            if gpus:
-                sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
             environment = {}
             environment.update(self.boss.environment)
             if job_environment:
@@ -439,11 +499,38 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu and cpu > 1 and parallel_env:
                 sbatch_line.append(f'--partition={parallel_env}')
 
-            if mem is not None and self.boss.config.allocate_mem:
+            if mem is not None and self.boss.config.allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
+
+            if gpus:
+                # This block will add a gpu supported partition only if no partition is supplied by the user
+                sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
+                if not any(option.startswith("--partition") for option in sbatch_line):
+                    # no partition specified, so specify one
+                    # try to get the name of the lowest priority gpu supported partition
+                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition  # type: ignore[attr-defined]
+                    if lowest_gpu_partition is None:
+                        # no gpu partitions are available, raise an error
+                       raise RuntimeError(f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs")
+                    sbatch_line.append(f"--partition={lowest_gpu_partition.name}")
+                else:
+                    # there is a partition specified already, check if the partition has GPUs
+                    for i, option in enumerate(sbatch_line):
+                        if option.startswith("--partition"):
+                            # grab the partition name depending on if it's specified via an "=" or a space
+                            if "=" in option:
+                                partition_name = option[len("--partition="):]
+                            else:
+                                partition_name = option[i+1]
+                            available_gpu_partitions = self.boss.partitions.gpu_partitions  # type: ignore[attr-defined]
+                            if partition_name not in available_gpu_partitions:
+                                # the specified partition is not compatible, so warn the user that the job may not work
+                                logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work."
+                                               f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}.")
+                            break
 
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
             stderrfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'err')
@@ -451,22 +538,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return sbatch_line
 
-        def parse_elapsed(self, elapsed):
+        def parse_elapsed(self, elapsed: str) -> int:
             # slurm returns elapsed time in days-hours:minutes:seconds format
             # Sometimes it will only return minutes:seconds, so days may be omitted
             # For ease of calculating, we'll make sure all the delimeters are ':'
             # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
             total_seconds = 0
             try:
-                elapsed = elapsed.replace('-', ':').split(':')
-                elapsed.reverse()
+                elapsed_split: List[str] = elapsed.replace('-', ':').split(':')
+                elapsed_split.reverse()
                 seconds_per_unit = [1, 60, 3600, 86400]
                 for index, multiplier in enumerate(seconds_per_unit):
-                    if index < len(elapsed):
-                        total_seconds += multiplier * int(elapsed[index])
+                    if index < len(elapsed_split):
+                        total_seconds += multiplier * int(elapsed_split[index])
             except ValueError:
                 pass  # slurm may return INVALID instead of a time
             return total_seconds
+
+    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+        super().__init__(config, maxCores, maxMemory, maxDisk)
+        self.partitions = SlurmBatchSystem.PartitionSet()
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
@@ -489,7 +580,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     # implement getWaitDuration().
 
     @classmethod
-    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]):
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
         allocate_mem = parser.add_mutually_exclusive_group()
         allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
                              "on SLURM since some system servers may reject any job request that "

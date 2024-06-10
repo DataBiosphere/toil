@@ -69,6 +69,7 @@ from toil.job import (AcceleratorRequirement,
                       unwrap_all)
 from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
                                              InvalidImportExportUrlException, LocatorException)
+from toil.lib.accelerators import count_nvidia_gpus, get_individual_local_accelerators
 from toil.lib.conversions import convert_units, human2bytes, strtobool
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
@@ -1758,7 +1759,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
             total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
-        if runtime_bindings.has_binding('gpuType') or runtime_bindings.has_binding('gpuCount') or runtime_bindings.has_binding('nvidiaDriverVersion'):
+        # The gpu field is the WDL 1.1 standard, so this field will be the absolute truth on whether to use GPUs or not
+        # Fields such as gpuType and gpuCount will be considered optional attributes
+        if runtime_bindings.get('gpu') is True:
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
             # Get the GPU count if set, or 1 if not,
@@ -2116,15 +2119,24 @@ class WDLTaskJob(WDLBaseJob):
 
                     extra_flags: Set[str] = set()
                     accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators
+                    local_accelerators = get_individual_local_accelerators()
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
+                            # This logic will not work if a workflow needs to specify multiple GPUs of different types
+                            # Right now this assumes all GPUs on the node are the same; we only look at the first available GPU
+                            # and assume homogeneity
+                            # This shouldn't cause issues unless a user has a very odd machine setup, which should be rare
                             if accelerator['kind'] == 'gpu':
-                                if accelerator['brand'] == 'nvidia':
+                                # Grab detected GPUs
+                                local_gpus: List[Optional[str]] = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
+                                # Tell singularity the GPU type
+                                gpu_brand = accelerator.get('brand') or local_gpus[0]
+                                if gpu_brand == 'nvidia':
                                     # Tell Singularity to expose nvidia GPUs
                                     extra_flags.add('--nv')
-                                elif accelerator['api'] == 'rocm':
+                                elif gpu_brand == 'amd':
                                     # Tell Singularity to expose ROCm GPUs
-                                    extra_flags.add('--nv')
+                                    extra_flags.add('--rocm')
                                 else:
                                     raise RuntimeError('Cannot expose allocated accelerator %s to Singularity job', accelerator)
 
