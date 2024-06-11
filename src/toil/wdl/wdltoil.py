@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -1852,6 +1853,9 @@ class WDLTaskJob(WDLBaseJob):
         Currently doesn't implement the MiniWDL plugin system, but does add
         resource usage monitoring to Docker containers.
         """
+        
+        parts = []
+
         if isinstance(task_container, SwarmContainer):
             # We're running on Docker Swarm, so we need to monitor CPU usage
             # and so on from inside the container, since it won't be attributed
@@ -1889,10 +1893,37 @@ class WDLTaskJob(WDLBaseJob):
                     done
                 }
                 """)
-            parts = [script, f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &", command_string]
-            return "\n".join(parts)
-        else:
-            return command_string
+            parts.append(script)
+            parts.append(f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &")
+
+        if isinstance(task_container, SwarmContainer) and platform.system() == "Darwin":
+            # With gRPC FUSE file sharing, files immediately downloaded before
+            # being mounted may appear as size 0 in the container due to a race
+            # condition. Check for this and produce an approperiate error.
+
+            script = textwrap.dedent("""\
+                function _toil_check_size () {
+                    TARGET_FILE="${1}"
+                    GOT_SIZE="$(stat -c %s "${TARGET_FILE}")"
+                    EXPECTED_SIZE="${2}"
+                    if [[ "${GOT_SIZE}" != "${EXPECTED_SIZE}" ]] ; then
+                        echo >&2 "Toil Error:"
+                        echo >&2 "File size visible in container for ${TARGET_FILE} is size ${GOT_SIZE} but should be size ${EXPECTED_SIZE}"
+                        echo >&2 "Are you using gRPC FUSE file sharing in Docker Desktop?"
+                        echo >&2 "It doesn't work: see <https://github.com/DataBiosphere/toil/issues/4542>."
+                        exit 1
+                    fi
+                }
+            """)
+            parts.append(script)
+            for host_path, job_path in task_container.input_path_map.items():
+                expected_size = os.path.getsize(host_path)
+                if expected_size != 0:
+                    parts.append(f"_toil_check_size \"{job_path}\" {expected_size}")
+
+        parts.append(command_string)
+
+        return "\n".join(parts)
 
     def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
         """
@@ -3362,7 +3393,7 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
-            # Make sure the output directory exists if we have output files
+            # Make sure the output directory exists `if we have output files
             # that might need to use it.
             os.makedirs(output_directory, exist_ok=True)
             return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir)

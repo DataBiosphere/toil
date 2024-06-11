@@ -58,6 +58,7 @@ def main() -> None:
     config = jobStore.config
     # But override its options
     config.setOptions(options)
+    config.cleanWorkDir = "never"
 
     # Find the job
 
