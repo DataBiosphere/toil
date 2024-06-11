@@ -14,6 +14,7 @@
 import collections
 import datetime
 import errno
+import fcntl
 import filecmp
 import inspect
 import logging
@@ -832,7 +833,8 @@ class hidden:
             """
             dirPurpose = 'tempWriteDir' if cacheHit else 'nonLocalDir'
             workdir = self._createTempDir(purpose=dirPurpose)
-            with open(os.path.join(workdir, 'test'), 'w') as x:
+            file_name = os.path.join(workdir, 'test')
+            with open(file_name, 'w') as x:
                 x.write(str(0))
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=cacheHit,
                               nonLocalDir=workdir,
@@ -841,12 +843,12 @@ class hidden:
             jobs = {}
             for i in range(0, 10):
                 jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
-                                        maxWriteFile=os.path.abspath(x.name), disk='1Gi',
+                                        maxWriteFile=os.path.abspath(file_name), disk='1Gi',
                                         memory='10Mi', cores=1)
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
-            with open(x.name) as y:
+            with open(file_name) as y:
                 # At least one job at a time should have been observed.
                 # We can't actually guarantee that any of our jobs will
                 # see each other currently running.
@@ -874,6 +876,8 @@ class hidden:
             fileSize = fileStats.st_size
 
             currentReaders = job.fileStore.getFileReaderCount(fsID)
+            # This should always count us
+            assert currentReaders > 0
 
             extraJobSpace = job.fileStore.getCacheExtraJobSpace()
 
@@ -886,10 +890,13 @@ class hidden:
             logger.info('Used cache: %s', str(usedCache))
 
             with open(maxWriteFile, 'r+') as x:
+                # Advisory lock the file we are saving max readers to
+                fcntl.lockf(x, fcntl.LOCK_EX)
                 prev_max = int(x.read())
                 x.seek(0)
                 x.truncate()
                 x.write(str(max(prev_max, currentReaders)))
+                fcntl.lockf(x, fcntl.LOCK_UN)
             if job.fileStore.cachingIsFree():
                 # No space should be used when caching is free
                 assert usedCache == 0.0
