@@ -181,30 +181,46 @@ def run_conformance_tests(
         cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
+        output_lines: List[str] = []
         try:
-            output = subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+            child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+            if child.stdout is not None:
+                for line_bytes in child.stdout:
+                    # Pass through all the logs
+                    line_text = line_bytes.decode('utf-8', errors='replace').rstrip()
+                    output_lines.append(line_text)
+                    log.info(line_text)
+
+            # Once it's done writing, amke sure it succeeded.
+            child.wait()
+            log.info("CWL tests finished with exit code %s", child.returncode)
+            if child.returncode != 0:
+                # Act like check_output and raise an error.
+                raise subprocess.CalledProcessError(child.returncode, ' '.join(cmd))
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
                 subprocess.run(["toil", "clean", job_store_override])
 
     except subprocess.CalledProcessError as e:
+        log.info("CWL test runner return code was unsuccessful")
         only_unsupported = False
         # check output -- if we failed but only have unsupported features, we're okay
         p = re.compile(
             r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features"
         )
 
-        error_log = e.output.decode("utf-8")
-        for line in error_log.split("\n"):
-            m = p.search(line)
+        for line_text in output_lines:
+            m = p.search(line_text)
             if m:
                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                     only_unsupported = True
                     break
         if (not only_unsupported) or must_support_all_features:
-            print(error_log)
+            log.error("CWL tests gave unacceptable output:\n%s", '\n'.join(output_lines))
             raise e
+        log.info("Unsuccessful return code is OK")
 
 
 TesterFuncType = Callable[[str, str, "CWLObjectType"], None]
@@ -1271,7 +1287,9 @@ def test_log_dir_echo_stderr(tmp_path: Path) -> None:
     output = open(result).read()
     assert output == "hello\n"
 
-
+# TODO: It's not clear how this test tests filename conflict resolution; it
+# seems like it runs a python script to copy some files and makes sure the
+# workflow doesn't fail.
 @needs_cwl
 @pytest.mark.cwl_small_log_dir
 def test_filename_conflict_resolution(tmp_path: Path) -> None:
@@ -1293,6 +1311,25 @@ def test_filename_conflict_resolution(tmp_path: Path) -> None:
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
+
+@needs_cwl
+@pytest.mark.cwl_small_log_dir
+def test_filename_conflict_resolution_3_or_more(tmp_path: Path) -> None:
+    out_dir = tmp_path / "cwl-out-dir"
+    toil = "toil-cwl-runner"
+    options = [
+        f"--outdir={out_dir}",
+        "--clean=always",
+    ]
+    cwl = os.path.join(
+        os.path.dirname(__file__), "scatter_duplicate_outputs.cwl"
+    )
+    cmd = [toil] + options + [cwl]
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    assert b"Finished toil run successfully" in stderr
+    assert p.returncode == 0
+    assert len(os.listdir(out_dir)) == 9, "All 9 files made by the scatter should be in the directory"
 
 @needs_cwl
 @needs_docker

@@ -778,19 +778,44 @@ class ToilPathMapper(PathMapper):
         # wherever else we would stage it.
         # TODO: why would we do that?
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
+        
+        if obj["class"] not in ("File", "Directory"):
+            # We only handle files and directories; only they have locations.
+            return
 
-        # Decide where to put the file or directory, as an absolute path.
-        tgt = os.path.join(
-            stagedir,
-            cast(str, obj["basename"]),
-        )
+        location = cast(str, obj["location"])
+        if location in self:
+            # If we've already mapped this, map it consistently.
+            tgt = self._pathmap[location].target
+            logger.debug(
+                "ToilPathMapper re-using target %s for path %s",
+                tgt,
+                location,
+            )
+        else:
+            # Decide where to put the file or directory, as an absolute path.
+            tgt = os.path.join(
+                stagedir,
+                cast(str, obj["basename"]),
+            )
+            if self.reversemap(tgt) is not None:
+                # If the target already exists in the pathmap, but we haven't yet
+                # mapped this, it means we have a conflict.
+                i = 2
+                new_tgt = f"{tgt}_{i}"
+                while self.reversemap(new_tgt) is not None:
+                    i += 1
+                    new_tgt = f"{tgt}_{i}"
+                logger.debug(
+                    "ToilPathMapper resolving mapping conflict: %s is now %s",
+                    tgt,
+                    new_tgt,
+                )
+                tgt = new_tgt
 
         if obj["class"] == "Directory":
             # Whether or not we've already mapped this path, we need to map all
             # children recursively.
-
-            # Grab its location
-            location = cast(str, obj["location"])
 
             logger.debug("ToilPathMapper visiting directory %s", location)
 
@@ -885,23 +910,21 @@ class ToilPathMapper(PathMapper):
             )
 
         elif obj["class"] == "File":
-            path = cast(str, obj["location"])
+            logger.debug("ToilPathMapper visiting file %s", location)
 
-            logger.debug("ToilPathMapper visiting file %s", path)
-
-            if path in self._pathmap:
+            if location in self._pathmap:
                 # Don't map the same file twice
                 logger.debug(
                     "ToilPathMapper stopping recursion because we have already "
                     "mapped file: %s",
-                    path,
+                    location,
                 )
                 return
 
-            ab = abspath(path, basedir)
-            if "contents" in obj and path.startswith("_:"):
+            ab = abspath(location, basedir)
+            if "contents" in obj and location.startswith("_:"):
                 # We are supposed to create this file
-                self._pathmap[path] = MapperEnt(
+                self._pathmap[location] = MapperEnt(
                     cast(str, obj["contents"]),
                     tgt,
                     "CreateWritableFile" if copy else "CreateFile",
@@ -919,14 +942,14 @@ class ToilPathMapper(PathMapper):
                     # URI for a local file it downloaded.
                     if self.get_file:
                         deref = self.get_file(
-                            path, obj.get("streamable", False), self.streaming_allowed
+                            location, obj.get("streamable", False), self.streaming_allowed
                         )
                     else:
                         deref = ab
                     if deref.startswith("file:"):
                         deref = schema_salad.ref_resolver.uri_file_path(deref)
                     if urlsplit(deref).scheme in ["http", "https"]:
-                        deref = downloadHttpFile(path)
+                        deref = downloadHttpFile(location)
                     elif urlsplit(deref).scheme != "toilfile":
                         # Dereference symbolic links
                         st = os.lstat(deref)
@@ -944,38 +967,14 @@ class ToilPathMapper(PathMapper):
                     # reference, we just pass that along.
 
                     """Link or copy files to their targets. Create them as needed."""
-                    targets: Dict[str, str] = {}
-                    for _, value in self._pathmap.items():
-                        # If the target already exists in the pathmap, it means we have a conflict.  But we didn't change tgt to reflect new name.
-                        if value.target == tgt:  # Conflict detected in the pathmap
-                            i = 2
-                            new_tgt = f"{tgt}_{i}"
-                            while new_tgt in targets:
-                                i += 1
-                                new_tgt = f"{tgt}_{i}"
-                            targets[new_tgt] = new_tgt
+                    
+                    logger.debug(
+                        "ToilPathMapper adding file mapping %s -> %s", deref, tgt
+                    )
 
-                    for _, value_conflict in targets.items():
-                        logger.debug(
-                            "ToilPathMapper adding file mapping for conflict %s -> %s",
-                            deref,
-                            value_conflict,
-                        )
-                        self._pathmap[path] = MapperEnt(
-                            deref,
-                            value_conflict,
-                            "WritableFile" if copy else "File",
-                            staged,
-                        )
-                    # No conflicts detected so we can write out the original name.
-                    if not targets:
-                        logger.debug(
-                            "ToilPathMapper adding file mapping %s -> %s", deref, tgt
-                        )
-
-                        self._pathmap[path] = MapperEnt(
-                            deref, tgt, "WritableFile" if copy else "File", staged
-                        )
+                    self._pathmap[location] = MapperEnt(
+                        deref, tgt, "WritableFile" if copy else "File", staged
+                    )
 
             # Handle all secondary files that need to be next to this one.
             self.visitlisting(
