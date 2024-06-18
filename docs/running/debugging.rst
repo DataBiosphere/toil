@@ -111,7 +111,200 @@ You will end up with a directory tree that looks, accorfing to ``tree``, somethi
     15 directories, 4 files
 
 You can see where Toil downloaded the input files for the job to the worker's temporary directory, and how they would be mounted into the container.
-    
+
+Solving Hard Problems
+~~~~~~~~~~~~~~~~~~~~~
+
+Say you have a **broken WDL workflow** that can't complete. Whenever you run ``tutorial_debugging_hangs.wdl``, it hangs:
+
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_debugging_hangs.wdl
+
+You can try to run it like this, using Docker containers. Pretend this was actually a run on a large cluster::
+
+    $ toil-wdl-runner --jobStore ./store tutorial_debugging_hangs.wdl --container docker
+
+If you run this, it will hang at the ``TutorialDebugging.CompressFiles.command`` step::
+
+    [2024-06-18T12:12:49-0400] [MainThread] [I] [toil.leader] Issued job 'WDLTaskJob' TutorialDebugging.CompressFiles.command kind-WDLTaskJob/instance-y0ga_907 v1 with job batch system ID: 16 and disk: 2.0 Gi, memory: 2.0 Gi, cores: 1, accelerators: [], preemptible: False
+
+    Workflow Progress  94%|██████████▎| 15/16 (0 failures) [00:36<00:02, 0.42 jobs/s]
+
+Say you want to find out why it is stuck. First, you need to kill the workflow. Open a new shell in the same directory and run::
+
+    # toil kill ./store
+
+You can also hit ``Control+C`` in its terminal window and wait for it to stop.
+
+Then, you need to use ``toil debug-job`` to run the stuck job on your local machine::
+
+    $ toil debug-job ./store TutorialDebugging.CompressFiles.command
+
+This produces some more informative logging messages, showing that the Docker container is managing to start up, but that it stays running indefinitely, with a repeating message::
+
+    [2024-06-18T12:18:00-0400] [MainThread] [N] [MiniWDLContainers] docker task running :: service: "lhui2bdzmzmg", task: "sg371eb2yk", node: "zyu9drdp6a", message: "started"
+    [2024-06-18T12:18:01-0400] [MainThread] [D] [MiniWDLContainers] docker task status :: Timestamp: "2024-06-18T16:17:58.545272049Z", State: "running", Message: "started", ContainerStatus: {"ContainerID": "b7210b346637210b49e7b6353dd24108bc3632bbf2ce7479829d450df6ee453a", "PID": 36510, "ExitCode": 0}, PortStatus: {}
+    [2024-06-18T12:18:03-0400] [MainThread] [D] [MiniWDLContainers] docker task status :: Timestamp: "2024-06-18T16:17:58.545272049Z", State: "running", Message: "started", ContainerStatus: {"ContainerID": "b7210b346637210b49e7b6353dd24108bc3632bbf2ce7479829d450df6ee453a", "PID": 36510, "ExitCode": 0}, PortStatus: {}
+    [2024-06-18T12:18:04-0400] [MainThread] [D] [MiniWDLContainers] docker task status :: Timestamp: "2024-06-18T16:17:58.545272049Z", State: "running", Message: "started", ContainerStatus: {"ContainerID": "b7210b346637210b49e7b6353dd24108bc3632bbf2ce7479829d450df6ee453a", "PID": 36510, "ExitCode": 0}, PortStatus: {}
+    ...
+
+This also gives you the Docker container ID of the running container, ``b7210b346637210b49e7b6353dd24108bc3632bbf2ce7479829d450df6ee453a``. You can use that to get a shell inside the running container::
+
+    $ docker exec -ti b7210b346637210b49e7b6353dd24108bc3632bbf2ce7479829d450df6ee453a bash
+    root@b7210b346637:/mnt/miniwdl_task_container/work#
+
+Your shell is already in the working directory of the task, so we can inspect the files there to get an idea of how far the task has gotten. Has it managed to create ``script.py``? Has the script managed to create ``compressed.zip``? Let's check::
+
+    # ls -lah
+    total 6.1M
+    drwxrwxr-x 6 root root  192 Jun 18 16:17 .
+    drwxr-xr-x 3 root root 4.0K Jun 18 16:17 ..
+    drwxr-xr-x 3 root root   96 Jun 18 16:17 .toil_wdl_runtime
+    drwxrwxr-x 8 root root  256 Jun 18 16:17 _miniwdl_inputs
+    -rw-r--r-- 1 root root 6.0M Jun 18 16:23 compressed.zip
+    -rw-r--r-- 1 root root 1.3K Jun 18 16:17 script.py
+
+So we can see that the script exists, and the zip file also exists. So maybe the script is still running? We can check with ``ps``, but we need the ``-x`` option to include processes not under the current shell. We can also include the ``-u`` option to get statistics::
+
+    # ps -xu
+    USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+    root         1  0.0  0.0   2316   808 ?        Ss   16:17   0:00 /bin/sh -c /bin/
+    root         7  0.0  0.0   4208  3056 ?        S    16:17   0:00 /bin/bash ../com
+    root         8  0.1  0.0   4208  1924 ?        S    16:17   0:00 /bin/bash ../com
+    root        20 95.0  0.4  41096 36428 ?        R    16:17   7:09 python script.py
+    root       645  0.0  0.0   4472  3492 pts/0    Ss   16:21   0:00 bash
+    root      1379  0.0  0.0   2636   764 ?        S    16:25   0:00 sleep 1
+    root      1380  0.0  0.0   8584  3912 pts/0    R+   16:25   0:00 ps -xu
+
+Here we can see that ``python`` is indeed running, and it is using 95% of a CPU core. So we can surmise that Python is probably stuck spinning around in an infinite loop. Let's look at our files again::
+
+    # ls -lah
+    total 8.1M
+    drwxrwxr-x 6 root root  192 Jun 18 16:17 .
+    drwxr-xr-x 3 root root 4.0K Jun 18 16:17 ..
+    drwxr-xr-x 3 root root   96 Jun 18 16:17 .toil_wdl_runtime
+    drwxrwxr-x 8 root root  256 Jun 18 16:17 _miniwdl_inputs
+    -rw-r--r-- 1 root root 7.6M Jun 18  2024 compressed.zip
+    -rw-r--r-- 1 root root 1.3K Jun 18 16:17 script.py
+
+Note that, while we've been investigating, our ``compressed.zip`` file has grown from ``6.0M`` to ``7.6M``. So we now know that, not only is the Python script stuck in a loop, it is also writing to the ZIP file inside that loop.
+
+Let's inspect the inputs::
+
+    # ls -lah _miniwdl_inputs/*
+    _miniwdl_inputs/0:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root  65 Jun 18 16:15 stdout.txt
+
+    _miniwdl_inputs/1:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root  65 Jun 18 16:15 stdout.txt
+
+    _miniwdl_inputs/2:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root  65 Jun 18 16:15 stdout.txt
+
+    _miniwdl_inputs/3:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root 384 Jun 18 16:15 stdout.txt
+
+    _miniwdl_inputs/4:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root 387 Jun 18 16:15 stdout.txt
+
+    _miniwdl_inputs/5:
+    total 4.0K
+    drwxrwxr-x 3 root root  96 Jun 18 16:17 .
+    drwxrwxr-x 8 root root 256 Jun 18 16:17 ..
+    -rw-r--r-- 1 root root 378 Jun 18 16:15 stdout.txt
+
+There are the files that are meant to be being compressed into that ZIP file. But, hang on, there are only siz of these files, and none of them is over 400 bytes in size. How did we get a multi-megabyte ZIP file? The script must be putting more data than we expected into the ZIP file it is writing.
+
+Taking what we know, we can now inspect the Python script again and see if we can find a way in which it could get stuck in an infinite loop, writing much more data to the ZIP than is actually in the input files. We can also inspect it for WDL variable substitutions (there aren't any). Let's look at it with line numbers using the ``nl`` tool::
+
+    # nl -b a script.py
+     1	import sys
+     2	from zipfile import ZipFile
+     3	import os
+     4
+     5	# Interpret command line arguments
+     6	to_compress = list(reversed(sys.argv[1:]))
+     7
+     8	with ZipFile("compressed.zip", "w") as z:
+     9	    while to_compress != []:
+    10	        # Grab the file to add off the end of the list
+    11	        input_filename = to_compress[-1]
+    12	        # Now we need to write this to the zip file.
+    13	        # What internal filename should we use?
+    14	        basename = os.path.basename(input_filename)
+    15	        disambiguation_number = 0
+    16	        while True:
+    17	            target_filename = str(disambiguation_number) + basename
+    18	            try:
+    19	                z.getinfo(target_filename)
+    20	            except KeyError:
+    21	                # Filename is free
+    22	                break
+    23	            # Otherwise try another name
+    24	            disambiguation_number += 1
+    25	        # Now we can actually make the compressed file
+    26	        with z.open(target_filename, 'w') as out_stream:
+    27	            with open(input_filename) as in_stream:
+    28	                for line in in_stream:
+    29	                    # Prefix each line of text with the original input file
+    30	                    # it came from.
+    31	                    # Also remember to encode the text as the zip file
+    32	                    # stream is in binary mode.
+    33	                    out_stream.write(f"{basename}: {line}".encode("utf-8"))
+
+We have three loops here: ``while to_compress != []:`` on line 9, ``while True:`` on line 16, and ``for line in in_stream:`` on line 28. The ``while True:`` loop is immediately suspicious, but none of the code inside it writes to the ZIP file, so we know we can't be stuck in there. The ``for line in in_stream:`` loop contains the only call that writes data to the ZIP, so we must be spending time inside it, but it is constrained to loop over a single file at a time, so it can't be the ''infinite'' loop we're looking for. So then we must be infinitely looping at ``while to_compress != []:``, and indeed we can see that ``to_compress`` is never modified, so it can never become ``[]``.
+
+So now we have a theory as to what the problem is, and we can ``exit`` out of our shell in the container, and stop ``toil debug-job`` with ``Control+C``. Then we can make the following change to our workflow, adding code to the script to actually pop the handled files off the end of the list:
+
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_debugging.patch
+
+If we apply that change and produce a new file, ``tutorial_debugging_works.wdl``, we can clean up from the old failed run and run a new one::
+
+    $ toil clean ./store
+    $ toil-wdl-runner --jobStore ./store tutorial_debugging_works.wdl --container docker
+
+This will produce a successful log, ending with something like::
+
+    [2024-06-18T12:42:20-0400] [MainThread] [I] [toil.leader] Finished toil run successfully.
+
+    Workflow Progress 100%|███████████| 17/17 (0 failures) [00:24<00:00, 0.72 jobs/s]
+    {"TutorialDebugging.compressed": "/Users/anovak/workspace/toil/src/toil/test/docs/scripts/wdl-out-u7fkgqbe/f5e16468-0cf6-4776-a5c1-d93d993c4db2/compressed.zip"}
+    [2024-06-18T12:42:20-0400] [MainThread] [I] [toil.common] Successfully deleted the job store: FileJobStore(/Users/anovak/workspace/toil/src/toil/test/docs/scripts/store)
+
+Note the line to standard output giving us the path on disk where the ``TutorialDebugging.compressed`` output from the workflow is. If you look at that ZIP file, you can see it contains the expected files, such as ``3stdout.txt``, which should contain this suitably prefixed dismayed whale::
+
+    stdout.txt:  ________ 
+    stdout.txt: < Uh-oh! >
+    stdout.txt:  -------- 
+    stdout.txt:     \
+    stdout.txt:      \
+    stdout.txt:       \     
+    stdout.txt:                     ##        .            
+    stdout.txt:               ## ## ##       ==            
+    stdout.txt:            ## ## ## ##      ===            
+    stdout.txt:        /""""""""""""""""___/ ===        
+    stdout.txt:   ~~~ {~~ ~~~~ ~~~ ~~~~ ~~ ~ /  ===- ~~~   
+    stdout.txt:        \______ o          __/            
+    stdout.txt:         \    \        __/             
+    stdout.txt:           \____\______/   
+
+When we're done inspecting the output, and satisfied that the workflow now works, we might want to clean up all the auto-generated WDL output directories from the successful and faild run(s)::
+
+    $ rm -Rf wdl-out-*
 
 Introspecting the Job Store
 ---------------------------
