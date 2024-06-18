@@ -16,17 +16,19 @@ import logging
 import os
 import re
 import socket
-import toil.lib.retry
 from http.client import HTTPException
-from typing import Dict, MutableMapping, Optional, Union, Literal
+from typing import TYPE_CHECKING, Dict, Literal, MutableMapping, Optional, Union
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from botocore.exceptions import ClientError
 
-from mypy_boto3_s3.literals import BucketLocationConstraintType
+import toil.lib.retry
 
-AWSRegionName = Union[BucketLocationConstraintType, Literal["us-east-1"]]
+if TYPE_CHECKING:
+    from mypy_boto3_s3.literals import BucketLocationConstraintType
+
+AWSRegionName = Union["BucketLocationConstraintType", Literal["us-east-1"]]
 
 # These are errors where we think something randomly
 # went wrong on the AWS side and we ought to retry.

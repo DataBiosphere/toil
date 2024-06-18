@@ -21,7 +21,7 @@ import uuid
 import zipfile
 from abc import abstractmethod
 from io import BytesIO
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
 try:
@@ -51,9 +51,11 @@ class ToilServerUtilsTest(ToilTest):
         away without flipping the state.
         """
 
-        from toil.server.utils import (MemoryStateStore,
-                                       WorkflowStateMachine,
-                                       WorkflowStateStore)
+        from toil.server.utils import (
+            MemoryStateStore,
+            WorkflowStateMachine,
+            WorkflowStateStore,
+        )
 
         store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
 
@@ -184,14 +186,9 @@ class BucketUsingTest(ToilTest):
     Base class for tests that need a bucket.
     """
 
-    try:
-        # We need the class to be evaluateable without the AWS modules, if not
-        # runnable
+    if TYPE_CHECKING:
         from mypy_boto3_s3 import S3ServiceResource
         from mypy_boto3_s3.service_resource import Bucket
-    except ImportError:
-        pass
-
 
     region: Optional[str]
     s3_resource: Optional['S3ServiceResource']
