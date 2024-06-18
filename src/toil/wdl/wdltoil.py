@@ -779,16 +779,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         'devirtualize' filename passed to a read_* function: return a filename that can be open()ed
         on the local host.
         """
-
-        result = self.devirtualize_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir)
-        # Store the back mapping
-        self._devirtualized_to_virtualized[result] = filename
-        # And the forward
-        self._virtualized_to_devirtualized[filename] = result
+        
+        result = self.devirtualize_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir,
+                                      self._devirtualized_to_virtualized, self._virtualized_to_devirtualized)
         return result
 
     @staticmethod
-    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str]) -> str:
+    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str],
+                        devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
@@ -800,6 +798,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         Returns the local path to the file. If it already had a local path
         elsewhere, it might not actually be put in dest_dir.
+
+        The input filename could already be devirtualized. In this case, the filename
+        should not be added to the cache
         """
 
         if not os.path.isdir(dest_dir):
@@ -811,6 +812,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
         # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
         if is_url(filename):
+            if virtualized_to_devirtualized is not None and filename in virtualized_to_devirtualized:
+                # The virtualized file is in the cache, so grab the already devirtualized result
+                result = virtualized_to_devirtualized[filename]
+                logger.debug("Found virtualized %s in cache with devirtualized path %s", filename, result)
+                return result
             if filename.startswith(TOIL_URI_SCHEME):
                 # This is a reference to the Toil filestore.
                 # Deserialize the FileID
@@ -863,6 +869,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                         os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
 
                 result = dest_path
+            if devirtualized_to_virtualized is not None:
+                # Store the back mapping
+                devirtualized_to_virtualized[result] = filename
+            if virtualized_to_devirtualized is not None:
+                # And the other way
+                virtualized_to_devirtualized[filename] = result
+            logger.debug('Devirtualized %s as openable file %s', filename, result)
         else:
             # This is a local file
             # To support relative paths, join the execution dir and filename
@@ -871,10 +884,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = os.path.join(execution_dir, filename)
             else:
                 result = filename
+            logger.debug("Virtualized file %s is already a local path", filename)
 
-        logger.debug('Devirtualized %s as openable file %s', filename, result)
         if not os.path.exists(result):
             raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
+
         return result
 
     @memoize
@@ -3359,7 +3373,8 @@ def main() -> None:
             inputs_search_path = []
             if options.inputs_uri:
                 inputs_search_path.append(options.inputs_uri)
-                match = re.match('https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/', options.inputs_uri)
+
+                match = re.match(r'https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/', options.inputs_uri)
                 if match:
                     # Special magic for Github repos to make e.g.
                     # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
@@ -3387,6 +3402,9 @@ def main() -> None:
         if not isinstance(output_bindings, WDL.Env.Bindings):
             raise RuntimeError("The output of the WDL job is not a binding.")
 
+        devirtualized_to_virtualized: Dict[str, str] = dict()
+        virtualized_to_devirtualized: Dict[str, str] = dict()
+
         # Fetch all the output files
         def devirtualize_output(filename: str) -> str:
             """
@@ -3396,7 +3414,7 @@ def main() -> None:
             # Make sure the output directory exists `if we have output files
             # that might need to use it.
             os.makedirs(output_directory, exist_ok=True)
-            return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir)
+            return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir, devirtualized_to_virtualized, virtualized_to_devirtualized)
 
         # Make all the files local files
         output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
