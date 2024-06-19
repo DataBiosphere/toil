@@ -3,7 +3,7 @@ requests<=2.31.0
 docker>=6.1.0, <8
 urllib3>=1.26.0,<3
 python-dateutil
-psutil >= 3.0.1, <6
+psutil >= 3.0.1, < 7
 PyPubSub >=4.0.3, <5
 addict>=2.2.1, <2.5
 enlighten>=1.5.2, <2
