@@ -362,7 +362,7 @@ class AbstractToilWESServerTest(ToilTest):
     def _report_log(self, client: "FlaskClient", run_id: str) -> None:
         """Report the log for the given workflow run."""
         rv = self._fetch_run_log(client, run_id)
-        logger.critical(f'{rv.json}')
+        logger.debug(f'Report log response: {rv.json}')
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
         self.assertEqual(type(run_log.get("stdout")), str)
