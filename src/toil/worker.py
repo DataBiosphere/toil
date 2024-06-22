@@ -34,6 +34,7 @@ from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
+from toil.wdl.utils import (WDL_COMMAND_FAILED)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job, JobDescription, DebugStoppingPointReached
@@ -549,6 +550,8 @@ def workerScript(
             # We need to inform the leader that this is a CWL workflow problem
             # and it needs to inform its caller.
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+        elif isinstance(e, WDL_COMMAND_FAILED):
+            failure_exit_code = e.exit_status
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code

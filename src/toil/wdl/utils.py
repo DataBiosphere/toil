@@ -14,6 +14,16 @@
 from typing import Iterable
 
 
+class WDLCommandFailed(Exception):
+    """Fallback exception for WDL command failure"""
+    exit_status: int
+
+try:
+    import WDL.runtime.error
+    WDL_COMMAND_FAILED = WDL.runtime.error.CommandFailed
+except ImportError:
+    WDL_COMMAND_FAILED = WDLCommandFailed
+
 def get_version(iterable: Iterable[str]) -> str:
     """
     Get the version of the WDL document.
