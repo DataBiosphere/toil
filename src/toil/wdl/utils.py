@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Iterable
+from typing import Iterable, Type, Union
 
 
 class WDLCommandFailed(Exception):
@@ -20,7 +20,7 @@ class WDLCommandFailed(Exception):
 
 try:
     import WDL.runtime.error
-    WDL_COMMAND_FAILED = WDL.runtime.error.CommandFailed
+    WDL_COMMAND_FAILED: Union[Type[WDLCommandFailed], Type[WDL.runtime.error.CommandFailed]] = WDL.runtime.error.CommandFailed
 except ImportError:
     WDL_COMMAND_FAILED = WDLCommandFailed
 

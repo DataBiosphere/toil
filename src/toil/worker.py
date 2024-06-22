@@ -551,7 +551,8 @@ def workerScript(
             # and it needs to inform its caller.
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
         elif isinstance(e, WDL_COMMAND_FAILED):
-            failure_exit_code = e.exit_status
+            # mypy doesn't understand that this should be type WDL_COMMAND_FAILED and not BaseException
+            failure_exit_code = e.exit_status  # type: ignore[attr-defined]
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code
