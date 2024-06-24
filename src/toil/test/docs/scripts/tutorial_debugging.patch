@@ -1,0 +1,12 @@
+--- tutorial_debugging_works.wdl	2024-06-18 12:03:32
++++ tutorial_debugging_hangs.wdl	2024-06-18 12:03:53
+@@ -112,9 +112,6 @@
+                         # Also remember to encode the text as the zip file
+                         # stream is in binary mode.
+                         out_stream.write(f"{basename}: {line}".encode("utf-8"))
+-            # Even though we got distracted by zip file manipulation, remember
+-            # to pop off the file we just did.
+-            to_compress.pop()
+     EOF
+     python script.py ~{sep(" ", files)}
+     >>>
