@@ -419,31 +419,33 @@ def workerScript(
                 # Create a fileStore object for the job
                 fileStore = AbstractFileStore.createFileStore(job_store, jobDesc, local_worker_temp_dir, blockFn,
                                                               caching=config.caching)
-                with job._executor(stats=statsDict if config.stats else None,
-                                   fileStore=fileStore):
-                    with deferredFunctionManager.open() as defer:
-                        with fileStore.open(job):
-                            # Get the next block function to wait on committing this job
-                            blockFn = fileStore.waitForCommit
+                try:
+                    with job._executor(stats=statsDict if config.stats else None,
+                                       fileStore=fileStore):
+                        with deferredFunctionManager.open() as defer:
+                            with fileStore.open(job):
+                                # Get the next block function to wait on committing this job
+                                blockFn = fileStore.waitForCommit
 
-                            # Run the job, save new successors, and set up
-                            # locally (but don't commit) successor
-                            # relationships and job completion.
-                            # Pass everything as name=value because Cactus
-                            # likes to override _runner when it shouldn't and
-                            # it needs some hope of finding the arguments it
-                            # wants across multiple Toil versions. We also
-                            # still pass a jobGraph argument to placate old
-                            # versions of Cactus.
-                            job._runner(jobGraph=None, jobStore=job_store, fileStore=fileStore, defer=defer)
+                                # Run the job, save new successors, and set up
+                                # locally (but don't commit) successor
+                                # relationships and job completion.
+                                # Pass everything as name=value because Cactus
+                                # likes to override _runner when it shouldn't and
+                                # it needs some hope of finding the arguments it
+                                # wants across multiple Toil versions. We also
+                                # still pass a jobGraph argument to placate old
+                                # versions of Cactus.
+                                job._runner(jobGraph=None, jobStore=job_store, fileStore=fileStore, defer=defer)
 
-                            # When the executor for the job finishes it will
-                            # kick off a commit with the link to the job body
-                            # cut.
-
-                # Accumulate messages from this job & any subsequent chained jobs
-                statsDict.workers.logs_to_leader += fileStore.logging_messages
-                statsDict.workers.logging_user_streams += fileStore.logging_user_streams
+                                # When the executor for the job finishes it will
+                                # kick off a commit with the link to the job body
+                                # cut.
+                finally:
+                    # Accumulate messages from this job & any subsequent chained jobs.
+                    # Keep the messages even if the job fails.
+                    statsDict.workers.logs_to_leader += fileStore.logging_messages
+                    statsDict.workers.logging_user_streams += fileStore.logging_user_streams
 
                 logger.info("Completed body for %s", jobDesc)
 
