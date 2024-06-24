@@ -18,7 +18,6 @@ types-psutil
 types-python-dateutil
 types-setuptools
 types-xmltodict
-backports.zoneinfo[tzdata];python_version<"3.9"
 flake8>=3.8.4,<8
 flake8-bugbear>=20.11.1,<25
 black
