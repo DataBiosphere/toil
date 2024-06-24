@@ -6,20 +6,36 @@
 Installation
 ============
 
-This document describes how to prepare for and install Toil. Note that Toil requires that the user run all commands
-inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided
-below.
+This document describes how to prepare for and install Toil.
 
-.. _virtualenv: https://virtualenv.pypa.io/en/stable/
+.. _dependencyPrep:
+
+Installing System-Level Dependencies
+------------------------------------
+
+Toil by itself only needs Python 3.8 or newer.
+
+However, to run CWL and WDL workflows, you need a container engine for running containers. Toil is able to use either `Singularity`_ or `Docker`_. So make sure to install one of those first and configure your system so that `your user has permission to run containers`_.
+
+.. admonition:: Docker Desktop for Mac
+
+   If using the proprietary `Docker Desktop for Mac`_, make sure to set your "file sharing implementation" in the ``General`` section of the settings to ``VirtIO``. The default ``gRPC FUSE`` implentation sometimes makes containers see recently created files as empty, which breaks Toil's ability to run containers properly.
+
+.. _Singularity: https://wiki.debian.org/singularity
+.. _Docker: https://docs.docker.com/engine/install/
+.. _your user has permission to run containers: https://askubuntu.com/a/1389518
+.. _Docker Desktop for Mac: https://docs.docker.com/desktop/install/mac-install/
 
 .. _venvPrep:
 
 Preparing Your Python Runtime Environment
 -----------------------------------------
 
-It is recommended to install Toil into a virtual environment. This is useful
+It is recommended to install Toil into a Python `virtual environment`_. This is useful
 for automatically deploying Python workflows, and is the only supported way to
 install Toil for Toil development.
+
+.. _virtual environment: https://virtualenv.pypa.io/en/stable/
 
 If not already present, please install the latest Python ``virtualenv`` using pip_::
 

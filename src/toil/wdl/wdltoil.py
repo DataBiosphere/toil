@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -105,7 +106,7 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
     ) as e:
         # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task + " because:")
-        
+
         # These are the errors that MiniWDL's parser can raise and its reporter
         # can report (plus some extras). See
         # https://github.com/chanzuckerberg/miniwdl/blob/a780b1bf2db61f18de37616068968b2bb4c2d21c/WDL/CLI.py#L91-L97.
@@ -162,7 +163,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
         to reduce the common whitespace prefix.
 
     :param debug: If True, the function will show its work by logging at debug
-        level. 
+        level.
     """
 
     # The expression has a "parts" list consisting of interleaved string
@@ -250,7 +251,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
 
     if common_whitespace_prefix is None:
         common_whitespace_prefix = ""
-    
+
     if debug:
         logger.debug("Common Prefix: '%s'", common_whitespace_prefix)
 
@@ -266,7 +267,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
             if c1 != c2:
                 return n
         return min(len(prefix), len(value))
-    
+
     # Trim up to the first mismatch vs. the common prefix if the line starts with a string literal.
     stripped_lines = [
         (
@@ -316,7 +317,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
 
     if debug:
         logger.debug("New Parts Merged: %s", new_parts_merged)
-        
+
     modified = WDL.Expr.String(expression.pos, new_parts_merged, expression.command)
     # Fake the type checking of the modified expression.
     # TODO: Make MiniWDL expose a real way to do this?
@@ -747,6 +748,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         self._execution_dir = execution_dir
 
+    def get_local_paths(self) -> List[str]:
+        """
+        Get all the local paths of files devirtualized (or virtualized) through the stdlib.
+        """
+
+        return list(self._virtualized_to_devirtualized.values())
+
     def share_files(self, other: "ToilWDLStdLibBase") -> None:
         """
         Share caches for devirtualizing and virtualizing files with another instance.
@@ -913,7 +921,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             return result
 
         file_id = self._file_store.writeGlobalFile(abs_filename)
-        
+
         file_dir = os.path.dirname(abs_filename)
         parent_id = self._parent_dir_to_ids.setdefault(file_dir, uuid.uuid4())
         result = pack_toil_uri(file_id, parent_id, os.path.basename(abs_filename))
@@ -1859,6 +1867,9 @@ class WDLTaskJob(WDLBaseJob):
         Currently doesn't implement the MiniWDL plugin system, but does add
         resource usage monitoring to Docker containers.
         """
+        
+        parts = []
+
         if isinstance(task_container, SwarmContainer):
             # We're running on Docker Swarm, so we need to monitor CPU usage
             # and so on from inside the container, since it won't be attributed
@@ -1896,10 +1907,37 @@ class WDLTaskJob(WDLBaseJob):
                     done
                 }
                 """)
-            parts = [script, f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &", command_string]
-            return "\n".join(parts)
-        else:
-            return command_string
+            parts.append(script)
+            parts.append(f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &")
+
+        if isinstance(task_container, SwarmContainer) and platform.system() == "Darwin":
+            # With gRPC FUSE file sharing, files immediately downloaded before
+            # being mounted may appear as size 0 in the container due to a race
+            # condition. Check for this and produce an approperiate error.
+
+            script = textwrap.dedent("""\
+                function _toil_check_size () {
+                    TARGET_FILE="${1}"
+                    GOT_SIZE="$(stat -c %s "${TARGET_FILE}")"
+                    EXPECTED_SIZE="${2}"
+                    if [[ "${GOT_SIZE}" != "${EXPECTED_SIZE}" ]] ; then
+                        echo >&2 "Toil Error:"
+                        echo >&2 "File size visible in container for ${TARGET_FILE} is size ${GOT_SIZE} but should be size ${EXPECTED_SIZE}"
+                        echo >&2 "Are you using gRPC FUSE file sharing in Docker Desktop?"
+                        echo >&2 "It doesn't work: see <https://github.com/DataBiosphere/toil/issues/4542>."
+                        exit 1
+                    fi
+                }
+            """)
+            parts.append(script)
+            for host_path, job_path in task_container.input_path_map.items():
+                expected_size = os.path.getsize(host_path)
+                if expected_size != 0:
+                    parts.append(f"_toil_check_size \"{job_path}\" {expected_size}")
+
+        parts.append(command_string)
+
+        return "\n".join(parts)
 
     def handle_injection_messages(self, outputs_library: ToilWDLStdLibTaskOutputs) -> None:
         """
@@ -2901,7 +2939,11 @@ class WDLScatterJob(WDLSectionJob):
 
         # Get what to scatter over
         with monkeypatch_coerce(standard_library):
-            scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
+            try:
+                scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
+            finally:
+                # Report all files are downloaded now that all expressions are evaluated.
+                self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
 
         if not isinstance(scatter_value, WDL.Value.Array):
             raise RuntimeError("The returned value from a scatter is not an Array type.")
@@ -3036,7 +3078,11 @@ class WDLConditionalJob(WDLSectionJob):
 
         # Get the expression value. Fake a name.
         with monkeypatch_coerce(standard_library):
-            expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
+            try:
+                expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
+            finally:
+                # Report all files are downloaded now that all expressions are evaluated.
+                self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
 
         if expr_value.value:
             # Evaluated to true!
@@ -3099,9 +3145,13 @@ class WDLWorkflowJob(WDLSectionJob):
 
         if self._workflow.inputs:
             with monkeypatch_coerce(standard_library):
-                for input_decl in self._workflow.inputs:
-                    # Evaluate all the inputs that aren't pre-set
-                    bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+                try:
+                    for input_decl in self._workflow.inputs:
+                        # Evaluate all the inputs that aren't pre-set
+                        bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+                finally:
+                    # Report all files are downloaded now that all expressions are evaluated.
+                    self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
 
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
@@ -3140,27 +3190,41 @@ class WDLOutputsJob(WDLBaseJob):
         """
         super().run(file_store)
 
-        if self._workflow.outputs is None:
-            # The output section is not declared
-            # So get all task outputs and return that
-            # First get all task output names
-            output_set = set()
-            for call in self._workflow.body:
-                if isinstance(call, WDL.Tree.Call):
-                    for type_binding in call.effective_outputs:
-                        output_set.add(type_binding.name)
-            # Collect all bindings that are task outputs
-            output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
-            for binding in unwrap(self._bindings):
-                if binding.name in output_set:
-                    # The bindings will already be namespaced with the task namespaces
-                    output_bindings = output_bindings.bind(binding.name, binding.value)
-        else:
-            # Output section is declared and is nonempty, so evaluate normally
-            # Evaluate all the outputs in the normal, non-task-outputs library context
-            standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
-            # Combine the bindings from the previous job
-            output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+        # Evaluate all output expressions in the normal, non-task-outputs library context
+        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
+
+        try:
+            if self._workflow.outputs is None:
+                # The output section is not declared
+                # So get all task outputs and return that
+                # First get all task output names
+                output_set = set()
+                for call in self._workflow.body:
+                    if isinstance(call, WDL.Tree.Call):
+                        for type_binding in call.effective_outputs:
+                            output_set.add(type_binding.name)
+                # Collect all bindings that are task outputs
+                output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+                for binding in unwrap(self._bindings):
+                    if binding.name in output_set:
+                        # The bindings will already be namespaced with the task namespaces
+                        output_bindings = output_bindings.bind(binding.name, binding.value)
+            else:
+                # Output section is declared and is nonempty, so evaluate normally
+
+                # Combine the bindings from the previous job
+                output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+        finally:
+            # We don't actually know when all our files are downloaded since
+            # anything we evaluate might devirtualize inside any expression.
+            # But we definitely know they're done being downloaded if we throw
+            # an error or if we finish, so hook in now and let the debugging
+            # logic stop the worker before any error does.
+            #
+            # Make sure to feed in all the paths we devirtualized as if they
+            # were mounted into a container at their actual paths.
+            self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
+
         return self.postprocess(output_bindings)
 
 class WDLRootJob(WDLSectionJob):
@@ -3347,7 +3411,7 @@ def main() -> None:
             'devirtualize' a file using the "toil" object instead of a filestore.
             Returns its local path.
             """
-            # Make sure the output directory exists if we have output files
+            # Make sure the output directory exists `if we have output files
             # that might need to use it.
             os.makedirs(output_directory, exist_ok=True)
             return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir, devirtualized_to_virtualized, virtualized_to_devirtualized)
