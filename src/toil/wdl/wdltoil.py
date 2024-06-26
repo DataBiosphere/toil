@@ -887,7 +887,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             logger.debug("Virtualized file %s is already a local path", filename)
 
         if not os.path.exists(result):
-            raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
+            # Devirtualizing an unvirtualized file means the file is coerced from a string and never used/virtualized
+            raise FileNotFoundError(f"File {filename} was not found!")
+            # raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
 
         return result
 
@@ -1450,7 +1452,12 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     """
 
     paths = []
-    map_over_files_in_bindings(environment, lambda x: paths.append(x))
+
+    def append_to_paths(path: str) -> str:
+        # Append element and return the element. This is to avoid a logger warning inside map_over_typed_files_in_value()
+        paths.append(path)
+        return path
+    map_over_files_in_bindings(environment, append_to_paths)
     return paths
 
 def map_over_typed_files_in_bindings(environment: WDLBindings, transform: Callable[[WDL.Type.Base, str], Optional[str]]) -> WDLBindings:
@@ -1503,7 +1510,6 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
     actually be used, to allow for scans. So error checking needs to be part of
     the transform itself.
     """
-
     if isinstance(value, WDL.Value.File):
         # This is a file so we need to process it
         new_path = transform(value.type, value.value)
@@ -1804,7 +1810,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             runtime_accelerators = [accelerator_requirement]
 
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
-        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
+        run_job = WDLTaskJob(self._task, bindings, runtime_bindings, self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
         self.addChild(run_job)
 
@@ -3276,14 +3282,17 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
     # conversion is to just store the local filepath. Toil needs to virtualize the file into the jobstore so until
     # there is an internal entrypoint, monkeypatch it.
     def base_coerce(self: WDL.Value.Base, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        if isinstance(desired_type, WDL.Type.File):
-            self.value = standard_library._virtualize_filename(self.value)
-            return self
+        # if isinstance(desired_type, WDL.Type.File):
+        #     self.value = standard_library._virtualize_filename(self.value)
+        #     return self
         return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
     def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
         # Sometimes string coerce is called instead, so monkeypatch this one as well
-        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
-            return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
+        # if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
+        #     try:
+        #         return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
+        #     except FileNotFoundError:
+        #         return old_str_coerce(self, desired_type)
         return old_str_coerce(self, desired_type)
 
     old_base_coerce = WDL.Value.Base.coerce
