@@ -112,7 +112,7 @@ class ToilWorkflowRunner:
             logger.info("Linking workflow from filesystem.")
             link_file(src=src_url[7:], dest=dest)
         elif src_url.startswith(("http://", "https://")):
-            logger.info("Downloading workflow_url from the Internet.")
+            logger.info(f"Downloading workflow_url from the Internet.  src: {src_url} dst: {dest}")
             download_file_from_internet(src=src_url, dest=dest, content_type="text/")
         elif src_url.startswith("s3://"):
             logger.info("Downloading workflow_url from Amazon S3.")

@@ -63,7 +63,7 @@ class AWSProvisionerBenchTest(ToilTest):
     @needs_aws_ec2
     def test_AMI_finding(self):
         for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
-            provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None)
+            provisioner = AWSProvisioner('fakename', 'mesos', zone, 10000, None, None, enable_fuse=False)
             ami = provisioner._discoverAMI()
             # Make sure we got an AMI and it looks plausible
             assert(ami.startswith('ami-'))
@@ -74,7 +74,7 @@ class AWSProvisionerBenchTest(ToilTest):
         Make sure the `_write_file_to_cloud()` and `_read_file_from_cloud()`
         functions of the AWS provisioner work as intended.
         """
-        provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None)
+        provisioner = AWSProvisioner(f'aws-provisioner-test-{uuid4()}', 'mesos', 'us-west-2a', 50, None, None, enable_fuse=False)
         key = 'config/test.txt'
         contents = b"Hello, this is a test."
 
