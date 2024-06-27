@@ -46,6 +46,7 @@ from typing import (Any,
                     Union,
                     cast)
 from urllib.parse import quote, unquote, urljoin, urlsplit
+from functools import partial
 
 import WDL.Error
 import WDL.runtime.config
@@ -574,6 +575,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 # in the same destination directory, when dealing with basename conflicts.
 
 TOIL_URI_SCHEME = 'toilfile:'
+TOIL_NONEXISTENT_URI_SCHEME = 'nonexistent:'
 
 def pack_toil_uri(file_id: FileID, dir_id: uuid.UUID, file_basename: str) -> str:
     """
@@ -622,6 +624,7 @@ def evaluate_output_decls(output_decls: List[WDL.Tree.Decl], all_bindings: WDL.E
     output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
     for output_decl in output_decls:
         output_value = evaluate_decl(output_decl, all_bindings, standard_library)
+        map_over_typed_files_in_value(output_value, lambda a, b: drop_if_missing(a, b, standard_library._current_directory_override))
         all_bindings = all_bindings.bind(output_decl.name, output_value)
         output_bindings = output_bindings.bind(output_decl.name, output_value)
     return output_bindings
@@ -680,7 +683,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
-def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
+def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME, TOIL_NONEXISTENT_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -829,7 +832,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Put the UUID in the destination path in order for tasks to
                 # see where to put files depending on their parents.
                 dir_path = os.path.join(dest_dir, parent_id)
-
+            elif filename.startswith(TOIL_NONEXISTENT_URI_SCHEME):
+                raise FileNotFoundError(f"File {filename[len(TOIL_NONEXISTENT_URI_SCHEME):]} was not available when virtualized!")
             else:
                 # Parse the URL and extract the basename
                 file_basename = os.path.basename(urlsplit(filename).path)
@@ -889,8 +893,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         if not os.path.exists(result):
             # Devirtualizing an unvirtualized file means the file is coerced from a string and never used/virtualized
-            raise FileNotFoundError(f"File {filename} was not found!")
-            # raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
+            raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
 
         return result
 
@@ -944,13 +947,13 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     are host-side paths.
     """
 
-    def __init__(self, file_store: AbstractFileStore, container: TaskContainer):
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer, execution_dir: Optional[str] = None):
         """
         Set up the standard library for the task command section.
         """
 
         # TODO: Don't we want to make sure we don't actually use the file store?
-        super().__init__(file_store)
+        super().__init__(file_store, execution_dir)
         self.container = container
 
     @memoize
@@ -1011,7 +1014,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Just set up as ToilWDLStdLibBase, but it will call into
         # WDL.StdLib.TaskOutputs next.
-        super().__init__(file_store)
+        super().__init__(file_store, current_directory_override)
 
         # Remember task output files
         self._stdout_path = stdout_path
@@ -1025,6 +1028,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         self._mountpoint_to_file = {v: k for k, v in file_to_mountpoint.items()}
 
         # Remember current directory
+        # todo: figure out if this is duplicative with execution_dir
         self._current_directory_override = current_directory_override
 
         # We need to attach implementations for WDL's stdout(), stderr(), and glob().
@@ -1408,6 +1412,31 @@ def import_files(environment: WDLBindings, toil: Toil, path: Optional[List[str]]
 
     return map_over_files_in_bindings(environment, import_file_from_uri)
 
+
+def drop_if_missing(value_type: WDL.Type.Base, filename: str, work_dir: str) -> Optional[str]:
+    """
+    Return None if a file doesn't exist, or its path if it does.
+    """
+    logger.debug("Consider file %s", filename)
+
+    if is_url(filename):
+        if (not filename.startswith(TOIL_NONEXISTENT_URI_SCHEME)
+                and (filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename))):
+            # We assume anything in the filestore actually exists.
+            return filename
+        else:
+            logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
+            return None
+    else:
+        # Get the absolute path, not resolving symlinks
+        effective_path = os.path.abspath(os.path.join(work_dir, filename))
+        if os.path.islink(effective_path) or os.path.exists(effective_path):
+            # This is a broken symlink or a working symlink or a file.
+            return filename
+        else:
+            logger.warning('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
+            return None
+
 def drop_missing_files(environment: WDLBindings, current_directory_override: Optional[str] = None) -> WDLBindings:
     """
     Make sure all the File values embedded in the given bindings point to files
@@ -1419,30 +1448,8 @@ def drop_missing_files(environment: WDLBindings, current_directory_override: Opt
     # Determine where to evaluate relative paths relative to
     work_dir = '.' if not current_directory_override else current_directory_override
 
-    def drop_if_missing(value_type: WDL.Type.Base, filename: str) -> Optional[str]:
-        """
-        Return None if a file doesn't exist, or its path if it does.
-        """
-        logger.debug("Consider file %s", filename)
-
-        if is_url(filename):
-            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
-                # We assume anything in the filestore actually exists.
-                return filename
-            else:
-                logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
-                return None
-        else:
-            # Get the absolute path, not resolving symlinks
-            effective_path = os.path.abspath(os.path.join(work_dir, filename))
-            if os.path.islink(effective_path) or os.path.exists(effective_path):
-                # This is a broken symlink or a working symlink or a file.
-                return filename
-            else:
-                logger.warning('File %s with type %s does not actually exist at %s', filename, value_type, effective_path)
-                return None
-
-    return map_over_typed_files_in_bindings(environment, drop_if_missing)
+    drop_if_missing_with_workdir = partial(drop_if_missing, work_dir=work_dir)
+    return map_over_typed_files_in_bindings(environment, drop_if_missing_with_workdir)
 
 def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     """
@@ -1721,20 +1728,20 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Set up the WDL standard library
         # UUID to use for virtualizing files
         standard_library = ToilWDLStdLibBase(file_store)
+        with monkeypatch_coerce(standard_library):
+            if self._task.inputs:
+                logger.debug("Evaluating task code")
+                for input_decl in self._task.inputs:
+                    # Evaluate all the inputs that aren't pre-set
+                    bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
+            for postinput_decl in self._task.postinputs:
+                # Evaluate all the postinput decls.
+                # We need these in order to evaluate the runtime.
+                # TODO: What if they wanted resources from the runtime?
+                bindings = bindings.bind(postinput_decl.name, evaluate_defaultable_decl(postinput_decl, bindings, standard_library))
 
-        if self._task.inputs:
-            logger.debug("Evaluating task code")
-            for input_decl in self._task.inputs:
-                # Evaluate all the inputs that aren't pre-set
-                bindings = bindings.bind(input_decl.name, evaluate_defaultable_decl(input_decl, bindings, standard_library))
-        for postinput_decl in self._task.postinputs:
-            # Evaluate all the postinput decls.
-            # We need these in order to evaluate the runtime.
-            # TODO: What if they wanted resources from the runtime?
-            bindings = bindings.bind(postinput_decl.name, evaluate_defaultable_decl(postinput_decl, bindings, standard_library))
-
-        # Evaluate the runtime section
-        runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
+            # Evaluate the runtime section
+            runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
         # Fill these in with not-None if the workflow asks for each resource.
         runtime_memory: Optional[int] = None
@@ -2227,7 +2234,7 @@ class WDLTaskJob(WDLBaseJob):
             contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
-            command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
+            command_library = ToilWDLStdLibTaskCommand(file_store, task_container, workdir_in_container)
 
             # Work out the command string, and unwrap it
             command_string: str = evaluate_named_expression(self._task, "command", WDL.Type.String(), remove_common_leading_whitespace(self._task.command), contained_bindings, command_library).coerce(WDL.Type.String()).value
@@ -2313,7 +2320,8 @@ class WDLTaskJob(WDLBaseJob):
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, current_directory_override=workdir_in_container)
         # Make sure files downloaded as inputs get re-used if we re-upload them.
         outputs_library.share_files(standard_library)
-        output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
+        with monkeypatch_coerce(outputs_library, null_nonexistent_files=True):
+            output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
         # Now we know if the standard output and error were sent somewhere by
         # the workflow. If not, we should report them to the leader.
@@ -2339,10 +2347,11 @@ class WDLTaskJob(WDLBaseJob):
         output_bindings = drop_missing_files(output_bindings, current_directory_override=workdir_in_container)
         for decl in self._task.outputs:
             if not decl.type.optional and output_bindings[decl.name].value is None:
-                    # We have an unacceptable null value. This can happen if a file
-                    # is missing but not optional. Don't let it out to annoy the
-                    # next task.
-                    raise WDL.Error.EvalError(decl, f"non-optional value {decl.name} = {decl.expr} is missing")
+                # todo: make recursive
+                # We have an unacceptable null value. This can happen if a file
+                # is missing but not optional. Don't let it out to annoy the
+                # next task.
+                raise WDL.Error.EvalError(decl, f"non-optional value {decl.name} = {decl.expr} is missing")
 
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
@@ -3221,7 +3230,8 @@ class WDLOutputsJob(WDLBaseJob):
                 # Output section is declared and is nonempty, so evaluate normally
 
                 # Combine the bindings from the previous job
-                output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+                with monkeypatch_coerce(standard_library, null_nonexistent_files=True):
+                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -3232,6 +3242,9 @@ class WDLOutputsJob(WDLBaseJob):
             # Make sure to feed in all the paths we devirtualized as if they
             # were mounted into a container at their actual paths.
             self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
+
+        # Null nonexistent optional values and error on the rest
+        output_bindings = drop_missing_files(output_bindings, self._wdl_options.get("execution_dir"))
 
         return self.postprocess(output_bindings)
 
@@ -3273,7 +3286,7 @@ class WDLRootJob(WDLSectionJob):
 
 
 @contextmanager
-def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, None, None]:
+def monkeypatch_coerce(standard_library: ToilWDLStdLibBase, null_nonexistent_files: bool = False) -> Generator[None, None, None]:
     """
     Monkeypatch miniwdl's WDL.Value.Base.coerce() function to virtualize files when they are represented as Strings.
     Calls _virtualize_filename from a given standard library object.
@@ -3284,17 +3297,25 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
     # conversion is to just store the local filepath. Toil needs to virtualize the file into the jobstore so until
     # there is an internal entrypoint, monkeypatch it.
     def base_coerce(self: WDL.Value.Base, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        # if isinstance(desired_type, WDL.Type.File):
-        #     self.value = standard_library._virtualize_filename(self.value)
-        #     return self
+        if isinstance(desired_type, WDL.Type.File):
+            self.value = standard_library._virtualize_filename(self.value)
+            return self
         return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
     def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
         # Sometimes string coerce is called instead, so monkeypatch this one as well
-        # if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
-        #     try:
-        #         return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
-        #     except FileNotFoundError:
-        #         return old_str_coerce(self, desired_type)
+        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
+            if os.path.isfile(os.path.join(standard_library._execution_dir or ".", self.value)):
+                return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
+            else:
+                if null_nonexistent_files:
+                    # todo: make better
+                    # Ideally, we should raise an EvalError here if we encounter a nonexistent nonoptional file,
+                    # but we don't have access to the source location, so we will just return null
+                    # if the result isn't used in an expression, it will be caught on output
+                    # if the result is used, hopefully the implementation of the function catches it and raises it
+                    return WDL.Value.Null()
+                else:
+                    return WDL.Value.File(TOIL_NONEXISTENT_URI_SCHEME + self.value, self.expr)
         return old_str_coerce(self, desired_type)
 
     old_base_coerce = WDL.Value.Base.coerce
