@@ -203,7 +203,7 @@ def create_s3_bucket(
 
     *ALL* S3 bucket creation should use this function.
     """
-    logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
+    logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
         bucket = s3_resource.create_bucket(Bucket=bucket_name)
     else:

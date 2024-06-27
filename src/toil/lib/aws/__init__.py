@@ -137,12 +137,13 @@ def get_current_aws_zone() -> Optional[str]:
     Finally, if we have boto2, and a default region is configured in Boto 2,
     chooses a zone in that region.
 
-    Returns None if no method can produce a zone to use.
+    Returns 'us-east-1a' if no method can produce a zone to use.
     """
     return get_aws_zone_from_environment() or \
         get_aws_zone_from_metadata() or \
         get_aws_zone_from_environment_region() or \
-        get_aws_zone_from_boto()
+        get_aws_zone_from_boto() or \
+        'us-east-1a'  # AWS's native default
 
 def zone_to_region(zone: str) -> AWSRegionName:
     """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
