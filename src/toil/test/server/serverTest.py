@@ -223,9 +223,7 @@ class BucketUsingTest(ToilTest):
         super().tearDownClass()
 
 class AWSStateStoreTest(hidden.AbstractStateStoreTest, BucketUsingTest):
-    """
-    Test AWS-based state storage.
-    """
+    """Test AWS-based state storage."""
 
     from toil.server.utils import AbstractStateStore
 
@@ -345,7 +343,6 @@ class AbstractToilWESServerTest(ToilTest):
         """
         rv = self._fetch_run_log(client, run_id)
         logger.debug('Log info: %s', rv.json)
-        self.assertIn("run_log", rv.json)
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
         if "exit_code" in run_log:
@@ -363,22 +360,15 @@ class AbstractToilWESServerTest(ToilTest):
             self.assertEqual(task_log.get("exit_code"), 0)
 
     def _report_log(self, client: "FlaskClient", run_id: str) -> None:
-        """
-        Report the log for the given workflow run.
-        """
+        """Report the log for the given workflow run."""
         rv = self._fetch_run_log(client, run_id)
-        self.assertIn("run_log", rv.json)
+        logger.debug(f'Report log response: {rv.json}')
         run_log = rv.json.get("run_log")
         self.assertEqual(type(run_log), dict)
-        self.assertIn("stdout", run_log)
-        stdout = run_log.get("stdout")
-        self.assertEqual(type(stdout), str)
-        self.assertIn("stderr", run_log)
-        stderr = run_log.get("stderr")
-        self.assertEqual(type(stderr), str)
-        logger.info("Got stdout %s and stderr %s", stdout, stderr)
-        self._report_absolute_url(client, stdout)
-        self._report_absolute_url(client, stderr)
+        self.assertEqual(type(run_log.get("stdout")), str)
+        self.assertEqual(type(run_log.get("stderr")), str)
+        self._report_absolute_url(client, run_log.get("stdout"))
+        self._report_absolute_url(client, run_log.get("stderr"))
 
     def _report_absolute_url(self, client: "FlaskClient", url: str):
         """
@@ -574,8 +564,7 @@ class ToilWESServerWorkflowTest(AbstractToilWESServerTest):
         """Test run example CWL workflow from the Internet."""
         with self.app.test_client() as client:
             rv = client.post("/ga4gh/wes/v1/runs", data={
-                "workflow_url": "https://raw.githubusercontent.com/DataBiosphere/toil/releases/5.4.x/src/toil"
-                                "/test/cwl/echo.cwl",
+                "workflow_url": "https://raw.githubusercontent.com/DataBiosphere/toil/4cb5bb3871ac21a9793f638b83775926ed94a226/src/toil/test/cwl/echo.cwl",
                 "workflow_type": "CWL",
                 "workflow_type_version": "v1.2",
                 "workflow_params": json.dumps({"message": "Hello, world!"}),
