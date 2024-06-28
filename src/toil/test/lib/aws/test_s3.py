@@ -14,7 +14,7 @@
 import logging
 import os
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.session import establish_boto3_session
@@ -29,11 +29,12 @@ logging.basicConfig(level=logging.DEBUG)
 class S3Test(ToilTest):
     """Confirm the workarounds for us-east-1."""
 
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
+    if TYPE_CHECKING:
+        from mypy_boto3_s3 import S3ServiceResource
+        from mypy_boto3_s3.service_resource import Bucket
 
-    s3_resource: Optional[S3ServiceResource]
-    bucket: Optional[Bucket]
+    s3_resource: Optional["S3ServiceResource"]
+    bucket: Optional["Bucket"]
 
     @classmethod
     def setUpClass(cls) -> None:
