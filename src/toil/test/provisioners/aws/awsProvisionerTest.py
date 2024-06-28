@@ -19,25 +19,37 @@ import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
-from typing import Optional, List
+from typing import TYPE_CHECKING, List, Optional
 from uuid import uuid4
 
 import botocore.exceptions
 import pytest
-from mypy_boto3_ec2 import EC2Client
-from mypy_boto3_ec2.type_defs import EbsInstanceBlockDeviceTypeDef, InstanceTypeDef, InstanceBlockDeviceMappingTypeDef, FilterTypeDef, DescribeVolumesResultTypeDef, VolumeTypeDef
 
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (ToilTest,
-                       integrative,
-                       needs_aws_ec2,
-                       needs_fetchable_appliance,
-                       needs_mesos,
-                       slow,
-                       timeLimit)
+from toil.test import (
+    ToilTest,
+    integrative,
+    needs_aws_ec2,
+    needs_fetchable_appliance,
+    needs_mesos,
+    slow,
+    timeLimit,
+)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.version import exactPython
+
+if TYPE_CHECKING:
+    from mypy_boto3_ec2 import EC2Client
+    from mypy_boto3_ec2.type_defs import (
+        DescribeVolumesResultTypeDef,
+        EbsInstanceBlockDeviceTypeDef,
+        FilterTypeDef,
+        InstanceBlockDeviceMappingTypeDef,
+        InstanceTypeDef,
+        VolumeTypeDef,
+    )
+
 
 log = logging.getLogger(__name__)
 
@@ -118,13 +130,15 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
     def getRootVolID(self) -> str:
-        instances: List[InstanceTypeDef] = self.cluster._get_nodes_in_cluster_boto3()
+        instances: List["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
         instances.sort(key=lambda x: x.get("LaunchTime"))
-        leader: InstanceTypeDef = instances[0]  # assume leader was launched first
+        leader: "InstanceTypeDef" = instances[0]  # assume leader was launched first
 
-        bdm: Optional[List[InstanceBlockDeviceMappingTypeDef]] = leader.get("BlockDeviceMappings")
+        bdm: Optional[List["InstanceBlockDeviceMappingTypeDef"]] = leader.get(
+            "BlockDeviceMappings"
+        )
         assert bdm is not None
-        root_block_device: Optional[EbsInstanceBlockDeviceTypeDef] = None
+        root_block_device: Optional["EbsInstanceBlockDeviceTypeDef"] = None
         for device in bdm:
             if device["DeviceName"] == "/dev/xvda":
                 root_block_device = device["Ebs"]
@@ -202,9 +216,9 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
 
         volumeID = self.getRootVolID()
         self.cluster.destroyCluster()
-        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
-        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [volumeID]}
-        volumes: Optional[List[VolumeTypeDef]] = None
+        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
+        volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
+        volumes: Optional[List["VolumeTypeDef"]] = None
         for attempt in range(6):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
@@ -261,10 +275,12 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         :return: volumeID
         """
         volumeID = super().getRootVolID()
-        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
-        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [volumeID]}
-        volumes: DescribeVolumesResultTypeDef = boto3_ec2.describe_volumes(Filters=[volume_filter])
-        root_volume: VolumeTypeDef = volumes["Volumes"][0]  # should be first
+        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
+        volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
+        volumes: "DescribeVolumesResultTypeDef" = boto3_ec2.describe_volumes(
+            Filters=[volume_filter]
+        )
+        root_volume: "VolumeTypeDef" = volumes["Volumes"][0]  # should be first
         # test that the leader is given adequate storage
         self.assertGreaterEqual(root_volume["Size"], self.requestedLeaderStorage)
         return volumeID
@@ -312,7 +328,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # visible to EC2 read requests immediately after the create returns,
         # which is the last thing that starting the cluster does.
         time.sleep(10)
-        nodes: List[InstanceTypeDef] = self.cluster._get_nodes_in_cluster_boto3()
+        nodes: List["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
         nodes.sort(key=lambda x: x.get("LaunchTime"))
         # assuming that leader is first
         workers = nodes[1:]
@@ -321,21 +337,30 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # test that workers have expected storage size
         # just use the first worker
         worker = workers[0]
-        boto3_ec2: EC2Client = self.aws.client(region=self.region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
 
-        worker: InstanceTypeDef = next(wait_instances_running(boto3_ec2, [worker]))
+        worker: "InstanceTypeDef" = next(wait_instances_running(boto3_ec2, [worker]))
 
-        bdm: Optional[List[InstanceBlockDeviceMappingTypeDef]] = worker.get("BlockDeviceMappings")
+        bdm: Optional[List["InstanceBlockDeviceMappingTypeDef"]] = worker.get(
+            "BlockDeviceMappings"
+        )
         assert bdm is not None
-        root_block_device: Optional[EbsInstanceBlockDeviceTypeDef] = None
+        root_block_device: Optional["EbsInstanceBlockDeviceTypeDef"] = None
         for device in bdm:
             if device["DeviceName"] == "/dev/xvda":
                 root_block_device = device["Ebs"]
         assert root_block_device is not None
         assert root_block_device.get("VolumeId") is not None  # TypedDicts cannot have runtime type checks
 
-        volume_filter: FilterTypeDef = {"Name": "volume-id", "Values": [root_block_device["VolumeId"]]}
-        root_volume: VolumeTypeDef = boto3_ec2.describe_volumes(Filters=[volume_filter])["Volumes"][0]  # should be first
+        volume_filter: "FilterTypeDef" = {
+            "Name": "volume-id",
+            "Values": [root_block_device["VolumeId"]],
+        }
+        root_volume: "VolumeTypeDef" = boto3_ec2.describe_volumes(
+            Filters=[volume_filter]
+        )["Volumes"][
+            0
+        ]  # should be first
         self.assertGreaterEqual(root_volume.get("Size"), self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
