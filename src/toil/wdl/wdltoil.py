@@ -623,7 +623,7 @@ def evaluate_output_decls(output_decls: List[WDL.Tree.Decl], all_bindings: WDL.E
     output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
     for output_decl in output_decls:
         output_value = evaluate_decl(output_decl, all_bindings, standard_library)
-        drop_if_missing_with_workdir = partial(drop_if_missing, work_dir=standard_library._execution_dir)
+        drop_if_missing_with_workdir = partial(drop_if_missing, work_dir=getattr(standard_library, "_execution_dir"))
         output_value = map_over_typed_files_in_value(output_value, drop_if_missing_with_workdir)
         all_bindings = all_bindings.bind(output_decl.name, output_value)
         output_bindings = output_bindings.bind(output_decl.name, output_value)
@@ -1131,7 +1131,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         if not is_url(filename) and not filename.startswith('/'):
             # We are getting a bare relative path from the WDL side.
             # Find a real path to it relative to the current directory override.
-            work_dir = '.' if not self._exeuction_dir else self._exeuction_dir
+            work_dir = '.' if not self._execution_dir else self._execution_dir
             filename = os.path.join(work_dir, filename)
 
         return super()._devirtualize_filename(filename)
