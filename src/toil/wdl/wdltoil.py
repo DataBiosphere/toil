@@ -50,8 +50,8 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
-from WDL._util import byte_size_units, strip_leading_whitespace
-from WDL.CLI import print_error, runner_exe
+from WDL._util import byte_size_units
+from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer

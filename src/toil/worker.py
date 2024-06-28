@@ -34,7 +34,6 @@ from toil import logProcessContext
 from toil.common import Config, Toil, safeUnpickleFromStream
 from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
-from toil.wdl.utils import (WDL_COMMAND_FAILED)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import CheckpointJobDescription, Job, JobDescription, DebugStoppingPointReached

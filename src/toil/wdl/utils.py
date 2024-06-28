@@ -11,18 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Iterable, Type, Union
+from typing import Iterable
 
-
-class WDLCommandFailed(Exception):
-    """Fallback exception for WDL command failure"""
-    exit_status: int
-
-try:
-    import WDL.runtime.error
-    WDL_COMMAND_FAILED: Union[Type[WDLCommandFailed], Type[WDL.runtime.error.CommandFailed]] = WDL.runtime.error.CommandFailed
-except ImportError:
-    WDL_COMMAND_FAILED = WDLCommandFailed
 
 def get_version(iterable: Iterable[str]) -> str:
     """
