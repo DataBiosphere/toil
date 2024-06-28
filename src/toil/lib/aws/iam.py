@@ -3,15 +3,19 @@ import json
 import logging
 from collections import defaultdict
 from functools import lru_cache
-from typing import Dict, List, Optional, Union, cast
+from typing import TYPE_CHECKING, Dict, List, Optional, Union, cast
 
 import boto3
-from mypy_boto3_iam import IAMClient
-from mypy_boto3_iam.type_defs import (AttachedPolicyTypeDef,
-                                      PolicyDocumentDictTypeDef)
-from mypy_boto3_sts import STSClient
 
 from toil.lib.aws.session import client as get_client
+
+if TYPE_CHECKING:
+    from mypy_boto3_iam import IAMClient
+    from mypy_boto3_iam.type_defs import (
+        AttachedPolicyTypeDef,
+        PolicyDocumentDictTypeDef,
+    )
+    from mypy_boto3_sts import STSClient
 
 logger = logging.getLogger(__name__)
 
@@ -120,13 +124,16 @@ def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
             return True
     return False
 
-def get_actions_from_policy_document(policy_doc: PolicyDocumentDictTypeDef) -> AllowedActionCollection:
-    '''
+
+def get_actions_from_policy_document(
+    policy_doc: "PolicyDocumentDictTypeDef",
+) -> AllowedActionCollection:
+    """
     Given a policy document, go through each statement and create an AllowedActionCollection representing the
     permissions granted in the policy document.
 
     :param policy_doc: A policy document to examine
-    '''
+    """
     allowed_actions: AllowedActionCollection = init_action_collection()
     # Policy document structured like so https://boto3.amazonaws.com/v1/documentation/api/latest/guide/iam-example-policies.html#example
     logger.debug(policy_doc)
@@ -149,7 +156,11 @@ def get_actions_from_policy_document(policy_doc: PolicyDocumentDictTypeDef) -> A
                             allowed_actions[resource][key].append(statement[key])  # type: ignore[literal-required]
 
     return allowed_actions
-def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPolicyTypeDef]) -> AllowedActionCollection:
+
+
+def allowed_actions_attached(
+    iam: "IAMClient", attached_policies: List["AttachedPolicyTypeDef"]
+) -> AllowedActionCollection:
     """
     Go through all attached policy documents and create an AllowedActionCollection representing granted permissions.
 
@@ -168,7 +179,9 @@ def allowed_actions_attached(iam: IAMClient, attached_policies: List[AttachedPol
     return allowed_actions
 
 
-def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: str) -> AllowedActionCollection:
+def allowed_actions_roles(
+    iam: "IAMClient", policy_names: List[str], role_name: str
+) -> AllowedActionCollection:
     """
     Returns a dictionary containing a list of all aws actions allowed for a given role.
     This dictionary is keyed by resource and gives a list of policies allowed on that resource.
@@ -196,7 +209,9 @@ def allowed_actions_roles(iam: IAMClient, policy_names: List[str], role_name: st
     return allowed_actions
 
 
-def collect_policy_actions(policy_documents: List[Union[str, PolicyDocumentDictTypeDef]]) -> AllowedActionCollection:
+def collect_policy_actions(
+    policy_documents: List[Union[str, "PolicyDocumentDictTypeDef"]]
+) -> AllowedActionCollection:
     """
     Collect all of the actions allowed by the given policy documents into one AllowedActionCollection.
     """
@@ -211,7 +226,9 @@ def collect_policy_actions(policy_documents: List[Union[str, PolicyDocumentDictT
     return allowed_actions
 
 
-def allowed_actions_user(iam: IAMClient, policy_names: List[str], user_name: str) -> AllowedActionCollection:
+def allowed_actions_user(
+    iam: "IAMClient", policy_names: List[str], user_name: str
+) -> AllowedActionCollection:
     """
     Gets all allowed actions for a user given by user_name, returns a dictionary, keyed by resource,
     with a list of permissions allowed for each given resource.
@@ -230,7 +247,9 @@ def allowed_actions_user(iam: IAMClient, policy_names: List[str], user_name: str
     return collect_policy_actions(user_policies)
 
 
-def allowed_actions_group(iam: IAMClient, policy_names: List[str], group_name: str) -> AllowedActionCollection:
+def allowed_actions_group(
+    iam: "IAMClient", policy_names: List[str], group_name: str
+) -> AllowedActionCollection:
     """
     Gets all allowed actions for a group given by group_name, returns a dictionary, keyed by resource,
     with a list of permissions allowed for each given resource.
@@ -257,10 +276,12 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
     :param zone: AWS zone to connect to
     """
 
-    iam: IAMClient = get_client('iam', region)
-    sts: STSClient = get_client('sts', region)
-    #TODO Condider effect: deny at some point
-    allowed_actions: AllowedActionCollection = defaultdict(lambda: {'Action': [], 'NotAction': []})
+    iam: "IAMClient" = get_client("iam", region)
+    sts: "STSClient" = get_client("sts", region)
+    # TODO Condider effect: deny at some point
+    allowed_actions: AllowedActionCollection = defaultdict(
+        lambda: {"Action": [], "NotAction": []}
+    )
     try:
         # If successful then we assume we are operating as a user, and grab the associated permissions
         user = iam.get_user()
