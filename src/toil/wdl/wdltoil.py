@@ -46,6 +46,7 @@ from typing import (Any,
                     Union,
                     cast)
 from urllib.parse import quote, unquote, urljoin, urlsplit
+from functools import partial
 
 import WDL.Error
 import WDL.runtime.config
@@ -621,6 +622,8 @@ def evaluate_output_decls(output_decls: List[WDL.Tree.Decl], all_bindings: WDL.E
     output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
     for output_decl in output_decls:
         output_value = evaluate_decl(output_decl, all_bindings, standard_library)
+        drop_if_missing_with_workdir = partial(drop_if_missing, work_dir=standard_library._execution_dir)
+        output_value = map_over_typed_files_in_value(output_value, drop_if_missing_with_workdir)
         all_bindings = all_bindings.bind(output_decl.name, output_value)
         output_bindings = output_bindings.bind(output_decl.name, output_value)
     return output_bindings
@@ -717,7 +720,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
     """
-    def __init__(self, file_store: AbstractFileStore, execution_dir: Optional[str] = None):
+    def __init__(self, file_store: AbstractFileStore, execution_dir: Optional[str] = None, enforce_nonexistence: bool = True):
         """
         Set up the standard library.
 
@@ -747,6 +750,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self._devirtualized_to_virtualized: Dict[str, str] = {}
 
         self._execution_dir = execution_dir
+
+        self._enforce_nonexistence = enforce_nonexistence
 
     def get_local_paths(self) -> List[str]:
         """
@@ -781,12 +786,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         
         result = self.devirtualize_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir,
-                                      self._devirtualized_to_virtualized, self._virtualized_to_devirtualized)
+                                      self._devirtualized_to_virtualized, self._virtualized_to_devirtualized, self._enforce_nonexistence)
         return result
 
     @staticmethod
     def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str],
-                        devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None) -> str:
+                        devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None,
+                        enforce_nonexistence: bool = True) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
@@ -828,7 +834,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Put the UUID in the destination path in order for tasks to
                 # see where to put files depending on their parents.
                 dir_path = os.path.join(dest_dir, parent_id)
-
+            elif filename.startswith(TOIL_NONEXISTENT_URI_SCHEME):
+                if enforce_nonexistence:
+                    raise FileNotFoundError(f"File {filename[len(TOIL_NONEXISTENT_URI_SCHEME):]} was not available when virtualized!")
+                else:
+                    return filename
             else:
                 # Parse the URL and extract the basename
                 file_basename = os.path.basename(urlsplit(filename).path)
@@ -1453,10 +1463,12 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
 
     paths = []
 
-    def append_to_paths(path: str) -> str:
+    def append_to_paths(path: str) -> Optional[str]:
         # Append element and return the element. This is to avoid a logger warning inside map_over_typed_files_in_value()
-        paths.append(path)
-        return path
+        # But don't process nonexistent files
+        if not path.startswith(TOIL_NONEXISTENT_URI_SCHEME):
+            paths.append(path)
+            return path
     map_over_files_in_bindings(environment, append_to_paths)
     return paths
 
@@ -2045,7 +2057,8 @@ class WDLTaskJob(WDLBaseJob):
 
         # Set up the WDL standard library
         # UUID to use for virtualizing files
-        standard_library = ToilWDLStdLibBase(file_store)
+        # Since we process nonexistent files in WDLTaskWrapperJob as those must be run locally, don't try to devirtualize them
+        standard_library = ToilWDLStdLibBase(file_store, enforce_nonexistence=False)
 
         # Get the bindings from after the input section
         bindings = unwrap(self._task_internal_bindings)
@@ -2222,7 +2235,11 @@ class WDLTaskJob(WDLBaseJob):
 
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
-            contained_bindings = map_over_files_in_bindings(bindings, lambda path: task_container.input_path_map[path])
+            def get_path_in_container(path: str) -> Optional[str]:
+                if path.startswith(TOIL_NONEXISTENT_URI_SCHEME):
+                    return None
+                return task_container.input_path_map[path]
+            contained_bindings = map_over_files_in_bindings(bindings, get_path_in_container)
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container)
@@ -2311,7 +2328,8 @@ class WDLTaskJob(WDLBaseJob):
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, current_directory_override=workdir_in_container)
         # Make sure files downloaded as inputs get re-used if we re-upload them.
         outputs_library.share_files(standard_library)
-        output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
+        with monkeypatch_coerce(outputs_library):
+            output_bindings = evaluate_output_decls(self._task.outputs, bindings, outputs_library)
 
         # Now we know if the standard output and error were sent somewhere by
         # the workflow. If not, we should report them to the leader.
@@ -3219,7 +3237,8 @@ class WDLOutputsJob(WDLBaseJob):
                 # Output section is declared and is nonempty, so evaluate normally
 
                 # Combine the bindings from the previous job
-                output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+                with monkeypatch_coerce(standard_library):
+                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -3288,11 +3307,11 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
         return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
     def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
         # Sometimes string coerce is called instead, so monkeypatch this one as well
-        # if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
-        #     try:
-        #         return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
-        #     except FileNotFoundError:
-        #         return old_str_coerce(self, desired_type)
+        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
+            if os.path.isfile(os.path.join(standard_library._execution_dir or ".", self.value)):
+                return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
+            else:
+                return WDL.Value.File(TOIL_NONEXISTENT_URI_SCHEME + self.value, self.expr)
         return old_str_coerce(self, desired_type)
 
     old_base_coerce = WDL.Value.Base.coerce
