@@ -1263,7 +1263,7 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
         if ((node.name in environment and not isinstance(environment[node.name], WDL.Value.Null))
                 or (isinstance(environment.get(node.name), WDL.Value.Null) and node.type.optional)):
             logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
-            if not isinstance(environment[node.name], type(node.type)):
+            if not isinstance(environment[node.name].type, type(node.type)):
                 return environment[node.name].coerce(node.type)
             else:
                 return environment[node.name]
@@ -3317,7 +3317,7 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
         return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
     def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
         # Sometimes string coerce is called instead, so monkeypatch this one as well
-        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
+        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Value.File):
             if os.path.isfile(os.path.join(standard_library._execution_dir or ".", self.value)):
                 return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
             else:
