@@ -552,12 +552,17 @@ def workerScript(
             # We need to inform the leader that this is a CWL workflow problem
             # and it needs to inform its caller.
             failure_exit_code = CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-        elif isinstance(e, WDL_COMMAND_FAILED):
-            # mypy doesn't understand that this should be type WDL_COMMAND_FAILED and not BaseException
-            failure_exit_code = e.exit_status  # type: ignore[attr-defined]
         elif isinstance(e, SystemExit) and isinstance(e.code, int) and e.code != 0:
             # We're meant to be exiting with a particular code.
             failure_exit_code = e.code
+        else:
+            try:
+                from WDL.runtime.error import CommandFailed
+                if isinstance(e, CommandFailed):
+                    failure_exit_code = e.exit_status
+            except ImportError:
+                # WDL dependency not available
+                pass
         AbstractFileStore._terminateEvent.set()
     finally:
         # Get rid of our deferred function manager now so we can't mistake it
