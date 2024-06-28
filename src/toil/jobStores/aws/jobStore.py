@@ -23,47 +23,60 @@ import time
 import uuid
 from contextlib import contextmanager
 from io import BytesIO
-from typing import List, Optional, IO, Dict, Union, Generator, Tuple, cast, TYPE_CHECKING
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 from botocore.exceptions import ClientError
-from mypy_boto3_sdb import SimpleDBClient
-from mypy_boto3_sdb.type_defs import ReplaceableItemTypeDef, ReplaceableAttributeTypeDef, SelectResultTypeDef, ItemTypeDef, AttributeTypeDef, DeletableItemTypeDef, UpdateConditionTypeDef
 
 import toil.lib.encryption as encryption
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             ConcurrentFileModificationException,
-                                             JobStoreExistsException,
-                                             NoSuchFileException,
-                                             NoSuchJobException,
-                                             NoSuchJobStoreException, LocatorException)
-from toil.jobStores.aws.utils import (SDBHelper,
-                                      ServerSideCopyProhibitedError,
-                                      copyKeyMultipart,
-                                      fileSizeAndTime,
-                                      no_such_sdb_domain,
-                                      retry_sdb,
-                                      sdb_unavailable,
-                                      uploadFile,
-                                      uploadFromPath)
-from toil.jobStores.utils import (ReadablePipe,
-                                  ReadableTransformingPipe,
-                                  WritablePipe)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    ConcurrentFileModificationException,
+    JobStoreExistsException,
+    LocatorException,
+    NoSuchFileException,
+    NoSuchJobException,
+    NoSuchJobStoreException,
+)
+from toil.jobStores.aws.utils import (
+    SDBHelper,
+    ServerSideCopyProhibitedError,
+    copyKeyMultipart,
+    fileSizeAndTime,
+    no_such_sdb_domain,
+    retry_sdb,
+    sdb_unavailable,
+    uploadFile,
+    uploadFromPath,
+)
+from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
 from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import (create_s3_bucket,
-                                enable_public_objects,
-                                flatten_tags,
-                                get_bucket_region,
-                                get_object_for_url,
-                                list_objects_for_url,
-                                retry_s3,
-                                retryable_s3_errors,
-                                boto3_pager,
-                                get_item_from_attributes,
-                                NoBucketLocationError)
+from toil.lib.aws.utils import (
+    NoBucketLocationError,
+    boto3_pager,
+    create_s3_bucket,
+    enable_public_objects,
+    flatten_tags,
+    get_bucket_region,
+    get_item_from_attributes,
+    get_object_for_url,
+    list_objects_for_url,
+    retry_s3,
+    retryable_s3_errors,
+)
 from toil.lib.compatibility import compat_bytes
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
@@ -73,6 +86,15 @@ from toil.lib.objects import InnerClass
 from toil.lib.retry import get_error_code, get_error_status, retry
 
 if TYPE_CHECKING:
+    from mypy_boto3_sdb.type_defs import (
+        AttributeTypeDef,
+        DeletableItemTypeDef,
+        ItemTypeDef,
+        ReplaceableAttributeTypeDef,
+        ReplaceableItemTypeDef,
+        UpdateConditionTypeDef,
+    )
+
     from toil import Config
 
 boto3_session = establish_boto3_session()
@@ -228,12 +250,18 @@ class AWSJobStore(AbstractJobStore):
 
         for attempt in retry_sdb():
             with attempt:
-                get_result = self.db.get_attributes(DomainName=registry_domain_name,
-                                                    ItemName=self.name_prefix,
-                                                    AttributeNames=['exists'],
-                                                    ConsistentRead=True)
-                attributes: List[AttributeTypeDef] = get_result.get("Attributes", [])  # the documentation says 'Attributes' should always exist, but this is not true
-                exists: Optional[str] = get_item_from_attributes(attributes=attributes, name="exists")
+                get_result = self.db.get_attributes(
+                    DomainName=registry_domain_name,
+                    ItemName=self.name_prefix,
+                    AttributeNames=["exists"],
+                    ConsistentRead=True,
+                )
+                attributes: List["AttributeTypeDef"] = get_result.get(
+                    "Attributes", []
+                )  # the documentation says 'Attributes' should always exist, but this is not true
+                exists: Optional[str] = get_item_from_attributes(
+                    attributes=attributes, name="exists"
+                )
                 if exists is None:
                     return False
                 elif exists == 'True':
@@ -262,7 +290,9 @@ class AWSJobStore(AbstractJobStore):
                                                   ItemName=self.name_prefix)
                     else:
                         if value is True:
-                            attributes: List[ReplaceableAttributeTypeDef] = [{"Name": "exists", "Value": "True", "Replace": True}]
+                            attributes: List["ReplaceableAttributeTypeDef"] = [
+                                {"Name": "exists", "Value": "True", "Replace": True}
+                            ]
                         elif value is None:
                             attributes = [{"Name": "exists", "Value": "False", "Replace": True}]
                         else:
@@ -271,7 +301,7 @@ class AWSJobStore(AbstractJobStore):
                                                ItemName=self.name_prefix,
                                                Attributes=attributes)
 
-    def _checkItem(self, item: ItemTypeDef, enforce: bool = True) -> None:
+    def _checkItem(self, item: "ItemTypeDef", enforce: bool = True) -> None:
         """
         Make sure that the given SimpleDB item actually has the attributes we think it should.
 
@@ -281,7 +311,9 @@ class AWSJobStore(AbstractJobStore):
         """
         self._checkAttributes(item["Attributes"], enforce)
 
-    def _checkAttributes(self, attributes: List[AttributeTypeDef], enforce: bool = True) -> None:
+    def _checkAttributes(
+        self, attributes: List["AttributeTypeDef"], enforce: bool = True
+    ) -> None:
         if get_item_from_attributes(attributes=attributes, name="overlargeID") is None:
             logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
                          "corrupt or jobstore is from an extremely old Toil: %s", attributes)
@@ -289,7 +321,7 @@ class AWSJobStore(AbstractJobStore):
                 raise RuntimeError("encountered SimpleDB entry missing required attribute "
                                    "'overlargeID'; is your job store ancient?")
 
-    def _awsJobFromAttributes(self, attributes: List[AttributeTypeDef]) -> Job:
+    def _awsJobFromAttributes(self, attributes: List["AttributeTypeDef"]) -> Job:
         """
         Get a Toil Job object from attributes that are defined in an item from the DB
         :param attributes: List of attributes
@@ -312,15 +344,14 @@ class AWSJobStore(AbstractJobStore):
             job.assignConfig(self.config)
         return job
 
-    def _awsJobFromItem(self, item: ItemTypeDef) -> Job:
+    def _awsJobFromItem(self, item: "ItemTypeDef") -> Job:
         """
         Get a Toil Job object from an item from the DB
-        :param item: ItemTypeDef
         :return: Toil Job
         """
         return self._awsJobFromAttributes(item["Attributes"])
 
-    def _awsJobToAttributes(self, job: JobDescription) -> List[AttributeTypeDef]:
+    def _awsJobToAttributes(self, job: JobDescription) -> List["AttributeTypeDef"]:
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
             # Store as an overlarge job in S3
@@ -333,7 +364,7 @@ class AWSJobStore(AbstractJobStore):
             item["overlargeID"] = ""
         return SDBHelper.attributeDictToList(item)
 
-    def _awsJobToItem(self, job: JobDescription, name: str) -> ItemTypeDef:
+    def _awsJobToItem(self, job: JobDescription, name: str) -> "ItemTypeDef":
         return {"Name": name, "Attributes": self._awsJobToAttributes(job)}
 
     jobsPerBatchInsert = 25
@@ -346,16 +377,20 @@ class AWSJobStore(AbstractJobStore):
                    range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items: List[ReplaceableItemTypeDef] = []
+            items: List["ReplaceableItemTypeDef"] = []
             for jobDescription in batch:
-                item_attributes: List[ReplaceableAttributeTypeDef] = []
+                item_attributes: List["ReplaceableAttributeTypeDef"] = []
                 jobDescription.pre_update_hook()
                 item_name = compat_bytes(jobDescription.jobStoreID)
-                got_job_attributes: List[AttributeTypeDef] = self._awsJobToAttributes(jobDescription)
+                got_job_attributes: List["AttributeTypeDef"] = self._awsJobToAttributes(
+                    jobDescription
+                )
                 for each_attribute in got_job_attributes:
-                    new_attribute: ReplaceableAttributeTypeDef = {"Name": each_attribute["Name"],
-                                                                  "Value": each_attribute["Value"],
-                                                                  "Replace": True}
+                    new_attribute: "ReplaceableAttributeTypeDef" = {
+                        "Name": each_attribute["Name"],
+                        "Value": each_attribute["Value"],
+                        "Replace": True,
+                    }
                     item_attributes.append(new_attribute)
                 items.append({"Name": item_name,
                               "Attributes": item_attributes})
@@ -386,7 +421,7 @@ class AWSJobStore(AbstractJobStore):
                                                   ConsistentRead=True).get("Attributes", [])) > 0
 
     def jobs(self) -> Generator[Job, None, None]:
-        job_items: Optional[List[ItemTypeDef]] = None
+        job_items: Optional[List["ItemTypeDef"]] = None
         for attempt in retry_sdb():
             with attempt:
                 job_items = boto3_pager(self.db.select,
@@ -416,8 +451,10 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Updating job %s", job_description.jobStoreID)
         job_description.pre_update_hook()
         job_attributes = self._awsJobToAttributes(job_description)
-        update_attributes: List[ReplaceableAttributeTypeDef] = [{"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
-                                                                for attribute in job_attributes]
+        update_attributes: List["ReplaceableAttributeTypeDef"] = [
+            {"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
+            for attribute in job_attributes
+        ]
         for attempt in retry_sdb():
             with attempt:
                 self.db.put_attributes(DomainName=self.jobs_domain_name, ItemName=compat_bytes(job_description.jobStoreID), Attributes=update_attributes)
@@ -445,7 +482,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 self.db.delete_attributes(DomainName=self.jobs_domain_name, ItemName=compat_bytes(job_id))
-        items: Optional[List[ItemTypeDef]] = None
+        items: Optional[List["ItemTypeDef"]] = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(boto3_pager(self.db.select,
@@ -458,12 +495,14 @@ class AWSJobStore(AbstractJobStore):
             n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
-                delete_items: List[DeletableItemTypeDef] = [{"Name": item["Name"]} for item in batch]
+                delete_items: List["DeletableItemTypeDef"] = [
+                    {"Name": item["Name"]} for item in batch
+                ]
                 for attempt in retry_sdb():
                     with attempt:
                         self.db.batch_delete_attributes(DomainName=self.files_domain_name, Items=delete_items)
             for item in items:
-                item: ItemTypeDef
+                item: "ItemTypeDef"
                 version = get_item_from_attributes(attributes=item["Attributes"], name="version")
                 for attempt in retry_s3():
                     with attempt:
@@ -1065,7 +1104,7 @@ class AWSJobStore(AbstractJobStore):
                 return self
 
         @classmethod
-        def fromItem(cls, item: ItemTypeDef):
+        def fromItem(cls, item: "ItemTypeDef"):
             """
             Convert an SDB item to an instance of this class.
 
@@ -1131,7 +1170,10 @@ class AWSJobStore(AbstractJobStore):
             attributes_boto3 = SDBHelper.attributeDictToList(attributes)
             # False stands for absence
             if self.previousVersion is None:
-                expected: UpdateConditionTypeDef = {"Name": 'version', "Exists": False}
+                expected: "UpdateConditionTypeDef" = {
+                    "Name": "version",
+                    "Exists": False,
+                }
             else:
                 expected = {"Name": 'version', "Value": cast(str, self.previousVersion)}
             try:
@@ -1605,7 +1647,10 @@ class AWSJobStore(AbstractJobStore):
         def delete(self):
             store = self.outer
             if self.previousVersion is not None:
-                expected: UpdateConditionTypeDef = {"Name": 'version', "Value": cast(str, self.previousVersion)}
+                expected: "UpdateConditionTypeDef" = {
+                    "Name": "version",
+                    "Value": cast(str, self.previousVersion),
+                }
                 for attempt in retry_sdb():
                     with attempt:
                         store.db.delete_attributes(DomainName=store.files_domain_name,
