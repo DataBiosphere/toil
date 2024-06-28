@@ -709,6 +709,9 @@ class Leader:
                 status_string = str(exitStatus) if exitStatus != EXIT_STATUS_UNAVAILABLE_VALUE else "<UNAVAILABLE>"
                 logger.warning(f'Job failed with exit value {status_string}: {updatedJob}\n'
                                f'Exit reason: {BatchJobExitReason.to_string(exitReason)}')
+                # This logic is undefined for which of the failing jobs will send its exit code
+                # when there are multiple failing jobs with different exit statuses
+                self.recommended_fail_exit_code = exitStatus
                 if exitStatus == CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE:
                     # This is a CWL job informing us that the workflow is
                     # asking things of us that Toil can't do. When we raise an
