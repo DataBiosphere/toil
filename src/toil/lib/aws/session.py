@@ -15,11 +15,11 @@ import collections
 import logging
 import os
 import threading
-from typing import Dict, Optional, Tuple, cast, Union, Literal, overload, TypeVar
-
 import boto3
 import boto3.resources.base
 import botocore
+
+from typing import Dict, Optional, Tuple, cast, Union, Literal, overload, TypeVar
 from boto3 import Session
 from botocore.client import Config
 from botocore.session import get_session
@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 # initializing Boto3 (or Boto2) things at a time.
 _init_lock = threading.RLock()
 
+
 def _new_boto3_session(region_name: Optional[str] = None) -> Session:
     """
     This is the One True Place where new Boto3 sessions should be made, and
@@ -68,6 +69,7 @@ def _new_boto3_session(region_name: Optional[str] = None) -> Session:
             'assume-role').cache = JSONFileCache()
 
         return Session(botocore_session=botocore_session, region_name=region_name, profile_name=os.environ.get("TOIL_AWS_PROFILE", None))
+
 
 class AWSConnectionManager:
     """
@@ -176,7 +178,6 @@ class AWSConnectionManager:
     @overload
     def client(self, region: Optional[str], service_name: Literal["autoscaling"], endpoint_url: Optional[str] = None,
                config: Optional[Config] = None) -> AutoScalingClient: ...
-
 
     def client(self, region: Optional[str], service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"], endpoint_url: Optional[str] = None,
                config: Optional[Config] = None) -> botocore.client.BaseClient:

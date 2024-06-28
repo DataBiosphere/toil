@@ -22,6 +22,8 @@ import threading
 import time
 import urllib.parse as urlparse
 import uuid
+import pytest
+
 from abc import ABCMeta, abstractmethod
 from io import BytesIO
 from itertools import chain, islice
@@ -30,8 +32,6 @@ from tempfile import mkstemp
 from threading import Thread
 from typing import Any, Tuple
 from urllib.request import Request, urlopen
-
-import pytest
 from stubserver import FTPStubServer
 
 from toil.common import Config, Toil
@@ -40,6 +40,8 @@ from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobException)
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
+from toil.lib.aws.utils import get_object_for_url
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
@@ -1302,31 +1304,20 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.lib.aws.utils import retry_s3
 
         externalAWSLocation = 'us-west-1'
-        for testRegion in 'us-east-1', 'us-west-2':
+        for region in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
             # and once with another server (us-west-2).  The external server is always us-west-1.
             # This incidentally tests that the BucketLocationConflictException is thrown when using
             # both the default, and a non-default server.
-            testJobStoreUUID = str(uuid.uuid4())
+            test_uuid = str(uuid.uuid4())
             # Create the bucket at the external region
-            bucketName = 'domain-test-' + testJobStoreUUID + '--files'
+            bucket_name = f'domain-test-{test_uuid}--files'
             client = establish_boto3_session().client('s3', region_name=externalAWSLocation)
             resource = establish_boto3_session().resource('s3', region_name=externalAWSLocation)
 
-            for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
-                with attempt:
-                    # Create the bucket at the home region
-                    client.create_bucket(Bucket=bucketName,
-                                         CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
+            create_s3_bucket(resource, bucket_name, externalAWSLocation)
 
-            owner_tag = os.environ.get('TOIL_OWNER_TAG')
-            if owner_tag:
-                for attempt in retry_s3(delays=(1, 1, 2, 4, 8, 16), timeout=33):
-                    with attempt:
-                        bucket_tagging = resource.BucketTagging(bucketName)
-                        bucket_tagging.put(Tagging={'TagSet': [{'Key': 'Owner', 'Value': owner_tag}]})
-
-            options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' + testJobStoreUUID)
+            options = Job.Runner.getDefaultOptions(f'aws:{region}:domain-test-{test_uuid}')
             options.logLevel = 'DEBUG'
             try:
                 with Toil(options) as toil:
@@ -1346,35 +1337,12 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     next_token = domains.get("NextToken")
                     if next_token is None:
                         break
-                self.assertFalse([d for d in allDomainNames if testJobStoreUUID in d])
+                self.assertFalse([d for d in allDomainNames if test_uuid in d])
             else:
                 self.fail()
             finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            client.delete_bucket(Bucket=bucketName)
-                except ClientError as e:
-                    # The actual HTTP code of the error is in status.
-                    if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
+                delete_s3_bucket(s3_resource=resource, bucket_name=bucket_name)
 
-    @slow
-    def testInlinedFiles(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-        jobstore = self.jobstore_initialized
-        for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize()
-            sizes = (1, n // 2, n - 1, n, n + 1, 2 * n)
-            for size in chain(sizes, islice(reversed(sizes), 1)):
-                s = os.urandom(size)
-                with jobstore.write_shared_file_stream('foo') as f:
-                    f.write(s)
-                with jobstore.read_shared_file_stream('foo') as f:
-                    self.assertEqual(s, f.read())
 
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized
@@ -1457,23 +1425,17 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import retry_s3, create_s3_bucket
 
-        resource = establish_boto3_session().resource(
-            "s3", region_name=self.awsRegion()
+        resource = establish_boto3_session().resource("s3", region_name=self.awsRegion())
+
+        return create_s3_bucket(
+            s3_resource=resource,
+            bucket_name=f"import-export-test-{uuid.uuid4()}",
+            region=self.awsRegion()
         )
-        bucket_name = f"import-export-test-{uuid.uuid4()}"
-        location = self.awsRegion()
-
-        for attempt in retry_s3():
-            with attempt:
-                bucket = create_s3_bucket(resource, bucket_name, location)
-                bucket.wait_until_exists()
-                return bucket
 
     def _cleanUpExternalStore(self, bucket):
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import delete_s3_bucket
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()

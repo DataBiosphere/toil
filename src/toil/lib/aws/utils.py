@@ -29,7 +29,7 @@ from typing import (Any,
 from urllib.parse import ParseResult
 
 from mypy_boto3_sdb.type_defs import AttributeTypeDef
-from toil.lib.aws import session, AWSRegionName, AWSServerErrors
+from . import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
 from toil.lib.retry import (DEFAULT_DELAYS,
                             DEFAULT_TIMEOUT,
@@ -70,6 +70,7 @@ THROTTLED_ERROR_CODES = [
         'PriorRequestNotComplete',
         'EC2ThrottledException',
 ]
+
 
 @retry(errors=[AWSServerErrors])
 def delete_iam_role(
@@ -131,12 +132,12 @@ def connection_reset(e: Exception) -> bool:
     # errno is listed as 104. To be safe, we check for both:
     return isinstance(e, socket.error) and e.errno in (errno.ECONNRESET, 104)
 
+
 def connection_error(e: Exception) -> bool:
     """
     Return True if an error represents a failure to make a network connection.
     """
-    return (connection_reset(e)
-            or isinstance(e, EndpointConnectionError))
+    return (connection_reset(e) or isinstance(e, EndpointConnectionError))
 
 
 # TODO: Replace with: @retry and ErrorCondition
@@ -160,58 +161,6 @@ def retry_s3(delays: Iterable[float] = DEFAULT_DELAYS, timeout: float = DEFAULT_
     """
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
-@retry(errors=[AWSServerErrors])
-def delete_s3_bucket(
-    s3_resource: "S3ServiceResource",
-    bucket: str,
-    quiet: bool = True
-) -> None:
-    """
-    Delete the given S3 bucket.
-    """
-    printq(f'Deleting s3 bucket: {bucket}', quiet)
-
-    paginator = s3_resource.meta.client.get_paginator('list_object_versions')
-    try:
-        for response in paginator.paginate(Bucket=bucket):
-            # Versions and delete markers can both go in here to be deleted.
-            # They both have Key and VersionId, but there's no shared base type
-            # defined for them in the stubs to express that. See
-            # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
-            # have to do gymnastics to get them into the same list.
-            to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
-                                              cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
-            for entry in to_delete:
-                printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
-                s3_resource.meta.client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
-        s3_resource.Bucket(bucket).delete()
-        printq(f'\n * Deleted s3 bucket successfully: {bucket}\n\n', quiet)
-    except s3_resource.meta.client.exceptions.NoSuchBucket:
-        printq(f'\n * S3 bucket no longer exists: {bucket}\n\n', quiet)
-
-
-def create_s3_bucket(
-    s3_resource: "S3ServiceResource",
-    bucket_name: str,
-    region: AWSRegionName,
-) -> "Bucket":
-    """
-    Create an AWS S3 bucket, using the given Boto3 S3 session, with the
-    given name, in the given region.
-
-    Supports the us-east-1 region, where bucket creation is special.
-
-    *ALL* S3 bucket creation should use this function.
-    """
-    logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
-    if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
-        bucket = s3_resource.create_bucket(Bucket=bucket_name)
-    else:
-        bucket = s3_resource.create_bucket(
-            Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
-        )
-    return bucket
 
 @retry(errors=[ClientError])
 def enable_public_objects(bucket_name: str) -> None:
@@ -346,11 +295,14 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
     # If we get here we ran out of attempts.
     raise NoBucketLocationError("Could not get bucket location: " + "\n".join(error_messages)) from last_error
 
+
 def region_to_bucket_location(region: str) -> str:
     return '' if region == 'us-east-1' else region
 
+
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
+
 
 def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Object":
         """
@@ -455,10 +407,9 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         logger.debug('Found in %s items: %s', url, listing)
         return listing
 
+
 def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
-    """
-    Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
-    """
+    """Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts."""
     return [{'Key': k, 'Value': v} for k, v in tags.items()]
 
 

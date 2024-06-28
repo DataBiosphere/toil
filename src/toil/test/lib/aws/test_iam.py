@@ -13,8 +13,8 @@
 # limitations under the License.
 import json
 import logging
-
 import boto3
+
 from moto import mock_aws
 
 from toil.lib.aws import iam
@@ -26,7 +26,6 @@ logging.basicConfig(level=logging.DEBUG)
 
 class IAMTest(ToilTest):
     """Check that given permissions and associated functions perform correctly"""
-
     def test_permissions_iam(self):
         granted_perms = {'*': {'Action': ['ec2:*', 'iam:*', 's3:*', 'sdb:*'], 'NotAction': []}}
         assert iam.policy_permissions_allow(granted_perms, iam.CLUSTER_LAUNCHING_PERMISSIONS) is True

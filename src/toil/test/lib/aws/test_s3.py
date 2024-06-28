@@ -18,7 +18,8 @@ from typing import Optional
 
 from toil.jobStores.aws.jobStore import AWSJobStore
 from toil.lib.aws.session import establish_boto3_session
-from toil.lib.aws.utils import create_s3_bucket, get_bucket_region
+from toil.lib.aws.s3 import create_s3_bucket, delete_s3_bucket
+from toil.lib.aws.utils import get_bucket_region
 from toil.test import ToilTest, needs_aws_s3
 
 logger = logging.getLogger(__name__)
@@ -45,15 +46,7 @@ class S3Test(ToilTest):
     def test_create_bucket(self) -> None:
         """Test bucket creation for us-east-1."""
         bucket_name = f"toil-s3test-{uuid.uuid4()}"
-        assert self.s3_resource
         S3Test.bucket = create_s3_bucket(self.s3_resource, bucket_name, "us-east-1")
-        S3Test.bucket.wait_until_exists()
-        owner_tag = os.environ.get("TOIL_OWNER_TAG")
-        if owner_tag:
-            bucket_tagging = self.s3_resource.BucketTagging(bucket_name)
-            bucket_tagging.put(
-                Tagging={"TagSet": [{"Key": "Owner", "Value": owner_tag}]}
-            )
         self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 
         # Make sure all the bucket location getting strategies work on a bucket we created
@@ -73,5 +66,5 @@ class S3Test(ToilTest):
     @classmethod
     def tearDownClass(cls) -> None:
         if cls.bucket:
-            AWSJobStore._delete_bucket(cls.bucket)
+            delete_s3_bucket(cls.bucket)
         super().tearDownClass()

@@ -18,11 +18,9 @@ import os
 from typing import Dict, List, Tuple, Union
 
 from toil import applianceSelf
+
+from toil.lib.aws import tags_from_env
 from toil.common import parser_with_common_options
-try:
-    from toil.lib.aws import build_tag_dict_from_env
-except ModuleNotFoundError:
-    build_tag_dict_from_env: Dict[str, str] = lambda _: {}  # type: ignore[no-redef]
 from toil.lib.conversions import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
@@ -130,7 +128,7 @@ def main() -> None:
     options = parser.parse_args()
     set_logging_from_options(options)
 
-    tags = create_tags_dict(options.tags) if options.tags else build_tag_dict_from_env()
+    tags = create_tags_dict(options.tags) if options.tags else tags_from_env()
 
     # Get worker node types
     worker_node_types = parse_node_types(options.nodeTypes)
