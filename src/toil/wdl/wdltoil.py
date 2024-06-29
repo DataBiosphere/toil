@@ -1778,7 +1778,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
             disks_spec: Union[List[str], str] = runtime_bindings.resolve('disks').value
             if isinstance(disks_spec, list):
                 # SPEC says to use the first one
-                all_specs = disks_spec
+                # the parser gives an array of WDL string objects
+                all_specs = [part.value for part in disks_spec]
             else:
                 all_specs = disks_spec.split(',')
             # Sum up the gigabytes in each disk specification
