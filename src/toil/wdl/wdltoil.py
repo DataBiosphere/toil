@@ -1818,7 +1818,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
                     raise ValueError(f"Could not parse disks = {disks_spec} because the mount point {part_mount_point} is specified multiple times")
 
                 # TODO: we always ignore the disk type and assume we have the right one.
-                mount_spec[part_mount_point] = int(per_part_size)
+                if part_mount_point != "local-disk":
+                    # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
+                    mount_spec[part_mount_point] = int(per_part_size)
 
                 if not os.path.exists(part_mount_point):
                     # this isn't a valid mount point
