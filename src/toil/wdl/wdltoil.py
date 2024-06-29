@@ -1745,40 +1745,67 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 memory_spec = human2bytes(memory_spec)
             runtime_memory = memory_spec
 
+        mount_spec: Dict[str, int] = dict()
         if runtime_bindings.has_binding('disks'):
             # Miniwdl doesn't have this, but we need to be able to parse things like:
             # local-disk 5 SSD
             # which would mean we need 5 GB space. Cromwell docs for this are at https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#disks
             # We ignore all disk types, and complain if the mount point is not `local-disk`.
-            disks_spec: str = runtime_bindings.resolve('disks').value
-            all_specs = disks_spec.split(',')
+            disks_spec: Union[List[str], str] = runtime_bindings.resolve('disks').value
+            if isinstance(disks_spec, list):
+                # SPEC says to use the first one
+                all_specs = disks_spec
+            else:
+                all_specs = disks_spec.split(',')
             # Sum up the gigabytes in each disk specification
-            total_gb = 0
+            total_bytes: float = 0
             for spec in all_specs:
                 # Split up each spec as space-separated. We assume no fields
                 # are empty, and we want to allow people to use spaces after
                 # their commas when separating the list, like in Cromwell's
                 # examples, so we strip whitespace.
                 spec_parts = spec.strip().split(' ')
-                if len(spec_parts) != 3:
-                    # TODO: Add a WDL line to this error
-                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not have 3 space-separated parts")
-                if spec_parts[0] != 'local-disk':
-                    # TODO: Add a WDL line to this error
-                    raise NotImplementedError(f"Could not provide disks = {disks_spec} because only the local-disks mount point is implemented")
-                try:
-                    total_gb += int(spec_parts[1])
-                except:
-                    # TODO: Add a WDL line to this error
-                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec_parts[1]} is not an integer")
+                part_size = None
+                # default to GiB as per spec
+                part_suffix: str = "GiB"
+                # default to the execution directory
+                part_mount_point: str = self._wdl_options.get("execution_dir") or os.getcwd()
+                for i, part in enumerate(spec_parts):
+                    if part.isnumeric():
+                        part_size = int(part)
+                        continue
+                    if i == 0:
+                        # mount point is always the first
+                        part_mount_point = part
+                        continue
+                    if part_size is not None:
+                        # suffix will always be after the size, if it exists
+                        part_suffix = part
+                        continue
+
+                if part_size is None:
+                    # Disk spec did not include a size
+                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
+
+                per_part_size = convert_units(part_size, part_suffix)
+                total_bytes += per_part_size
+                if mount_spec.get(part_mount_point) is not None:
+                    # raise an error as all mount points must be unique
+                    raise ValueError(f"Could not parse disks = {disks_spec} because the mount point {part_mount_point} is specified multiple times")
+
                 # TODO: we always ignore the disk type and assume we have the right one.
-                # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
-                # can't imagine that ever being standardized; just leave it
-                # alone so that the workflow doesn't rely on this weird and
-                # likely-to-change Cromwell detail.
-                if spec_parts[2] == 'LOCAL':
+                mount_spec[part_mount_point] = int(per_part_size)
+
+                if not os.path.exists(part_mount_point):
+                    # this isn't a valid mount point
+                    raise NotImplementedError(f"Cannot use mount point {part_mount_point} as it does not exist")
+
+                if part_suffix == "LOCAL":
+                    # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+                    # can't imagine that ever being standardized; just leave it
+                    # alone so that the workflow doesn't rely on this weird and
+                    # likely-to-change Cromwell detail.
                     logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-            total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
         # The gpu field is the WDL 1.1 standard, so this field will be the absolute truth on whether to use GPUs or not
@@ -1804,7 +1831,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             runtime_accelerators = [accelerator_requirement]
 
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
-        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
+        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, mount_spec, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
         self.addChild(run_job)
 
@@ -1827,7 +1854,7 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], namespace: str, task_path: str, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], namespace: str, task_path: str, mount_spec: Dict[str, int], **kwargs: Any) -> None:
         """
         Make a new job to run a task.
 
@@ -1851,6 +1878,7 @@ class WDLTaskJob(WDLBaseJob):
         self._task_id = task_id
         self._namespace = namespace
         self._task_path = task_path
+        self._mount_spec = mount_spec
 
     ###
     # Runtime code injection system
@@ -2202,8 +2230,53 @@ class WDLTaskJob(WDLBaseJob):
                     return command_line
 
                 # Apply the patch
-                task_container._run_invocation = patched_run_invocation #  type: ignore
+                task_container._run_invocation = patched_run_invocation  # type: ignore
 
+                singularity_original_prepare_mounts = task_container.prepare_mounts
+
+                def patch_prepare_mounts_singularity() -> List[Tuple[str, str, bool]]:
+                    """
+                    Mount the mount points specified from the disk requirements.
+
+                    The singularity and docker patch are separate as they have different function signatures
+                    """
+                    # todo: support AWS EBS/Kubernetes persistent volumes
+                    # this logic likely only works for local clusters as we don't deal with the size of each mount point
+                    mounts: List[Tuple[str, str, bool]] = singularity_original_prepare_mounts()
+                    # todo: support AWS EBS/Kubernetes persistent volumes
+                    # this logic likely only works for local clusters as we don't deal with the size of each mount point
+                    for mount_point, _ in self._mount_spec.items():
+                        abs_mount_point = os.path.abspath(mount_point)
+                        mounts.append((abs_mount_point, abs_mount_point, True))
+                    return mounts
+                task_container.prepare_mounts = patch_prepare_mounts_singularity  # type: ignore[method-assign]
+            elif isinstance(task_container, SwarmContainer):
+                docker_original_prepare_mounts = task_container.prepare_mounts
+
+                try:
+                    # miniwdl depends on docker so this should be available but check just in case
+                    import docker
+                    # docker stubs are still WIP: https://github.com/docker/docker-py/issues/2796
+                    from docker.types import Mount  # type: ignore[import-untyped]
+
+                    def patch_prepare_mounts_docker(logger: logging.Logger) -> List[Mount]:
+                        """
+                        Same as the singularity patch but for docker
+                        """
+                        mounts: List[Mount] = docker_original_prepare_mounts(logger)
+                        for mount_point, _ in self._mount_spec.items():
+                            abs_mount_point = os.path.abspath(mount_point)
+                            mounts.append(
+                                Mount(
+                                    abs_mount_point.rstrip("/").replace("{{", '{{"{{"}}'),
+                                    abs_mount_point.rstrip("/").replace("{{", '{{"{{"}}'),
+                                    type="bind",
+                                )
+                            )
+                        return mounts
+                    task_container.prepare_mounts = patch_prepare_mounts_docker  # type: ignore[method-assign]
+                except ImportError:
+                    logger.warning("Docker package not installed. Unable to add mount points.")
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in devirtualize_files(runtime_bindings, standard_library)})
 
