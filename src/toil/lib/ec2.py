@@ -2,7 +2,18 @@ import logging
 import time
 from base64 import b64encode
 from operator import itemgetter
-from typing import Dict, Iterable, List, Optional, Union, TYPE_CHECKING, Generator, Callable, Mapping, Any
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 
 import botocore.client
 from boto3.resources.base import ServiceResource
@@ -10,16 +21,23 @@ from boto3.resources.base import ServiceResource
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (ErrorCondition,
-                            get_error_code,
-                            get_error_message,
-                            old_retry,
-                            retry)
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_code,
+    get_error_message,
+    old_retry,
+    retry,
+)
 
-from mypy_boto3_ec2.client import EC2Client
-from mypy_boto3_autoscaling.client import AutoScalingClient
-from mypy_boto3_ec2.type_defs import SpotInstanceRequestTypeDef, DescribeInstancesResultTypeDef, InstanceTypeDef
-from mypy_boto3_ec2.service_resource import EC2ServiceResource, Instance
+if TYPE_CHECKING:
+    from mypy_boto3_autoscaling.client import AutoScalingClient
+    from mypy_boto3_ec2.client import EC2Client
+    from mypy_boto3_ec2.service_resource import EC2ServiceResource, Instance
+    from mypy_boto3_ec2.type_defs import (
+        DescribeInstancesResultTypeDef,
+        InstanceTypeDef,
+        SpotInstanceRequestTypeDef,
+    )
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -69,8 +87,15 @@ class UnexpectedResourceState(Exception):
             (resource, to_state, state))
 
 
-def wait_transition(boto3_ec2: EC2Client, resource: InstanceTypeDef, from_states: Iterable[str], to_state: str,
-                    state_getter: Callable[[InstanceTypeDef], str]=lambda x: x.get('State').get('Name')):
+def wait_transition(
+    boto3_ec2: "EC2Client",
+    resource: "InstanceTypeDef",
+    from_states: Iterable[str],
+    to_state: str,
+    state_getter: Callable[["InstanceTypeDef"], str] = lambda x: x.get("State").get(
+        "Name"
+    ),
+):
     """
     Wait until the specified EC2 resource (instance, image, volume, ...) transitions from any
     of the given 'from' states to the specified 'to' state. If the instance is found in a state
@@ -94,21 +119,22 @@ def wait_transition(boto3_ec2: EC2Client, resource: InstanceTypeDef, from_states
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def wait_instances_running(boto3_ec2: EC2Client, instances: Iterable[InstanceTypeDef]) -> Generator[InstanceTypeDef, None, None]:
+def wait_instances_running(
+    boto3_ec2: "EC2Client", instances: Iterable["InstanceTypeDef"]
+) -> Generator["InstanceTypeDef", None, None]:
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
     entered the running state as soon as it does.
 
-    :param EC2Client boto3_ec2: the EC2 connection to use for making requests
-    :param Iterable[InstanceTypeDef] instances: the instances to wait on
-    :rtype: Iterable[InstanceTypeDef]
+    :param boto3_ec2: the EC2 connection to use for making requests
+    :param instances: the instances to wait on
     """
     running_ids = set()
     other_ids = set()
     while True:
         pending_ids = set()
         for i in instances:
-            i: InstanceTypeDef
+            i: "InstanceTypeDef"
             if i['State']['Name'] == 'pending':
                 pending_ids.add(i['InstanceId'])
             elif i['State']['Name'] == 'running':
@@ -134,7 +160,12 @@ def wait_instances_running(boto3_ec2: EC2Client, instances: Iterable[InstanceTyp
                 instances = [instance for reservation in described_instances["Reservations"] for instance in reservation["Instances"]]
 
 
-def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInstanceRequestTypeDef], timeout: float = None, tentative: bool = False) -> Iterable[List[SpotInstanceRequestTypeDef]]:
+def wait_spot_requests_active(
+    boto3_ec2: "EC2Client",
+    requests: Iterable["SpotInstanceRequestTypeDef"],
+    timeout: float = None,
+    tentative: bool = False,
+) -> Iterable[List["SpotInstanceRequestTypeDef"]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
@@ -168,7 +199,7 @@ def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInsta
             open_ids, eval_ids, fulfill_ids = set(), set(), set()
             batch = []
             for r in requests:
-                r: SpotInstanceRequestTypeDef  # pycharm thinks it is a string
+                r: "SpotInstanceRequestTypeDef"  # pycharm thinks it is a string
                 if r['State'] == 'open':
                     open_ids.add(r['InstanceId'])
                     if r['Status'] == 'pending-evaluation':
@@ -215,7 +246,16 @@ def wait_spot_requests_active(boto3_ec2: EC2Client, requests: Iterable[SpotInsta
             cancel()
 
 
-def create_spot_instances(boto3_ec2: EC2Client, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None) -> Generator[DescribeInstancesResultTypeDef, None, None]:
+def create_spot_instances(
+    boto3_ec2: "EC2Client",
+    price,
+    image_id,
+    spec,
+    num_instances=1,
+    timeout=None,
+    tentative=False,
+    tags=None,
+) -> Generator["DescribeInstancesResultTypeDef", None, None]:
     """
     Create instances on the spot market.
     """
@@ -246,7 +286,7 @@ def create_spot_instances(boto3_ec2: EC2Client, price, image_id, spec, num_insta
                                            tentative=tentative):
         instance_ids = []
         for request in batch:
-            request: SpotInstanceRequestTypeDef
+            request: "SpotInstanceRequestTypeDef"
             if request["State"] == 'active':
                 instance_ids.append(request["InstanceId"])
                 num_active += 1
@@ -275,12 +315,15 @@ def create_spot_instances(boto3_ec2: EC2Client, price, image_id, spec, num_insta
         logger.warning('%i request(s) entered a state other than active.', num_other)
 
 
-def create_ondemand_instances(boto3_ec2: EC2Client, image_id: str, spec: Mapping[str, Any], num_instances: int=1) -> List[InstanceTypeDef]:
+def create_ondemand_instances(
+    boto3_ec2: "EC2Client",
+    image_id: str,
+    spec: Mapping[str, Any],
+    num_instances: int = 1,
+) -> List["InstanceTypeDef"]:
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
-
-    :rtype: List[InstanceTypeDef]
     """
     instance_type = spec['InstanceType']
     logger.info('Creating %s instance(s) ... ', instance_type)
@@ -288,15 +331,16 @@ def create_ondemand_instances(boto3_ec2: EC2Client, image_id: str, spec: Mapping
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
-            boto_instance_list: List[InstanceTypeDef] = boto3_ec2.run_instances(ImageId=image_id,
-                                                                                MinCount=num_instances,
-                                                                                MaxCount=num_instances,
-                                                                                **spec)['Instances']
+            boto_instance_list: List["InstanceTypeDef"] = boto3_ec2.run_instances(
+                ImageId=image_id, MinCount=num_instances, MaxCount=num_instances, **spec
+            )["Instances"]
 
     return boto_instance_list
 
 
-def increase_instance_hop_limit(boto3_ec2: EC2Client, boto_instance_list: List[InstanceTypeDef]) -> None:
+def increase_instance_hop_limit(
+    boto3_ec2: "EC2Client", boto_instance_list: List["InstanceTypeDef"]
+) -> None:
     """
     Increase the default HTTP hop limit, as we are running Toil and Kubernetes inside a Docker container, so the default
     hop limit of 1 will not be enough when grabbing metadata information with ec2_metadata
@@ -343,18 +387,20 @@ def wait_until_instance_profile_arn_exists(instance_profile_arn: str):
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_instances(ec2_resource: EC2ServiceResource,
-                     image_id: str,
-                     key_name: str,
-                     instance_type: str,
-                     num_instances: int = 1,
-                     security_group_ids: Optional[List] = None,
-                     user_data: Optional[Union[str, bytes]] = None,
-                     block_device_map: Optional[List[Dict]] = None,
-                     instance_profile_arn: Optional[str] = None,
-                     placement_az: Optional[str] = None,
-                     subnet_id: str = None,
-                     tags: Optional[Dict[str, str]] = None) -> List[Instance]:
+def create_instances(
+    ec2_resource: "EC2ServiceResource",
+    image_id: str,
+    key_name: str,
+    instance_type: str,
+    num_instances: int = 1,
+    security_group_ids: Optional[List] = None,
+    user_data: Optional[Union[str, bytes]] = None,
+    block_device_map: Optional[List[Dict]] = None,
+    instance_profile_arn: Optional[str] = None,
+    placement_az: Optional[str] = None,
+    subnet_id: str = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> List["Instance"]:
     """
     Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
 
@@ -404,18 +450,20 @@ def create_instances(ec2_resource: EC2ServiceResource,
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_launch_template(ec2_client: EC2Client,
-                           template_name: str,
-                           image_id: str,
-                           key_name: str,
-                           instance_type: str,
-                           security_group_ids: Optional[List] = None,
-                           user_data: Optional[Union[str, bytes]] = None,
-                           block_device_map: Optional[List[Dict]] = None,
-                           instance_profile_arn: Optional[str] = None,
-                           placement_az: Optional[str] = None,
-                           subnet_id: Optional[str] = None,
-                           tags: Optional[Dict[str, str]] = None) -> str:
+def create_launch_template(
+    ec2_client: "EC2Client",
+    template_name: str,
+    image_id: str,
+    key_name: str,
+    instance_type: str,
+    security_group_ids: Optional[List] = None,
+    user_data: Optional[Union[str, bytes]] = None,
+    block_device_map: Optional[List[Dict]] = None,
+    instance_profile_arn: Optional[str] = None,
+    placement_az: Optional[str] = None,
+    subnet_id: Optional[str] = None,
+    tags: Optional[Dict[str, str]] = None,
+) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
 
@@ -479,16 +527,18 @@ def create_launch_template(ec2_client: EC2Client,
 
 
 @retry(intervals=[5, 5, 10, 20, 20, 20, 20], errors=INCONSISTENCY_ERRORS)
-def create_auto_scaling_group(autoscaling_client: AutoScalingClient,
-                              asg_name: str,
-                              launch_template_ids: Dict[str, str],
-                              vpc_subnets: List[str],
-                              min_size: int,
-                              max_size: int,
-                              instance_types: Optional[Iterable[str]] = None,
-                              spot_bid: Optional[float] = None,
-                              spot_cheapest: bool = False,
-                              tags: Optional[Dict[str, str]] = None) -> None:
+def create_auto_scaling_group(
+    autoscaling_client: "AutoScalingClient",
+    asg_name: str,
+    launch_template_ids: Dict[str, str],
+    vpc_subnets: List[str],
+    min_size: int,
+    max_size: int,
+    instance_types: Optional[Iterable[str]] = None,
+    spot_bid: Optional[float] = None,
+    spot_cheapest: bool = False,
+    tags: Optional[Dict[str, str]] = None,
+) -> None:
     """
     Create a new Auto Scaling Group with the given name (which is also its
     unique identifier).
