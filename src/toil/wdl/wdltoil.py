@@ -1796,8 +1796,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 # default to the execution directory
                 part_mount_point: str = self._wdl_options.get("execution_dir") or os.getcwd()
                 for i, part in enumerate(spec_parts):
-                    if part.isnumeric():
-                        part_size = int(part)
+                    if part.replace(".", "", 1).isdigit():
+                        # round down floats
+                        part_size = int(float(part))
                         continue
                     if i == 0:
                         # mount point is always the first
