@@ -77,6 +77,7 @@ from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
 from toil.lib.io import try_path, AtomicFileCreate
 from toil.lib.retry import retry
+from toil.lib.threading import ensure_filesystem_lockable
 from toil.provisioners import (add_provisioner_options,
                                cluster_factory)
 from toil.realtimeLogger import RealtimeLogger
@@ -1404,6 +1405,10 @@ class Toil(ContextManager["Toil"]):
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
         # TODO: May interfere with workflow directory creation logging if it's the same directory.
+
+        # Don't let it out if it smells like an unacceptable filesystem for locks
+        ensure_filesystem_lockable(subdir)
+
         # Return it
         return subdir
 
