@@ -15,36 +15,42 @@ import errno
 import logging
 import os
 import socket
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    Iterable,
-                    Iterator,
-                    List,
-                    Optional,
-                    Set,
-                    Tuple,
-                    cast)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    cast,
+)
 from urllib.parse import ParseResult
 
-from mypy_boto3_sdb.type_defs import AttributeTypeDef
-from toil.lib.aws import session, AWSRegionName, AWSServerErrors
+from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.misc import printq
-from toil.lib.retry import (DEFAULT_DELAYS,
-                            DEFAULT_TIMEOUT,
-                            get_error_code,
-                            get_error_status,
-                            old_retry,
-                            retry, ErrorCondition)
+from toil.lib.retry import (
+    DEFAULT_DELAYS,
+    DEFAULT_TIMEOUT,
+    ErrorCondition,
+    get_error_code,
+    get_error_status,
+    old_retry,
+    retry,
+)
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_s3.service_resource import Bucket
+    from mypy_boto3_s3.service_resource import Object as S3Object
+    from mypy_boto3_sdb.type_defs import AttributeTypeDef
 
 try:
     from botocore.exceptions import ClientError, EndpointConnectionError
-    from mypy_boto3_iam import IAMClient, IAMServiceResource
-    from mypy_boto3_s3 import S3Client, S3ServiceResource
-    from mypy_boto3_s3.literals import BucketLocationConstraintType
-    from mypy_boto3_s3.service_resource import Bucket, Object
-    from mypy_boto3_sdb import SimpleDBClient
 except ImportError:
     ClientError = None  # type: ignore
     EndpointConnectionError = None  # type: ignore
@@ -203,7 +209,7 @@ def create_s3_bucket(
 
     *ALL* S3 bucket creation should use this function.
     """
-    logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
+    logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
         bucket = s3_resource.create_bucket(Bucket=bucket_name)
     else:
@@ -352,7 +358,8 @@ def region_to_bucket_location(region: str) -> str:
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
-def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "Object":
+
+def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3Object":
         """
         Extracts a key (object) from a given parsed s3:// URL.
 
@@ -484,7 +491,7 @@ def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: s
         yield from page.get(result_attribute_name, [])
 
 
-def get_item_from_attributes(attributes: List[AttributeTypeDef], name: str) -> Any:
+def get_item_from_attributes(attributes: List["AttributeTypeDef"], name: str) -> Any:
     """
     Given a list of attributes, find the attribute associated with the name and return its corresponding value.
 
@@ -494,7 +501,7 @@ def get_item_from_attributes(attributes: List[AttributeTypeDef], name: str) -> A
 
     If the attribute with the name does not exist, the function will return None.
 
-    :param attributes: list of attributes as List[AttributeTypeDef]
+    :param attributes: list of attributes
     :param name: name of the attribute
     :return: value of the attribute
     """

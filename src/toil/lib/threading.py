@@ -44,7 +44,10 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
     immediately available.
     """
 
+    # Set up retry logic. TODO: Use @retry instead.
     error_backoff = 1
+    MAX_ERROR_TRIES = 10
+    error_tries = 0
 
     while True:
         try:
@@ -61,10 +64,15 @@ def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
                 # Back off and try again.
                 # TODO: Should we eventually give up if the disk really is
                 # broken? If so we should use the retry system.
-                logger.error("IO error talking to lock file. Retrying after %s seconds.", error_backoff)
-                time.sleep(error_backoff)
-                error_backoff = min(60, error_backoff * 2)
-                continue
+                if error_tries < MAX_ERROR_TRIES:
+                    logger.error("IO error talking to lock file. Retrying after %s seconds.", error_backoff)
+                    time.sleep(error_backoff)
+                    error_backoff = min(60, error_backoff * 2)
+                    error_tries += 1
+                    continue
+                else:
+                    logger.critical("Too many IO errors talking to lock file. If using Ceph, check for MDS deadlocks. See <https://tracker.ceph.com/issues/62123>.")
+                    raise
             else:
                 raise
 
@@ -443,21 +451,12 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         fd = os.open(lock_filename, os.O_CREAT | os.O_WRONLY)
 
         try:
-            # Wait until we can exclusively lock it.
+            # Wait until we can exclusively lock it, handling error retry.
             safe_lock(fd)
-        except OSError as e:
-            if e.errno == errno.EIO:
-                # Sometimes Ceph produces IO errors when talking to lock files.
-                os.close(fd)
-                # Back off and try again
-                logger.error("IO error talking to lock file %s. Retrying after %s seconds.", lock_filename, error_backoff)
-                time.sleep(error_backoff)
-                error_backoff = min(60, error_backoff * 2)
-                continue
-            else:
-                # Something unexpected went wrong
-                os.close(fd)
-                raise
+        except:
+            # Something went wrong
+            os.close(fd)
+            raise
 
         # Holding the lock, make sure we are looking at the same file on disk still.
         try:
