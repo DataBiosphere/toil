@@ -1751,7 +1751,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # local-disk 5 SSD
             # which would mean we need 5 GB space. Cromwell docs for this are at https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#disks
             # We ignore all disk types, and complain if the mount point is not `local-disk`.
-            disks_spec: Union[List[str], str] = runtime_bindings.resolve('disks').value
+            disks_spec: Union[List[WDL.Value.String], str] = runtime_bindings.resolve('disks').value
             if isinstance(disks_spec, list):
                 # SPEC says to use the first one
                 # the parser gives an array of WDL string objects
