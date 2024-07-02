@@ -50,14 +50,15 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
-from WDL._util import byte_size_units, strip_leading_whitespace
-from WDL.CLI import print_error, runner_exe
+from WDL._util import byte_size_units
+from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.common import Toil, addOptions
+from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
@@ -1246,7 +1247,8 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     """
 
     try:
-        if node.name in environment and not isinstance(environment[node.name], WDL.Value.Null):
+        if ((node.name in environment and not isinstance(environment[node.name], WDL.Value.Null))
+                or (isinstance(environment.get(node.name), WDL.Value.Null) and node.type.optional)):
             logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
             if not isinstance(environment[node.name], type(node.type)):
                 return environment[node.name].coerce(node.type)
@@ -3256,7 +3258,7 @@ class WDLRootJob(WDLSectionJob):
             job: WDLBaseJob = WDLWorkflowJob(self._target, [self._inputs], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
         else:
             # There is no workflow. Create a task job.
-            job = WDLTaskWrapperJob(self._target, [], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
+            job = WDLTaskWrapperJob(self._target, [self._inputs], [self._target.name], self._namespace, self._task_path, wdl_options=self._wdl_options)
         # Run the task or workflow
         job.then_namespace(self._namespace)
         self.addChild(job)
@@ -3322,125 +3324,132 @@ def main() -> None:
 
     # Get the execution directory
     execution_dir = os.getcwd()
-
-    with Toil(options) as toil:
-        if options.restart:
-            output_bindings = toil.restart()
-        else:
-            # Load the WDL document
-            document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
-
-            # See if we're going to run a workflow or a task
-            target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
-            if document.workflow:
-                target = document.workflow
-            elif len(document.tasks) == 1:
-                target = document.tasks[0]
-            elif len(document.tasks) > 1:
-                raise WDL.Error.InputError("Multiple tasks found with no workflow! Either add a workflow or keep one task.")
+    try:
+        with Toil(options) as toil:
+            if options.restart:
+                output_bindings = toil.restart()
             else:
-                raise WDL.Error.InputError("WDL document is empty!")
+                # Load the WDL document
+                document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
-            if options.inputs_uri:
-                # Load the inputs. Use the same loading mechanism, which means we
-                # have to break into async temporarily.
-                downloaded = asyncio.run(toil_read_source(options.inputs_uri, [], None))
-                try:
-                    inputs = json.loads(downloaded.source_text)
-                except json.JSONDecodeError as e:
-                    # Complain about the JSON document.
-                    # We need the absolute path or URL to raise the error
-                    inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
-                    raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
+                # See if we're going to run a workflow or a task
+                target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
+                if document.workflow:
+                    target = document.workflow
+                elif len(document.tasks) == 1:
+                    target = document.tasks[0]
+                elif len(document.tasks) > 1:
+                    raise WDL.Error.InputError("Multiple tasks found with no workflow! Either add a workflow or keep one task.")
+                else:
+                    raise WDL.Error.InputError("WDL document is empty!")
+
+                if options.inputs_uri:
+                    # Load the inputs. Use the same loading mechanism, which means we
+                    # have to break into async temporarily.
+                    if options.inputs_uri[0] == "{":
+                        input_json = options.inputs_uri
+                    elif options.inputs_uri == "-":
+                        input_json = sys.stdin.read()
+                    else:
+                        input_json = asyncio.run(toil_read_source(options.inputs_uri, [], None)).source_text
+                    try:
+                        inputs = json.loads(input_json)
+                    except json.JSONDecodeError as e:
+                        # Complain about the JSON document.
+                        # We need the absolute path or URL to raise the error
+                        inputs_abspath = options.inputs_uri if not os.path.exists(options.inputs_uri) else os.path.abspath(options.inputs_uri)
+                        raise WDL.Error.ValidationError(WDL.Error.SourcePosition(options.inputs_uri, inputs_abspath, e.lineno, e.colno, e.lineno, e.colno + 1), "Cannot parse input JSON: " + e.msg) from e
+                else:
+                    inputs = {}
+
+                # Parse out the available and required inputs. Each key in the
+                # JSON ought to start with the workflow's name and then a .
+                # TODO: WDL's Bindings[] isn't variant in the right way, so we
+                # have to cast from more specific to less specific ones here.
+                # The miniwld values_from_json function can evaluate
+                # expressions in the inputs or something.
+                WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
+                input_bindings = WDL.values_from_json(
+                    inputs,
+                    cast(WDLTypeDeclBindings, target.available_inputs),
+                    cast(Optional[WDLTypeDeclBindings], target.required_inputs),
+                    target.name
+                )
+
+                # Determine where to look for files referenced in the inputs, in addition to here.
+                inputs_search_path = []
+                if options.inputs_uri:
+                    inputs_search_path.append(options.inputs_uri)
+
+                    match = re.match(r'https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/', options.inputs_uri)
+                    if match:
+                        # Special magic for Github repos to make e.g.
+                        # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
+                        # work when it references things relative to repo root.
+                        logger.info("Inputs appear to come from a Github repository; adding repository root to file search path")
+                        inputs_search_path.append(match.group(0))
+
+                # Import any files in the bindings
+                input_bindings = import_files(input_bindings, toil, inputs_search_path, skip_remote=options.reference_inputs)
+
+                # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
+
+                # Get the execution directory
+                execution_dir = os.getcwd()
+
+                # Configure workflow interpreter options
+                wdl_options: Dict[str, str] = {}
+                wdl_options["execution_dir"] = execution_dir
+                wdl_options["container"] = options.container
+                assert wdl_options.get("container") is not None
+
+                # Run the workflow and get its outputs namespaced with the workflow name.
+                root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
+                output_bindings = toil.start(root_job)
+            if not isinstance(output_bindings, WDL.Env.Bindings):
+                raise RuntimeError("The output of the WDL job is not a binding.")
+
+            devirtualized_to_virtualized: Dict[str, str] = dict()
+            virtualized_to_devirtualized: Dict[str, str] = dict()
+
+            # Fetch all the output files
+            def devirtualize_output(filename: str) -> str:
+                """
+                'devirtualize' a file using the "toil" object instead of a filestore.
+                Returns its local path.
+                """
+                # Make sure the output directory exists if we have output files
+                # that might need to use it.
+                os.makedirs(output_directory, exist_ok=True)
+                return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir, devirtualized_to_virtualized, virtualized_to_devirtualized)
+
+            # Make all the files local files
+            output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
+
+            # Report the result in the right format
+            outputs = WDL.values_to_json(output_bindings)
+            if options.output_dialect == 'miniwdl':
+                outputs = {'dir': output_directory, 'outputs': outputs}
+            if options.output_file is None:
+                # Send outputs to standard out
+                print(json.dumps(outputs))
             else:
-                inputs = {}
-
-            # Parse out the available and required inputs. Each key in the
-            # JSON ought to start with the workflow's name and then a .
-            # TODO: WDL's Bindings[] isn't variant in the right way, so we
-            # have to cast from more specific to less specific ones here.
-            # The miniwld values_from_json function can evaluate
-            # expressions in the inputs or something.
-            WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
-            input_bindings = WDL.values_from_json(
-                inputs,
-                cast(WDLTypeDeclBindings, target.available_inputs),
-                cast(Optional[WDLTypeDeclBindings], target.required_inputs),
-                target.name
-            )
-
-            # Determine where to look for files referenced in the inputs, in addition to here.
-            inputs_search_path = []
-            if options.inputs_uri:
-                inputs_search_path.append(options.inputs_uri)
-
-                match = re.match(r'https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/', options.inputs_uri)
-                if match:
-                    # Special magic for Github repos to make e.g.
-                    # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
-                    # work when it references things relative to repo root.
-                    logger.info("Inputs appear to come from a Github repository; adding repository root to file search path")
-                    inputs_search_path.append(match.group(0))
-
-            # Import any files in the bindings
-            input_bindings = import_files(input_bindings, toil, inputs_search_path, skip_remote=options.reference_inputs)
-
-            # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
-
-            # Get the execution directory
-            execution_dir = os.getcwd()
-
-            # Configure workflow interpreter options
-            wdl_options: Dict[str, str] = {}
-            wdl_options["execution_dir"] = execution_dir
-            wdl_options["container"] = options.container
-            assert wdl_options.get("container") is not None
-
-            # Run the workflow and get its outputs namespaced with the workflow name.
-            root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
-            output_bindings = toil.start(root_job)
-        if not isinstance(output_bindings, WDL.Env.Bindings):
-            raise RuntimeError("The output of the WDL job is not a binding.")
-
-        devirtualized_to_virtualized: Dict[str, str] = dict()
-        virtualized_to_devirtualized: Dict[str, str] = dict()
-
-        # Fetch all the output files
-        def devirtualize_output(filename: str) -> str:
-            """
-            'devirtualize' a file using the "toil" object instead of a filestore.
-            Returns its local path.
-            """
-            # Make sure the output directory exists `if we have output files
-            # that might need to use it.
-            os.makedirs(output_directory, exist_ok=True)
-            return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir, devirtualized_to_virtualized, virtualized_to_devirtualized)
-
-        # Make all the files local files
-        output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
-
-        # Report the result in the right format
-        outputs = WDL.values_to_json(output_bindings)
-        if options.output_dialect == 'miniwdl':
-            outputs = {'dir': output_directory, 'outputs': outputs}
-        if options.output_file is None:
-            # Send outputs to standard out
-            print(json.dumps(outputs))
-        else:
-            # Export output to path or URL.
-            # So we need to import and then export.
-            fd, filename = mkstemp()
-            with open(fd, 'w') as handle:
-                # Populate the file
-                handle.write(json.dumps(outputs))
-                handle.write('\n')
-            # Import it. Don't link because the temp file will go away.
-            file_id = toil.import_file(filename, symlink=False)
-            # Delete the temp file
-            os.remove(filename)
-            # Export it into place
-            toil.export_file(file_id, options.output_file)
-
+                # Export output to path or URL.
+                # So we need to import and then export.
+                fd, filename = mkstemp()
+                with open(fd, 'w') as handle:
+                    # Populate the file
+                    handle.write(json.dumps(outputs))
+                    handle.write('\n')
+                # Import it. Don't link because the temp file will go away.
+                file_id = toil.import_file(filename, symlink=False)
+                # Delete the temp file
+                os.remove(filename)
+                # Export it into place
+                toil.export_file(file_id, options.output_file)
+    except FailedJobsException as e:
+        logger.error("WDL job failed: %s", e)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":
