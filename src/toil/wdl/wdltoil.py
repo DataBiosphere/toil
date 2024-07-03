@@ -771,7 +771,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         self._enforce_existence = enforce_existence
 
     @property
-    def execution_dir(self):
+    def execution_dir(self) -> Optional[str]:
         return self._execution_dir
 
     def get_local_paths(self) -> List[str]:
