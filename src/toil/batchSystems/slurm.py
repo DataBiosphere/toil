@@ -75,7 +75,7 @@ NONTERMINAL_STATES: Set[str] = {
 def parse_slurm_time(slurm_time: str) -> int:
     """
     Parse a Slurm-style time duration like 7-00:00:00 to a number of seconds.
-    
+
     Raises ValueError if not parseable.
     """
     # slurm returns time in days-hours:minutes:seconds format
@@ -96,7 +96,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         partition_name: str
         gres: bool
         time_limit: float
-        priority: str
+        priority: int
         cpus: str
         memory: str
 
@@ -125,7 +125,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if len(gpu_partitions) > 0:
                 self.default_gpu_partition = sorted(gpu_partitions, key=lambda x: x.priority)[0]
 
-        
+
 
         def _get_partition_info(self) -> None:
             """
@@ -145,11 +145,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if line.strip():
                     partition_name, gres, time, priority, cpus, memory = line.split(" ")
                     try:
+                        # Parse time to a number so we can compute on it
                         partition_time = parse_slurm_time(time)
                     except ValueError:
                         # Maybe time is unlimited?
                         partition_time = float("inf")
-                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", partition_time, priority, cpus, memory))
+                    try:
+                        # Parse priority to an int so we can sort on it
+                        partition_priority = int(priority)
+                    except ValueError:
+                        logger.warning("Could not parse priority %s for partition %s, assuming high priority", partition_name, priority)
+                        partition_priority = sys.maxsize
+                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", partition_time, partition_priority, cpus, memory))
             self.all_partitions = parsed_partitions
 
         def get_partition(self, time_limit: Optional[float]) -> Optional[str]:
@@ -346,7 +353,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Slurm will sometimes send something like "CANCELED by 30065" in
             # the state column for some reason.
-            
+
             state_token = state
 
             if " " in state_token:
@@ -354,7 +361,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if state_token not in TERMINAL_STATES and state_token not in NONTERMINAL_STATES:
                 raise RuntimeError("Toil job in unimplemented Slurm state " + state)
-            
+
             return state_token
 
         def _getJobDetailsFromSacct(self, job_id_list: List[int]) -> Dict[int, Tuple[Optional[str], Optional[int]]]:
@@ -602,7 +609,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if chosen_partition is not None:
                     # Route to that partition
                     sbatch_line.append(f"--partition={chosen_partition}")
-                
+
 
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
             stderrfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'err')

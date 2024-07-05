@@ -1783,9 +1783,20 @@ class WDLTaskWrapperJob(WDLBaseJob):
             total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
-        # The gpu field is the WDL 1.1 standard, so this field will be the absolute truth on whether to use GPUs or not
-        # Fields such as gpuType and gpuCount will be considered optional attributes
-        if runtime_bindings.get('gpu') is True:
+        
+        if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
+            # For old WDL versions, guess whether the task wants GPUs if not specified.
+            use_gpus = (runtime_bindings.has_binding('gpuCount') or 
+                        runtime_bindings.has_binding('gpuType') or
+                        runtime_bindings.has_binding('nvidiaDriverVersion'))
+        else:
+            # The gpu field is the WDL 1.1 standard with a default value of false,
+            # so in 1.1+ documents, this field will be the absolute
+            # truth on whether to use GPUs or not.
+            # Fields such as gpuType and gpuCount will control what GPUs are provided.
+            use_gpus = cast(WDL.Value.Boolean, runtime_bindings.get('gpu', WDL.Value.Boolean(False))).value
+            
+        if use_gpus:
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
             # Get the GPU count if set, or 1 if not,
