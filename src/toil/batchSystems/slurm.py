@@ -72,7 +72,7 @@ NONTERMINAL_STATES: Set[str] = {
     "SUSPENDED"
 }
 
-def parse_slurm_time(self, slurm_time: str) -> int:
+def parse_slurm_time(slurm_time: str) -> int:
     """
     Parse a Slurm-style time duration like 7-00:00:00 to a number of seconds.
     
@@ -90,7 +90,6 @@ def parse_slurm_time(self, slurm_time: str) -> int:
         if index < len(elapsed_split):
             total_seconds += multiplier * int(elapsed_split[index])
     return total_seconds
-
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     class PartitionInfo(NamedTuple):
@@ -175,7 +174,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if winning_partition is None:
                 return None
             else:
-                return winning_partition.name
+                return winning_partition.partition_name
 
 
 
@@ -579,8 +578,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                        raise RuntimeError(f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs")
                     if time_limit is not None and lowest_gpu_partition.time_limit < time_limit:
                         # TODO: find the lowest-priority GPU partition that has at least each job's time limit!
-                        logger.warning("Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds", time_limit, lowest_gpu_partition.name, lowest_gpu_partition.time_limit)
-                    sbatch_line.append(f"--partition={lowest_gpu_partition.name}")
+                        logger.warning("Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds", time_limit, lowest_gpu_partition.partition_name, lowest_gpu_partition.time_limit)
+                    sbatch_line.append(f"--partition={lowest_gpu_partition.partition_name}")
                 else:
                     # there is a partition specified already, check if the partition has GPUs
                     for i, option in enumerate(sbatch_line):
