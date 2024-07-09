@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
 from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
@@ -146,7 +147,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     partition_name, gres, time, priority, cpus, memory = line.split(" ")
                     try:
                         # Parse time to a number so we can compute on it
-                        partition_time = parse_slurm_time(time)
+                        partition_time: float = parse_slurm_time(time)
                     except ValueError:
                         # Maybe time is unlimited?
                         partition_time = float("inf")
@@ -187,6 +188,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
 
     class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+        # Our boss is always the enclosing class
+        boss: "SlurmBatchSystem"
 
         def getRunningJobIDs(self) -> Dict[int, int]:
             # Should return a dictionary of Job IDs and number of seconds
@@ -530,13 +533,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 environment.update(job_environment)
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
-            nativeConfig = self.boss.config.slurm_args
+            # Also any extra arguments from --slurmArgs or TOIL_SLURM_ARGS
+            nativeConfig: str = self.boss.config.slurm_args  # type: ignore[attr-defined]
 
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
 
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
+                logger.debug("Native SLURM options appended to sbatch: %s", nativeConfig)
 
                 for arg in nativeConfig.split():
                     if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
@@ -558,7 +562,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # add --export to the sbatch
             sbatch_line.append(set_exports)
 
-            parallel_env = self.boss.config.slurm_pe
+            parallel_env: str = self.boss.config.slurm_pe  # type: ignore[attr-defined]
             if cpu and cpu > 1 and parallel_env:
                 sbatch_line.append(f'--partition={parallel_env}')
 
@@ -568,10 +572,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
-            time_limit = self.boss.config.slurm_time
+            time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
             if time_limit is not None:
                 # Put all the seconds in the seconds slot
-                sbatch_line.append(f'--time=0:{int(time_limit)}')
+                sbatch_line.append(f'--time=0:{time_limit}')
 
             if gpus:
                 # This block will add a gpu supported partition only if no partition is supplied by the user
@@ -579,7 +583,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if not any(option.startswith("--partition") for option in sbatch_line):
                     # no partition specified, so specify one
                     # try to get the name of the lowest priority gpu supported partition
-                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition  # type: ignore[attr-defined]
+                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition
                     if lowest_gpu_partition is None:
                         # no gpu partitions are available, raise an error
                        raise RuntimeError(f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs")
@@ -596,7 +600,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                                 partition_name = option[len("--partition="):]
                             else:
                                 partition_name = option[i+1]
-                            available_gpu_partitions = self.boss.partitions.gpu_partitions  # type: ignore[attr-defined]
+                            available_gpu_partitions = self.boss.partitions.gpu_partitions
                             if partition_name not in available_gpu_partitions:
                                 # the specified partition is not compatible, so warn the user that the job may not work
                                 logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work."
