@@ -1090,11 +1090,25 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         work_dir = '.' if not self._current_directory_override else self._current_directory_override
 
         # TODO: get this to run in the right container if there is one
-        # Bash (now?) has a compgen builtin for shell completion that can evaluate a glob where the glob is in a quoted string that might have spaces in it. See <https://unix.stackexchange.com/a/616608>.
-        # This will handle everything except newlines in the filenames.
-        # TODO: Newlines in the filenames?
-        # Since compgen will return 1 if nothing matches, we need to allow a failing exit code here.
-        lines = subprocess.run(['bash', '-c', 'cd ' + shlex.quote(work_dir) + ' && compgen -G ' + shlex.quote(pattern_string)], stdout=subprocess.PIPE).stdout.decode('utf-8')
+        # We would use compgen -G to resolve the glob but that doesn't output
+        # files in the same (lexicographical) order as actually using a glob on
+        # the command line.
+        #
+        # But we still want to support spaces in filenames so we can't actually
+        # parse the result of `echo <glob>` like the spec shows.
+        #
+        # So we use the method of <https://unix.stackexchange.com/a/766527>
+        # where dumping a glob with spaces onto the command line from an
+        # unquoted variable, with IFS cleared, allows it to be globbed as a
+        # single unit. Then we loop over the results and print them
+        # newline-delimited.
+        lines = subprocess.run(['bash', '-c', ''.join([
+            'cd ',
+            shlex.quote(work_dir),
+            ' && (shopt -s nullglob; IFS=""; PATTERN=',
+            shlex.quote(pattern_string),
+            '; for RESULT in ${PATTERN} ; do echo "${RESULT}" ; done)'
+        ])], stdout=subprocess.PIPE).stdout.decode('utf-8')
 
         # Get each name that is a file
         results = []
