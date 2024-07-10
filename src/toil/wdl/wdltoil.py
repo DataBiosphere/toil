@@ -1249,7 +1249,7 @@ def evaluate_defaultable_decl(node: WDL.Tree.Decl, environment: WDLBindings, std
     try:
         if ((node.name in environment and not isinstance(environment[node.name], WDL.Value.Null))
                 or (isinstance(environment.get(node.name), WDL.Value.Null) and node.type.optional)):
-            logger.debug('Name %s is already defined with a non-null value, not using default', node.name)
+            logger.debug('Name %s is already defined, not using default', node.name)
             if not isinstance(environment[node.name], type(node.type)):
                 return environment[node.name].coerce(node.type)
             else:
