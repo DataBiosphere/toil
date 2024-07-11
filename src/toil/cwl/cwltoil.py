@@ -33,6 +33,7 @@ import stat
 import sys
 import textwrap
 import uuid
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (IO,
@@ -1006,6 +1007,11 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
         """run_jobs from SingleJobExecutor, but not in a top level runtime context."""
         runtime_context.toplevel = False
         if isinstance(process, cwltool.command_line_tool.CommandLineTool) and isinstance(process.make_job_runner(runtime_context), SingularityCommandLineJob):
+            # Set defaults for singularity cache environment variables, similar to what we do in wdltoil
+            # Use the same place as the default singularity cache directory
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
+            os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
+
             # If singularity is detected, prepull the image to ensure locking
             (docker_req, docker_is_req) = process.get_requirement(feature="DockerRequirement")
             with global_mutex(os.environ['SINGULARITY_CACHEDIR'], 'toil_singularity_cache_mutex'):
