@@ -13,6 +13,7 @@
 # limitations under the License.
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -130,6 +131,13 @@ class UtilsTest(ToilTest):
         # make sure that toil can read from the generated config file
         try:
             parser.parse_args(["random_jobstore", "--config", config_file])
+            with open(config_file, mode="r") as cm:
+                payload = cm.read()
+                expected = "workDir batchSystem symlinkImports defaultMemory retryCount"
+                assert all(
+                    re.search(rf"^#*{ param }:", payload, re.MULTILINE)
+                    for param in expected.split(" ")
+                ), f"Generated config contains { expected }"
         except SystemExit:
             self.fail("Failed to parse the default generated config file!")
         finally:
