@@ -64,6 +64,7 @@ from toil.jobStores.aws.utils import (
 from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
 from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.session import establish_boto3_session
+from toil.lib.aws.s3 import head_s3_object
 from toil.lib.aws.utils import (
     NoBucketLocationError,
     boto3_pager,
@@ -1418,15 +1419,13 @@ class AWSJobStore(AbstractJobStore):
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
-                                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                    with attempt:
-                                        version = client.head_object(Bucket=bucket_name,
-                                                                     Key=compat_bytes(info.fileID),
-                                                                     **headerArgs).get('VersionId', None)
-                                        logger.warning('Loaded key for upload with no version and got version %s',
-                                                       str(version))
-                                        info.version = version
-                                        assert info.version is not None
+                                info.version = head_s3_object(
+                                    Bucket=bucket_name,
+                                    Key=compat_bytes(info.fileID),
+                                    **headerArgs
+                                ).get('VersionId', None)
+                                logger.warning('Loaded key for upload with no version and got version %s', str(info.version))
+                                assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
@@ -1467,23 +1466,21 @@ class AWSJobStore(AbstractJobStore):
                                                       ExtraArgs=headerArgs)
 
                                 # use head_object with the SSE headers to access versionId and content_length attributes
-                                headObj = client.head_object(Bucket=bucket_name,
-                                                             Key=compat_bytes(info.fileID),
-                                                             **headerArgs)
-                                assert dataLength == headObj.get('ContentLength', None)
-                                info.version = headObj.get('VersionId', None)
+                                resp = head_s3_object(
+                                    Bucket=bucket_name,
+                                    Key=compat_bytes(info.fileID),
+                                    **headerArgs
+                                )
+                                assert dataLength == resp.get('ContentLength', None)
+                                info.version = resp.get('VersionId', None)
                                 logger.debug('Upload received version %s', str(info.version))
 
                         if info.version is None:
                             # Somehow we don't know the version
-                            for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                with attempt:
-                                    headObj = client.head_object(Bucket=bucket_name,
-                                                                 Key=compat_bytes(info.fileID),
-                                                                 **headerArgs)
-                                    info.version = headObj.get('VersionId', None)
-                                    logger.warning('Reloaded key with no version and got version %s', str(info.version))
-                                    assert info.version is not None
+                            resp = head_s3_object(Bucket=bucket_name, Key=compat_bytes(info.fileID), header=headerArgs)
+                            info.version = resp.get('VersionId', None)
+                            logger.warning('Reloaded key with no version and got version %s', str(info.version))
+                            assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
