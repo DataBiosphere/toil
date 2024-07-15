@@ -111,6 +111,13 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     )
 
     parser.add_argument(
+        "--no-prepull",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not prepull the container prior to running the workflow",
+    )
+
+    parser.add_argument(
         "--preserve-environment",
         type=str,
         nargs="+",
