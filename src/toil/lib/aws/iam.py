@@ -1,12 +1,16 @@
 import fnmatch
 import json
 import logging
-from collections import defaultdict
-from functools import lru_cache
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, cast
-
 import boto3
 
+from botocore.exceptions import ClientError
+from collections import defaultdict
+from functools import lru_cache
+from typing import TYPE_CHECKING, Dict, List, Optional, Union, Any
+
+from toil.lib.aws import AWSServerErrors, session
+from toil.lib.misc import printq
+from toil.lib.retry import retry, get_error_status, get_error_code
 from toil.lib.aws.session import client as get_client
 
 if TYPE_CHECKING:
@@ -20,41 +24,101 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 #TODO Make this comprehensive
-CLUSTER_LAUNCHING_PERMISSIONS = ["iam:CreateRole",
-                                  "iam:CreateInstanceProfile",
-                                  "iam:TagInstanceProfile",
-                                  "iam:DeleteRole",
-                                  "iam:DeleteRoleProfile",
-                                  "iam:ListAttatchedRolePolicies",
-                                  "iam:ListPolicies",
-                                  "iam:ListRoleTags",
-                                  "iam:PassRole",
-                                  "iam:PutRolePolicy",
-                                  "iam:RemoveRoleFromInstanceProfile",
-                                  "iam:TagRole",
-                                  "ec2:AuthorizeSecurityGroupIngress",
-                                  "ec2:CancelSpotInstanceRequests",
-                                  "ec2:CreateSecurityGroup",
-                                  "ec2:CreateTags",
-                                  "ec2:DeleteSecurityGroup",
-                                  "ec2:DescribeAvailabilityZones",
-                                  "ec2:DescribeImages",
-                                  "ec2:DescribeInstances",
-                                  "ec2:DescribeInstanceStatus",
-                                  "ec2:DescribeKeyPairs",
-                                  "ec2:DescribeSecurityGroups",
-                                  "ec2:DescribeSpotInstanceRequests",
-                                  "ec2:DescribeSpotPriceHistory",
-                                  "ec2:DescribeVolumes",
-                                  "ec2:ModifyInstanceAttribute",
-                                  "ec2:RequestSpotInstances",
-                                  "ec2:RunInstances",
-                                  "ec2:StartInstances",
-                                  "ec2:StopInstances",
-                                  "ec2:TerminateInstances",
-                                  ]
+CLUSTER_LAUNCHING_PERMISSIONS = [
+    "iam:CreateRole",
+    "iam:CreateInstanceProfile",
+    "iam:TagInstanceProfile",
+    "iam:DeleteRole",
+    "iam:DeleteRoleProfile",
+    "iam:ListAttatchedRolePolicies",
+    "iam:ListPolicies",
+    "iam:ListRoleTags",
+    "iam:PassRole",
+    "iam:PutRolePolicy",
+    "iam:RemoveRoleFromInstanceProfile",
+    "iam:TagRole",
+    "ec2:AuthorizeSecurityGroupIngress",
+    "ec2:CancelSpotInstanceRequests",
+    "ec2:CreateSecurityGroup",
+    "ec2:CreateTags",
+    "ec2:DeleteSecurityGroup",
+    "ec2:DescribeAvailabilityZones",
+    "ec2:DescribeImages",
+    "ec2:DescribeInstances",
+    "ec2:DescribeInstanceStatus",
+    "ec2:DescribeKeyPairs",
+    "ec2:DescribeSecurityGroups",
+    "ec2:DescribeSpotInstanceRequests",
+    "ec2:DescribeSpotPriceHistory",
+    "ec2:DescribeVolumes",
+    "ec2:ModifyInstanceAttribute",
+    "ec2:RequestSpotInstances",
+    "ec2:RunInstances",
+    "ec2:StartInstances",
+    "ec2:StopInstances",
+    "ec2:TerminateInstances",
+]
 
 AllowedActionCollection = Dict[str, Dict[str, List[str]]]
+
+
+@retry(errors=[AWSServerErrors])
+def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
+    # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
+    # of overloads of the client-getting methods to exist based on the literal
+    # string passed in, to return exactly the right kind of client or resource.
+    # So we end up having to wrap all the calls in casts, which kind of defeats
+    # the point of a nice fluent method you can call with the name of the thing
+    # you want; we should have been calling iam_client() and so on all along if
+    # we wanted MyPy to be able to understand us. So at some point we should
+    # consider revising our API here to be less annoying to explain to the type
+    # checker.
+    iam_client = session.client('iam', region_name=region)
+    iam_resource = session.resource('iam', region_name=region)
+    role = iam_resource.Role(role_name)
+    # normal policies
+    for attached_policy in role.attached_policies.all():
+        printq(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}', quiet)
+        role.detach_policy(PolicyArn=attached_policy.arn)
+    # inline policies
+    for inline_policy in role.policies.all():
+        printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
+        iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
+    iam_client.delete_role(RoleName=role_name)
+    printq(f'Role {role_name} successfully deleted.', quiet)
+
+
+def create_iam_role(role_name: str, assume_role_policy_document: "PolicyDocumentDictTypeDef", policies: Dict[str, Any], region: Optional[str] = None):
+    iam_client = session.client('iam', region_name=region)
+    try:
+        # Make the role
+        logger.debug('Creating IAM role %s...', role_name)
+        iam_client.create_role(RoleName=role_name, AssumeRolePolicyDocument=assume_role_policy_document)
+        logger.debug('Created new IAM role')
+    except ClientError as e:
+        if get_error_status(e) == 409 and get_error_code(e) == 'EntityAlreadyExists':
+            logger.debug('IAM role already exists. Reusing.')
+        else:
+            raise
+
+    # Delete superfluous policies
+    policy_names = set(iam_client.list_role_policies(RoleName=role_name)["PolicyNames"])
+    for policy_name in policy_names.difference(set(list(policies.keys()))):
+        iam_client.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+
+    # Create expected policies
+    for policy_name, policy in policies.items():
+        current_policy = None
+        try:
+            current_policy = iam_client.get_role_policy(RoleName=role_name, PolicyName=policy_name)["PolicyDocument"]
+        except iam_client.exceptions.NoSuchEntityException:
+            pass
+        if current_policy != policy:
+            iam_client.put_role_policy(RoleName=role_name, PolicyName=policy_name, PolicyDocument=json.dumps(policy))
+
+    # Now the role has the right policies so it is ready.
+    return role_name
+
 
 def init_action_collection() -> AllowedActionCollection:
     '''

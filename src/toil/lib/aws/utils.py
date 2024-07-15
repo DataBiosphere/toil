@@ -77,32 +77,6 @@ THROTTLED_ERROR_CODES = [
         'EC2ThrottledException',
 ]
 
-@retry(errors=[AWSServerErrors])
-def delete_iam_role(
-    role_name: str, region: Optional[str] = None, quiet: bool = True
-) -> None:
-    # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
-    # of overloads of the client-getting methods to exist based on the literal
-    # string passed in, to return exactly the right kind of client or resource.
-    # So we end up having to wrap all the calls in casts, which kind of defeats
-    # the point of a nice fluent method you can call with the name of the thing
-    # you want; we should have been calling iam_client() and so on all along if
-    # we wanted MyPy to be able to understand us. So at some point we should
-    # consider revising our API here to be less annoying to explain to the type
-    # checker.
-    iam_client = session.client('iam', region_name=region)
-    iam_resource = session.resource('iam', region_name=region)
-    role = iam_resource.Role(role_name)
-    # normal policies
-    for attached_policy in role.attached_policies.all():
-        printq(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}', quiet)
-        role.detach_policy(PolicyArn=attached_policy.arn)
-    # inline policies
-    for inline_policy in role.policies.all():
-        printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
-        iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
-    iam_client.delete_role(RoleName=role_name)
-    printq(f'Role {role_name} successfully deleted.', quiet)
 
 
 @retry(errors=[AWSServerErrors])
