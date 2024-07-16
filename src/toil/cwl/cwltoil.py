@@ -102,7 +102,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
-from toil.lib.misc import call_command, CalledProcessErrorStderr
+from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
 check_cwltool_version()
