@@ -33,6 +33,7 @@ import stat
 import sys
 import textwrap
 import uuid
+from contextlib import contextmanager
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (IO,
@@ -51,7 +52,7 @@ from typing import (IO,
                     Type,
                     TypeVar,
                     Union,
-                    cast)
+                    cast, Generator)
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -89,6 +90,7 @@ from cwltool.utils import (CWLObjectType,
                            get_listing,
                            normalizeFilesDirs,
                            visit_class)
+from cwltool.singularity import SingularityCommandLineJob
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
@@ -118,7 +120,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchFileExcepti
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threading import ExceptionalThread, global_mutex
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 
 logger = logging.getLogger(__name__)
@@ -1027,6 +1029,22 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
     ) -> None:
         """run_jobs from SingleJobExecutor, but not in a top level runtime context."""
         runtime_context.toplevel = False
+        if isinstance(process, cwltool.command_line_tool.CommandLineTool) and isinstance(process.make_job_runner(runtime_context), SingularityCommandLineJob):
+            # Set defaults for singularity cache environment variables, similar to what we do in wdltoil
+            # Use the same place as the default singularity cache directory
+            singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
+            os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
+
+            # If singularity is detected, prepull the image to ensure locking
+            (docker_req, docker_is_req) = process.get_requirement(feature="DockerRequirement")
+            with global_mutex(os.environ['SINGULARITY_CACHEDIR'], 'toil_singularity_cache_mutex'):
+                SingularityCommandLineJob.get_image(
+                    dockerRequirement=cast(Dict[str, str], docker_req),
+                    pull_image=runtime_context.pull_image,
+                    force_pull=runtime_context.force_docker_pull,
+                    tmp_outdir_prefix=runtime_context.tmp_outdir_prefix,
+                )
+
         return super().run_jobs(process, job_order_object, logger, runtime_context)
 
 
