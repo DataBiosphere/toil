@@ -601,14 +601,12 @@ def generate_config(filepath: str) -> None:
             f.write("config_version: 1.0\n")
             yaml = YAML(typ='rt')
             for data in all_data:
-                if "config_version" in data:
-                    del data["config_version"]
-                with StringIO() as data_string:
-                    yaml.dump(data, data_string)
-                    for line in data_string.readline():
-                        if line:
-                            f.write("#")
-                        f.write(f"{line}\n")
+                data.pop("config_version", None)
+                yaml.dump(
+                    data,
+                    f,
+                    transform=lambda s: re.sub(r'^(.)', r'#\1', s, flags=re.MULTILINE),
+                )
 
 
 def parser_with_common_options(
