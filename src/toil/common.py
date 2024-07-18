@@ -1402,10 +1402,14 @@ class Toil(ContextManager["Toil"]):
 
         # Make it exist
         os.makedirs(subdir, exist_ok=True)
-        # TODO: May interfere with workflow directory creation logging if it's the same directory.
+        # TODO: May interfere with workflow directory creation logging if it's
+        # the same directory.
 
         # Don't let it out if it smells like an unacceptable filesystem for locks
-        ensure_filesystem_lockable(subdir)
+        ensure_filesystem_lockable(
+            subdir,
+            hint="Use --coordinationDir to provide a different location."
+        )
 
         # Return it
         return subdir

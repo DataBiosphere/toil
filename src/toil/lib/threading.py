@@ -39,7 +39,7 @@ from toil.lib.memoize import memoize
 
 logger = logging.getLogger(__name__)
 
-def ensure_filesystem_lockable(path: str, timeout: float = 30) -> None:
+def ensure_filesystem_lockable(path: str, timeout: float = 30, hint: Optional[str] = None) -> None:
     """
     Make sure that the filesystem used at the given path is one where locks are safe to use.
 
@@ -52,6 +52,9 @@ def ensure_filesystem_lockable(path: str, timeout: float = 30) -> None:
     the filesystem type takes more than the timeout in seconds.
     
     If the filesystem type cannot be determined, does nothing.
+
+    :param hint: Extra text to include in an error, if raised, telling the user
+        how to change the offending path.
     """
 
     if not os.path.exists(path):
@@ -78,7 +81,11 @@ def ensure_filesystem_lockable(path: str, timeout: float = 30) -> None:
 
         if filesystem_type == "ceph":
             # Ceph is known to deadlock the MDS and break the parent directory when locking.
-            raise RuntimeError(f"Refusing to use {path} because file locks are known to break {filesystem_type} filesystems")
+            message = [f"Refusing to use {path} because file locks are known to break {filesystem_type} filesystems."]
+            if hint:
+                # Hint the user how to fix this.
+                message.append(hint)
+            raise RuntimeError(' '.join(message))
         else:
             # Other filesystem types are fine (even though NFS is sometimes
             # flaky with regard to locks actually locking anything).
@@ -497,7 +504,12 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
     if not os.path.isdir(base_dir):
         raise RuntimeError(f"Directory {base_dir} for mutex does not exist")
 
-    ensure_filesystem_lockable(base_dir)
+    # TODO: We don't know what CLI option controls where to put this mutex, so
+    # we aren't very helpful of the location is bad.
+    ensure_filesystem_lockable(
+        base_dir,
+        hint=f"Specify a different place to put the {mutex} mutex."
+    )
 
     # Define a filename
     lock_filename = os.path.join(base_dir, 'toil-mutex-' + mutex)
