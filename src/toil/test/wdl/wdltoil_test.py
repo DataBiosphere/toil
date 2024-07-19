@@ -43,7 +43,10 @@ class BaseWDLTest(ToilTest):
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "b2b4bf952785a9b69724880793ff0d9e41df6309"
+WDL_CONFORMANCE_TEST_COMMIT = "d8495b4286dc5676b074d7baf223e027fb5f392f"
+# These comma-separated tests are known to require things not implemented by
+# Toil and will not be run in CI.
+WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL="72"
 
 class WDLConformanceTests(BaseWDLTest):
     """
@@ -82,23 +85,21 @@ class WDLConformanceTests(BaseWDLTest):
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v10(self):
-        tests_to_run = "0-15,17-20,22-71,73-78"
-        p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.0", "--exclude-numbers", WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL], capture_output=True)
 
         self.check(p)
 
     # estimated running time: 2 minutes
     @slow
     def test_conformance_tests_v11(self):
-        tests_to_run = "1-63,65-71,73-76,78"
-        p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.1", "--exclude-numbers", WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL], capture_output=True)
 
         self.check(p)
 
     @slow
     def test_conformance_tests_integration(self):
         ids_to_run = "encode,tut01,tut02,tut03,tut04"
-        p = subprocess.run(self.base_command + ["-v", "1.0", "--id", ids_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.0", "--conformance-file", "integration.yaml", "--id", ids_to_run], capture_output=True)
 
         self.check(p)
 
