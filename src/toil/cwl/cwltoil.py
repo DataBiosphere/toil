@@ -102,6 +102,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
 check_cwltool_version()
@@ -233,6 +234,28 @@ def ensure_no_collisions(
                     f" prevent actually creating {dir_description}"
                 )
             seen_names.add(wanted_name)
+
+
+def try_prepull(cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str) -> None:
+    """
+    Try to prepull all containers in a CWL workflow with Singularity or Docker.
+    This will not prepull the default container specified on the command line.
+    :param cwl_tool_uri: CWL workflow URL. Fragments are accepted as well
+    :param runtime_context: runtime context of cwltool
+    :param batchsystem: type of Toil batchsystem
+    :return:
+    """
+    if runtime_context.singularity:
+        if "CWL_SINGULARITY_CACHE" in os.environ:
+            logger.info("Prepulling the workflow's containers with Singularity...")
+            call_command(["cwl-docker-extract", "--singularity", "--dir", os.environ['CWL_SINGULARITY_CACHE'], cwl_tool_uri])
+    elif not runtime_context.user_space_docker_cmd and not runtime_context.podman:
+        # For udocker and podman prefetching is unimplemented
+        # This is docker
+        if batchsystem == "single_machine":
+            # Only on single machine will the docker daemon be accessible by all workers and the leader
+            logger.info("Prepulling the workflow's containers with Docker...")
+            call_command(["cwl-docker-extract", cwl_tool_uri])
 
 
 class Conditional:
@@ -3742,6 +3765,15 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         file=sys.stderr,
                     )
                     raise
+
+                # Attempt to prepull the containers
+                if not options.no_prepull:
+                    if not options.enable_ext:
+                        # The CWL utils parser does not support cwltool extensions and will crash if encountered, so don't prepull if extensions are enabled
+                        # See https://github.com/common-workflow-language/cwl-utils/issues/309
+                        try_prepull(uri, runtime_context, toil.config.batchSystem)
+                    else:
+                        logger.debug("Not prepulling containers as cwltool extensions are not supported.")
 
                 options.tool_help = None
                 options.debug = options.logLevel == "DEBUG"
