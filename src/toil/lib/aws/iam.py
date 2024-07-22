@@ -63,6 +63,18 @@ AllowedActionCollection = Dict[str, Dict[str, List[str]]]
 
 
 @retry(errors=[AWSServerErrors])
+def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
+    iam_resource = session.resource("iam", region_name=region)
+    instance_profile = iam_resource.InstanceProfile(instance_profile_name)
+    if instance_profile.roles is not None:
+        for role in instance_profile.roles:
+            printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
+            instance_profile.remove_role(RoleName=role.name)
+    instance_profile.delete()
+    printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
+
+
+@retry(errors=[AWSServerErrors])
 def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
     # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
     # of overloads of the client-getting methods to exist based on the literal
