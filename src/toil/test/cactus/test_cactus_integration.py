@@ -40,7 +40,7 @@ class CactusIntegrationTest(AbstractClusterTest):
                           "git fetch origin && "
                           f"git checkout {CACTUS_COMMIT_SHA} && "
                           "git submodule update --init --recursive && "
-                          "pip install --upgrade 'setuptools<66' pip && "
+                          "pip install --upgrade 'setuptools' pip && "
                           "pip install --upgrade . && "
                           "pip install --upgrade numpy psutil && "
                           "time cactus --batchSystem kubernetes --retryCount=3 "
