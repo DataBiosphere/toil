@@ -55,6 +55,7 @@ from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
+from WDL.Value import rewrite_paths
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.common import Toil, addOptions
@@ -691,6 +692,88 @@ def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:',
                 return True
         return False
 
+def import_url_files(environment: WDLBindings, file_source: Union[AbstractFileStore, Toil], path: Optional[List[str]] = None) -> Optional[Dict[str, str]]:
+    """
+    Iterate through the environment and import all files from the possible URLs.
+    Returns a mapping of the original file names to virtualized URIs
+    :param environment: Bindings to evaluate on
+    :param file_source: Context to upload/virtualize files with
+    :param path: List of paths to search through
+    :return:
+    """
+    parent_to_id: Dict[str, uuid.UUID] = {}
+    filename_to_uri: Dict[str, str] = {}
+    def import_file_from_url(filename: str) -> str:
+        """
+        Import a file if from a URL and return a virtualized filename for it.
+        """
+        # Search through any input search paths passed in and download it if found
+        tried = []
+        for candidate_uri in potential_absolute_uris(filename, path if path is not None else []):
+            tried.append(candidate_uri)
+            try:
+                # Try to import the file. Don't raise if we can't find it just return None
+                imported = None
+                jobstore = None
+                if isinstance(file_source, AbstractJobStore):
+                    imported = file_source.import_file(candidate_uri)
+                elif isinstance(file_source, Toil):
+                    imported = file_source.import_file(candidate_uri, check_existence=False)
+                if imported is None:
+                    # Wasn't found there
+                    continue
+            except UnimplementedURLException as e:
+                # We can't find anything that can even support this URL scheme.
+                # Report to the user, they are probably missing an extra.
+                logger.critical('Error: ' + str(e))
+                raise
+            except Exception:
+                # Something went wrong besides the file not being found. Maybe
+                # we have no auth.
+                logger.error("Something went wrong importing %s", candidate_uri)
+                raise
+
+            if imported is None:
+                # Wasn't found there
+                # Mostly to satisfy mypy
+                continue
+            logger.info('Imported %s', candidate_uri)
+
+            # Work out what the basename for the file was
+            file_basename = os.path.basename(urlsplit(candidate_uri).path)
+
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later.
+                raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
+            # Was actually found
+            if is_url(candidate_uri):
+                # Might be a file URI or other URI.
+                # We need to make sure file URIs and local paths that point to
+                # the same place are treated the same.
+                parsed = urlsplit(candidate_uri)
+                if parsed.scheme == "file:":
+                    # This is a local file URI. Convert to a path for source directory tracking.
+                    parent_dir = os.path.dirname(unquote(parsed.path))
+                else:
+                    # This is some other URL. Get the URL to the parent directory and use that.
+                    parent_dir = urljoin(candidate_uri, ".")
+            else:
+                # Must be a local path
+                return filename
+
+            # Pack a UUID of the parent directory
+            dir_id = parent_to_id.setdefault(parent_dir, uuid.uuid4())
+            filename_to_uri[filename] = pack_toil_uri(imported, dir_id, file_basename)
+            return filename
+
+        # If we get here we tried all the candidates
+        raise RuntimeError(f"Could not find {filename} at any of: {tried}")
+    map_over_files_in_bindings(environment, import_file_from_url)
+    return filename_to_uri if len(filename_to_uri) > 0 else None
+
+
 # Both the WDL code itself **and** the commands that it runs will deal in
 # "virtualized" filenames.
 
@@ -720,11 +803,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
     """
-    def __init__(self, file_store: AbstractFileStore, execution_dir: Optional[str] = None):
+    def __init__(self, file_store: AbstractFileStore, wdl_options: Optional[Dict[str, Any]] = None):
         """
         Set up the standard library.
 
-        :param execution_dir: Directory to use as the working directory for workflow code.
+        :param wdl_options: Extra options to pass into the standard library to use, ex directory to use as the working directory for workflow code.
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
@@ -749,7 +832,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # paths, to save re-uploads.
         self._devirtualized_to_virtualized: Dict[str, str] = {}
 
-        self._execution_dir = execution_dir
+        self._wdl_options = wdl_options
 
     def get_local_paths(self) -> List[str]:
         """
@@ -783,12 +866,68 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         on the local host.
         """
 
-        result = self.devirtualize_to(filename, self._file_store.localTempDir, self._file_store, self._execution_dir,
+        result = self.devirtualize_to(filename, self._file_store.localTempDir, self._file_store, self._wdl_options,
                                       self._devirtualized_to_virtualized, self._virtualized_to_devirtualized)
         return result
 
     @staticmethod
-    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], execution_dir: Optional[str],
+    def _devirtualize_uri(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil]) -> str:
+        if filename.startswith(TOIL_URI_SCHEME):
+            # This is a reference to the Toil filestore.
+            # Deserialize the FileID
+            file_id, parent_id, file_basename = unpack_toil_uri(filename)
+
+            # Decide where it should be put.
+            # This is a URI with the "parent" UUID attached to the filename.
+            # Use UUID as folder name rather than a new temp folder to reduce internal clutter.
+            # Put the UUID in the destination path in order for tasks to
+            # see where to put files depending on their parents.
+            dir_path = os.path.join(dest_dir, parent_id)
+
+        else:
+            # Parse the URL and extract the basename
+            file_basename = os.path.basename(urlsplit(filename).path)
+            # Get the URL to the directory this thing came from. Remember
+            # URLs are interpreted relative to the directory the thing is
+            # in, not relative to the thing.
+            parent_url = urljoin(filename, ".")
+            # Turn it into a string we can make a directory for
+            dir_path = os.path.join(dest_dir, quote(parent_url, safe=''))
+
+        if not os.path.exists(dir_path):
+            # Make sure the chosen directory exists
+            os.mkdir(dir_path)
+        # And decide the file goes in it.
+        dest_path = os.path.join(dir_path, file_basename)
+
+        if filename.startswith(TOIL_URI_SCHEME):
+            # Get a local path to the file
+            if isinstance(file_source, AbstractFileStore):
+                # Read from the file store.
+                # File is not allowed to be modified by the task. See
+                # <https://github.com/openwdl/wdl/issues/495>.
+                # We try to get away with symlinks and hope the task
+                # container can mount the destination file.
+                result = file_source.readGlobalFile(file_id, dest_path, mutable=False, symlink=True)
+            elif isinstance(file_source, Toil):
+                # Read from the Toil context
+                file_source.export_file(file_id, dest_path)
+                result = dest_path
+        else:
+            # Download to a local file with the right name and execute bit.
+            # Open it exclusively
+            with open(dest_path, 'xb') as dest_file:
+                # And save to it
+                size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                if executable:
+                    # Set the execute bit in the file's permissions
+                    os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
+
+            result = dest_path
+        return result
+
+    @staticmethod
+    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], wdl_options: Optional[Dict[str, Any]]=None,
                         devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
@@ -806,6 +945,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         should not be added to the cache
         """
 
+        if wdl_options is None:
+            wdl_options = {}
         if not os.path.isdir(dest_dir):
             # os.mkdir fails saying the directory *being made* caused a
             # FileNotFoundError. So check the dest_dir before trying to make
@@ -820,58 +961,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = virtualized_to_devirtualized[filename]
                 logger.debug("Found virtualized %s in cache with devirtualized path %s", filename, result)
                 return result
-            if filename.startswith(TOIL_URI_SCHEME):
-                # This is a reference to the Toil filestore.
-                # Deserialize the FileID
-                file_id, parent_id, file_basename = unpack_toil_uri(filename)
-
-                # Decide where it should be put.
-                # This is a URI with the "parent" UUID attached to the filename.
-                # Use UUID as folder name rather than a new temp folder to reduce internal clutter.
-                # Put the UUID in the destination path in order for tasks to
-                # see where to put files depending on their parents.
-                dir_path = os.path.join(dest_dir, parent_id)
-
-            else:
-                # Parse the URL and extract the basename
-                file_basename = os.path.basename(urlsplit(filename).path)
-                # Get the URL to the directory this thing came from. Remember
-                # URLs are interpreted relative to the directory the thing is
-                # in, not relative to the thing.
-                parent_url = urljoin(filename, ".")
-                # Turn it into a string we can make a directory for
-                dir_path = os.path.join(dest_dir, quote(parent_url, safe=''))
-
-            if not os.path.exists(dir_path):
-                # Make sure the chosen directory exists
-                os.mkdir(dir_path)
-            # And decide the file goes in it.
-            dest_path = os.path.join(dir_path, file_basename)
-
-            if filename.startswith(TOIL_URI_SCHEME):
-                # Get a local path to the file
-                if isinstance(file_source, AbstractFileStore):
-                    # Read from the file store.
-                    # File is not allowed to be modified by the task. See
-                    # <https://github.com/openwdl/wdl/issues/495>.
-                    # We try to get away with symlinks and hope the task
-                    # container can mount the destination file.
-                    result = file_source.readGlobalFile(file_id, dest_path, mutable=False, symlink=True)
-                elif isinstance(file_source, Toil):
-                    # Read from the Toil context
-                    file_source.export_file(file_id, dest_path)
-                    result = dest_path
-            else:
-                # Download to a local file with the right name and execute bit.
-                # Open it exclusively
-                with open(dest_path, 'xb') as dest_file:
-                    # And save to it
-                    size, executable = AbstractJobStore.read_from_url(filename, dest_file)
-                    if executable:
-                        # Set the execute bit in the file's permissions
-                        os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
-
-                result = dest_path
+            result = ToilWDLStdLibBase._devirtualize_uri(filename, dest_dir, file_source)
             if devirtualized_to_virtualized is not None:
                 # Store the back mapping
                 devirtualized_to_virtualized[result] = filename
@@ -880,14 +970,24 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 virtualized_to_devirtualized[filename] = result
             logger.debug('Devirtualized %s as openable file %s', filename, result)
         else:
-            # This is a local file
-            # To support relative paths, join the execution dir and filename
-            # if filename is already an abs path, join() will do nothing
-            if execution_dir is not None:
-                result = os.path.join(execution_dir, filename)
-            else:
-                result = filename
-            logger.debug("Virtualized file %s is already a local path", filename)
+            result = None
+            if wdl_options.get("filename_to_uri") is not None:
+                # We support importing files relative to a URL when the input JSON itself is downloaded
+                # See import_url_files()
+                filename_uri = wdl_options["filename_to_uri"].get(filename)
+                if filename_uri is not None:
+                    # This was previously virtualized, so use the virtualized result
+                    result = ToilWDLStdLibBase._devirtualize_uri(filename_uri, dest_dir, file_source)
+            if result is None:
+                # This is a local file
+                # To support relative paths, join the execution dir and filename
+                # if filename is already an abs path, join() will do nothing
+                execution_dir = wdl_options.get("execution_dir")
+                if execution_dir is not None:
+                    result = os.path.join(execution_dir, filename)
+                else:
+                    result = filename
+                logger.debug("Virtualized file %s is already a local path", filename)
 
         if not os.path.exists(result):
             raise RuntimeError(f"Virtualized file {filename} looks like a local file but isn't!")
@@ -909,10 +1009,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Otherwise this is a local file and we want to fake it as a Toil file store file
 
         # Make it an absolute path
-        if self._execution_dir is not None:
+        wdl_options: Dict[str, Any] = self._wdl_options or {}
+        execution_dir = wdl_options.get("execution_dir")
+        if wdl_options.get("filename_to_uri") is not None:
+            result: str = wdl_options["filename_to_uri"][filename]
+            if result is not None:
+                return result
+        if execution_dir is not None:
             # To support relative paths from execution directory, join the execution dir and filename
             # If filename is already an abs path, join() will not do anything
-            abs_filename = os.path.join(self._execution_dir, filename)
+            abs_filename = os.path.join(execution_dir, filename)
         else:
             abs_filename = os.path.abspath(filename)
 
@@ -1460,7 +1566,7 @@ class WDLBaseJob(Job):
     Also responsible for remembering the Toil WDL configuration keys and values.
     """
 
-    def __init__(self, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Make a WDL-related job.
 
@@ -1627,7 +1733,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         # UUID to use for virtualizing files
-        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         if self._task.inputs:
             logger.debug("Evaluating task code")
@@ -2263,7 +2369,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
     Job that evaluates a WDL workflow node.
     """
 
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Make a new job to run a workflow node to completion.
         """
@@ -2288,7 +2394,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
         if isinstance(self._node, WDL.Tree.Decl):
             # This is a variable assignment
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
@@ -2354,7 +2460,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
     workflows or tasks or sections.
     """
 
-    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Make a new job to run a list of workflow nodes to completion.
         """
@@ -2378,7 +2484,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs
         current_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         for node in self._nodes:
             if isinstance(node, WDL.Tree.Decl):
@@ -2557,7 +2663,7 @@ class WDLSectionJob(WDLBaseJob):
     Job that can create more graph for a section of the wrokflow.
     """
 
-    def __init__(self, namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, namespace: str, task_path: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Make a WDLSectionJob where the interior runs in the given namespace,
         starting with the root workflow.
@@ -2817,7 +2923,7 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL scatter. The scatter itself and the contents live in the given namespace.
         """
@@ -2848,7 +2954,7 @@ class WDLScatterJob(WDLSectionJob):
         # For a task we only see the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         # Get what to scatter over
         try:
@@ -2959,7 +3065,7 @@ class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], namespace: str, task_path: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL conditional. The conditional itself and its contents live in the given namespace.
         """
@@ -2986,7 +3092,7 @@ class WDLConditionalJob(WDLSectionJob):
         # For a task we only see the insode-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         # Get the expression value. Fake a name.
         try:
@@ -3014,7 +3120,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], namespace: str, task_path: str, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -3032,7 +3138,6 @@ class WDLWorkflowJob(WDLSectionJob):
         # workflow in run().
 
         logger.debug("Preparing to run workflow %s", workflow.name)
-
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
@@ -3052,7 +3157,7 @@ class WDLWorkflowJob(WDLSectionJob):
         # For a task we only see the insode-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         if self._workflow.inputs:
             try:
@@ -3082,7 +3187,7 @@ class WDLOutputsJob(WDLBaseJob):
 
     Returns an environment with just the outputs bound, in no namespace.
     """
-    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any):
+    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
         """
@@ -3099,7 +3204,7 @@ class WDLOutputsJob(WDLBaseJob):
         super().run(file_store)
 
         # Evaluate all output expressions in the normal, non-task-outputs library context
-        standard_library = ToilWDLStdLibBase(file_store, execution_dir=self._wdl_options.get("execution_dir"))
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         try:
             if self._workflow.outputs is None:
@@ -3142,7 +3247,7 @@ class WDLRootJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
 
-    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: Optional[Dict[str, Any]] = None, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
@@ -3172,40 +3277,6 @@ class WDLRootJob(WDLSectionJob):
         return job.rv()
 
 
-@contextmanager
-def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, None, None]:
-    """
-    Monkeypatch miniwdl's WDL.Value.Base.coerce() function to virtualize files when they are represented as Strings.
-    Calls _virtualize_filename from a given standard library object.
-    :param standard_library: a standard library object
-    :return
-    """
-    # We're doing this because while miniwdl recognizes when a string needs to be converted into a file, it's method of
-    # conversion is to just store the local filepath. Toil needs to virtualize the file into the jobstore so until
-    # there is an internal entrypoint, monkeypatch it.
-    def base_coerce(self: WDL.Value.Base, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        if isinstance(desired_type, WDL.Type.File):
-            self.value = standard_library._virtualize_filename(self.value)
-            return self
-        return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
-    def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        # Sometimes string coerce is called instead, so monkeypatch this one as well
-        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Type.File):
-            return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
-        return old_str_coerce(self, desired_type)
-
-    old_base_coerce = WDL.Value.Base.coerce
-    old_str_coerce = WDL.Value.String.coerce
-    try:
-        # Mypy does not like monkeypatching:
-        # https://github.com/python/mypy/issues/2427#issuecomment-1419206807
-        WDL.Value.Base.coerce = base_coerce  # type: ignore[method-assign]
-        WDL.Value.String.coerce = string_coerce  # type: ignore[method-assign]
-        yield
-    finally:
-        WDL.Value.Base.coerce = old_base_coerce  # type: ignore[method-assign]
-        WDL.Value.String.coerce = old_str_coerce  # type: ignore[method-assign]
-
 @report_wdl_errors("run workflow", exit=True)
 def main() -> None:
     """
@@ -3228,8 +3299,6 @@ def main() -> None:
     # If we don't have a directory assigned, make one in the current directory.
     output_directory: str = options.output_directory if options.output_directory else mkdtemp(prefix='wdl-out-', dir=os.getcwd())
 
-    # Get the execution directory
-    execution_dir = os.getcwd()
     try:
         with Toil(options) as toil:
             if options.restart:
@@ -3302,10 +3371,14 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
+                filename_to_uri = import_url_files(input_bindings, toil, inputs_search_path)
+
                 # Configure workflow interpreter options
-                wdl_options: Dict[str, str] = {}
+                wdl_options: Dict[str, Any] = {}
                 wdl_options["execution_dir"] = execution_dir
                 wdl_options["container"] = options.container
+                if filename_to_uri is not None:
+                    wdl_options["filename_to_uri"] = filename_to_uri
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
@@ -3326,7 +3399,7 @@ def main() -> None:
                 # Make sure the output directory exists if we have output files
                 # that might need to use it.
                 os.makedirs(output_directory, exist_ok=True)
-                return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, execution_dir, devirtualized_to_virtualized, virtualized_to_devirtualized)
+                return ToilWDLStdLibBase.devirtualize_to(filename, output_directory, toil, wdl_options, devirtualized_to_virtualized, virtualized_to_devirtualized)
 
             # Make all the files local files
             output_bindings = map_over_files_in_bindings(output_bindings, devirtualize_output)
