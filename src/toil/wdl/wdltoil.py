@@ -577,19 +577,6 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
 TOIL_URI_SCHEME = 'toilfile:'
 
-# We always virtualize any file into a URI. However, when coercing from string to file,
-# it is not necessary that the file needs to exist. See https://github.com/openwdl/wdl/issues/667
-# So use a sentinel to indicate nonexistent files instead of immediately raising an error
-# This is done instead of not virtualizing, using the string as a filepath, and coercing to None/null at use.
-# This is because the File must represent some location on its corresponding machine.
-# If a task runs on a node where a file does not exist, and passes that file as an input into another task,
-# we need to remember that the file does not exist from the original node
-# ex:
-# Task T1 runs on node N1 with file F at path P, but P does not exist on node N1
-# Task T1 passes file F to task T2 to run on node N2
-# Task T2 runs on node N2, P exists on node N2, but file F cannot exist
-# We also want to store the filename even if it does not exist, so use a sentinel URI scheme (can be useful in error messages)
-TOIL_NONEXISTENT_URI_SCHEME = 'nonexistent:'
 
 def pack_toil_uri(file_id: FileID, dir_id: uuid.UUID, file_basename: str) -> str:
     """
@@ -698,7 +685,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
-def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME, TOIL_NONEXISTENT_URI_SCHEME]) -> bool:
+def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -830,8 +817,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         :param wdl_options: Extra options to pass into the standard library to use, ex:
                             execution_dir: directory to use as the working directory for workflow code,
-                            enforce_existence: If a file is detected as nonexistent, raise an error, else let it through
-
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
@@ -901,7 +886,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return result
 
     @staticmethod
-    def _devirtualize_uri(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], enforce_existence: Optional[bool] = True) -> str:
+    def _devirtualize_uri(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil]) -> str:
         if filename.startswith(TOIL_URI_SCHEME):
             # This is a reference to the Toil filestore.
             # Deserialize the FileID
@@ -913,11 +898,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Put the UUID in the destination path in order for tasks to
             # see where to put files depending on their parents.
             dir_path = os.path.join(dest_dir, parent_id)
-        elif filename.startswith(TOIL_NONEXISTENT_URI_SCHEME):
-            if enforce_existence:
-                raise FileNotFoundError(f"File {filename[len(TOIL_NONEXISTENT_URI_SCHEME):]} was not available when virtualized!")
-            else:
-                return filename
         else:
             # Parse the URL and extract the basename
             file_basename = os.path.basename(urlsplit(filename).path)
@@ -995,8 +975,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = virtualized_to_devirtualized[filename]
                 logger.debug("Found virtualized %s in cache with devirtualized path %s", filename, result)
                 return result
-            enforce_existence: Optional[bool] = wdl_options.get("enforce_existence")
-            result = ToilWDLStdLibBase._devirtualize_uri(filename, dest_dir, file_source, enforce_existence=enforce_existence)
+            result = ToilWDLStdLibBase._devirtualize_uri(filename, dest_dir, file_source)
             if devirtualized_to_virtualized is not None:
                 # Store the back mapping
                 devirtualized_to_virtualized[result] = filename
@@ -1469,8 +1448,7 @@ def drop_if_missing(value_type: WDL.Type.Base, filename: str, work_dir: str) -> 
     logger.debug("Consider file %s", filename)
 
     if is_url(filename):
-        if (not filename.startswith(TOIL_NONEXISTENT_URI_SCHEME)
-                and (filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename))):
+        if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
             # We assume anything in the filestore actually exists.
             return filename
         else:
@@ -1514,9 +1492,8 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     def append_to_paths(path: str) -> Optional[str]:
         # Append element and return the element. This is to avoid a logger warning inside map_over_typed_files_in_value()
         # But don't process nonexistent files
-        if not path.startswith(TOIL_NONEXISTENT_URI_SCHEME):
-            paths.append(path)
-            return path
+        paths.append(path)
+        return path
     map_over_files_in_bindings(environment, append_to_paths)
     return paths
 
@@ -1868,6 +1845,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
             accelerator_requirement = parse_accelerator(accelerator_spec)
             runtime_accelerators = [accelerator_requirement]
 
+        # Drop files that don't actually exist so we don't try to virtualize a nonexistent file
+        bindings = drop_missing_files(bindings, self._wdl_options.get("execution_dir"))
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
         run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
@@ -2105,7 +2084,7 @@ class WDLTaskJob(WDLBaseJob):
         # Set up the WDL standard library
         # UUID to use for virtualizing files
         # We process nonexistent files in WDLTaskWrapperJob as those must be run locally, so don't try to devirtualize them
-        standard_library = ToilWDLStdLibBase(file_store, wdl_options={"enforce_existence": False})
+        standard_library = ToilWDLStdLibBase(file_store)
 
         # Get the bindings from after the input section
         bindings = unwrap(self._task_internal_bindings)
@@ -2283,8 +2262,6 @@ class WDLTaskJob(WDLBaseJob):
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
             def get_path_in_container(path: str) -> Optional[str]:
-                if path.startswith(TOIL_NONEXISTENT_URI_SCHEME):
-                    return None
                 return task_container.input_path_map[path]
             contained_bindings = map_over_files_in_bindings(bindings, get_path_in_container)
 
