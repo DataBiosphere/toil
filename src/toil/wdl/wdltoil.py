@@ -383,7 +383,6 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     for candidate_base in full_path_list:
         # Try fetching based off each base URI
         candidate_uri = urljoin(candidate_base, uri)
-
         if candidate_uri in failures:
             # Already tried this one, maybe we have an absolute uri input.
             continue
@@ -692,9 +691,9 @@ def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:',
                 return True
         return False
 
-def import_url_files(environment: WDLBindings, file_source: Union[AbstractFileStore, Toil], path: Optional[List[str]] = None) -> Optional[Dict[str, str]]:
+def import_url_files(environment: WDLBindings, file_source: Union[AbstractFileStore, Toil], path: Optional[List[str]] = None, include_self: bool = False) -> Optional[Dict[str, str]]:
     """
-    Iterate through the environment and import all files from the possible URLs.
+    Iterate through the environment and import all files from the possible URLs. This will not import if the file is detected as local.
     Returns a mapping of the original file names to virtualized URIs
     :param environment: Bindings to evaluate on
     :param file_source: Context to upload/virtualize files with
@@ -710,11 +709,17 @@ def import_url_files(environment: WDLBindings, file_source: Union[AbstractFileSt
         # Search through any input search paths passed in and download it if found
         tried = []
         for candidate_uri in potential_absolute_uris(filename, path if path is not None else []):
+            if not include_self and candidate_uri == filename:
+                # If the candidate uri is unchanged, as in is equal to the original uri
+                # we can discard it if unwanted; for example, miniwdl's backend can handle URLs fine,
+                # and carrying through the url through the workflow won't actually hit the imported file
+                # without more machinery
+                return filename
+
             tried.append(candidate_uri)
             try:
                 # Try to import the file. Don't raise if we can't find it just return None
                 imported = None
-                jobstore = None
                 if isinstance(file_source, AbstractJobStore):
                     imported = file_source.import_file(candidate_uri)
                 elif isinstance(file_source, Toil):
@@ -1012,7 +1017,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         wdl_options: Dict[str, Any] = self._wdl_options or {}
         execution_dir = wdl_options.get("execution_dir")
         if wdl_options.get("filename_to_uri") is not None:
-            result: str = wdl_options["filename_to_uri"][filename]
+            result: str = wdl_options["filename_to_uri"].get(filename)
             if result is not None:
                 return result
         if execution_dir is not None:
@@ -3371,7 +3376,15 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                filename_to_uri = import_url_files(input_bindings, toil, inputs_search_path)
+                # There are two instances where paths relative to the JSON URL may be necessary:
+                # ToilStdLibBase._devirtualize_to and ToilStdLibBase._virtualize_filename
+                # devirtualize can happen when a binding needs a function call that reads the file, which miniwdl will call internally
+                # as the file (which is represented as a string/path) can be relative to the JSON URL, see if the mapping exists
+                # and use it if so
+                # virtualize can happen at task boundaries; files must be converted to their virtualized instances.
+                # Similarly, see if the mapping exists to test if the file (string/path representation) relative to the JSON URL exists,
+                # and use it if so
+                filename_to_uri = import_url_files(input_bindings, toil, inputs_search_path, include_self=False)
 
                 # Configure workflow interpreter options
                 wdl_options: Dict[str, Any] = {}
