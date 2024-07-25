@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import sys
 from argparse import ArgumentParser, _ArgumentGroup
 from shlex import quote
 from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
@@ -72,12 +73,31 @@ NONTERMINAL_STATES: Set[str] = {
     "SUSPENDED"
 }
 
+def parse_slurm_time(slurm_time: str) -> int:
+    """
+    Parse a Slurm-style time duration like 7-00:00:00 to a number of seconds.
+
+    Raises ValueError if not parseable.
+    """
+    # slurm returns time in days-hours:minutes:seconds format
+    # Sometimes it will only return minutes:seconds, so days may be omitted
+    # For ease of calculating, we'll make sure all the delimeters are ':'
+    # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
+    total_seconds = 0
+    elapsed_split: List[str] = slurm_time.replace('-', ':').split(':')
+    elapsed_split.reverse()
+    seconds_per_unit = [1, 60, 3600, 86400]
+    for index, multiplier in enumerate(seconds_per_unit):
+        if index < len(elapsed_split):
+            total_seconds += multiplier * int(elapsed_split[index])
+    return total_seconds
+
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     class PartitionInfo(NamedTuple):
         partition_name: str
         gres: bool
-        time: str
-        priority: str
+        time_limit: float
+        priority: int
         cpus: str
         memory: str
 
@@ -106,6 +126,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if len(gpu_partitions) > 0:
                 self.default_gpu_partition = sorted(gpu_partitions, key=lambda x: x.priority)[0]
 
+
+
         def _get_partition_info(self) -> None:
             """
             Call the Slurm batch system with sinfo to grab all available partitions.
@@ -123,11 +145,51 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             for line in sinfo.split("\n")[1:]:
                 if line.strip():
                     partition_name, gres, time, priority, cpus, memory = line.split(" ")
-                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", time, priority, cpus, memory))
+                    try:
+                        # Parse time to a number so we can compute on it
+                        partition_time: float = parse_slurm_time(time)
+                    except ValueError:
+                        # Maybe time is unlimited?
+                        partition_time = float("inf")
+                    try:
+                        # Parse priority to an int so we can sort on it
+                        partition_priority = int(priority)
+                    except ValueError:
+                        logger.warning("Could not parse priority %s for partition %s, assuming high priority", partition_name, priority)
+                        partition_priority = sys.maxsize
+                    parsed_partitions.append(SlurmBatchSystem.PartitionInfo(partition_name.rstrip("*"), gres != "(null)", partition_time, partition_priority, cpus, memory))
             self.all_partitions = parsed_partitions
+
+        def get_partition(self, time_limit: Optional[float]) -> Optional[str]:
+            """
+            Get the partition name to use for a job with the given time limit.
+            """
+
+            if time_limit is None:
+                # Just use Slurm's default
+                return None
+
+            winning_partition = None
+            for partition in self.all_partitions:
+                if partition.time_limit >= time_limit and (winning_partition is None or partition.time_limit < winning_partition.time_limit):
+                    # If this partition can fit the job and is faster than the current winner, take it
+                    winning_partition = partition
+            # TODO: Store partitions in a better indexed way
+            if winning_partition is None and len(self.all_partitions) > 0:
+                # We have partitions and none of them can fit this
+                raise RuntimeError("Could not find a Slurm partition that can fit a job that runs for {time_limit} seconds")
+
+            if winning_partition is None:
+                return None
+            else:
+                return winning_partition.partition_name
+
+
 
 
     class GridEngineThread(AbstractGridEngineBatchSystem.GridEngineThread):
+        # Our boss is always the enclosing class
+        boss: "SlurmBatchSystem"
 
         def getRunningJobIDs(self) -> Dict[int, int]:
             # Should return a dictionary of Job IDs and number of seconds
@@ -146,7 +208,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     continue
                 slurm_jobid, state, elapsed_time = values
                 if slurm_jobid in currentjobs and state == 'R':
-                    seconds_running = self.parse_elapsed(elapsed_time)
+                    try:
+                        seconds_running = parse_slurm_time(elapsed_time)
+                    except ValueError:
+                        # slurm may return INVALID instead of a time
+                        seconds_running = 0
                     times[currentjobs[slurm_jobid]] = seconds_running
 
             return times
@@ -290,7 +356,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             # Slurm will sometimes send something like "CANCELED by 30065" in
             # the state column for some reason.
-            
+
             state_token = state
 
             if " " in state_token:
@@ -298,7 +364,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if state_token not in TERMINAL_STATES and state_token not in NONTERMINAL_STATES:
                 raise RuntimeError("Toil job in unimplemented Slurm state " + state)
-            
+
             return state_token
 
         def _getJobDetailsFromSacct(self, job_id_list: List[int]) -> Dict[int, Tuple[Optional[str], Optional[int]]]:
@@ -467,13 +533,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 environment.update(job_environment)
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
-            nativeConfig = os.getenv('TOIL_SLURM_ARGS')
+            # Also any extra arguments from --slurmArgs or TOIL_SLURM_ARGS
+            nativeConfig: str = self.boss.config.slurm_args  # type: ignore[attr-defined]
 
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
 
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: %s", nativeConfig)
+                logger.debug("Native SLURM options appended to sbatch: %s", nativeConfig)
 
                 for arg in nativeConfig.split():
                     if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
@@ -495,7 +562,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # add --export to the sbatch
             sbatch_line.append(set_exports)
 
-            parallel_env = os.getenv('TOIL_SLURM_PE')
+            parallel_env: str = self.boss.config.slurm_pe  # type: ignore[attr-defined]
             if cpu and cpu > 1 and parallel_env:
                 sbatch_line.append(f'--partition={parallel_env}')
 
@@ -505,17 +572,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
+            time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
+            if time_limit is not None:
+                # Put all the seconds in the seconds slot
+                sbatch_line.append(f'--time=0:{time_limit}')
+
             if gpus:
                 # This block will add a gpu supported partition only if no partition is supplied by the user
                 sbatch_line = sbatch_line[:1] + [f'--gres=gpu:{gpus}'] + sbatch_line[1:]
                 if not any(option.startswith("--partition") for option in sbatch_line):
                     # no partition specified, so specify one
                     # try to get the name of the lowest priority gpu supported partition
-                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition  # type: ignore[attr-defined]
+                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition
                     if lowest_gpu_partition is None:
                         # no gpu partitions are available, raise an error
                        raise RuntimeError(f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs")
-                    sbatch_line.append(f"--partition={lowest_gpu_partition.name}")
+                    if time_limit is not None and lowest_gpu_partition.time_limit < time_limit:
+                        # TODO: find the lowest-priority GPU partition that has at least each job's time limit!
+                        logger.warning("Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds", time_limit, lowest_gpu_partition.partition_name, lowest_gpu_partition.time_limit)
+                    sbatch_line.append(f"--partition={lowest_gpu_partition.partition_name}")
                 else:
                     # there is a partition specified already, check if the partition has GPUs
                     for i, option in enumerate(sbatch_line):
@@ -525,35 +600,26 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                                 partition_name = option[len("--partition="):]
                             else:
                                 partition_name = option[i+1]
-                            available_gpu_partitions = self.boss.partitions.gpu_partitions  # type: ignore[attr-defined]
+                            available_gpu_partitions = self.boss.partitions.gpu_partitions
                             if partition_name not in available_gpu_partitions:
                                 # the specified partition is not compatible, so warn the user that the job may not work
                                 logger.warning(f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work."
                                                f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}.")
                             break
 
+            if not any(option.startswith("--partition") for option in sbatch_line):
+                # Pick a partition ourselves
+                chosen_partition = self.boss.partitions.get_partition(time_limit)
+                if chosen_partition is not None:
+                    # Route to that partition
+                    sbatch_line.append(f"--partition={chosen_partition}")
+
+
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'out')
             stderrfile: str = self.boss.format_std_out_err_path(jobID, '%j', 'err')
             sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return sbatch_line
-
-        def parse_elapsed(self, elapsed: str) -> int:
-            # slurm returns elapsed time in days-hours:minutes:seconds format
-            # Sometimes it will only return minutes:seconds, so days may be omitted
-            # For ease of calculating, we'll make sure all the delimeters are ':'
-            # Then reverse the list so that we're always counting up from seconds -> minutes -> hours -> days
-            total_seconds = 0
-            try:
-                elapsed_split: List[str] = elapsed.replace('-', ':').split(':')
-                elapsed_split.reverse()
-                seconds_per_unit = [1, 60, 3600, 86400]
-                for index, multiplier in enumerate(seconds_per_unit):
-                    if index < len(elapsed_split):
-                        total_seconds += multiplier * int(elapsed_split[index])
-            except ValueError:
-                pass  # slurm may return INVALID instead of a time
-            return total_seconds
 
     def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
@@ -589,8 +655,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
         allocate_mem.set_defaults(allocate_mem=True)
 
+        parser.add_argument("--slurmTime", dest="slurm_time", type=parse_slurm_time, default=None, env_var="TOIL_SLURM_TIME",
+                            help="Slurm job time limit, in [DD-]HH:MM:SS format")
+        parser.add_argument("--slurmPE", dest="slurm_pe", default=None, env_var="TOIL_SLURM_PE",
+                            help="Special partition to send Slurm jobs to if they ask for more than 1 CPU")
+        parser.add_argument("--slurmArgs", dest="slurm_args", default="", env_var="TOIL_SLURM_ARGS",
+                            help="Extra arguments to pass to Slurm")
+
+
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("allocate_mem")
+        setOption("slurm_time")
+        setOption("slurm_pe")
+        setOption("slurm_args")
 
