@@ -4,7 +4,7 @@ pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
 setuptools>=65.5.1,<72
 sphinx>=7,<8
-sphinx-autoapi>=3,<4
+sphinx-autoapi>=3.2.1,<4
 astroid>=3,<4
 sphinx-autodoc-typehints>=1.24.0,<3
 sphinxcontrib-autoprogram==0.1.9
