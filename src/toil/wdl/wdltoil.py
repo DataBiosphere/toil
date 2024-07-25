@@ -610,7 +610,7 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str]:
 
     return file_id, parent_id, file_basename
 
-def evaluate_bindings_from_decls(decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: WDL.StdLib.Base,
+def evaluate_bindings_from_decls(decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: ToilWDLStdLibBase,
                                  include_previous: bool = False, drop_missing_files: bool = False) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
     Evaluate decls with a given bindings environment and standard library.
@@ -1603,19 +1603,22 @@ def map_over_files_in_value_check_null_type(value: WDL.Value.Base, original_valu
     """
     if isinstance(value, WDL.Value.File):
         pass
-    elif isinstance(value, WDL.Value.Array):
+    elif isinstance(value, WDL.Value.Array) and isinstance(expected_type, WDL.Type.Array):
         for elem, orig_elem in zip(value.value, original_value.value):
             map_over_files_in_value_check_null_type(elem, orig_elem, expected_type.item_type)
-    elif isinstance(value, WDL.Value.Map):
+    elif isinstance(value, WDL.Value.Map) and isinstance(expected_type, WDL.Type.Map):
         for pair, orig_pair in zip(value.value, original_value.value):
             # The key of the map cannot be optional or else it is not serializable, so we only need to check the value
             map_over_files_in_value_check_null_type(pair[1], orig_pair[1], expected_type.item_type[1])
-    elif isinstance(value, WDL.Value.Pair):
+    elif isinstance(value, WDL.Value.Pair) and isinstance(expected_type, WDL.Type.Pair):
         map_over_files_in_value_check_null_type(value.value[0], original_value.value[0], expected_type.left_type)
         map_over_files_in_value_check_null_type(value.value[1], original_value.value[1], expected_type.right_type)
-    elif isinstance(value, WDL.Value.Struct):
+    elif isinstance(value, WDL.Value.Struct) and isinstance(expected_type, WDL.Type.StructInstance):
         for (k, v), (_, orig_v) in zip(value.value.items(), original_value.value.items()):
-            map_over_files_in_value_check_null_type(v, orig_v, expected_type.members[k])
+            # The parameters method for WDL.Type.StructInstance returns the values rather than the dictionary
+            # While dictionaries are ordered, this should be more robust; the else branch should never be hit
+            if expected_type.members is not None:
+                map_over_files_in_value_check_null_type(v, orig_v, expected_type.members[k])
     elif isinstance(value, WDL.Value.Null):
         if not expected_type.optional:
             raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), original_value.value)
