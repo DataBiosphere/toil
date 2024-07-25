@@ -43,7 +43,16 @@ class BaseWDLTest(ToilTest):
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "b2b4bf952785a9b69724880793ff0d9e41df6309"
+WDL_CONFORMANCE_TEST_COMMIT = "01401a46bc0e60240fb2b69af4b978d0a5bd8fc8"
+# These tests are known to require things not implemented by
+# Toil and will not be run in CI.
+WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL= [
+    16, # Basic object test (deprecated and removed in 1.1); MiniWDL and toil-wdl-runner do not support Objects, so this will fail if ran by them
+    21, # Parser: expression placeholders in strings in conditional expressions in 1.0, Cromwell style; Fails with MiniWDL and toil-wdl-runner
+    64, # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
+    72, # Symlink passthrough; see <https://github.com/DataBiosphere/toil/issues/5031>
+    77, # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
+]
 
 class WDLConformanceTests(BaseWDLTest):
     """
@@ -79,26 +88,32 @@ class WDLConformanceTests(BaseWDLTest):
 
         p.check_returncode()
 
-    # estimated running time: 2 minutes
+    # estimated running time: 10 minutes
     @slow
     def test_conformance_tests_v10(self):
-        tests_to_run = "0-15,17-20,22-71,73-78"
-        p = subprocess.run(self.base_command + ["-v", "1.0", "-n", tests_to_run], capture_output=True)
+        command = self.base_command + ["-v", "1.0"]
+        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
+            command.append("--exclude-numbers")
+            command.append(",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL]))
+        p = subprocess.run(command, capture_output=True)
 
         self.check(p)
 
-    # estimated running time: 2 minutes
+    # estimated running time: 10 minutes
     @slow
     def test_conformance_tests_v11(self):
-        tests_to_run = "1-63,65-71,73-76,78"
-        p = subprocess.run(self.base_command + ["-v", "1.1", "-n", tests_to_run], capture_output=True)
+        command = self.base_command + ["-v", "1.1"]
+        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
+            command.append("--exclude-numbers")
+            command.append(",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL]))
+        p = subprocess.run(command, capture_output=True)
 
         self.check(p)
 
     @slow
     def test_conformance_tests_integration(self):
         ids_to_run = "encode,tut01,tut02,tut03,tut04"
-        p = subprocess.run(self.base_command + ["-v", "1.0", "--id", ids_to_run], capture_output=True)
+        p = subprocess.run(self.base_command + ["-v", "1.0", "--conformance-file", "integration.yaml", "--id", ids_to_run], capture_output=True)
 
         self.check(p)
 
