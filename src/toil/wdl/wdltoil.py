@@ -31,7 +31,7 @@ import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
-from tempfile import mkstemp
+from tempfile import mkstemp, gettempdir
 from typing import (Any,
                     Callable,
                     Dict,
@@ -767,12 +767,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # paths, to save re-uploads.
         self._devirtualized_to_virtualized: Dict[str, str] = {}
 
-        self._execution_dir = execution_dir
+        self._execution_dir = execution_dir or gettempdir()
 
         self._enforce_existence = enforce_existence
 
     @property
-    def execution_dir(self) -> Optional[str]:
+    def execution_dir(self) -> str:
         return self._execution_dir
 
     def get_local_paths(self) -> List[str]:
