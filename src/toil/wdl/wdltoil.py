@@ -637,6 +637,7 @@ def evaluate_bindings_from_decls(decls: List[WDL.Tree.Decl], all_bindings: WDL.E
             # Ideally, map_over_typed_files_in_value should do this check, but that will require retooling the map functions
             # to carry through WDL types as well; currently miniwdl's WDL value has a type which we use, but that does not carry the optional flag through
             map_over_files_in_value_check_null_type(dropped_output_value, output_value, each_decl.type)
+            output_value = dropped_output_value
         all_bindings = all_bindings.bind(each_decl.name, output_value)
         bindings = bindings.bind(each_decl.name, output_value)
     return all_bindings if include_previous else bindings
@@ -1895,8 +1896,6 @@ class WDLTaskWrapperJob(WDLBaseJob):
             accelerator_requirement = parse_accelerator(accelerator_spec)
             runtime_accelerators = [accelerator_requirement]
 
-        # Drop files that don't actually exist so we don't try to virtualize a nonexistent file
-        bindings = drop_missing_files(bindings, self._wdl_options.get("execution_dir"))
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
         run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
