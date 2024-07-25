@@ -611,7 +611,7 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str]:
     return file_id, parent_id, file_basename
 
 def evaluate_bindings_from_decls(decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: WDL.StdLib.Base,
-                                 include_previous: bool = False) -> WDL.Env.Bindings[WDL.Value.Base]:
+                                 include_previous: bool = False, drop_missing_files: bool = False) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
     Evaluate decls with a given bindings environment and standard library.
     Creates a new bindings object that only contains the bindings from the given decls.
@@ -620,13 +620,23 @@ def evaluate_bindings_from_decls(decls: List[WDL.Tree.Decl], all_bindings: WDL.E
     :param decls: Decls to evaluate
     :param standard_library: Standard library
     :param include_previous: Whether to include the existing environment in the new returned environment. This will be false for outputs where only defined decls should be included
+    :param drop_missing_files: Whether to coerce nonexistent files to null. The coerced elements will be checked that the transformation is valid.
+    Currently should only be enabled in output sections, see https://github.com/openwdl/wdl/issues/673#issuecomment-2248828116
     :return: New bindings object with only the decls
     """
     # all_bindings contains current bindings + previous all_bindings
     # bindings only contains the decl bindings themselves so that bindings from other sections prior aren't included
     bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+    drop_if_missing_with_workdir = partial(drop_if_missing, work_dir=standard_library.execution_dir)
     for each_decl in decls:
         output_value = evaluate_defaultable_decl(each_decl, all_bindings, standard_library)
+        if drop_missing_files:
+            dropped_output_value = map_over_typed_files_in_value(output_value, drop_if_missing_with_workdir)
+            # Typecheck that the new binding value with dropped files is valid for the declaration's type
+            # If a dropped file exists where the type is not optional File?, raise FileNotFoundError
+            # Ideally, map_over_typed_files_in_value should do this check, but that will require retooling the map functions
+            # to carry through WDL types as well; currently miniwdl's WDL value has a type which we use, but that does not carry the optional flag through
+            map_over_files_in_value_check_null_type(dropped_output_value, output_value, each_decl.type)
         all_bindings = all_bindings.bind(each_decl.name, output_value)
         bindings = bindings.bind(each_decl.name, output_value)
     return all_bindings if include_previous else bindings
@@ -1576,6 +1586,43 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
         # All other kinds of value can be passed through unmodified.
         return value
 
+def map_over_files_in_value_check_null_type(value: WDL.Value.Base, original_value: WDL.Value.Base, expected_type: WDL.Type.Base) -> None:
+    """
+    Run through all nested values embedded in the given value and check that the null values are valid.
+
+    If a null value is found that does not have a valid corresponding expected_type, raise an error
+
+    (This is currently only used to check that coerced File types to null are valid, as in null elements have an equivalent File? type,
+    if this is to be used elsewhere, the error message should be changed to be implementation specific)
+
+    If one of the nested values is null but the equivalent nested expected_type is not optional, this is not allowed
+    :param value: WDL base value to check. This is the WDL value that has been transformed and has the null elements
+    :param original_value: The original WDL base value prior to the transformation. Only used for error messages
+    :param expected_type: The WDL type of the value
+    :return:
+    """
+    if isinstance(value, WDL.Value.File):
+        pass
+    elif isinstance(value, WDL.Value.Array):
+        for elem, orig_elem in zip(value.value, original_value.value):
+            map_over_files_in_value_check_null_type(elem, orig_elem, expected_type.item_type)
+    elif isinstance(value, WDL.Value.Map):
+        for pair, orig_pair in zip(value.value, original_value.value):
+            # The key of the map cannot be optional or else it is not serializable, so we only need to check the value
+            map_over_files_in_value_check_null_type(pair[1], orig_pair[1], expected_type.item_type[1])
+    elif isinstance(value, WDL.Value.Pair):
+        map_over_files_in_value_check_null_type(value.value[0], original_value.value[0], expected_type.left_type)
+        map_over_files_in_value_check_null_type(value.value[1], original_value.value[1], expected_type.right_type)
+    elif isinstance(value, WDL.Value.Struct):
+        for (k, v), (_, orig_v) in zip(value.value.items(), original_value.value.items()):
+            map_over_files_in_value_check_null_type(v, orig_v, expected_type.members[k])
+    elif isinstance(value, WDL.Value.Null):
+        if not expected_type.optional:
+            raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), original_value.value)
+    else:
+        # Don't check other (unsupported?) types
+        return
+
 class WDLBaseJob(Job):
     """
     Base job class for all WDL-related jobs.
@@ -2354,7 +2401,7 @@ class WDLTaskJob(WDLBaseJob):
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, wdl_options=output_wdl_options)
         # Make sure files downloaded as inputs get re-used if we re-upload them.
         outputs_library.share_files(standard_library)
-        output_bindings = evaluate_bindings_from_decls(self._task.outputs, bindings, outputs_library)
+        output_bindings = evaluate_bindings_from_decls(self._task.outputs, bindings, outputs_library, drop_missing_files=True)
 
         # Now we know if the standard output and error were sent somewhere by
         # the workflow. If not, we should report them to the leader.
@@ -3256,7 +3303,7 @@ class WDLOutputsJob(WDLBaseJob):
                 # Output section is declared and is nonempty, so evaluate normally
 
                 # Combine the bindings from the previous job
-                output_bindings = evaluate_bindings_from_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+                output_bindings = evaluate_bindings_from_decls(self._workflow.outputs, unwrap(self._bindings), standard_library, drop_missing_files=True)
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
