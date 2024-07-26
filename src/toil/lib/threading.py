@@ -93,17 +93,6 @@ def ensure_filesystem_lockable(path: str, timeout: float = 30, hint: Optional[st
 
     # Other platforms (Mac) probably aren't mounting Ceph and also don't
     # usually use the same stat binary implementation.
-        
-
-
-
-
-        
-
-
-
-
-
 
 def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
     """
@@ -505,7 +494,7 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
         raise RuntimeError(f"Directory {base_dir} for mutex does not exist")
 
     # TODO: We don't know what CLI option controls where to put this mutex, so
-    # we aren't very helpful of the location is bad.
+    # we aren't very helpful if the location is bad.
     ensure_filesystem_lockable(
         base_dir,
         hint=f"Specify a different place to put the {mutex} mutex."
