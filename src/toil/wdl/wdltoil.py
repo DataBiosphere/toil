@@ -54,6 +54,7 @@ import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
 from WDL._util import byte_size_units
+from WDL.Tree import ReadSourceResult
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
@@ -396,7 +397,7 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
         # If we come back it didn't work
         failures.add(candidate_uri)
 
-async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> WDL.ReadSourceResult:
+async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> ReadSourceResult:
     """
     Implementation of a MiniWDL read_source function that can use any
     filename or URL supported by Toil.
@@ -430,7 +431,7 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
             continue
 
         # Return our result and its URI. TODO: Should we de-URI files?
-        return WDL.ReadSourceResult(string_data, candidate_uri)
+        return ReadSourceResult(string_data, candidate_uri)
 
     # If we get here we could not find it anywhere. Do exactly what MiniWDL
     # does:
@@ -3451,7 +3452,7 @@ def main() -> None:
                 # have to cast from more specific to less specific ones here.
                 # The miniwld values_from_json function can evaluate
                 # expressions in the inputs or something.
-                WDLTypeDeclBindings = WDL.Env.Bindings[Union[WDL.Tree.Decl, WDL.Type.Base]]
+                WDLTypeDeclBindings = WDL.Env.Bindings[WDL.Tree.Decl] | WDL.Env.Bindings[WDL.Type.Base]
                 input_bindings = WDL.values_from_json(
                     inputs,
                     cast(WDLTypeDeclBindings, target.available_inputs),
