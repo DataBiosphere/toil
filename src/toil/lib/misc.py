@@ -77,9 +77,13 @@ def slow_down(seconds: float) -> float:
 
     return max(seconds, sys.float_info.epsilon)
 
-def printq(msg: str, quiet: bool) -> None:
+
+def printq(msg: str, quiet: bool, log: bool = False) -> None:
     if not quiet:
-        print(msg)
+        if not log:
+            print(msg)
+        else:
+            logger.debug(msg)
 
 
 def truncExpBackoff() -> Iterator[float]:

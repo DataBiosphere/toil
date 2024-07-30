@@ -13,8 +13,9 @@
 # limitations under the License.
 import json
 import logging
-
 import boto3
+
+from uuid import uuid4
 from moto import mock_aws
 
 from toil.lib.aws import iam
@@ -127,3 +128,27 @@ class IAMTest(ToilTest):
         expected_actions = {"iam:CreateRole", "iam:CreateInstanceProfile", "iam:TagInstanceProfile", "iam:DeleteRole"}
         assert actions_set == expected_actions
         assert notactions_set == set()
+
+    def test_create_delete_iam_role(self):
+        region = 'us-west-2'
+        role_name = f'test{str(uuid4()).replace("-", "")}'
+        with self.subTest('Create role w/policies.'):
+            ec2_role_policy_document = json.dumps({
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Principal": {"Service": ["ec2.amazonaws.com"]},
+                    "Action": ["sts:AssumeRole"]}
+                ]})
+            policy = dict(s3_deny=dict(Version="2012-10-17", Statement=[dict(Effect="Deny", Resource="*", Action="s3:*")]))
+            iam.create_iam_role(
+                role_name=role_name,
+                assume_role_policy_document=ec2_role_policy_document,
+                policies=policy,
+                region=region
+            )
+        with self.subTest('Delete role w/policies.'):
+            iam.delete_iam_role(
+                role_name=role_name,
+                region=region
+            )
