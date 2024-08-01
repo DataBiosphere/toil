@@ -176,7 +176,7 @@ class DebugJobTest(ToilTest):
                 "--disableProgress",
                 "--jobStore",
                 job_store
-            ], stderr=subprocess.DEVNULL)
+            ])
             raise RuntimeError("Failing workflow succeeded!")
         except subprocess.CalledProcessError:
             # Should fail to run
