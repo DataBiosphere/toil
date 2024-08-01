@@ -2,6 +2,7 @@ import json
 import os
 import re
 import shutil
+import string
 import subprocess
 import unittest
 from uuid import uuid4
@@ -184,8 +185,22 @@ class WDLTests(BaseWDLTest):
         assert len(outputs['hello_caller.message_files']) == 2
         for item in outputs['hello_caller.message_files']:
             # All the files should be strings in the "out" directory
-            assert isinstance(item, str)
-            assert item.startswith(out_dir)
+            assert isinstance(item, str), "File output must be a string"
+            assert item.startswith(out_dir), "File output must be in the output directory"
+
+            # Look at the filename within that directory
+            name_in_out_dir = item[len(out_dir):]
+
+            # Ity should contain the job name of "hello", so they are human-readable.
+            assert "hello" in name_in_out_dir, f"File output {name_in_out_dir} should have the originating task name in it"
+
+            # And it should not contain non-human-readable content.
+            #
+            # We use a threshold number of digits as a proxy for this, but
+            # don't try and get around this by just rolling other random
+            # strings; we want these outputs to be human-readable!!!
+            digit_count = len([c for c in name_in_out_dir if c in string.digits])
+            assert digit_count < 3, f"File output {name_in_out_dir} has {digit_count} digits, which is too many to be plausibly human-readable"
 
         assert 'hello_caller.messages' in outputs
         assert outputs['hello_caller.messages'] == ["Hello, Alyssa P. Hacker!", "Hello, Ben Bitdiddle!"]
