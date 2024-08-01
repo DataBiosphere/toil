@@ -104,6 +104,7 @@ class FileJobStore(AbstractJobStore):
 
         self.linkImports = None
         self.moveExports = None
+        self.symlink_job_store_reads = None
 
     def __repr__(self):
         return f'FileJobStore({self.jobStoreDir})'
@@ -123,6 +124,7 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.sharedFilesDir, exist_ok=True)
         self.linkImports = config.symlinkImports
         self.moveExports = config.moveOutputs
+        self.symlink_job_store_reads = config.symlink_job_store_reads
         super().initialize(config)
 
     def resume(self):
@@ -314,8 +316,8 @@ class FileJobStore(AbstractJobStore):
             atomic_copy(srcPath, dst_path)
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
-        # symlink argument says whether the caller can take symlinks or not
-        # ex: if false, it implies the workflow cannot work with symlinks and thus will hardlink imports
+        # symlink argument says whether the caller can take symlinks or not.
+        # ex: if false, it means the workflow cannot work with symlinks and we need to hardlink or copy.
         # default is true since symlinking everything is ideal
         uri_path = unquote(uri.path)
         if issubclass(otherCls, FileJobStore):
@@ -515,8 +517,9 @@ class FileJobStore(AbstractJobStore):
             # one over the other will fail.
             return
 
-        if symlink:
-            # If the reader will accept a symlink, so always give them one.
+        if symlink and self.symlink_job_store_reads:
+            # If the reader will accept a symlink, and we are willing to
+            # symlink into the jobstore, always give them one.
             # There's less that can go wrong.
             try:
                 os.symlink(jobStoreFilePath, local_path)
