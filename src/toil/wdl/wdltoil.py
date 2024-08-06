@@ -628,8 +628,8 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
         raise ValueError(f"Wrong number of path segments in URI: {toil_uri}")
     file_id = FileID.unpack(unquote(parts[0]))
     task_path = unquote(parts[1])
-    parent_id = unquote(parts[1])
-    file_basename = unquote(parts[-1])
+    parent_id = unquote(parts[2])
+    file_basename = unquote(parts[3])
 
     return file_id, task_path, parent_id, file_basename
 
