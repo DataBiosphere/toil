@@ -536,8 +536,31 @@ class WDLToilBenchTests(ToilTest):
         trimmed = remove_common_leading_whitespace(expr)
         assert trimmed.command == True
 
+    def test_choose_human_readable_directory(self):
+        """
+        Test to make sure that we pick sensible but non-colliding directories to put files in.
+        """
 
+        from toil.wdl.wdltoil import choose_human_readable_directory, DirectoryNamingStateDict
 
+        state: DirectoryNamingStateDict = {}
+
+        # The first time we should get  apath with the task name and without the ID
+        first_chosen = choose_human_readable_directory("root", "taskname", "111-222-333", state)
+        assert first_chosen.startswith("root")
+        assert "taskname" in first_chosen
+        assert "111-222-333" not in first_chosen
+
+        # If we use the same ID we should get the same result
+        same_id = choose_human_readable_directory("root", "taskname", "111-222-333", state)
+        self.assertEqual(same_id, first_chosen)
+
+        # If we use a different ID we shoudl get a different result still obeying the constraints
+        diff_id = choose_human_readable_directory("root", "taskname", "222-333-444", state)
+        self.assertNotEqual(diff_id, first_chosen)
+        assert diff_id.startswith("root")
+        assert "taskname" in diff_id
+        assert "222-333-444" not in diff_id
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

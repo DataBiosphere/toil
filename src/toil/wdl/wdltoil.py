@@ -660,7 +660,7 @@ def choose_human_readable_directory(root_dir: str, source_task_path: str, parent
     #
     # For each local directory, we need to know if we used it for a parent ID already (set).
     id_to_dir, used_dirs = state.setdefault(root_dir, ({}, set()))
-
+    logger.debug("Pick location for parent %s source %s root %s against id map %s and used set %s", parent_id, source_task_path, root_dir, id_to_dir, used_dirs)
     if parent_id not in id_to_dir:
         # Make a path for this parent named after this source task
 
@@ -681,7 +681,9 @@ def choose_human_readable_directory(root_dir: str, source_task_path: str, parent
         id_to_dir[parent_id] = candidate
         used_dirs.add(candidate)
 
-    return os.path.join(root_dir, id_to_dir[parent_id])
+    result = os.path.join(root_dir, id_to_dir[parent_id])
+    logger.debug("Picked path %s", result)
+    return result
 
 
 def evaluate_output_decls(output_decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: ToilWDLStdLibBase) -> WDL.Env.Bindings[WDL.Value.Base]:
