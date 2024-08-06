@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Set
 import logging
 import pytest
 
+from toil.fileStores import FileID
 from toil.provisioners import cluster_factory
 from toil.test import (ToilTest,
                        needs_docker_cuda,
@@ -561,6 +562,37 @@ class WDLToilBenchTests(ToilTest):
         assert diff_id.startswith("root")
         assert "taskname" in diff_id
         assert "222-333-444" not in diff_id
+
+    def test_uri_packing(self):
+        """
+        Test to make sure Toil URI packing brings through the required information.
+        """
+
+        from toil.wdl.wdltoil import pack_toil_uri, unpack_toil_uri
+
+        # Set up a file
+        file_id = FileID("fileXYZ", 123, True)
+        task_path = "the_wf.the_task"
+        dir_id = uuid4()
+        file_basename = "thefile.txt"
+
+        # Pack and unpack it
+        uri = pack_toil_uri(file_id, task_path, dir_id, file_basename)
+        unpacked = unpack_toil_uri(uri)
+
+        # Make sure we got what we put in
+        self.assertEqual(unpacked[0], file_id)
+        self.assertEqual(unpacked[0].size, file_id.size)
+        self.assertEqual(unpacked[0].executable, file_id.executable)
+
+        self.assertEqual(unpacked[1], task_path)
+
+        # TODO: We don't make the UUIDs back into UUID objects
+        self.assertEqual(unpacked[2], str(dir_id))
+
+        self.assertEqual(unpacked[3], file_basename)
+
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests
