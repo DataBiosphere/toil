@@ -75,6 +75,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.killedJobsQueue = killedJobsQueue
             self.waitingJobs: List[JobTuple] = list()
             self.runningJobs = set()
+            # TODO: Why do we need a lock for this? We have the GIL.
             self.runningJobsLock = Lock()
             self.batchJobIDs: Dict[int, str] = dict()
             self._checkOnJobsCache = None
@@ -412,7 +413,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
     def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        local_id = self.handleLocalJob(command, jobDesc)
+        local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
             return local_id
         else:
@@ -509,6 +510,13 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         newJobsQueue.put(None)
         self.background_thread.join()
+
+        # Now in one thread, kill all the jobs
+        if len(self.background_thread.runningJobs) > 0:
+            logger.warning("Cleaning up %s jobs still running at shutdown", len(self.background_thread.runningJobs))
+        for job in self.background_thread.runningJobs:
+            self.killQueue.put(job)
+        self.background_thread.killJobs()
 
     def setEnv(self, name, value=None):
         if value and ',' in value:

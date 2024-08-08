@@ -21,6 +21,7 @@ from argparse import ArgumentParser, _ArgumentGroup, SUPPRESS
 from shlex import quote
 from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
 
+from toil.bus import get_job_kind
 from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
 from toil.batchSystems.abstractGridEngineBatchSystem import \
@@ -630,7 +631,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     # whole-node-memory feature.
     def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        local_id = self.handleLocalJob(command, jobDesc)
+        local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
             return local_id
         else:
