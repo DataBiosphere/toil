@@ -480,8 +480,9 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     # Parameters to limit service jobs / detect service deadlocks
     service_options = parser.add_argument_group(
         title="Toil options for limiting the number of service jobs and detecting service deadlocks",
-        description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
-                    "this limited we can avoid nodes occupied with services causing deadlocks."
+        description=SUPPRESS if cwl else "Allows the specification of the maximum number of service jobs in a cluster. "
+                                         "By keeping this limited we can avoid nodes occupied with services causing "
+                                         "deadlocks."
     )
     service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
                                  metavar="INT",
