@@ -761,7 +761,8 @@ class JobDescription(Requirer):
         jobName: str,
         unitName: Optional[str] = "",
         displayName: Optional[str] = "",        
-        local: Optional[bool] = None
+        local: Optional[bool] = None,
+        files: Optional[Set[FileID]] = None
     ) -> None:
         """
         Create a new JobDescription.
@@ -784,6 +785,7 @@ class JobDescription(Requirer):
         :param local: If True, the job is meant to use minimal resources but is
             sensitive to execution latency, and so should be executed by the
             leader.
+        :param files: Set of FileID objects that the job plans to use.
         """
         # Set requirements
         super().__init__(requirements)
@@ -892,6 +894,11 @@ class JobDescription(Requirer):
         self._job_version = 0
         # And we log who made the version (by PID)
         self._job_version_writer = 0
+
+        # Store FileIDs that the Job will want to use
+        # This currently does not serve much of a purpose except for debugging
+        # In the future, this can be used to improve job scheduling, see https://github.com/DataBiosphere/toil/issues/3071
+        self.files_to_use = files or set()
 
     def get_names(self) -> Names:
         """
@@ -1536,6 +1543,7 @@ class Job:
         displayName: Optional[str] = "",
         descriptionClass: Optional[type] = None,
         local: Optional[bool] = None,
+        files: Optional[Set[FileID]] = None
     ) -> None:
         """
         Job initializer.
@@ -1556,6 +1564,7 @@ class Job:
         :param displayName: Human-readable job type display name.
         :param descriptionClass: Override for the JobDescription class used to describe the job.
         :param local: if the job can be run on the leader.
+        :param files: Set of Files that the job will want to use.
 
         :type memory: int or string convertible by toil.lib.conversions.human2bytes to an int
         :type cores: float, int, or string convertible by toil.lib.conversions.human2bytes to an int
@@ -1594,7 +1603,8 @@ class Job:
             jobName,
             unitName=unitName,
             displayName=displayName,
-            local=local
+            local=local,
+            files=files
         )
 
         # Private class variables needed to actually execute a job, in the worker.
@@ -1717,6 +1727,20 @@ class Job:
     def checkpoint(self) -> bool:
         """Determine if the job is a checkpoint job or not."""
         return isinstance(self._description, CheckpointJobDescription)
+
+    @property
+    def files_to_use(self) -> Set[FileID]:
+        return self.description.files_to_use
+
+    @files_to_use.setter
+    def files_to_use(self, val: Set[FileID]):
+        self.description.files_to_use = val
+
+    def add_to_files_to_use(self, val: FileID):
+        self.description.files_to_use.add(val)
+
+    def remove_from_files_to_use(self, val: FileID):
+        self.description.files_to_use.remove(val)
 
     def assignConfig(self, config: Config) -> None:
         """
