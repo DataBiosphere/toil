@@ -1226,6 +1226,32 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
                 os.remove(filename)
         os.remove(srcUrl[7:])
 
+    def test_symlink_read_control(self):
+        """
+        Test that files are read by symlink when expected
+        """
+        
+        for should_link in (False, True):
+            # Configure a jobstore to symlink out reads or not, as appropriate
+            config = self._createConfig()
+            config.symlink_job_store_reads = should_link
+            store = FileJobStore(self.namePrefix + ("-link" if should_link else "-nolink"))
+            store.initialize(config)
+            
+            # Put something in the job store
+            src_url, _ = self._prepareTestFile(self._externalStore(), 1)
+            file_id = store.import_file(src_url, symlink=False)
+
+            # Read it out, accepting a symlink
+            dest_dir = self._createTempDir()
+            dest_path = os.path.join(dest_dir, "file.dat")
+            store.read_file(file_id, dest_path, symlink = True)
+
+            # Make sure we get a symlink exactly when configured to
+            assert os.path.exists(dest_path)
+            assert os.path.islink(dest_path) == should_link
+            
+
 
 @needs_google_project
 @needs_google_storage

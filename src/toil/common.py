@@ -169,6 +169,7 @@ class Config:
     caching: Optional[bool]
     symlinkImports: bool
     moveOutputs: bool
+    symlink_job_store_reads: bool
 
     # Autoscaling options
     provisioner: Optional[str]
@@ -338,6 +339,7 @@ class Config:
         set_option("symlinkImports", old_names=["linkImports"])
         set_option("moveOutputs", old_names=["moveExports"])
         set_option("caching", old_names=["enableCaching"])
+        set_option("symlink_job_store_reads")
 
         # Autoscaling options
         set_option("provisioner")
