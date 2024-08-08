@@ -626,6 +626,33 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
 
+    # Override issuing jobs so we can check if we need to use Slurm's magic
+    # whole-node-memory feature.
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        local_id = self.handleLocalJob(command, jobDesc)
+        if local_id is not None:
+            return local_id
+        else:
+            self.check_resource_request(job_desc)
+            gpus = self.count_needed_gpus(job_desc)
+            job_id = self.getNextJobID()
+            self.currentJobs.add(job_id)
+
+            if "memory" not in job_desc.requirements and self.boss.config.slurm_default_all_mem:
+                # The job doesn't have its own memory requirement, and we are
+                # defaulting to whole node memory. Use Slurm's 0-memory sentinel.
+                memory = 0
+            else:
+                # Use the memory actually on the job, or the TOil default memory
+                memory = job_desc.memory
+
+            self.newJobsQueue.put((job_id, job_desc.cores, memory, command, get_job_kind(job_desc.get_names()),
+                                   job_environment, gpus))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(job_id),
+                         get_job_kind(job_desc.get_names()))
+        return job_id
+
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu':
@@ -650,12 +677,15 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
 
         parser.add_argument("--slurmAllocateMem", dest="slurm_allocate_mem", type=strtobool, default=True, env_var="TOIL_SLURM_ALLOCATE_MEM",
-                            help="If False, do not use --mem. Used as a workaround for Slurm clusters that reject jobs"
+                            help="If False, do not use --mem. Used as a workaround for Slurm clusters that reject jobs "
                                  "with memory allocations.")
         # Keep these deprcated options for backward compatibility
         parser.add_argument("--dont_allocate_mem", action='store_false', dest="slurm_allocate_mem", help=SUPPRESS)
         parser.add_argument("--allocate_mem", action='store_true', dest="slurm_allocate_mem", help=SUPPRESS)
 
+        parser.add_argument("--slurmDefaultAllMem", dest="slurm_default_all_mem", type=strtobool, default=False, env_var="TOIL_SLURM_DEFAULT_ALL_MEM",
+                            help="If True, assign Toil jobs without their own memory requirements all available "
+                                 "memory on a Slurm node (via Slurm --mem=0).")
         parser.add_argument("--slurmTime", dest="slurm_time", type=parse_slurm_time, default=None, env_var="TOIL_SLURM_TIME",
                             help="Slurm job time limit, in [DD-]HH:MM:SS format.")
         parser.add_argument("--slurmPE", dest="slurm_pe", default=None, env_var="TOIL_SLURM_PE",

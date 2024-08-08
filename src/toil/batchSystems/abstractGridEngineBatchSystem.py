@@ -24,7 +24,7 @@ from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
-from toil.job import AcceleratorRequirement
+from toil.job import JobDescription, AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import old_retry, DEFAULT_DELAYS
 
@@ -396,28 +396,36 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls):
         return False
 
-    def issueBatchJob(self, command: str, jobDesc, job_environment: Optional[Dict[str, str]] = None):
-        # Avoid submitting internal jobs to the batch queue, handle locally
-        localID = self.handleLocalJob(command, jobDesc)
-        if localID is not None:
-            return localID
+    def count_needed_gpus(self, job_desc: JobDescription):
+        """
+        Count the number of cluster-allocateable GPUs we want to allocate for the given job.
+        """
+        gpus = 0
+        if isinstance(job_desc.accelerators, list):
+            for accelerator in job_desc.accelerators:
+                if accelerator['kind'] == 'gpu':
+                    gpus += accelerator['count']
         else:
-            self.check_resource_request(jobDesc)
-            jobID = self.getNextJobID()
-            self.currentJobs.add(jobID)
-            gpus = 0
-            if isinstance(jobDesc.accelerators, list):
-                for accelerator in jobDesc.accelerators:
-                    if accelerator['kind'] == 'gpu':
-                        gpus = accelerator['count']
-            else:
-                gpus = jobDesc.accelerators
+            gpus = job_desc.accelerators
+
+        return gpus
+
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        local_id = self.handleLocalJob(command, jobDesc)
+        if local_id is not None:
+            return local_id
+        else:
+            self.check_resource_request(job_desc)
+            gpus = self.count_needed_gpus(job_desc)
+            job_id = self.getNextJobID()
+            self.currentJobs.add(job_id)
             
-            self.newJobsQueue.put((jobID, jobDesc.cores, jobDesc.memory, command, get_job_kind(jobDesc.get_names()),
+            self.newJobsQueue.put((job_id, job_desc.cores, job_desc.memory, command, get_job_kind(job_desc.get_names()),
                                    job_environment, gpus))
-            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(jobID),
-                         get_job_kind(jobDesc.get_names()))
-        return jobID
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(job_id),
+                         get_job_kind(job_desc.get_names()))
+        return job_id
 
     def killBatchJobs(self, jobIDs):
         """

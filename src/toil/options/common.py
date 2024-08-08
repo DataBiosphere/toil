@@ -297,7 +297,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                    "shared between the containers.")
     core_options.add_argument("--coordinationDir", dest="coordination_dir", default=None,
                               env_var="TOIL_COORDINATION_DIR", action=CoordinationDirAction, metavar="PATH",
-                              help="Absolute path to directory where Toil will keep state and lock files."
+                              help="Absolute path to directory where Toil will keep state and lock files. "
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
     core_options.add_argument("--noStdOutErr", dest="noStdOutErr", default=False, action="store_true",
@@ -349,7 +349,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     link_imports_help = ("When using a filesystem based job store, CWL input files are by default symlinked in.  "
                          "Setting this option to True instead copies the files into the job store, which may protect "
                          "them from being modified externally.  When set to False, as long as caching is enabled, "
-                         "Toil will protect the file automatically by changing the permissions to read-only."
+                         "Toil will protect the file automatically by changing the permissions to read-only. "
                          "default=%(default)s")
     link_imports.add_argument("--symlinkImports", dest="symlinkImports", type=strtobool, default=True,
                               metavar="BOOL", help=link_imports_help)
