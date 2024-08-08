@@ -810,12 +810,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         Set up the standard library.
         
-        :param task_path: Dotted WDL name of the part of the wrokflow this library is working for.
+        :param task_path: Dotted WDL name of the part of the workflow this library is working for.
         :param execution_dir: Directory to use as the working directory for workflow code.
         :param enforce_existence: If true, then if a file is detected as
             nonexistent, raise an error. Else, let it pass through
-        :param share_files_with: Use the same file upload and download paths as
-            the provided standard library.
+        :param share_files_with: If set to an existing standard library
+            instance, use the same file upload and download paths as it.
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
@@ -1126,8 +1126,10 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         where standard output and error from the task have been stored, and
         what local paths to pretend are where for resolving symlinks.
 
-        If current_directory_override is set, resolves relative paths and globs
-        from there instead of from the real current directory.
+        :param current_directory_override: If set, resolves relative paths and
+            globs from there instead of from the real current directory.
+        :param share_files_with: If set to an existing standard library
+            instance, use the same file upload and download paths as it.
         """
 
         # Just set up as ToilWDLStdLibBase, but it will call into
@@ -2822,7 +2824,7 @@ class WDLWorkflowGraph:
 
 class WDLSectionJob(WDLBaseJob):
     """
-    Job that can create more graph for a section of the wrokflow.
+    Job that can create more graph for a section of the workflow.
     """
 
     def __init__(self, namespace: str, task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any) -> None:
