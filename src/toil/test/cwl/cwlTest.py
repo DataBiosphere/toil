@@ -451,6 +451,26 @@ class CWLWorkflowTest(ToilTest):
             except FileNotFoundError:
                 pass
 
+    @needs_slurm
+    def test_slurm_node_memory(self) -> None:
+        from toil.cwl import cwltoil
+
+        stdout = StringIO()
+        main_args = [
+            "--batchSystem=slurm",
+            "--no-cwl-default-ram",
+            "--slurmDefaultAllMem=True",
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, "src/toil/test/cwl/measure_default_memory.cwl"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/empty.json"),
+        ]
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
+        result = int(open(out["output"]["memory"][len("file://") :]).read())
+        # We should see more than the CWL default, assuming Slurm nodes of reasonable size.
+        self.assertGreaterThan(result, 1048576)
+
     @needs_aws_s3
     def test_download_s3(self) -> None:
         self.download("download_s3.json", self._tester)
