@@ -803,7 +803,7 @@ class ToilPathMapper(PathMapper):
         # wherever else we would stage it.
         # TODO: why would we do that?
         stagedir = cast(Optional[str], obj.get("dirname")) or stagedir
-        
+
         if obj["class"] not in ("File", "Directory"):
             # We only handle files and directories; only they have locations.
             return
@@ -992,7 +992,7 @@ class ToilPathMapper(PathMapper):
                     # reference, we just pass that along.
 
                     """Link or copy files to their targets. Create them as needed."""
-                    
+
                     logger.debug(
                         "ToilPathMapper adding file mapping %s -> %s", deref, tgt
                     )
@@ -2475,6 +2475,20 @@ class CWLJob(CWLNamedJob):
 
         req = tool.evalResources(self.builder, runtime_context)
 
+        tool_own_resources = tool.get_requirement("ResourceRequirement")[0] or {}
+        if "ramMin" in tool_own_resources or "ramMax" in tool_own_resources:
+            # The tool is actually asking for memory.
+            memory = int(req["ram"] * (2**20))
+        else:
+            # The tool is getting a default ram allocation.
+            if getattr(runtime_context, "cwl_default_ram"):
+                # We will respect the CWL spec and apply the default cwltool
+                # computed, which might be different than Toil's default.
+                memory = int(req["ram"] * (2**20))
+            else:
+                # We use a None requirement and the Toil default applies.
+                memory = None
+
         accelerators: Optional[List[AcceleratorRequirement]] = None
         if req.get("cudaDeviceCount", 0) > 0:
             # There's a CUDARequirement, which cwltool processed for us
@@ -2539,7 +2553,7 @@ class CWLJob(CWLNamedJob):
 
         super().__init__(
             cores=req["cores"],
-            memory=int(req["ram"] * (2**20)),
+            memory=memory,
             disk=int(total_disk),
             accelerators=accelerators,
             preemptible=preemptible,
@@ -3700,6 +3714,7 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     )
     runtime_context.workdir = workdir  # type: ignore[attr-defined]
     runtime_context.outdir = outdir
+    setattr(runtime_context, "cwl_default_ram", options.cwl_default_ram)
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
@@ -3738,11 +3753,14 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if options.restart:
                 outobj = toil.restart()
             else:
+                # TODO: why are we doing this? Does this get applied to all
+                # tools as a default or something?
                 loading_context.hints = [
                     {
                         "class": "ResourceRequirement",
                         "coresMin": toil.config.defaultCores,
-                        "ramMin": toil.config.defaultMemory / (2**20),
+                        # Don't include any RAM requirement because we want to
+                        # know when tools don't manually ask for RAM.
                         "outdirMin": toil.config.defaultDisk / (2**20),
                         "tmpdirMin": 0,
                     }

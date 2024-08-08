@@ -1067,7 +1067,6 @@ class Leader:
 
         return jobsRerunning
 
-
     #Following functions handle error cases for when jobs have gone awry with the batch system.
 
     def reissueOverLongJobs(self) -> None:

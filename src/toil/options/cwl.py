@@ -15,6 +15,9 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     :return: None
     """
     suppress_help = SUPPRESS if suppress else None
+
+    # These are options that we have to match cwltool
+    # TODO: Are there still any Toil-specific options in here?
     parser.add_argument("--not-strict", action="store_true", help=suppress_help)
     parser.add_argument(
         "--enable-dev",
@@ -75,8 +78,7 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Do not delete Docker container used by jobs after they exit",
         dest="rm_container",
     )
-    extra_dockergroup = parser.add_argument_group()
-    extra_dockergroup.add_argument(
+    parser.add_argument(
         "--custom-net",
         help=suppress_help or "Specify docker network name to pass to docker run command",
     )
@@ -133,11 +135,6 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help or "Preserve all environment variable when running CommandLineTools.",
         default=False,
         dest="preserve_entire_environment",
-    )
-    parser.add_argument(
-        "--destBucket",
-        type=str,
-        help=suppress_help or "Specify a cloud bucket endpoint for output files.",
     )
     parser.add_argument("--beta-dependency-resolvers-configuration", default=None, help=suppress_help)
     parser.add_argument("--beta-dependencies-directory", default=None, help=suppress_help)
@@ -257,30 +254,6 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
                               "section 'Running MPI-based tools' for details of the format: "
                               "https://github.com/common-workflow-language/cwltool#running-mpi-based-tools-that-need-to-be-launched",
     )
-    parser.add_argument(
-        "--bypass-file-store",
-        action="store_true",
-        default=False,
-        help=suppress_help or "Do not use Toil's file store and assume all "
-                              "paths are accessible in place from all nodes.",
-        dest="bypass_file_store",
-    )
-    parser.add_argument(
-        "--reference-inputs",
-        action="store_true",
-        default=False,
-        help=suppress_help or "Do not copy remote inputs into Toil's file "
-        "store and assume they are accessible in place from "
-        "all nodes.",
-        dest="reference_inputs",
-    )
-    parser.add_argument(
-        "--disable-streaming",
-        action="store_true",
-        default=False,
-        help=suppress_help or "Disable file streaming for files that have 'streamable' flag True",
-        dest="disable_streaming",
-    )
 
     provgroup = parser.add_argument_group(
         "Options for recording provenance information of the execution"
@@ -340,4 +313,49 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         dest="cwl_full_name",
         default=os.environ.get("CWL_FULL_NAME", ""),
         type=str,
+    )
+
+    # These are Toil-specific options
+    parser.add_argument(
+        "--bypass-file-store",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not use Toil's file store and assume all "
+                              "paths are accessible in place from all nodes.",
+        dest="bypass_file_store",
+    )
+    parser.add_argument(
+        "--reference-inputs",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Do not copy remote inputs into Toil's file "
+        "store and assume they are accessible in place from "
+        "all nodes.",
+        dest="reference_inputs",
+    )
+    parser.add_argument(
+        "--disable-streaming",
+        action="store_true",
+        default=False,
+        help=suppress_help or "Disable file streaming for files that have 'streamable' flag True.",
+        dest="disable_streaming",
+    )
+    ram_group = parser.add_mutually_exclusive_group() if not suppress_help else parser.add_argument_group()
+    ram_group.add_argument(
+        "--cwl-default-ram",
+        action="store_true",
+        default=True,
+        help=suppress_help or "Apply CWL specification default ramMin.",
+        dest="cwl_default_ram",
+    )
+    ram_group.add_argument(
+        "--no-cwl-default-ram",
+        action="store_false",
+        help=suppress_help or "Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies.",
+        dest="cwl_default_ram",
+    )
+    parser.add_argument(
+        "--destBucket",
+        type=str,
+        help=suppress_help or "Specify a cloud bucket endpoint for output files.",
     )
