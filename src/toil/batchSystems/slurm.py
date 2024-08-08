@@ -639,12 +639,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
 
-            if "memory" not in job_desc.requirements and self.boss.config.slurm_default_all_mem:
+            if "memory" not in job_desc.requirements and self.config.slurm_default_all_mem:  # type: ignore[attr-defined]
                 # The job doesn't have its own memory requirement, and we are
                 # defaulting to whole node memory. Use Slurm's 0-memory sentinel.
                 memory = 0
             else:
-                # Use the memory actually on the job, or the TOil default memory
+                # Use the memory actually on the job, or the Toil default memory
                 memory = job_desc.memory
 
             self.newJobsQueue.put((job_id, job_desc.cores, memory, command, get_job_kind(job_desc.get_names()),
@@ -698,6 +698,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("slurm_allocate_mem")
+        setOption("slurm_default_all_mem")
         setOption("slurm_time")
         setOption("slurm_pe")
         setOption("slurm_args")
