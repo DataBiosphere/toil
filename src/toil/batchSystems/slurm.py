@@ -27,7 +27,7 @@ from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATU
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
-from toil.job import Requirer
+from toil.job import JobDescription, Requirer
 from toil.lib.conversions import strtobool
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.statsAndLogging import TRACE
@@ -629,7 +629,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     # Override issuing jobs so we can check if we need to use Slurm's magic
     # whole-node-memory feature.
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
         # Avoid submitting internal jobs to the batch queue, handle locally
         local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
