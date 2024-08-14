@@ -47,6 +47,7 @@ from typing import (Any,
                     TypeVar,
                     Union,
                     cast)
+from mypy_extensions import Arg, DefaultArg
 from urllib.parse import quote, unquote, urljoin, urlsplit
 from functools import partial
 
@@ -3354,31 +3355,35 @@ def monkeypatch_coerce(standard_library: ToilWDLStdLibBase) -> Generator[None, N
     :param standard_library: a standard library object
     :return
     """
-    # We're doing this because while miniwdl recognizes when a string needs to be converted into a file, it's method of
+    # We're doing this because while miniwdl recognizes when a string needs to be converted into a file, its method of
     # conversion is to just store the local filepath. Toil needs to virtualize the file into the jobstore so until
-    # there is an internal entrypoint, monkeypatch it.
-    def base_coerce(self: WDL.Value.Base, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        if isinstance(desired_type, WDL.Type.File):
-            self.value = standard_library._virtualize_filename(self.value)
-            return self
-        return old_base_coerce(self, desired_type)  # old_coerce will recurse back into this monkey patched coerce
+    # there is a proper hook, monkeypatch it.
 
-    def string_coerce(self: WDL.Value.String, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
-        # Sometimes string coerce is called instead, so monkeypatch this one as well
-        if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Value.File):
-            if os.path.isfile(os.path.join(standard_library.execution_dir or ".", self.value)):
-                return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
-            else:
-                return WDL.Value.File(TOIL_NONEXISTENT_URI_SCHEME + self.value, self.expr)
-        return old_str_coerce(self, desired_type)
+    SelfType = TypeVar("SelfType", bound=WDL.Value.Base)
+    def make_coerce(old_coerce: Callable[[SelfType, Optional[WDL.Type.Base]], WDL.Value.Base]) -> Callable[[Arg(SelfType, 'self'), DefaultArg(Optional[WDL.Type.Base], 'desired_type')], WDL.Value.Base]:
+        """
+        Stamp out a replacement coerce method that calls the given original one.
+        """
+        def coerce(self: SelfType, desired_type: Optional[WDL.Type.Base] = None) -> WDL.Value.Base:
+            if isinstance(desired_type, WDL.Type.File) and not isinstance(self, WDL.Value.File):
+                # Coercing something to File.
+                if not is_url(self.value) and not os.path.isfile(os.path.join(standard_library.execution_dir or ".", self.value)):
+                    # It is a local file that isn't there.
+                    return WDL.Value.File(TOIL_NONEXISTENT_URI_SCHEME + self.value, self.expr)
+                else:
+                    # Virtualize normally
+                    return WDL.Value.File(standard_library._virtualize_filename(self.value), self.expr)
+            return old_coerce(self, desired_type)
+
+        return coerce
 
     old_base_coerce = WDL.Value.Base.coerce
     old_str_coerce = WDL.Value.String.coerce
     try:
         # Mypy does not like monkeypatching:
         # https://github.com/python/mypy/issues/2427#issuecomment-1419206807
-        WDL.Value.Base.coerce = base_coerce  # type: ignore[method-assign]
-        WDL.Value.String.coerce = string_coerce  # type: ignore[method-assign]
+        WDL.Value.Base.coerce = make_coerce(old_base_coerce)  # type: ignore[method-assign]
+        WDL.Value.String.coerce = make_coerce(old_str_coerce)  # type: ignore[method-assign]
         yield
     finally:
         WDL.Value.Base.coerce = old_base_coerce  # type: ignore[method-assign]

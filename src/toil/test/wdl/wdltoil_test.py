@@ -150,6 +150,21 @@ class WDLTests(BaseWDLTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
+    @needs_singularity_or_docker
+    def test_url_to_file(self):
+        """
+        Test if web URL strings can be coerced to usable Files.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/url_to_file.wdl')
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
+        result = json.loads(result_json)
+
+        assert 'url_to_file.first_line' in result
+        assert isinstance(result['url_to_file.first_line'], str)
+        self.assertEqual(result['url_to_file.first_line'], 'chr1\t248387328')
+
     def test_missing_output_directory(self):
         """
         Test if Toil can run a WDL workflow into a new directory.
