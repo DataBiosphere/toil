@@ -286,7 +286,7 @@ Allows configuring Toil's data storage.
                         to use a batch system that does not support
                         cleanup. Set to "true" if caching
                         is desired.
- --symlinkJobStoreReads BOOL
+  --symlinkJobStoreReads BOOL
                         Allow reads and container mounts from a JobStore's
                         shared filesystem directly via symlink. Can be turned
                         off if the shared filesystem can't support the IO load
