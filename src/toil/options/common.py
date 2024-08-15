@@ -357,7 +357,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     move_exports_help = ('When using a filesystem based job store, output files are by default moved to the '
                          'output directory, and a symlink to the moved exported file is created at the initial '
                          'location.  Setting this option to True instead copies the files into the output directory.  '
-                         'Applies to filesystem-based job stores only.'
+                         'Applies to filesystem-based job stores only. '
                          'default=%(default)s')
     move_exports.add_argument("--moveOutputs", dest="moveOutputs", type=strtobool, default=False, metavar="BOOL",
                               help=move_exports_help)
@@ -367,6 +367,11 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     caching.add_argument('--caching', dest='caching', type=opt_strtobool, default=None, metavar="BOOL",
                          help=caching_help)
     # default is None according to PR 4299, seems to be generated at runtime
+
+    file_store_options.add_argument("--symlinkJobStoreReads", dest="symlink_job_store_reads", type=strtobool, default=True,
+                                    metavar="BOOL",
+                                    help="Allow reads and container mounts from a JobStore's shared filesystem directly "
+                                         "via symlink. default=%(default)s")
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
