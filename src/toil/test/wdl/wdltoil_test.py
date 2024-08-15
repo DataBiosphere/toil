@@ -152,7 +152,6 @@ class WDLTests(BaseWDLTest):
         assert os.path.exists(result['ga4ghMd5.value'])
         assert os.path.basename(result['ga4ghMd5.value']) == 'md5sum.txt'
 
-    @needs_singularity_or_docker
     def test_url_to_file(self):
         """
         Test if web URL strings can be coerced to usable Files.
@@ -160,12 +159,50 @@ class WDLTests(BaseWDLTest):
         wdl = os.path.abspath('src/toil/test/wdl/testfiles/url_to_file.wdl')
 
         result_json = subprocess.check_output(
-            self.base_command + [wdl, '-o', self.output_dir, '--logDebug', '--retryCount=0'])
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
         result = json.loads(result_json)
 
         assert 'url_to_file.first_line' in result
         assert isinstance(result['url_to_file.first_line'], str)
         self.assertEqual(result['url_to_file.first_line'], 'chr1\t248387328')
+
+    def test_url_to_optional_file(self):
+        """
+        Test if missing and error-producing URLs are handled correctly for optional File? values.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/url_to_optional_file.wdl')
+
+        def run_for_code(code: int) -> dict:
+            """
+            Run a workflow coercing URL to File? where the URL returns the given status code.
+
+            Return the parsed output.
+            """
+            logger.info("Test optional file with HTTP code %s", code)
+            json_value = '{"url_to_optional_file.http_code": %d}' % code
+            result_json = subprocess.check_output(
+                self.base_command + [wdl, json_value, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
+            result = json.loads(result_json)
+            return result
+
+        # Check files that exist
+        result = run_for_code(200)
+        assert 'url_to_optional_file.out_file' in result
+        self.assertNotEqual(result['url_to_optional_file.out_file'], None)
+
+        for code in (404, 410):
+            # Check files that definitely don't
+            result = run_for_code(code)
+            assert 'url_to_optional_file.out_file' in result
+            self.assertEqual(result['url_to_optional_file.out_file'], None)
+
+        for code in (402, 418, 500, 502):
+            # Check that cases where the server refuses to say if the file
+            # exists stop the workflow.
+            with self.assertRaises(subprocess.CalledProcessError):
+                run_for_code(code)
+
+
 
     def test_missing_output_directory(self):
         """

@@ -48,6 +48,7 @@ from typing import (Any,
                     Union,
                     cast)
 from mypy_extensions import Arg, DefaultArg
+from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
 from functools import partial
 
@@ -810,7 +811,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     ) -> None:
         """
         Set up the standard library.
-        
+
         :param task_path: Dotted WDL name of the part of the workflow this library is working for.
         :param execution_dir: Directory to use as the working directory for workflow code.
         :param enforce_existence: If true, then if a file is detected as
@@ -875,7 +876,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         'devirtualize' filename passed to a read_* function: return a filename that can be open()ed
         on the local host.
         """
-        
+
         result = self.devirtualize_to(
             filename,
             self._file_store.localTempDir,
@@ -913,7 +914,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         The input filename could already be devirtualized. In this case, the filename
         should not be added to the cache
-        
+
         :param state: State dict which must be shared among successive calls into a dest_dir.
         :param enforce_existence: Raise an error if the file is nonexistent. Else, let it pass through.
         """
@@ -1489,6 +1490,7 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                     if not AbstractJobStore.url_exists(candidate_uri):
                         # Wasn't found there
                         continue
+
                     # Now we know this exists, so pass it through
                     return candidate_uri
                 else:
@@ -1500,12 +1502,16 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                         # Wasn't found there
                         continue
                     logger.info('Imported %s', candidate_uri)
-
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
                 logger.critical('Error: ' + str(e))
                 sys.exit(1)
+            except HTTPError as e:
+                # Something went wrong looking for it there.
+                logger.warning("Checked URL %s but got HTTP status %s", candidate_uri, e.code)
+                # Try the next location.
+                continue
             except Exception:
                 # Something went wrong besides the file not being found. Maybe
                 # we have no auth.
@@ -1562,13 +1568,18 @@ def drop_if_missing(value_type: WDL.Type.Base, filename: str, work_dir: str) -> 
     logger.debug("Consider file %s", filename)
 
     if is_url(filename):
-        if (not filename.startswith(TOIL_NONEXISTENT_URI_SCHEME)
-                and (filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename))):
-            # We assume anything in the filestore actually exists.
-            return filename
-        else:
-            logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
-            return None
+        try:
+            if (not filename.startswith(TOIL_NONEXISTENT_URI_SCHEME)
+                    and (filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename))):
+                # We assume anything in the filestore actually exists.
+                return filename
+            else:
+                logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
+                return None
+        except HTTPError as e:
+            # The error doesn't always include the URL in its message.
+            logger.error("File %s could not be checked for existence due to HTTP error %d", filename, e.code)
+            raise
     else:
         # Get the absolute path, not resolving symlinks
         effective_path = os.path.abspath(os.path.join(work_dir, filename))
@@ -1940,10 +1951,10 @@ class WDLTaskWrapperJob(WDLBaseJob):
             total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
-        
+
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
             # For old WDL versions, guess whether the task wants GPUs if not specified.
-            use_gpus = (runtime_bindings.has_binding('gpuCount') or 
+            use_gpus = (runtime_bindings.has_binding('gpuCount') or
                         runtime_bindings.has_binding('gpuType') or
                         runtime_bindings.has_binding('nvidiaDriverVersion'))
         else:
@@ -1952,7 +1963,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # truth on whether to use GPUs or not.
             # Fields such as gpuType and gpuCount will control what GPUs are provided.
             use_gpus = cast(WDL.Value.Boolean, runtime_bindings.get('gpu', WDL.Value.Boolean(False))).value
-            
+
         if use_gpus:
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
@@ -2037,7 +2048,7 @@ class WDLTaskJob(WDLBaseJob):
         Currently doesn't implement the MiniWDL plugin system, but does add
         resource usage monitoring to Docker containers.
         """
-        
+
         parts = []
 
         if isinstance(task_container, SwarmContainer):
@@ -3603,7 +3614,7 @@ def main() -> None:
                 output_bindings = toil.start(root_job)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
-            
+
             devirtualization_state: DirectoryNamingStateDict = {}
             devirtualized_to_virtualized: Dict[str, str] = dict()
             virtualized_to_devirtualized: Dict[str, str] = dict()
