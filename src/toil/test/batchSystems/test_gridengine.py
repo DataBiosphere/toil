@@ -4,7 +4,6 @@ from queue import Queue
 import pytest
 
 import toil.batchSystems.gridengine
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.abstractGridEngineBatchSystem import ExceededRetryAttempts
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
