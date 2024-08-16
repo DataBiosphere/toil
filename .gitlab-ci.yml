@@ -480,7 +480,7 @@ mesos:
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE != "schedule" # temp, remove at merge
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
@@ -490,7 +490,7 @@ cactus_integration:
           - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
   script:
-    - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
+    - export CACTUS_COMMIT_SHA=2d706d9c6637c85116533477693e6c73ed5b8a53
     - set -e
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
