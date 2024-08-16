@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 # Accelerator requirements for the job
 JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
 
+class ExceededRetryAttempts(Exception):
+    def __init__(self):
+        super().__init__("Exceeded retry attempts talking to scheduler.")
+
 class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
@@ -292,9 +296,9 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 for batch_job_id in batch_job_id_list:
                     statuses.append(self.boss.with_retries(self.getJobExitCode, batch_job_id))
             except CalledProcessErrorStderr as err:
-                # This avoids the nested retry issue where we could issue n^2 retries when the backing schedular somehow disappears
+                # This avoids the nested retry issue where we could issue n^2 retries when the backing scheduler somehow disappears
                 # We catch the internal retry exception and raise something else so the outer retry doesn't retry the entire function again
-                raise RuntimeError("Exceeded retry attempts talking to scheduler.") from err
+                raise ExceededRetryAttempts() from err
             return statuses
 
         @abstractmethod
