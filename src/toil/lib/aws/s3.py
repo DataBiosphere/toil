@@ -20,12 +20,32 @@ logger = logging.getLogger(__name__)
 
 
 @retry(errors=[AWSServerErrors])
-def head_s3_bucket(bucket: str, region: Optional[str] = None):
+def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None):
     """
-    Attempt to HEAD an s3 bucket and return its response.
+    Attempt to HEAD an s3 object and return its response.
 
     :param bucket: AWS bucket name
+    :param key:  AWS Key name for the s3 object
+    :param header: Headers to include (mostly for encryption).
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/head_object.html
     :param region: Region that we want to look for the bucket in
     """
     s3_client = session.client("s3", region_name=region)
-    return s3_client.head_bucket(Bucket=bucket)
+    return s3_client.head_object(Bucket=bucket, Key=key, **header)
+
+
+@retry(errors=[AWSServerErrors])
+def delete_s3_object(bucket: str, key: str, version: Optional[str], region: Optional[str] = None):
+    """
+    Attempt to DELETE an s3 object and return its response.
+
+    :param bucket: AWS bucket name
+    :param key:  AWS Key name for the s3 object
+    :param version: The object's version ID, if it exists
+    :param region: Region that we want to look for the bucket in
+    """
+    s3_client = session.client("s3", region_name=region)
+    if version:
+        return s3_client.delete_object(Bucket=bucket, Key=key, VersionId=version)
+    else:
+        return s3_client.delete_object(Bucket=bucket, Key=key)

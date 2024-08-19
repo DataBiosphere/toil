@@ -62,7 +62,7 @@ from toil.jobStores.aws.utils import (
     uploadFromPath,
 )
 from toil.jobStores.utils import ReadablePipe, ReadableTransformingPipe, WritablePipe
-from toil.lib.aws.s3 import head_s3_bucket
+from toil.lib.aws.s3 import head_s3_bucket, delete_s3_object
 from toil.lib.aws import build_tag_dict_from_env
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import (
@@ -505,15 +505,12 @@ class AWSJobStore(AbstractJobStore):
             for item in items:
                 item: "ItemTypeDef"
                 version = get_item_from_attributes(attributes=item["Attributes"], name="version")
-                for attempt in retry_s3():
-                    with attempt:
-                        if version:
-                            self.s3_client.delete_object(Bucket=self.files_bucket.name,
-                                                         Key=compat_bytes(item["Name"]),
-                                                         VersionId=version)
-                        else:
-                            self.s3_client.delete_object(Bucket=self.files_bucket.name,
-                                                         Key=compat_bytes(item["Name"]))
+                delete_s3_object(
+                    bucket=self.files_bucket.name,
+                    key=compat_bytes(item["Name"]),
+                    version=version,
+                    region=self.outer.region
+                )
 
     def get_empty_file_store_id(self, jobStoreID=None, cleanup=False, basename=None) -> FileID:
         info = self.FileInfo.create(jobStoreID if cleanup else None)
@@ -1182,11 +1179,12 @@ class AWSJobStore(AbstractJobStore):
                                                      Expected=expected)
                 # clean up the old version of the file if necessary and safe
                 if self.previousVersion and (self.previousVersion != self.version):
-                    for attempt in retry_s3():
-                        with attempt:
-                            self.outer.s3_client.delete_object(Bucket=self.outer.files_bucket.name,
-                                                               Key=compat_bytes(self.fileID),
-                                                               VersionId=self.previousVersion)
+                    delete_s3_object(
+                        bucket=self.outer.files_bucket.name,
+                        key=compat_bytes(self.fileID),
+                        version=self.previousVersion,
+                        region=self.outer.region
+                    )
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
@@ -1653,11 +1651,11 @@ class AWSJobStore(AbstractJobStore):
                                                    ItemName=compat_bytes(self.fileID),
                                                    Expected=expected)
                 if self.previousVersion:
-                    for attempt in retry_s3():
-                        with attempt:
-                            store.s3_client.delete_object(Bucket=store.files_bucket.name,
-                                                          Key=compat_bytes(self.fileID),
-                                                          VersionId=self.previousVersion)
+                    delete_s3_object(
+                        bucket=store.files_bucket.name,
+                        key=compat_bytes(self.fileID),
+                        version=self.previousVersion
+                    )
 
         def getSize(self):
             """
