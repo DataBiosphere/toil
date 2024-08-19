@@ -15,6 +15,19 @@ import collections
 import logging
 import os
 import threading
+
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    Literal,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
+
 import boto3
 import boto3.resources.base
 import botocore
@@ -24,12 +37,14 @@ from boto3 import Session
 from botocore.client import Config
 from botocore.session import get_session
 from botocore.utils import JSONFileCache
-from mypy_boto3_autoscaling import AutoScalingClient
-from mypy_boto3_ec2 import EC2Client, EC2ServiceResource
-from mypy_boto3_iam import IAMClient, IAMServiceResource
-from mypy_boto3_s3 import S3Client, S3ServiceResource
-from mypy_boto3_sdb import SimpleDBClient
-from mypy_boto3_sts import STSClient
+
+if TYPE_CHECKING:
+    from mypy_boto3_autoscaling import AutoScalingClient
+    from mypy_boto3_ec2 import EC2Client, EC2ServiceResource
+    from mypy_boto3_iam import IAMClient, IAMServiceResource
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_sdb import SimpleDBClient
+    from mypy_boto3_sts import STSClient
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +143,26 @@ class AWSConnectionManager:
         return cast(boto3.session.Session, storage.item)
 
     @overload
-    def resource(self, region: Optional[str], service_name: Literal["s3"], endpoint_url: Optional[str] = None) -> S3ServiceResource: ...
+    def resource(
+        self,
+        region: Optional[str],
+        service_name: Literal["s3"],
+        endpoint_url: Optional[str] = None,
+    ) -> "S3ServiceResource": ...
     @overload
-    def resource(self, region: Optional[str], service_name: Literal["iam"], endpoint_url: Optional[str] = None) -> IAMServiceResource: ...
+    def resource(
+        self,
+        region: Optional[str],
+        service_name: Literal["iam"],
+        endpoint_url: Optional[str] = None,
+    ) -> "IAMServiceResource": ...
     @overload
-    def resource(self, region: Optional[str], service_name: Literal["ec2"], endpoint_url: Optional[str] = None) -> EC2ServiceResource: ...
+    def resource(
+        self,
+        region: Optional[str],
+        service_name: Literal["ec2"],
+        endpoint_url: Optional[str] = None,
+    ) -> "EC2ServiceResource": ...
 
     def resource(self, region: Optional[str], service_name: str, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
         """
@@ -161,23 +191,53 @@ class AWSConnectionManager:
         return cast(boto3.resources.base.ServiceResource, storage.item)
 
     @overload
-    def client(self, region: Optional[str], service_name: Literal["ec2"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> EC2Client: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["ec2"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "EC2Client": ...
     @overload
-    def client(self, region: Optional[str], service_name: Literal["iam"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> IAMClient: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["iam"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "IAMClient": ...
     @overload
-    def client(self, region: Optional[str], service_name: Literal["s3"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> S3Client: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["s3"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "S3Client": ...
     @overload
-    def client(self, region: Optional[str], service_name: Literal["sts"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> STSClient: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["sts"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "STSClient": ...
     @overload
-    def client(self, region: Optional[str], service_name: Literal["sdb"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> SimpleDBClient: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["sdb"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "SimpleDBClient": ...
     @overload
-    def client(self, region: Optional[str], service_name: Literal["autoscaling"], endpoint_url: Optional[str] = None,
-               config: Optional[Config] = None) -> AutoScalingClient: ...
+    def client(
+        self,
+        region: Optional[str],
+        service_name: Literal["autoscaling"],
+        endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
+    ) -> "AutoScalingClient": ...
 
     def client(self, region: Optional[str], service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"], endpoint_url: Optional[str] = None,
                config: Optional[Config] = None) -> botocore.client.BaseClient:
@@ -227,17 +287,47 @@ def establish_boto3_session(region_name: Optional[str] = None) -> Session:
     return _global_manager.session(region_name)
 
 @overload
-def client(service_name: Literal["ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> EC2Client: ...
+def client(
+    service_name: Literal["ec2"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "EC2Client": ...
 @overload
-def client(service_name: Literal["iam"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> IAMClient: ...
+def client(
+    service_name: Literal["iam"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "IAMClient": ...
 @overload
-def client(service_name: Literal["s3"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> S3Client: ...
+def client(
+    service_name: Literal["s3"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "S3Client": ...
 @overload
-def client(service_name: Literal["sts"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> STSClient: ...
+def client(
+    service_name: Literal["sts"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "STSClient": ...
 @overload
-def client(service_name: Literal["sdb"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> SimpleDBClient: ...
+def client(
+    service_name: Literal["sdb"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "SimpleDBClient": ...
 @overload
-def client(service_name: Literal["autoscaling"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> AutoScalingClient: ...
+def client(
+    service_name: Literal["autoscaling"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
+) -> "AutoScalingClient": ...
 
 def client(service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None, config: Optional[Config] = None) -> botocore.client.BaseClient:
     """
@@ -250,11 +340,23 @@ def client(service_name: Literal["ec2", "iam", "s3", "sts", "sdb", "autoscaling"
     return _global_manager.client(region_name, service_name, endpoint_url=endpoint_url, config=config)
 
 @overload
-def resource(service_name: Literal["s3"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> S3ServiceResource: ...
+def resource(
+    service_name: Literal["s3"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+) -> "S3ServiceResource": ...
 @overload
-def resource(service_name: Literal["iam"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> IAMServiceResource: ...
+def resource(
+    service_name: Literal["iam"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+) -> "IAMServiceResource": ...
 @overload
-def resource(service_name: Literal["ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> EC2ServiceResource: ...
+def resource(
+    service_name: Literal["ec2"],
+    region_name: Optional[str] = None,
+    endpoint_url: Optional[str] = None,
+) -> "EC2ServiceResource": ...
 
 def resource(service_name: Literal["s3", "iam", "ec2"], region_name: Optional[str] = None, endpoint_url: Optional[str] = None) -> boto3.resources.base.ServiceResource:
     """

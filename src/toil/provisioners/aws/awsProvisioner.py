@@ -24,72 +24,96 @@ import time
 import uuid
 from functools import wraps
 from shlex import quote
-from typing import (Any,
-                    Callable,
-                    Collection,
-                    Dict,
-                    Iterable,
-                    List,
-                    Optional,
-                    Set,
-                    Union,
-                    Literal,
-                    cast,
-                    TypeVar)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Set,
+    TypeVar,
+    Union,
+    cast,
+)
 from urllib.parse import unquote
 # We need these to exist as attributes we can get off of the boto object
 from botocore.exceptions import ClientError
-from mypy_boto3_autoscaling.client import AutoScalingClient
-from mypy_boto3_ec2.service_resource import Instance
-from mypy_boto3_iam.type_defs import InstanceProfileTypeDef, RoleTypeDef, ListRolePoliciesResponseTypeDef
-from mypy_extensions import VarArg, KwArg
+from mypy_extensions import KwArg, VarArg
 
-from toil.lib.aws import zone_to_region, AWSRegionName, AWSServerErrors
+from toil.lib.aws import AWSRegionName, AWSServerErrors, zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
-from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
-                              get_policy_permissions,
-                              policy_permissions_allow)
+from toil.lib.aws.iam import (
+    CLUSTER_LAUNCHING_PERMISSIONS,
+    get_policy_permissions,
+    policy_permissions_allow,
+)
 from toil.lib.aws.session import AWSConnectionManager
-
 from toil.lib.aws.s3 import create_s3_bucket
 from toil.lib.aws.utils import flatten_tags, boto3_pager
+from toil.lib.aws.session import client as get_client
 from toil.lib.conversions import human2bytes
-from toil.lib.ec2 import (a_short_time,
-                          create_auto_scaling_group,
-                          create_instances,
-                          create_launch_template,
-                          create_ondemand_instances,
-                          increase_instance_hop_limit,
-                          create_spot_instances,
-                          wait_instances_running,
-                          wait_transition,
-                          wait_until_instance_profile_arn_exists)
+from toil.lib.ec2 import (
+    a_short_time,
+    create_auto_scaling_group,
+    create_instances,
+    create_launch_template,
+    create_ondemand_instances,
+    create_spot_instances,
+    increase_instance_hop_limit,
+    wait_instances_running,
+    wait_transition,
+    wait_until_instance_profile_arn_exists,
+)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import (ErrorCondition,
-                            get_error_body,
-                            get_error_code,
-                            get_error_message,
-                            get_error_status,
-                            old_retry,
-                            retry)
-from toil.provisioners import (ClusterCombinationNotSupportedException,
-                               NoSuchClusterException,
-                               NoSuchZoneException)
-from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
-                                                   ManagedNodesNotSupportedException,
-                                                   Shape)
+from toil.lib.retry import (
+    ErrorCondition,
+    get_error_body,
+    get_error_code,
+    get_error_message,
+    get_error_status,
+    old_retry,
+    retry,
+)
+from toil.provisioners import (
+    ClusterCombinationNotSupportedException,
+    NoSuchClusterException,
+    NoSuchZoneException,
+)
+from toil.provisioners.abstractProvisioner import (
+    AbstractProvisioner,
+    ManagedNodesNotSupportedException,
+    Shape,
+)
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
-from toil.lib.aws.session import client as get_client
 
-from mypy_boto3_ec2.client import EC2Client
-from mypy_boto3_iam.client import IAMClient
-from mypy_boto3_ec2.type_defs import DescribeInstancesResultTypeDef, InstanceTypeDef, TagTypeDef, BlockDeviceMappingTypeDef, EbsBlockDeviceTypeDef, FilterTypeDef, SpotInstanceRequestTypeDef, TagDescriptionTypeDef, SecurityGroupTypeDef, \
-    CreateSecurityGroupResultTypeDef, IpPermissionTypeDef, ReservationTypeDef
-from mypy_boto3_s3.literals import BucketLocationConstraintType
+if TYPE_CHECKING:
+    from mypy_boto3_autoscaling.client import AutoScalingClient
+    from mypy_boto3_ec2.client import EC2Client
+    from mypy_boto3_ec2.service_resource import Instance
+    from mypy_boto3_ec2.type_defs import (
+        BlockDeviceMappingTypeDef,
+        CreateSecurityGroupResultTypeDef,
+        DescribeInstancesResultTypeDef,
+        EbsBlockDeviceTypeDef,
+        FilterTypeDef,
+        InstanceTypeDef,
+        IpPermissionTypeDef,
+        ReservationTypeDef,
+        SecurityGroupTypeDef,
+        SpotInstanceRequestTypeDef,
+        TagDescriptionTypeDef,
+        TagTypeDef,
+    )
+    from mypy_boto3_iam.client import IAMClient
+    from mypy_boto3_iam.type_defs import InstanceProfileTypeDef, RoleTypeDef
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -161,7 +185,9 @@ def awsRetry(f: Callable[..., F]) -> Callable[..., F]:
     return wrapper
 
 
-def awsFilterImpairedNodes(nodes: List[InstanceTypeDef], boto3_ec2: EC2Client) -> List[InstanceTypeDef]:
+def awsFilterImpairedNodes(
+    nodes: List["InstanceTypeDef"], boto3_ec2: "EC2Client"
+) -> List["InstanceTypeDef"]:
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
     # failing status checks so they can be debugged
     nodeDebug = os.environ.get('TOIL_AWS_NODE_DEBUG') in ('True', 'TRUE', 'true', True)
@@ -181,10 +207,10 @@ class InvalidClusterStateException(Exception):
     pass
 
 
-def collapse_tags(instance_tags: List[TagTypeDef]) -> Dict[str, str]:
+def collapse_tags(instance_tags: List["TagTypeDef"]) -> Dict[str, str]:
     """
     Collapse tags from boto3 format to node format
-    :param instance_tags: tags as list of TagTypeDef
+    :param instance_tags: tags as a list
     :return: Dict of tags
     """
     collapsed_tags: Dict[str, str] = dict()
@@ -254,8 +280,11 @@ class AWSProvisioner(AbstractProvisioner):
         the instance is the leader.
         """
         from ec2_metadata import ec2_metadata
-        boto3_ec2 = self.aws.client(self._region, 'ec2')
-        instance: InstanceTypeDef = boto3_ec2.describe_instances(InstanceIds=[ec2_metadata.instance_id])["Reservations"][0]["Instances"][0]
+
+        boto3_ec2 = self.aws.client(self._region, "ec2")
+        instance: "InstanceTypeDef" = boto3_ec2.describe_instances(
+            InstanceIds=[ec2_metadata.instance_id]
+        )["Reservations"][0]["Instances"][0]
         # The cluster name is the same as the name of the leader.
         self.clusterName: str = "default-toil-cluster-name"
         for tag in instance["Tags"]:
@@ -416,18 +445,20 @@ class AWSProvisioner(AbstractProvisioner):
         leader_tags[_TAG_KEY_TOIL_NODE_TYPE] = 'leader'
         logger.debug('Launching leader with tags: %s', leader_tags)
 
-        instances: List[Instance] = create_instances(self.aws.resource(self._region, 'ec2'),
-                                                     image_id=self._discoverAMI(),
-                                                     num_instances=1,
-                                                     key_name=self._keyName,
-                                                     security_group_ids=createdSGs + (awsEc2ExtraSecurityGroupIds or []),
-                                                     instance_type=leader_type.name,
-                                                     user_data=userData,
-                                                     block_device_map=bdms,
-                                                     instance_profile_arn=profileArn,
-                                                     placement_az=self._zone,
-                                                     subnet_id=self._leader_subnet,
-                                                     tags=leader_tags)
+        instances: List["Instance"] = create_instances(
+            self.aws.resource(self._region, "ec2"),
+            image_id=self._discoverAMI(),
+            num_instances=1,
+            key_name=self._keyName,
+            security_group_ids=createdSGs + (awsEc2ExtraSecurityGroupIds or []),
+            instance_type=leader_type.name,
+            user_data=userData,
+            block_device_map=bdms,
+            instance_profile_arn=profileArn,
+            placement_az=self._zone,
+            subnet_id=self._leader_subnet,
+            tags=leader_tags,
+        )
 
         # wait for the leader to exist at all
         leader = instances[0]
@@ -516,16 +547,11 @@ class AWSProvisioner(AbstractProvisioner):
         acls = set(self._get_subnet_acls(base_subnet_id))
 
         # Compose a filter that selects the subnets we might want
-        filters: List[FilterTypeDef] = [{
-            'Name': 'vpc-id',
-            'Values': [vpc_id]
-        }, {
-            'Name': 'default-for-az',
-            'Values': ['true' if is_default else 'false']
-        }, {
-            'Name': 'state',
-            'Values': ['available']
-        }]
+        filters: List["FilterTypeDef"] = [
+            {"Name": "vpc-id", "Values": [vpc_id]},
+            {"Name": "default-for-az", "Values": ["true" if is_default else "false"]},
+            {"Name": "state", "Values": ["available"]},
+        ]
 
         # Fill in this collection
         by_az: Dict[str, List[str]] = {}
@@ -579,13 +605,10 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Compose a filter that selects the default subnet in the AZ
-        filters: List[FilterTypeDef] = [{
-            'Name': 'default-for-az',
-            'Values': ['true']
-        }, {
-            'Name': 'availability-zone',
-            'Values': [zone]
-        }]
+        filters: List["FilterTypeDef"] = [
+            {"Name": "default-for-az", "Values": ["true"]},
+            {"Name": "availability-zone", "Values": [zone]},
+        ]
 
         for subnet in self.aws.resource(zone_to_region(zone), 'ec2').subnets.filter(Filters=filters):
             # There should only be one result, so when we see it, return it
@@ -686,7 +709,9 @@ class AWSProvisioner(AbstractProvisioner):
         removed = False
         instances = self._get_nodes_in_cluster_boto3(include_stopped_nodes=True)
         spotIDs = self._getSpotRequestIDs()
-        boto3_ec2: EC2Client = self.aws.client(region=self._region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=self._region, service_name="ec2"
+        )
         if spotIDs:
             boto3_ec2.cancel_spot_instance_requests(SpotInstanceRequestIds=spotIDs)
             # self.aws.boto2(self._region, 'ec2').cancel_spot_instance_requests(request_ids=spotIDs)
@@ -729,7 +754,9 @@ class AWSProvisioner(AbstractProvisioner):
             removed = False
             for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
-                    security_groups: List[SecurityGroupTypeDef] = boto3_ec2.describe_security_groups()["SecurityGroups"]
+                    security_groups: List["SecurityGroupTypeDef"] = (
+                        boto3_ec2.describe_security_groups()["SecurityGroups"]
+                    )
                     for security_group in security_groups:
                         # TODO: If we terminate the leader and the workers but
                         # miss the security group, we won't find it now because
@@ -893,7 +920,7 @@ class AWSProvisioner(AbstractProvisioner):
                             },
                             'SubnetId': subnet_id}
 
-        instancesLaunched: List[InstanceTypeDef] = []
+        instancesLaunched: List["InstanceTypeDef"] = []
 
         for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
@@ -908,16 +935,26 @@ class AWSProvisioner(AbstractProvisioner):
                 else:
                     logger.debug('Launching %s preemptible nodes', numNodes)
                     # force generator to evaluate
-                    generatedInstancesLaunched: List[DescribeInstancesResultTypeDef] = list(create_spot_instances(boto3_ec2=boto3_ec2,
-                                                                                                                  price=spotBid,
-                                                                                                                  image_id=self._discoverAMI(),
-                                                                                                                  tags={_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName},
-                                                                                                                  spec=spot_kwargs,
-                                                                                                                  num_instances=numNodes,
-                                                                                                                  tentative=True)
-                                                                                            )
+                    generatedInstancesLaunched: List[
+                        "DescribeInstancesResultTypeDef"
+                    ] = list(
+                        create_spot_instances(
+                            boto3_ec2=boto3_ec2,
+                            price=spotBid,
+                            image_id=self._discoverAMI(),
+                            tags={_TAG_KEY_TOIL_CLUSTER_NAME: self.clusterName},
+                            spec=spot_kwargs,
+                            num_instances=numNodes,
+                            tentative=True,
+                        )
+                    )
                     # flatten the list
-                    flatten_reservations: List[ReservationTypeDef] = [reservation for subdict in generatedInstancesLaunched for reservation in subdict["Reservations"] for key, value in subdict.items()]
+                    flatten_reservations: List["ReservationTypeDef"] = [
+                        reservation
+                        for subdict in generatedInstancesLaunched
+                        for reservation in subdict["Reservations"]
+                        for key, value in subdict.items()
+                    ]
                     # get a flattened list of all requested instances, as before instancesLaunched is a dict of reservations which is a dict of instance requests
                     instancesLaunched = [instance for instances in flatten_reservations for instance in instances['Instances']]
 
@@ -963,9 +1000,11 @@ class AWSProvisioner(AbstractProvisioner):
     def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
         assert self._leaderPrivateIP
         entireCluster = self._get_nodes_in_cluster_boto3(instance_type=instance_type)
-        logger.debug('All nodes in cluster: %s', entireCluster)
-        workerInstances: List[InstanceTypeDef] = [i for i in entireCluster if i["PrivateIpAddress"] != self._leaderPrivateIP]
-        logger.debug('All workers found in cluster: %s', workerInstances)
+        logger.debug("All nodes in cluster: %s", entireCluster)
+        workerInstances: List["InstanceTypeDef"] = [
+            i for i in entireCluster if i["PrivateIpAddress"] != self._leaderPrivateIP
+        ]
+        logger.debug("All workers found in cluster: %s", workerInstances)
         if preemptible is not None:
             workerInstances = [i for i in workerInstances if preemptible == (i["SpotInstanceRequestId"] is not None)]
             logger.debug('%spreemptible workers found in cluster: %s', 'non-' if not preemptible else '', workerInstances)
@@ -1013,13 +1052,14 @@ class AWSProvisioner(AbstractProvisioner):
         denamespaced = '/' + '_'.join(s.replace('_', '/') for s in namespaced_name.split('__'))
         return denamespaced.startswith(self._toNameSpace())
 
-    def _getLeaderInstanceBoto3(self) -> InstanceTypeDef:
+    def _getLeaderInstanceBoto3(self) -> "InstanceTypeDef":
         """
         Get the Boto 3 instance for the cluster's leader.
-        :return: InstanceTypeDef
         """
         # Tags are stored differently in Boto 3
-        instances: List[InstanceTypeDef] = self._get_nodes_in_cluster_boto3(include_stopped_nodes=True)
+        instances: List["InstanceTypeDef"] = self._get_nodes_in_cluster_boto3(
+            include_stopped_nodes=True
+        )
         instances.sort(key=lambda x: x["LaunchTime"])
         try:
             leader = instances[0]  # assume leader was launched first
@@ -1037,14 +1077,14 @@ class AWSProvisioner(AbstractProvisioner):
             )
         return leader
 
-    def _getLeaderInstance(self) -> InstanceTypeDef:
+    def _getLeaderInstance(self) -> "InstanceTypeDef":
         """
         Get the Boto 2 instance for the cluster's leader.
         """
         instances = self._get_nodes_in_cluster_boto3(include_stopped_nodes=True)
         instances.sort(key=lambda x: x["LaunchTime"])
         try:
-            leader: InstanceTypeDef = instances[0]  # assume leader was launched first
+            leader: "InstanceTypeDef" = instances[0]  # assume leader was launched first
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
         tagged_node_type: str = 'leader'
@@ -1064,7 +1104,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         Get the leader for the cluster as a Toil Node object.
         """
-        leader: InstanceTypeDef = self._getLeaderInstanceBoto3()
+        leader: "InstanceTypeDef" = self._getLeaderInstanceBoto3()
 
         leaderNode = Node(publicIP=leader["PublicIpAddress"], privateIP=leader["PrivateIpAddress"],
                           name=leader["InstanceId"], launchTime=leader["LaunchTime"], nodeType=None,
@@ -1080,20 +1120,27 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     @awsRetry
-    def _addTag(cls, boto3_ec2: EC2Client, instance: InstanceTypeDef, key: str, value: str) -> None:
-        if instance.get('Tags') is None:
-            instance['Tags'] = []
-        new_tag: TagTypeDef = {"Key": key, "Value": value}
+    def _addTag(
+        cls, boto3_ec2: "EC2Client", instance: "InstanceTypeDef", key: str, value: str
+    ) -> None:
+        if instance.get("Tags") is None:
+            instance["Tags"] = []
+        new_tag: "TagTypeDef" = {"Key": key, "Value": value}
         boto3_ec2.create_tags(Resources=[instance["InstanceId"]], Tags=[new_tag])
 
     @classmethod
-    def _addTags(cls, boto3_ec2: EC2Client, instances: List[InstanceTypeDef], tags: Dict[str, str]) -> None:
+    def _addTags(
+        cls,
+        boto3_ec2: "EC2Client",
+        instances: List["InstanceTypeDef"],
+        tags: Dict[str, str],
+    ) -> None:
         for instance in instances:
             for key, value in tags.items():
                 cls._addTag(boto3_ec2, instance, key, value)
 
     @classmethod
-    def _waitForIP(cls, instance: InstanceTypeDef) -> None:
+    def _waitForIP(cls, instance: "InstanceTypeDef") -> None:
         """
         Wait until the instances has a public IP address assigned to it.
 
@@ -1106,7 +1153,7 @@ class AWSProvisioner(AbstractProvisioner):
                 logger.debug('...got ip')
                 break
 
-    def _terminateInstances(self, instances: List[InstanceTypeDef]) -> None:
+    def _terminateInstances(self, instances: List["InstanceTypeDef"]) -> None:
         instanceIDs = [x["InstanceId"] for x in instances]
         self._terminateIDs(instanceIDs)
         logger.info('... Waiting for instance(s) to shut down...')
@@ -1163,14 +1210,18 @@ class AWSProvisioner(AbstractProvisioner):
                     logger.debug('... Succesfully deleted instance profile %s', profile_name)
 
     @classmethod
-    def _getBoto3BlockDeviceMapping(cls, type_info: InstanceType, rootVolSize: int = 50) -> List[BlockDeviceMappingTypeDef]:
+    def _getBoto3BlockDeviceMapping(
+        cls, type_info: InstanceType, rootVolSize: int = 50
+    ) -> List["BlockDeviceMappingTypeDef"]:
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
         bdtKeys = [''] + [f'/dev/xvd{c}' for c in string.ascii_lowercase[1:]]
-        bdm_list: List[BlockDeviceMappingTypeDef] = []
+        bdm_list: List["BlockDeviceMappingTypeDef"] = []
         # Change root volume size to allow for bigger Docker instances
-        root_vol: EbsBlockDeviceTypeDef = {"DeleteOnTermination": True,
-                                           "VolumeSize": rootVolSize}
-        bdm: BlockDeviceMappingTypeDef = {"DeviceName": "/dev/xvda", "Ebs": root_vol}
+        root_vol: "EbsBlockDeviceTypeDef" = {
+            "DeleteOnTermination": True,
+            "VolumeSize": rootVolSize,
+        }
+        bdm: "BlockDeviceMappingTypeDef" = {"DeviceName": "/dev/xvda", "Ebs": root_vol}
         bdm_list.append(bdm)
         # The first disk is already attached for us so start with 2nd.
         # Disk count is weirdly a float in our instance database, so make it an int here.
@@ -1186,20 +1237,24 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm_list
 
     @classmethod
-    def _getBoto3BlockDeviceMappings(cls, type_info: InstanceType, rootVolSize: int = 50) -> List[BlockDeviceMappingTypeDef]:
+    def _getBoto3BlockDeviceMappings(
+        cls, type_info: InstanceType, rootVolSize: int = 50
+    ) -> List["BlockDeviceMappingTypeDef"]:
         """
         Get block device mappings for the root volume for a worker.
         """
 
         # Start with the root
-        bdms: List[BlockDeviceMappingTypeDef] = [{
-            'DeviceName': '/dev/xvda',
-            'Ebs': {
-                'DeleteOnTermination': True,
-                'VolumeSize': rootVolSize,
-                'VolumeType': 'gp2'
+        bdms: List["BlockDeviceMappingTypeDef"] = [
+            {
+                "DeviceName": "/dev/xvda",
+                "Ebs": {
+                    "DeleteOnTermination": True,
+                    "VolumeSize": rootVolSize,
+                    "VolumeType": "gp2",
+                },
             }
-        }]
+        ]
 
         # Get all the virtual drives we might have
         bdtKeys = [f'/dev/xvd{c}' for c in string.ascii_lowercase]
@@ -1217,21 +1272,30 @@ class AWSProvisioner(AbstractProvisioner):
         return bdms
 
     @awsRetry
-    def _get_nodes_in_cluster_boto3(self, instance_type: Optional[str] = None, include_stopped_nodes: bool = False) -> List[InstanceTypeDef]:
+    def _get_nodes_in_cluster_boto3(
+        self, instance_type: Optional[str] = None, include_stopped_nodes: bool = False
+    ) -> List["InstanceTypeDef"]:
         """
         Get Boto3 instance objects for all nodes in the cluster.
         """
-        boto3_ec2: EC2Client = self.aws.client(region=self._region, service_name='ec2')
-        instance_filter: FilterTypeDef = {'Name': 'instance.group-name', 'Values': [self.clusterName]}
-        describe_response: DescribeInstancesResultTypeDef = boto3_ec2.describe_instances(Filters=[instance_filter])
-        all_instances: List[InstanceTypeDef] = []
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=self._region, service_name="ec2"
+        )
+        instance_filter: "FilterTypeDef" = {
+            "Name": "instance.group-name",
+            "Values": [self.clusterName],
+        }
+        describe_response: "DescribeInstancesResultTypeDef" = (
+            boto3_ec2.describe_instances(Filters=[instance_filter])
+        )
+        all_instances: List["InstanceTypeDef"] = []
         for reservation in describe_response['Reservations']:
             instances = reservation['Instances']
             all_instances.extend(instances)
 
         # all_instances = self.aws.boto2(self._region, 'ec2').get_only_instances(filters={'instance.group-name': self.clusterName})
 
-        def instanceFilter(i: InstanceTypeDef) -> bool:
+        def instanceFilter(i: "InstanceTypeDef") -> bool:
             # filter by type only if nodeType is true
             rightType = not instance_type or i['InstanceType'] == instance_type
             rightState = i['State']['Name'] == 'running' or i['State']['Name'] == 'pending'
@@ -1247,11 +1311,18 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        ec2: EC2Client = self.aws.client(self._region, 'ec2')
+        ec2: "EC2Client" = self.aws.client(self._region, "ec2")
 
-        requests: List[SpotInstanceRequestTypeDef] = ec2.describe_spot_instance_requests()["SpotInstanceRequests"]
-        tag_filter: FilterTypeDef = {"Name": "tag:" + _TAG_KEY_TOIL_CLUSTER_NAME, "Values": [self.clusterName]}
-        tags: List[TagDescriptionTypeDef] = ec2.describe_tags(Filters=[tag_filter])["Tags"]
+        requests: List["SpotInstanceRequestTypeDef"] = (
+            ec2.describe_spot_instance_requests()["SpotInstanceRequests"]
+        )
+        tag_filter: "FilterTypeDef" = {
+            "Name": "tag:" + _TAG_KEY_TOIL_CLUSTER_NAME,
+            "Values": [self.clusterName],
+        }
+        tags: List["TagDescriptionTypeDef"] = ec2.describe_tags(Filters=[tag_filter])[
+            "Tags"
+        ]
         idsToCancel = [tag["ResourceId"] for tag in tags]
         return [request["SpotInstanceRequestId"] for request in requests if request["InstanceId"] in idsToCancel]
 
@@ -1265,7 +1336,9 @@ class AWSProvisioner(AbstractProvisioner):
 
         # Grab the connection we need to use for this operation.
         # The VPC connection can do anything the EC2 one can do, but also look at subnets.
-        boto3_ec2: EC2Client = self.aws.client(region=self._region, service_name="ec2")
+        boto3_ec2: "EC2Client" = self.aws.client(
+            region=self._region, service_name="ec2"
+        )
 
         vpc_id = None
         if self._leader_subnet:
@@ -1280,7 +1353,7 @@ class AWSProvisioner(AbstractProvisioner):
             if vpc_id is not None:
                 other["VpcId"] = vpc_id
             # mypy stubs don't explicitly state kwargs even though documentation allows it, and mypy gets confused
-            web_response: CreateSecurityGroupResultTypeDef = boto3_ec2.create_security_group(**other)  # type: ignore[arg-type]
+            web_response: "CreateSecurityGroupResultTypeDef" = boto3_ec2.create_security_group(**other)  # type: ignore[arg-type]
         except ClientError as e:
             if get_error_status(e) == 400 and 'already exists' in get_error_body(e):
                 pass
@@ -1289,13 +1362,15 @@ class AWSProvisioner(AbstractProvisioner):
         else:
             for attempt in old_retry(predicate=group_not_found, timeout=300):
                 with attempt:
-                    ip_permissions: List[IpPermissionTypeDef] = [{"IpProtocol": "tcp",
-                                                                  "FromPort": 22,
-                                                                  "ToPort": 22,
-                                                                  "IpRanges": [
-                                                                      {"CidrIp": "0.0.0.0/0"}
-                                                                  ],
-                                                                  "Ipv6Ranges": [{"CidrIpv6": "::/0"}]}]
+                    ip_permissions: List["IpPermissionTypeDef"] = [
+                        {
+                            "IpProtocol": "tcp",
+                            "FromPort": 22,
+                            "ToPort": 22,
+                            "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+                            "Ipv6Ranges": [{"CidrIpv6": "::/0"}],
+                        }
+                    ]
                     for protocol in ("tcp", "udp"):
                         ip_permissions.append({"IpProtocol": protocol,
                                                "FromPort": 0,
@@ -1326,7 +1401,9 @@ class AWSProvisioner(AbstractProvisioner):
                     sg["GroupId"] in self._leaderSecurityGroupIDs)]
 
     @awsRetry
-    def _get_launch_template_ids(self, filters: Optional[List[FilterTypeDef]] = None) -> List[str]:
+    def _get_launch_template_ids(
+        self, filters: Optional[List["FilterTypeDef"]] = None
+    ) -> List[str]:
         """
         Find all launch templates associated with the cluster.
 
@@ -1334,10 +1411,12 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        ec2: EC2Client = self.aws.client(self._region, 'ec2')
+        ec2: "EC2Client" = self.aws.client(self._region, "ec2")
 
         # How do we match the right templates?
-        combined_filters: List[FilterTypeDef] = [{'Name': 'tag:' + _TAG_KEY_TOIL_CLUSTER_NAME, 'Values': [self.clusterName]}]
+        combined_filters: List["FilterTypeDef"] = [
+            {"Name": "tag:" + _TAG_KEY_TOIL_CLUSTER_NAME, "Values": [self.clusterName]}
+        ]
 
         if filters:
             # Add any user-specified filters
@@ -1384,7 +1463,9 @@ class AWSProvisioner(AbstractProvisioner):
         lt_name = self._name_worker_launch_template(instance_type, preemptible=preemptible)
 
         # How do we match the right templates?
-        filters: List[FilterTypeDef] = [{'Name': 'launch-template-name', 'Values': [lt_name]}]
+        filters: List["FilterTypeDef"] = [
+            {"Name": "launch-template-name", "Values": [lt_name]}
+        ]
 
         # Get the templates
         templates: List[str] = self._get_launch_template_ids(filters=filters)
@@ -1475,16 +1556,16 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        autoscaling: AutoScalingClient = self.aws.client(self._region, 'autoscaling')
+        autoscaling: "AutoScalingClient" = self.aws.client(self._region, "autoscaling")
 
         # AWS won't filter ASGs server-side for us in describe_auto_scaling_groups.
         # So we search instances of applied tags for the ASGs they are on.
         # The ASGs tagged with our cluster are our ASGs.
         # The filtering is on different fields of the tag object itself.
-        filters: List[FilterTypeDef] = [{'Name': 'key',
-                                         'Values': [_TAG_KEY_TOIL_CLUSTER_NAME]},
-                                        {'Name': 'value',
-                                         'Values': [self.clusterName]}]
+        filters: List["FilterTypeDef"] = [
+            {"Name": "key", "Values": [_TAG_KEY_TOIL_CLUSTER_NAME]},
+            {"Name": "value", "Values": [self.clusterName]},
+        ]
 
         matchedASGs = []
         # Get the first page with no NextToken
@@ -1605,8 +1686,8 @@ class AWSProvisioner(AbstractProvisioner):
         for result in boto3_pager(boto3_iam.list_roles, 'Roles'):
             # For each Boto2 role object
             # Grab out the name
-            cast(RoleTypeDef, result)
-            name = result['RoleName']
+            result2 = cast("RoleTypeDef", result)
+            name = result2["RoleName"]
             if self._is_our_namespaced_name(name):
                 # If it looks like ours, it is ours.
                 results.append(name)
@@ -1623,8 +1704,8 @@ class AWSProvisioner(AbstractProvisioner):
         for result in boto3_pager(boto3_iam.list_instance_profiles,
                                   'InstanceProfiles'):
             # Grab out the name
-            cast(InstanceProfileTypeDef, result)
-            name = result['InstanceProfileName']
+            result2 = cast("InstanceProfileTypeDef", result)
+            name = result2["InstanceProfileName"]
             if self._is_our_namespaced_name(name):
                 # If it looks like ours, it is ours.
                 results.append(name)
@@ -1639,7 +1720,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
+        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
 
         return [item['InstanceProfileName'] for item in boto3_pager(boto3_iam.list_instance_profiles_for_role,
                                                                     'InstanceProfiles',
@@ -1656,7 +1737,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
+        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
 
         # TODO: we don't currently use attached policies.
 
@@ -1672,7 +1753,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
+        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
 
         return list(boto3_pager(boto3_iam.list_role_policies, 'PolicyNames', RoleName=role_name))
 
@@ -1750,7 +1831,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
+        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
 
         # Make sure we can tell our roles apart from roles for other clusters
         aws_role_name = self._namespace_name(local_role_name)
@@ -1800,7 +1881,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
 
         # Grab the connection we need to use for this operation.
-        boto3_iam: IAMClient = self.aws.client(self._region, 'iam')
+        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
 
         policy = dict(iam_full=self.full_policy('iam'), ec2_full=self.full_policy('ec2'),
                       s3_full=self.full_policy('s3'), sbd_full=self.full_policy('sdb'))
@@ -1812,7 +1893,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         try:
             profile_result = boto3_iam.get_instance_profile(InstanceProfileName=iamRoleName)
-            profile: InstanceProfileTypeDef = profile_result["InstanceProfile"]
+            profile: "InstanceProfileTypeDef" = profile_result["InstanceProfile"]
             logger.debug("Have preexisting instance profile: %s", profile)
         except boto3_iam.exceptions.NoSuchEntityException:
             profile_result = boto3_iam.create_instance_profile(InstanceProfileName=iamRoleName)

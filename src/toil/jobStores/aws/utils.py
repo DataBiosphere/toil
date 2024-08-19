@@ -17,25 +17,28 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import Optional, cast, TYPE_CHECKING, Dict, List, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config
 from botocore.exceptions import ClientError
-from mypy_boto3_sdb.type_defs import ItemTypeDef, AttributeTypeDef
 
-from toil.lib.aws import session, AWSServerErrors
+from toil.lib.aws import AWSServerErrors, session
 from toil.lib.aws.utils import connection_error, get_bucket_region
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (DEFAULT_DELAYS,
-                            DEFAULT_TIMEOUT,
-                            get_error_code,
-                            get_error_message,
-                            get_error_status,
-                            old_retry,
-                            retry)
+from toil.lib.retry import (
+    DEFAULT_DELAYS,
+    DEFAULT_TIMEOUT,
+    get_error_code,
+    get_error_message,
+    get_error_status,
+    old_retry,
+    retry,
+)
+
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource
+    from mypy_boto3_sdb.type_defs import AttributeTypeDef, ItemTypeDef
 
 logger = logging.getLogger(__name__)
 
@@ -148,27 +151,33 @@ class SDBHelper:
         return attributes
 
     @classmethod
-    def attributeDictToList(cls, attributes: Dict[str, str]) -> List[AttributeTypeDef]:
+    def attributeDictToList(
+        cls, attributes: Dict[str, str]
+    ) -> List["AttributeTypeDef"]:
         """
         Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
         to be compatible with boto3 argument syntax
         :param attributes: Dict[str, str], attribute in object form
-        :return: List[AttributeTypeDef], list of attributes in typed dict form
+        :return: list of attributes in typed dict form
         """
         return [{"Name": name, "Value": value} for name, value in attributes.items()]
 
     @classmethod
-    def attributeListToDict(cls, attributes: List[AttributeTypeDef]) -> Dict[str, str]:
+    def attributeListToDict(
+        cls, attributes: List["AttributeTypeDef"]
+    ) -> Dict[str, str]:
         """
         Convert the attribute boto3 representation of list of attribute typed dicts
         back to a dictionary with name, value pairs
-        :param attribute: List[AttributeTypeDef, attribute in typed dict form
+        :param attribute: attribute in typed dict form
         :return: Dict[str, str], attribute in dict form
         """
         return {attribute["Name"]: attribute["Value"] for attribute in attributes}
 
     @classmethod
-    def get_attributes_from_item(cls, item: ItemTypeDef, keys: List[str]) -> List[Optional[str]]:
+    def get_attributes_from_item(
+        cls, item: "ItemTypeDef", keys: List[str]
+    ) -> List[Optional[str]]:
         return_values: List[Optional[str]] = [None for _ in keys]
         mapped_indices: Dict[str, int] = {name: index for index, name in enumerate(keys)}
         for attribute in item["Attributes"]:
@@ -196,7 +205,9 @@ class SDBHelper:
         return 'numChunks'
 
     @classmethod
-    def attributesToBinary(cls, attributes: List[AttributeTypeDef]) -> Tuple[bytes, int]:
+    def attributesToBinary(
+        cls, attributes: List["AttributeTypeDef"]
+    ) -> Tuple[bytes, int]:
         """
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from

@@ -21,6 +21,8 @@ import fcntl
 import logging
 import math
 import os
+import platform
+import subprocess
 import sys
 import tempfile
 import time
@@ -33,8 +35,64 @@ import psutil
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
+from toil.lib.memoize import memoize
 
 logger = logging.getLogger(__name__)
+
+def ensure_filesystem_lockable(path: str, timeout: float = 30, hint: Optional[str] = None) -> None:
+    """
+    Make sure that the filesystem used at the given path is one where locks are safe to use.
+
+    File locks are not safe to use on Ceph. See
+    <https://github.com/DataBiosphere/toil/issues/4972>.
+
+    Raises an exception if the filesystem is detected as one where using locks
+    is known to trigger bugs in the filesystem implementation. Also raises an
+    exception if the given path does not exist, or if attempting to determine
+    the filesystem type takes more than the timeout in seconds.
+    
+    If the filesystem type cannot be determined, does nothing.
+
+    :param hint: Extra text to include in an error, if raised, telling the user
+        how to change the offending path.
+    """
+
+    if not os.path.exists(path):
+        # Raise a normal-looking FileNotFoundError. See <https://stackoverflow.com/a/36077407>
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
+
+    if platform.system() == "Linux":
+        # We know how to find the filesystem here.
+        
+        try:
+            # Start a child process to stat the path. See <https://unix.stackexchange.com/a/402236>.
+            # We really should call statfs but no bindings for it are in PyPI.
+            completed = subprocess.run(["stat", "-f", "-c", "%T", path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+        except subprocess.TimeoutExpired as e:
+            # The subprocess itself is Too Slow
+            raise RuntimeError(f"Polling filesystem type at {path} took more than {timeout} seconds; is your filesystem working?") from e
+        except subprocess.CalledProcessError as e:
+            # Stat didn't work. Maybe we don't have the right version of stat installed?
+            logger.warning("Could not determine filesystem type at %s because of: %s", path, e.stderr.decode("utf-8", errors="replace").strip())
+            # If we don't know the filesystem type, keep going anyway.
+            return
+
+        filesystem_type = completed.stdout.decode("utf-8", errors="replace").strip()
+
+        if filesystem_type == "ceph":
+            # Ceph is known to deadlock the MDS and break the parent directory when locking.
+            message = [f"Refusing to use {path} because file locks are known to break {filesystem_type} filesystems."]
+            if hint:
+                # Hint the user how to fix this.
+                message.append(hint)
+            raise RuntimeError(' '.join(message))
+        else:
+            # Other filesystem types are fine (even though NFS is sometimes
+            # flaky with regard to locks actually locking anything).
+            logger.debug("Detected that %s has lockable filesystem type: %s", path, filesystem_type)
+
+    # Other platforms (Mac) probably aren't mounting Ceph and also don't
+    # usually use the same stat binary implementation.
 
 def safe_lock(fd: int, block: bool = True, shared: bool = False) -> None:
     """
@@ -434,6 +492,13 @@ def global_mutex(base_dir: str, mutex: str) -> Iterator[None]:
 
     if not os.path.isdir(base_dir):
         raise RuntimeError(f"Directory {base_dir} for mutex does not exist")
+
+    # TODO: We don't know what CLI option controls where to put this mutex, so
+    # we aren't very helpful if the location is bad.
+    ensure_filesystem_lockable(
+        base_dir,
+        hint=f"Specify a different place to put the {mutex} mutex."
+    )
 
     # Define a filename
     lock_filename = os.path.join(base_dir, 'toil-mutex-' + mutex)

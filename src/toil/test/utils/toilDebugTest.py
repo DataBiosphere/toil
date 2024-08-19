@@ -166,22 +166,32 @@ class DebugJobTest(ToilTest):
         job_store = os.path.join(self._createTempDir(), "tree")
 
         logger.info("Running workflow that always fails")
-        try:
-            # Run an always-failing workflow
-            subprocess.check_call([
+        # Run an always-failing workflow
+        wf_result = subprocess.run(
+            [
                 "toil-wdl-runner",
                 os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"),
                 "--retryCount=0",
-                "--logCritical",
+                "--logDebug",
                 "--disableProgress",
                 "--jobStore",
                 job_store
-            ], stderr=subprocess.DEVNULL)
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding="utf-8",
+            errors="replace",
+        )
+        logger.debug("Always-failing workflow output: %s", wf_result.stdout)
+        if wf_result.returncode == 0:
             raise RuntimeError("Failing workflow succeeded!")
-        except subprocess.CalledProcessError:
-            # Should fail to run
+        else:
             logger.info("Task failed successfully")
-            pass
+
+        # Make sure that the job store we created actually has its job store
+        # root job ID file. If it doesn't, we failed during workflow setup and
+        # not because of a real failing job.
+        assert os.path.exists(os.path.join(job_store, "files/shared/rootJobStoreID")), "Failed workflow still needs a root job"
 
         # Get a job name for a job that fails
         job_name = "WDLTaskJob"
