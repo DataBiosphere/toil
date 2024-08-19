@@ -3558,7 +3558,10 @@ def main() -> None:
                 # have to cast from more specific to less specific ones here.
                 # The miniwld values_from_json function can evaluate
                 # expressions in the inputs or something.
-                WDLTypeDeclBindings = Union[WDL.Env.Bindings[WDL.Tree.Decl], WDL.Env.Bindings[WDL.Type.Base]]
+                if sys.version_info.major == 3 and sys.version_info.minor < 10:
+                    WDLTypeDeclBindings = Union[WDL.Env.Bindings[WDL.Tree.Decl], WDL.Env.Bindings[WDL.Type.Base]]
+                else:
+                    WDLTypeDeclBindings = WDL.Env.Bindings[WDL.Tree.Decl] | WDL.Env.Bindings[WDL.Type.Base]
                 input_bindings = WDL.values_from_json(
                     inputs,
                     cast(WDLTypeDeclBindings, target.available_inputs),
