@@ -1424,8 +1424,6 @@ class AWSJobStore(AbstractJobStore):
                                     Key=compat_bytes(info.fileID),
                                     **headerArgs
                                 ).get('VersionId', None)
-                                logger.warning('Loaded key for upload with no version and got version %s', str(info.version))
-                                assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)

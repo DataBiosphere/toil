@@ -21,5 +21,14 @@ logger = logging.getLogger(__name__)
 
 @retry(errors=[AWSServerErrors])
 def head_s3_object(bucket: str, key: str, header: Dict[str, Any], region: Optional[str] = None):
+    """
+    Attempt to HEAD an s3 object and return its response.
+
+    :param bucket: AWS bucket name
+    :param key:  AWS Key name for the s3 object
+    :param header: Headers to include (mostly for encryption).
+        See: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/head_object.html
+    :param region: Region that we want to look for the bucket in
+    """
     s3_client = session.client("s3", region_name=region)
     return s3_client.head_object(Bucket=bucket, Key=key, **header)
