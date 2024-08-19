@@ -823,7 +823,7 @@ class AWSJobStore(AbstractJobStore):
 
         bucketExisted = True
         try:
-            # the head_bucket() call makes sure that the bucket exists and the user can access it
+            # make sure bucket exists and user can access it
             head_s3_bucket(Bucket=bucket_name)
 
             bucket = self.s3_resource.Bucket(bucket_name)
