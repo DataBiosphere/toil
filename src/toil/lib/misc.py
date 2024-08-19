@@ -79,6 +79,18 @@ def slow_down(seconds: float) -> float:
 
 
 def printq(msg: str, quiet: bool, log: bool = False) -> None:
+    """
+    This is for functions used simultaneously in Toil proper and in the admin scripts.
+
+    Our admin scripts "print" to stdout, while Toil proper uses logging.  For a script that,
+    for example, cleans up IAM, EC2, etc. cruft leftover after failed CI runs, we can call
+    an AWS delete IAM role function, and this prints or logs progress (unless quiet is True),
+    depending on whether the function is called in, say, the jobstore or a script.
+
+    :param msg: The string to print or log to stdout.
+    :param quiet: Silent output to stdout.
+    :param log: Use logging (else "print" to the screen).
+    """
     if not quiet:
         if not log:
             print(msg)

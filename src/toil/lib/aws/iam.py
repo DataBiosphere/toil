@@ -76,15 +76,14 @@ def delete_iam_instance_profile(instance_profile_name: str, region: Optional[str
 
 @retry(errors=[AWSServerErrors])
 def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = True) -> None:
-    # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
-    # of overloads of the client-getting methods to exist based on the literal
-    # string passed in, to return exactly the right kind of client or resource.
-    # So we end up having to wrap all the calls in casts, which kind of defeats
-    # the point of a nice fluent method you can call with the name of the thing
-    # you want; we should have been calling iam_client() and so on all along if
-    # we wanted MyPy to be able to understand us. So at some point we should
-    # consider revising our API here to be less annoying to explain to the type
-    # checker.
+    """
+    Deletes an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
+
+    :param role_name: The name of the AWS IAM role.
+    :param region: The AWS region that the role_name is in.
+    :param quiet: Whether or not to print/log information about the deletion to stdout.
+    """
+    # TODO: This function could benefit from less complex Boto3 type hints
     iam_client = session.client('iam', region_name=region)
     iam_resource = session.resource('iam', region_name=region)
     role = iam_resource.Role(role_name)
@@ -101,6 +100,14 @@ def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = 
 
 
 def create_iam_role(role_name: str, assume_role_policy_document: "PolicyDocumentDictTypeDef", policies: Dict[str, Any], region: Optional[str] = None):
+    """
+    Creates an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
+
+    :param role_name: The name of the AWS IAM role.
+    :param region: The AWS region that the role_name is in.
+    :param assume_role_policy_document: Policies to create inline with the role.
+    :param policies: Global policies to attach to the role.
+    """
     iam_client = session.client('iam', region_name=region)
     try:
         # Make the role
