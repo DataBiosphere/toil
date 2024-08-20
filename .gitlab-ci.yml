@@ -490,6 +490,7 @@ batchsystem:
             - 'src/toil/batchSystems/gridengine.py'
   stage: integration
   script:
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/test_gridengine.py::GridEngineTest
 
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
