@@ -756,6 +756,11 @@ def convert_remote_files(environment: WDLBindings, file_source: Union[AbstractFi
                 # Wasn't found there
                 # Mostly to satisfy mypy
                 continue
+
+            if candidate_uri.startswith("file:") or filename == candidate_uri:
+                # Don't replace if the original file was already found
+                # or if the replacement value is the same as the original
+                return file
             logger.info('Converting input file path %s to %s', filename, candidate_uri)
 
             # Work out what the basename for the file was
