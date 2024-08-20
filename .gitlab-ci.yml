@@ -480,7 +480,7 @@ mesos:
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
   rules:
-    - if: $CI_PIPELINE_SOURCE != "schedule" # temp, remove at merge
+    - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
