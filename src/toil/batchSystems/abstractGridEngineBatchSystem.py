@@ -26,7 +26,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.job import JobDescription, AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.retry import old_retry, DEFAULT_DELAYS
+from toil.lib.retry import old_retry, DEFAULT_DELAYS, retry
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 # Environment dict for the job
 # Accelerator requirements for the job
 JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
+
+class ExceededRetryAttempts(Exception):
+    def __init__(self):
+        super().__init__("Exceeded retry attempts talking to scheduler.")
 
 class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
@@ -209,24 +213,15 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             running_job_list = list(self.runningJobs)
             batch_job_id_list = [self.getBatchSystemID(j) for j in running_job_list]
             if batch_job_id_list:
-                try:
-                    # Get the statuses as a batch
-                    statuses = self.boss.with_retries(
-                        self.coalesce_job_exit_codes, batch_job_id_list
+                # Get the statuses as a batch
+                statuses = self.boss.with_retries(
+                    self.coalesce_job_exit_codes, batch_job_id_list
+                )
+                # We got the statuses as a batch
+                for running_job_id, status in zip(running_job_list, statuses):
+                    activity = self._handle_job_status(
+                        running_job_id, status, activity
                     )
-                except NotImplementedError:
-                    # We have to get the statuses individually
-                    for running_job_id, batch_job_id in zip(running_job_list, batch_job_id_list):
-                        status = self.boss.with_retries(self.getJobExitCode, batch_job_id)
-                        activity = self._handle_job_status(
-                            running_job_id, status, activity
-                        )
-                else:
-                    # We got the statuses as a batch
-                    for running_job_id, status in zip(running_job_list, statuses):
-                        activity = self._handle_job_status(
-                            running_job_id, status, activity
-                        )
 
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
@@ -293,13 +288,19 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
             Called by GridEngineThread.checkOnJobs().
 
-            This is an optional part of the interface. It should raise
-            NotImplementedError if not actually implemented for a particular
-            scheduler.
+            The default implementation falls back on self.getJobExitCode and polls each job individually
 
             :param string batch_job_id_list: List of batch system job ID
             """
-            raise NotImplementedError()
+            statuses = []
+            try:
+                for batch_job_id in batch_job_id_list:
+                    statuses.append(self.boss.with_retries(self.getJobExitCode, batch_job_id))
+            except CalledProcessErrorStderr as err:
+                # This avoids the nested retry issue where we could issue n^2 retries when the backing scheduler somehow disappears
+                # We catch the internal retry exception and raise something else so the outer retry doesn't retry the entire function again
+                raise ExceededRetryAttempts() from err
+            return statuses
 
         @abstractmethod
         def prepareSubmission(self,
