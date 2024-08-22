@@ -484,7 +484,20 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
                     # This is a duplicate
                     existing_value = merged[binding.name]
                     if existing_value != binding.value:
-                        raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
+                        # This can happen if a binding has been virtualized and then devirtualized as devirtualization will replace the value
+                        # Drop the unvirtualized binding in favor of the virtualized to ensure caching
+                        # todo: figure out a better way to do this
+                        existing_virtualized_value = getattr(existing_value, "virtualized_value", None)
+                        current_virtualized_value = getattr(binding.value, "virtualized_value", None)
+                        both_none = existing_virtualized_value is None and current_virtualized_value is None
+                        both_virtualized = existing_virtualized_value is not None and current_virtualized_value is not None
+                        virtualized_equal = existing_virtualized_value == current_virtualized_value
+                        if both_none or (both_virtualized and not virtualized_equal):
+                            raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
+                        elif existing_virtualized_value is not None:
+                            continue
+                        else:
+                            merged = merged.bind(binding.name, binding.value, binding.info)
                     else:
                         logger.debug('Drop duplicate binding for %s', binding.name)
                 else:
@@ -887,6 +900,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 return parse(infile.read())
 
         return f
+
     def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
         if getattr(file, "nonexistent", False):
             return file
@@ -1089,6 +1103,14 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
         # TODO: Don't we want to make sure we don't actually use the file store?
         super().__init__(file_store, wdl_options)
         self.container = container
+
+    def _read(self, parse: Callable[[str], WDL.Value.Base]) -> Callable[[WDL.Value.File], WDL.Value.Base]:
+        # todo: figure out better way than reoverriding overridden function
+        def f(file: WDL.Value.File) -> WDL.Value.Base:
+            with open(self._devirtualize_filename(file.value), "r") as infile:
+                return parse(infile.read())
+
+        return f
 
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
@@ -1462,16 +1484,16 @@ def drop_if_missing(file: WDL.Value.File, standard_library: ToilWDLStdLibBase) -
     the current working directory of the job and is where all relative paths will be interpreted from
     """
     work_dir = standard_library.execution_dir
-    filename = file.value
-    virtualized_filename = getattr(file, "virtualized_value", None)
+    filename = getattr(file, "virtualized_value", None) or file.value
     value_type = file.type
     logger.debug("Consider file %s", filename)
 
-    if virtualized_filename is not None and is_url(virtualized_filename):
-        if virtualized_filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(virtualized_filename):
+    if filename is not None and is_url(filename):
+        if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
             # We assume anything in the filestore actually exists.
-            devirtualized_filename = standard_library._devirtualize_filename(virtualized_filename)
+            devirtualized_filename = standard_library._devirtualize_filename(filename)
             file.value = devirtualized_filename
+            setattr(file, "virtualized_value", filename)
             return file
         else:
             logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
@@ -1809,6 +1831,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Set up the WDL standard library
         # UUID to use for virtualizing files
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
+
+        devirtualize_files(bindings, standard_library)
 
         if self._task.inputs:
             logger.debug("Evaluating task code")
@@ -2477,6 +2501,9 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         incoming_bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
+
+        devirtualize_files(incoming_bindings, standard_library)
+
         if isinstance(self._node, WDL.Tree.Decl):
             # This is a variable assignment
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
@@ -2568,6 +2595,8 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
+        devirtualize_files(current_bindings, standard_library)
+
         for node in self._nodes:
             if isinstance(node, WDL.Tree.Decl):
                 # This is a variable assignment
@@ -2605,6 +2634,12 @@ class WDLCombineBindingsJob(WDLBaseJob):
         """
         super().run(file_store)
         combined = combine_bindings(unwrap_all(self._prev_node_results))
+
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
+
+        devirtualize_files(combined, standard_library)
+
         # Make sure to run the universal postprocessing steps
         return self.postprocess(combined)
 
@@ -3038,6 +3073,8 @@ class WDLScatterJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
+        devirtualize_files(bindings, standard_library)
+
         # Get what to scatter over
         try:
             scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
@@ -3176,6 +3213,8 @@ class WDLConditionalJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
+        devirtualize_files(bindings, standard_library)
+
         # Get the expression value. Fake a name.
         try:
             expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
@@ -3240,6 +3279,8 @@ class WDLWorkflowJob(WDLSectionJob):
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
+
+        devirtualize_files(bindings, standard_library)
 
         if self._workflow.inputs:
             try:
