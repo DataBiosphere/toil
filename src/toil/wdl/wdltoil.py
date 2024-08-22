@@ -633,6 +633,52 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
 
     return file_id, task_path, parent_id, file_basename
 
+##
+# Caching machinery
+##
+
+# TODO: Move to new file?
+
+def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
+    """
+    If a File has a shared filesystem path, get that path.
+
+    This will be the path the File was initially imported from, or the path that it has in the call cache.
+    """
+    # TODO: We hide this on the value string itself so we can
+    # map_over_files_in_bindings and fetch it out. But really we should allow
+    # mapping over bindings and getting the WDL.Value.Base objects and hide it
+    # in there.
+    if hasattr(file.value, '_shared_fs_path'):
+        return cast(str, getattr(file.value, '_shared_fs_path'))
+    return None
+
+def set_shared_fs_path(file: WDL.Value.File, path: str) -> None:
+    """
+    Mutate a File to associate it with the given shared filesystem path.
+
+    This should be the path it was initially imported from, or the path that it has in the call cache.
+    """
+    setattr(file.value, '_shared_fs_path', path)
+
+def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
+    """
+    Get a digest for looking up the task call with the given inputs.
+
+    Represents all files by their shared filesystem paths so that cache entries written by MiniWDL can be used by Toil.
+    """
+
+    def file_path_to_use(stored_file_string: str) -> str:
+        """
+        Return the shared FS path if we have one, or the current string.
+        """
+        if hasattr(stored_file_string, '_shared_fs_path'):
+            return cast(str, getattr(stored_file_string, '_shared_fs_path'))
+        return stored_file_string
+
+    transformed_bindings = map_over_files_in_bindings(bindings, file_path_to_use)
+    return WDL.Value.digest_env(transformed_bindings)
+
 
 DirectoryNamingStateDict = Dict[str, Tuple[Dict[str, str], Set[str]]]
 def choose_human_readable_directory(root_dir: str, source_task_path: str, parent_id: str, state: DirectoryNamingStateDict) -> str:
