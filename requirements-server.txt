@@ -1,8 +1,8 @@
 connexion[swagger-ui]>=2.10.0, <3
 flask>=2.0,<3
-werkzeug>=2.0,<3
+werkzeug>=2.0,<4
 flask-cors==4.0.1
-gunicorn==22.0.0
+gunicorn==23.0.0
 celery>=5.1.0, <6
 wes-service>=4.0.0, <5
 ruamel.yaml>=0.15,<0.19

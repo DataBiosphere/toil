@@ -477,6 +477,22 @@ mesos:
     - make test threads="${TEST_THREADS}" tests=src/toil/test/src/promisedRequirementTest.py::MesosPromisedRequirementsTest
     - make test threads="${TEST_THREADS}" tests="src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
 
+batchsystem:
+  rules:
+      - if: $CI_PIPELINE_SOURCE == "schedule"
+      - if: $CI_COMMIT_TAG
+      - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
+      - if: $CI_COMMIT_BRANCH
+        changes:
+          compare_to: 'refs/heads/master'
+          paths:
+            - 'src/toil/test/batchSystems/test_gridengine.py'
+            - 'src/toil/batchSystems/gridengine.py'
+  stage: integration
+  script:
+    - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/test_gridengine.py::GridEngineTest
+
 # Cactus-on-Kubernetes integration (as a script and not a pytest test)
 cactus_integration:
   rules:
@@ -490,7 +506,7 @@ cactus_integration:
           - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
   script:
-    - export CACTUS_COMMIT_SHA=f5adf4013326322ae58ef1eccb8409b71d761583
+    - export CACTUS_COMMIT_SHA=2d706d9c6637c85116533477693e6c73ed5b8a53
     - set -e
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
