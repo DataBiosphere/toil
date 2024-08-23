@@ -88,6 +88,11 @@ from toil.provisioners.clusterScaler import JobTooBigError
 logger = logging.getLogger(__name__)
 
 
+class InsufficientMountDiskSpace(Exception):
+    def __init__(self, mount_target: str, desired_bytes, available_bytes):
+        super().__init__("Not enough available disk space for the target mount point %s. Needed %d bytes but there is only %d available."
+                         % (mount_target, desired_bytes, available_bytes))
+
 @contextmanager
 def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None, None, None]:
     """
@@ -1928,7 +1933,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 # default to GiB as per spec
                 part_suffix: str = "GiB"
                 # default to the execution directory
-                part_mount_point: str = self._wdl_options.get("execution_dir") or os.getcwd()
+                specified_mount_point = None
                 for i, part in enumerate(spec_parts):
                     if part.replace(".", "", 1).isdigit():
                         # round down floats
@@ -1936,7 +1941,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                         continue
                     if i == 0:
                         # mount point is always the first
-                        part_mount_point = part
+                        specified_mount_point = part
                         continue
                     if part_size is not None:
                         # suffix will always be after the size, if it exists
@@ -1949,18 +1954,15 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
                 per_part_size = convert_units(part_size, part_suffix)
                 total_bytes += per_part_size
-                if mount_spec.get(part_mount_point) is not None:
-                    # raise an error as all mount points must be unique
-                    raise ValueError(f"Could not parse disks = {disks_spec} because the mount point {part_mount_point} is specified multiple times")
+                if specified_mount_point is not None:
+                    if mount_spec.get(specified_mount_point) is not None:
+                        # raise an error as all mount points must be unique
+                        raise ValueError(f"Could not parse disks = {disks_spec} because the mount point {specified_mount_point} is specified multiple times")
 
-                # TODO: we always ignore the disk type and assume we have the right one.
-                if part_mount_point != "local-disk":
-                    # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
-                    mount_spec[part_mount_point] = int(per_part_size)
-
-                if not os.path.exists(part_mount_point):
-                    # this isn't a valid mount point
-                    raise NotImplementedError(f"Cannot use mount point {part_mount_point} as it does not exist")
+                    # TODO: we always ignore the disk type and assume we have the right one.
+                    if specified_mount_point != "local-disk":
+                        # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
+                        mount_spec[specified_mount_point] = int(per_part_size)
 
                 if part_suffix == "LOCAL":
                     # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
@@ -1968,8 +1970,6 @@ class WDLTaskWrapperJob(WDLBaseJob):
                     # alone so that the workflow doesn't rely on this weird and
                     # likely-to-change Cromwell detail.
                     logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-            runtime_disk = int(total_bytes)
-
         
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
             # For old WDL versions, guess whether the task wants GPUs if not specified.
@@ -2230,6 +2230,45 @@ class WDLTaskJob(WDLBaseJob):
         """
         return "KUBERNETES_SERVICE_HOST" not in os.environ
 
+    def ensure_mount_point(self, file_store: AbstractFileStore, mount_spec: Dict[str, int]) -> Dict[str, str]:
+        """
+        Ensure the mount point sources are available.
+
+        Will check if the mount point source has the requested amount of space available.
+
+        Note: We are depending on Toil's job scheduling backend to error when the sum of multiple mount points disk requests is greater than the total available
+        For example, if a task has two mount points request 100 GB each but there is only 100 GB available, the df check may pass
+        but Toil should fail to schedule the jobs internally
+
+        :param mount_spec: Mount specification from the disks attribute in the WDL task. Is a dict where key is the mount point target and value is the size
+        :param file_store: File store to create a tmp directory for the mount point source
+        :return: Dict mapping mount point target to mount point source
+        """
+        logger.debug("Detected mount specifications, creating mount points.")
+        mount_src_mapping = {}
+        # Create one tmpdir to encapsulate all mount point sources, each mount point will be associated with a subdirectory
+        tmpdir = file_store.getLocalTempDir()
+
+        # The POSIX standard doesn't specify how to escape spaces in mount points and file system names
+        # The only defect of this regex is if the target mount point is the same format as the df output
+        # It is likely reliable enough to trust the user has not created a mount with a df output-like name
+        regex_df = re.compile(r".+ \d+ +\d+ +(\d+) +\d+% +.+")
+        for mount_target, mount_size in mount_spec.items():
+            # Use arguments from the df POSIX standard
+            df_line = subprocess.check_output(["df", "-k", "-P", tmpdir], encoding="utf-8").split("\n")[1]
+            m = re.match(regex_df, df_line)
+            # Block size will always be 1024
+            available_space = int(m[1]) * 1024
+            if available_space < mount_size:
+                # We do not have enough space available for this mount point
+                raise InsufficientMountDiskSpace(mount_target, mount_size, available_space)
+
+            # Create a new subdirectory for each mount point
+            source_location = os.path.join(tmpdir, str(uuid.uuid4()))
+            os.mkdir(source_location)
+            mount_src_mapping[mount_target] = source_location
+        return mount_src_mapping
+
     @report_wdl_errors("run task command", exit=True)
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
@@ -2237,6 +2276,9 @@ class WDLTaskJob(WDLBaseJob):
         """
         super().run(file_store)
         logger.info("Running task command for %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
+
+        # Create mount points and get a mapping of target mount points to locations on disk
+        mount_mapping = self.ensure_mount_point(file_store, self._mount_spec)
 
         # Set up the WDL standard library
         # UUID to use for virtualizing files
@@ -2419,9 +2461,8 @@ class WDLTaskJob(WDLBaseJob):
                     mounts: List[Tuple[str, str, bool]] = singularity_original_prepare_mounts()
                     # todo: support AWS EBS/Kubernetes persistent volumes
                     # this logic likely only works for local clusters as we don't deal with the size of each mount point
-                    for mount_point, _ in self._mount_spec.items():
-                        abs_mount_point = os.path.abspath(mount_point)
-                        mounts.append((abs_mount_point, abs_mount_point, True))
+                    for mount_point, source_location in mount_mapping.items():
+                        mounts.append((mount_point, source_location, True))
                     return mounts
                 task_container.prepare_mounts = patch_prepare_mounts_singularity  # type: ignore[method-assign]
             elif isinstance(task_container, SwarmContainer):
@@ -2438,12 +2479,11 @@ class WDLTaskJob(WDLBaseJob):
                         Same as the singularity patch but for docker
                         """
                         mounts: List[Mount] = docker_original_prepare_mounts(logger)
-                        for mount_point, _ in self._mount_spec.items():
-                            abs_mount_point = os.path.abspath(mount_point)
+                        for mount_point, source_location in mount_mapping.items():
                             mounts.append(
                                 Mount(
-                                    abs_mount_point.rstrip("/").replace("{{", '{{"{{"}}'),
-                                    abs_mount_point.rstrip("/").replace("{{", '{{"{{"}}'),
+                                    mount_point.rstrip("/").replace("{{", '{{"{{"}}'),
+                                    source_location.rstrip("/").replace("{{", '{{"{{"}}'),
                                     type="bind",
                                 )
                             )
