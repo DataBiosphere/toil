@@ -1953,6 +1953,18 @@ class WDLTaskWrapperJob(WDLBaseJob):
                     # Disk spec did not include a size
                     raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
 
+
+                if part_suffix == "LOCAL":
+                    # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+                    # can't imagine that ever being standardized; just leave it
+                    # alone so that the workflow doesn't rely on this weird and
+                    # likely-to-change Cromwell detail.
+                    logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
+                elif part_suffix in ("HDD", "SSD"):
+                    # For cromwell compatibility, assume this means GB in units
+                    # We don't actually differentiate between HDD and SSD
+                    part_suffix = "GB"
+
                 per_part_size = convert_units(part_size, part_suffix)
                 total_bytes += per_part_size
                 if specified_mount_point is not None:
@@ -1964,13 +1976,6 @@ class WDLTaskWrapperJob(WDLBaseJob):
                     if specified_mount_point != "local-disk":
                         # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
                         mount_spec[specified_mount_point] = int(per_part_size)
-
-                if part_suffix == "LOCAL":
-                    # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
-                    # can't imagine that ever being standardized; just leave it
-                    # alone so that the workflow doesn't rely on this weird and
-                    # likely-to-change Cromwell detail.
-                    logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
         
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
             # For old WDL versions, guess whether the task wants GPUs if not specified.
