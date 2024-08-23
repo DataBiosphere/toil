@@ -89,7 +89,7 @@ logger = logging.getLogger(__name__)
 
 
 class InsufficientMountDiskSpace(Exception):
-    def __init__(self, mount_target: str, desired_bytes, available_bytes):
+    def __init__(self, mount_target: str, desired_bytes: int, available_bytes: int) -> None:
         super().__init__("Not enough available disk space for the target mount point %s. Needed %d bytes but there is only %d available."
                          % (mount_target, desired_bytes, available_bytes))
 
@@ -112,7 +112,8 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         LocatorException,
         InvalidImportExportUrlException,
         UnimplementedURLException,
-        JobTooBigError
+        JobTooBigError,
+        InsufficientMountDiskSpace
     ) as e:
         # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task + " because:")
@@ -2253,16 +2254,25 @@ class WDLTaskJob(WDLBaseJob):
         # The only defect of this regex is if the target mount point is the same format as the df output
         # It is likely reliable enough to trust the user has not created a mount with a df output-like name
         regex_df = re.compile(r".+ \d+ +\d+ +(\d+) +\d+% +.+")
-        for mount_target, mount_size in mount_spec.items():
-            # Use arguments from the df POSIX standard
-            df_line = subprocess.check_output(["df", "-k", "-P", tmpdir], encoding="utf-8").split("\n")[1]
-            m = re.match(regex_df, df_line)
-            # Block size will always be 1024
-            available_space = int(m[1]) * 1024
-            if available_space < mount_size:
-                # We do not have enough space available for this mount point
-                raise InsufficientMountDiskSpace(mount_target, mount_size, available_space)
-
+        try:
+            for mount_target, mount_size in mount_spec.items():
+                # Use arguments from the df POSIX standard
+                df_line = subprocess.check_output(["df", "-k", "-P", tmpdir], encoding="utf-8").split("\n")[1]
+                m = re.match(regex_df, df_line)
+                if m is None:
+                    logger.debug("Output of df may be malformed: %s", df_line)
+                    logger.warning("Unable to check disk requirements as output of 'df' command is malformed. Will assume storage is always available.")
+                    continue
+                # Block size will always be 1024
+                available_space = int(m[1]) * 1024
+                if available_space < mount_size:
+                    # We do not have enough space available for this mount point
+                    raise InsufficientMountDiskSpace(mount_target, mount_size, available_space)
+        except subprocess.CalledProcessError as e:
+            # If df somehow isn't available
+            logger.debug("Unable to call df. stdout: %s stderr: %s", e.stdout, e.stderr)
+            logger.warning("Unable to check disk requirements as call to 'df' command failed. Will assume storage is always available.")
+        for mount_target in mount_spec.keys():
             # Create a new subdirectory for each mount point
             source_location = os.path.join(tmpdir, str(uuid.uuid4()))
             os.mkdir(source_location)
