@@ -93,7 +93,7 @@ from toil.provisioners.clusterScaler import JobTooBigError
 
 logger = logging.getLogger(__name__)
 
-WDL_OPTIONS = TypedDict('WDL_OPTIONS', {"execution_dir": NotRequired[str], "container": NotRequired[str], "enforce_existence": NotRequired[bool],
+WDL_OPTIONS = TypedDict('WDL_OPTIONS', {"execution_dir": NotRequired[str], "container": NotRequired[str],
                                         "share_files_with": NotRequired["ToilWDLStdLibBase"], "task_path": str})
 
 
@@ -888,12 +888,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def __init__(self, file_store: AbstractFileStore, wdl_options: WDL_OPTIONS):
         """
         Set up the standard library.
-
-        :param task_path: Dotted WDL name of the part of the workflow this library is working for.
-        :param share_files_with: If set to an existing standard library
-            instance, use the same file upload and download paths as it.
-        :param wdl_options: Extra options to pass into the standard library to use, ex:
-                            execution_dir: directory to use as the working directory for workflow code,
+        :param wdl_options: Options to pass into the standard library to use.
+                            Ex:
+                            execution_dir: directory to use as the working directory for workflow code.
+                            task_path: Dotted WDL name of the part of the workflow this library is working for.
+                            share_files_with: If set to an existing standard library instance, use the same file upload and download paths as it.
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
@@ -937,29 +936,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return execution_dir
 
     @property
-    def enforce_existence(self) -> bool:
-        """
-        If enforce_existence is not defined in self._wdl_options, default to true
-        :return:
-        """
-        enforce_existence: bool = self._wdl_options.get("enforce_existence") or True
-        return enforce_existence
-
-    @property
     def share_files_with(self) -> Optional["ToilWDLStdLibBase"]:
-        """
-        If enforce_existence is not defined in self._wdl_options, default to true
-        :return:
-        """
         share_files_with: Optional["ToilWDLStdLibBase"] = self._wdl_options.get("share_files_with")
         return share_files_with
 
     @property
     def task_path(self) -> str:
-        """
-        If enforce_existence is not defined in self._wdl_options, default to true
-        :return:
-        """
         task_path: str = self._wdl_options["task_path"]
         return task_path
 
@@ -1931,10 +1913,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
         :param namespace: The namespace that the task's *contents* exist in.
                The caller has alredy added the task's own name.
-
-        :param task_path: Like the namespace, but including subscript numbers
-               for scatters.
         """
+        # task_path in wdl_options is like the namespace, but including subscript numbers for scatters
         super().__init__(unitName=wdl_options["task_path"] + ".inputs", displayName=namespace + ".inputs", wdl_options=wdl_options, **kwargs)
 
         logger.info("Preparing to run task code for %s as %s", task.name, namespace)
@@ -2090,14 +2070,13 @@ class WDLTaskJob(WDLBaseJob):
 
         :param namespace: The namespace that the task's *contents* exist in.
                The caller has alredy added the task's own name.
-
-        :param task_path: Like the namespace, but including subscript numbers
-               for scatters.
         """
 
         # This job should not be local because it represents a real workflow task.
         # TODO: Instead of re-scheduling with more resources, add a local
         # "wrapper" job like CWL uses to determine the actual requirements.
+
+        # task_path in wdl_options is like the namespace, but including subscript numbers for scatters
         super().__init__(unitName=wdl_options["task_path"] + ".command", displayName=namespace + ".command", local=False, wdl_options=wdl_options, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, namespace)

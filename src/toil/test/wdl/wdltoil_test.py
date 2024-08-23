@@ -6,7 +6,7 @@ import string
 import subprocess
 import unittest
 from uuid import uuid4
-from typing import Optional
+from typing import Optional, Union
 
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
