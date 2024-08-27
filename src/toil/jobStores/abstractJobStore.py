@@ -551,6 +551,8 @@ class AbstractJobStore(ABC):
         """
         Return True if the file at the given URI exists, and False otherwise.
 
+        May raise an error if file existence cannot be determined.
+
         :param src_uri: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
@@ -637,6 +639,8 @@ class AbstractJobStore(ABC):
     def _url_exists(cls, url: ParseResult) -> bool:
         """
         Return True if the item at the given URL exists, and Flase otherwise.
+
+        May raise an error if file existence cannot be determined.
         """
         raise NotImplementedError(f"No implementation for {url}")
 
@@ -1756,9 +1760,10 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
             # TODO: Figure out how to HEAD instead of this.
             with cls._open_url(url):
                 return True
-        except:
-            pass
-        return False
+        except FileNotFoundError:
+            return False
+        # Any other errors we should pass through because something really went
+        # wrong (e.g. server is broken today but file may usually exist)
 
     @classmethod
     @retry(
@@ -1800,18 +1805,26 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @retry(
         errors=[
             BadStatusLine,
-            ErrorCondition(error=HTTPError, error_codes=[408, 500, 503]),
+            ErrorCondition(error=HTTPError, error_codes=[408, 429, 500, 502, 503]),
         ]
     )
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
         try:
             return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
-            if e.code == 404:
+            if e.code in (404, 410):
                 # Translate into a FileNotFoundError for detecting
-                # un-importable files
+                # known nonexistent files
                 raise FileNotFoundError(str(url)) from e
             else:
+                # Other codes indicate a real problem with the server; we don't
+                # want to e.g. run a workflow without an optional input that
+                # the user specified a path to just because the server was
+                # busy.
+
+                # Sometimes we expect to see this when polling existence for
+                # inputs at guessed paths, so don't complain *too* loudly here.
+                logger.debug("Unusual status %d for URL %s", e.code, str(url))
                 raise
 
     @classmethod
