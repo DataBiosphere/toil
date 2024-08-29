@@ -807,7 +807,6 @@ def convert_remote_files(environment: WDLBindings, file_source: Union[AbstractFi
     :param environment: Bindings to evaluate on
     :param file_source: Context to search for remote files with
     :param search_paths: List of paths to search through
-    :return:
     """
     def convert_file_to_url(file: WDL.Value.File) -> WDL.Value.File:
         """
@@ -899,21 +898,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def __init__(self, file_store: AbstractFileStore, wdl_options: WDL_OPTIONS):
         """
         Set up the standard library.
-<<<<<<< HEAD
         :param wdl_options: Options to pass into the standard library to use.
-                            Ex:
-                            execution_dir: directory to use as the working directory for workflow code.
-                            task_path: Dotted WDL name of the part of the workflow this library is working for.
+                            Ex: task_path: Dotted WDL name of the part of the workflow this library is working for.
+                            execution_dir: Directory to use as the working directory for workflow code.
+                            enforce_existence: If true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
                             share_files_with: If set to an existing standard library instance, use the same file upload and download paths as it.
-=======
-
-        :param task_path: Dotted WDL name of the part of the workflow this library is working for.
-        :param execution_dir: Directory to use as the working directory for workflow code.
-        :param enforce_existence: If true, then if a file is detected as
-            nonexistent, raise an error. Else, let it pass through
-        :param share_files_with: If set to an existing standard library
-            instance, use the same file upload and download paths as it.
->>>>>>> f23b1d3f8cf74cb4382d94d6dca4180e423d79df
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
