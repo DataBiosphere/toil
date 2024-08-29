@@ -48,13 +48,14 @@ from typing import (Any,
                     Union,
                     cast,
                     TypedDict)
-from urllib.error import HTTPError
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
     # NotRequired is recommended for TypedDicts over Optional but was introduced in Python 3.11
     from typing import NotRequired
+from mypy_extensions import Arg, DefaultArg
+from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
 from functools import partial
 
@@ -898,11 +899,21 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def __init__(self, file_store: AbstractFileStore, wdl_options: WDL_OPTIONS):
         """
         Set up the standard library.
+<<<<<<< HEAD
         :param wdl_options: Options to pass into the standard library to use.
                             Ex:
                             execution_dir: directory to use as the working directory for workflow code.
                             task_path: Dotted WDL name of the part of the workflow this library is working for.
                             share_files_with: If set to an existing standard library instance, use the same file upload and download paths as it.
+=======
+
+        :param task_path: Dotted WDL name of the part of the workflow this library is working for.
+        :param execution_dir: Directory to use as the working directory for workflow code.
+        :param enforce_existence: If true, then if a file is detected as
+            nonexistent, raise an error. Else, let it pass through
+        :param share_files_with: If set to an existing standard library
+            instance, use the same file upload and download paths as it.
+>>>>>>> f23b1d3f8cf74cb4382d94d6dca4180e423d79df
         """
         # TODO: Just always be the 1.2 standard library.
         wdl_version = "1.2"
@@ -1181,8 +1192,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eage which always raises an EvalError.
                 #  Ideally, the error raised here should escape to be captured in the wdl runner main loop, but I can't figure out how
                 raise DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
-            except HTTPError:
-                # Something went wrong with the connection, raise and retry later
+            except HTTPError as e:
+                # Something went wrong with the connection
+                logger.error("File %s could not be downloaded due to HTTP error %d", filename, e.code)
                 raise
             if imported is None:
                 # Satisfy mypy, this should never happen though as we don't pass a shared file name (which is the only way import_file returns None)
@@ -1652,15 +1664,20 @@ def drop_if_missing(file: WDL.Value.File, standard_library: ToilWDLStdLibBase) -
     logger.debug("Consider file %s", filename)
 
     if filename is not None and is_url(filename):
-        if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
-            # We assume anything in the filestore actually exists.
-            devirtualized_filename = standard_library._devirtualize_filename(filename)
-            file.value = devirtualized_filename
-            setattr(file, "virtualized_value", filename)
-            return file
-        else:
-            logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
-            return None
+        try:
+            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(filename):
+                # We assume anything in the filestore actually exists.
+                devirtualized_filename = standard_library._devirtualize_filename(filename)
+                file.value = devirtualized_filename
+                setattr(file, "virtualized_value", filename)
+                return file
+            else:
+                logger.warning('File %s with type %s does not actually exist at its URI', filename, value_type)
+                return None
+        except HTTPError as e:
+            # The error doesn't always include the URL in its message.
+            logger.error("File %s could not be checked for existence due to HTTP error %d", filename, e.code)
+            raise
     else:
         # Get the absolute path, not resolving symlinks
         effective_path = os.path.abspath(os.path.join(work_dir or os.getcwd(), filename))
@@ -2060,10 +2077,10 @@ class WDLTaskWrapperJob(WDLBaseJob):
             total_bytes: float = convert_units(total_gb, 'GB')
             runtime_disk = int(total_bytes)
 
-        
+
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
             # For old WDL versions, guess whether the task wants GPUs if not specified.
-            use_gpus = (runtime_bindings.has_binding('gpuCount') or 
+            use_gpus = (runtime_bindings.has_binding('gpuCount') or
                         runtime_bindings.has_binding('gpuType') or
                         runtime_bindings.has_binding('nvidiaDriverVersion'))
         else:
@@ -2072,7 +2089,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # truth on whether to use GPUs or not.
             # Fields such as gpuType and gpuCount will control what GPUs are provided.
             use_gpus = cast(WDL.Value.Boolean, runtime_bindings.get('gpu', WDL.Value.Boolean(False))).value
-            
+
         if use_gpus:
             # We want to have GPUs
             # TODO: actually coerce types here instead of casting to detect user mistakes
@@ -3689,7 +3706,7 @@ def main() -> None:
                 output_bindings = toil.start(root_job)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
-            
+
             devirtualization_state: DirectoryNamingStateDict = {}
             devirtualized_to_virtualized: Dict[str, str] = dict()
             virtualized_to_devirtualized: Dict[str, str] = dict()
