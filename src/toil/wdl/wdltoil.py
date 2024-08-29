@@ -472,6 +472,11 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     #
     # So we do the merge manually.
 
+    new_all_bindings = []
+    for bindings in all_bindings:
+        new_bindings = map_over_typed_files_in_bindings(bindings, revert_file_to_original)
+        new_all_bindings.append(new_bindings)
+
     if len(all_bindings) == 0:
         # Combine nothing
         return WDL.Env.Bindings()
@@ -486,26 +491,19 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
                     # This is a duplicate
                     existing_value = merged[binding.name]
                     if existing_value != binding.value:
-                        # This can happen if a binding has been virtualized and then devirtualized as devirtualization will replace the value
-                        # Drop the unvirtualized binding in favor of the virtualized to ensure caching
-                        # todo: figure out a better way to do this
-                        existing_virtualized_value = getattr(existing_value, "virtualized_value", None)
-                        current_virtualized_value = getattr(binding.value, "virtualized_value", None)
-                        both_none = existing_virtualized_value is None and current_virtualized_value is None
-                        both_virtualized = existing_virtualized_value is not None and current_virtualized_value is not None
-                        virtualized_equal = existing_virtualized_value == current_virtualized_value
-                        if both_none or (both_virtualized and not virtualized_equal):
-                            raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
-                        elif existing_virtualized_value is not None:
-                            continue
-                        else:
-                            merged = merged.bind(binding.name, binding.value, binding.info)
+                        raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
                     else:
                         logger.debug('Drop duplicate binding for %s', binding.name)
                 else:
                     merged = merged.bind(binding.name, binding.value, binding.info)
 
     return merged
+
+def revert_file_to_original(file: WDL.Value.File) -> Optional[WDL.Value.File]:
+    original_value = getattr(file, "original_value", None)
+    if original_value is not None:
+        file.value = original_value
+    return file
 
 # TODO: Develop a Protocol that can match the logging function type more closely
 def log_bindings(log_function: Callable[..., None], message: str, all_bindings: Sequence[Promised[WDLBindings]]) -> None:
@@ -989,8 +987,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
         if getattr(file, "nonexistent", False):
             return file
-        virtualized_filename = getattr(file, "virtualized_value", file.value)
-        file.value = self._devirtualize_filename(virtualized_filename)
+        virtualized_filename = getattr(file, "virtualized_value", None)
+        if virtualized_filename is not None:
+            file.value = self._devirtualize_filename(virtualized_filename)
         return file
 
     def _virtualize_file(self, file: WDL.Value.File, enforce_existence: bool = True) -> WDL.Value.File:
@@ -1001,7 +1000,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if not os.path.exists(abs_filepath):
                 setattr(file, "nonexistent", True)
                 return file
-        virtualized = self._virtualize_filename(getattr(file, "virtualized_value", None) or file.value)
+        current_virtualized_value = getattr(file, "virtualized_value", None)
+        virtualized = self._virtualize_filename(current_virtualized_value or file.value)
+        if current_virtualized_value is None:
+            setattr(file, "original_value", file.value)
         setattr(file, "virtualized_value", virtualized)
         return file
 
@@ -2310,7 +2312,7 @@ class WDLTaskJob(WDLBaseJob):
             os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
 
             # Run containers with Singularity
-            TaskContainerImplementation: Type[TaskContainer]  = SingularityContainer
+            TaskContainerImplementation: Type[TaskContainer] = SingularityContainer
         elif self._wdl_options.get("container") in ["docker", "auto"]:
             # Run containers with Docker
             # TODO: Poll if it is available and don't just try and fail.
