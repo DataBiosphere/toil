@@ -3687,14 +3687,6 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                # There are two instances where paths relative to the JSON URL may be necessary:
-                # ToilStdLibBase._devirtualize_to and ToilStdLibBase._virtualize_filename
-                # devirtualize can happen when a binding needs a function call that reads the file, which miniwdl will call internally
-                # as the file (which is represented as a string/path) can be relative to the JSON URL, see if the mapping exists
-                # and use it if so
-                # virtualize can happen at task boundaries; files must be converted to their virtualized instances.
-                # Similarly, see if the mapping exists to test if the file (string/path representation) relative to the JSON URL exists,
-                # and use it if so
                 convert_remote_files(input_bindings, toil, inputs_search_path)
 
                 # Configure workflow interpreter options
