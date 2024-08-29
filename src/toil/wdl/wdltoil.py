@@ -48,6 +48,8 @@ from typing import (Any,
                     Union,
                     cast,
                     TypedDict)
+from urllib.error import HTTPError
+
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
@@ -65,6 +67,7 @@ from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.task_container import TaskContainer
+from WDL.runtime.error import DownloadFailed
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.common import Toil, addOptions
@@ -111,6 +114,7 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         WDL.Error.ImportError,
         WDL.Error.ValidationError,
         WDL.Error.MultipleValidationErrors,
+        DownloadFailed,
         FileNotFoundError,
         InsufficientSystemResources,
         LocatorException,
@@ -779,7 +783,15 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
-def is_url(filename: str, schemes: List[str] = ['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
+def is_toil_url(filename: str) -> bool:
+    return is_url(filename, schemes=[TOIL_URI_SCHEME])
+
+
+def is_normal_url(filename: str) -> bool:
+    return is_url(filename, ['http:', 'https:', 's3:', 'gs:'])
+
+
+def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -989,22 +1001,31 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             return file
         virtualized_filename = getattr(file, "virtualized_value", None)
         if virtualized_filename is not None:
-            file.value = self._devirtualize_filename(virtualized_filename)
+            devirtualized = self._devirtualize_filename(virtualized_filename)
+            if file.value != devirtualized:
+                # Remember the original value for when we merge bindings from finished jobs to future jobs as the devirtualized name
+                # is job specific, but the merge requires the file names to be the same
+                setattr(file, "original_value", file.value)
+            file.value = devirtualized
         return file
 
     def _virtualize_file(self, file: WDL.Value.File, enforce_existence: bool = True) -> WDL.Value.File:
         if enforce_existence is False:
             # We only want to error on a nonexistent file in the output section
             # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
-            abs_filepath = os.path.join(self.execution_dir, file.value) if self.execution_dir is not None else os.path.abspath(file.value)
-            if not os.path.exists(abs_filepath):
+            if is_normal_url(file.value):
+                file_uri = Toil.normalize_uri(file.value)
+            else:
+                abs_filepath = os.path.join(self.execution_dir, file.value) if self.execution_dir is not None else os.path.abspath(file.value)
+                file_uri = Toil.normalize_uri(abs_filepath)
+
+            if not AbstractJobStore.url_exists(file_uri):
                 setattr(file, "nonexistent", True)
                 return file
         current_virtualized_value = getattr(file, "virtualized_value", None)
-        virtualized = self._virtualize_filename(current_virtualized_value or file.value)
         if current_virtualized_value is None:
-            setattr(file, "original_value", file.value)
-        setattr(file, "virtualized_value", virtualized)
+            virtualized = self._virtualize_filename(file.value)
+            setattr(file, "virtualized_value", virtualized)
         return file
 
     @memoize
@@ -1142,39 +1163,66 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         File value
         """
 
-        if is_url(filename):
+        if is_toil_url(filename):
             # Already virtual
             logger.debug('Already virtual: %s', filename)
             return filename
-
-        # Otherwise this is a local file and we want to fake it as a Toil file store file
-
-        # Make it an absolute path
-        if self.execution_dir is not None:
-            # To support relative paths from execution directory, join the execution dir and filename
-            # If filename is already an abs path, join() will not do anything
-            abs_filename = os.path.join(self.execution_dir, filename)
-        else:
-            abs_filename = os.path.abspath(filename)
-
-        if abs_filename in self._devirtualized_to_virtualized:
-            # This is a previously devirtualized thing so we can just use the
-            # virtual version we remembered instead of reuploading it.
-            result = self._devirtualized_to_virtualized[abs_filename]
-            logger.debug("Re-using virtualized WDL file %s for %s", result, filename)
+        elif is_normal_url(filename):
+            # This is a URL (http, s3, etc) that we want to virtualize
+            # First check the cache
+            if filename in self._devirtualized_to_virtualized:
+                # Note: this is a little duplicative with the local file path branch, but the keys are different
+                result = self._devirtualized_to_virtualized[filename]
+                logger.debug("Re-using virtualized WDL file %s for %s", result, filename)
+                return result
+            try:
+                imported = self._file_store.import_file(filename)
+            except FileNotFoundError:
+                # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eage which always raises an EvalError.
+                #  Ideally, the error raised here should escape to be captured in the wdl runner main loop, but I can't figure out how
+                raise WDL.runtime.DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
+            except HTTPError:
+                # Something went wrong with the connection, raise and retry later
+                raise
+            file_basename = os.path.basename(urlsplit(filename).path)
+            # Get the URL to the parent directory and use that.
+            parent_dir = urljoin(filename, ".")
+            # Pack a UUID of the parent directory
+            dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
+            result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
+            logger.debug('Virtualized %s as WDL file %s', filename, result)
+            # We can't the Toil URI in the cache because it would point to the URL instead of a file
+            # which we don't have as we haven't written the contents of the URL into a file yet
+            # The next devirtualize_filename call will generate a file and store it in the cache for us
             return result
+        else:
+            # Otherwise this is a local file and we want to fake it as a Toil file store file
+            # Make it an absolute path
+            if self.execution_dir is not None:
+                # To support relative paths from execution directory, join the execution dir and filename
+                # If filename is already an abs path, join() will not do anything
+                abs_filename = os.path.join(self.execution_dir, filename)
+            else:
+                abs_filename = os.path.abspath(filename)
 
-        file_id = self._file_store.writeGlobalFile(abs_filename)
+            if abs_filename in self._devirtualized_to_virtualized:
+                # This is a previously devirtualized thing so we can just use the
+                # virtual version we remembered instead of reuploading it.
+                result = self._devirtualized_to_virtualized[abs_filename]
+                logger.debug("Re-using virtualized WDL file %s for %s", result, filename)
+                return result
 
-        file_dir = os.path.dirname(abs_filename)
-        parent_id = self._parent_dir_to_ids.setdefault(file_dir, uuid.uuid4())
-        result = pack_toil_uri(file_id, self.task_path, parent_id, os.path.basename(abs_filename))
-        logger.debug('Virtualized %s as WDL file %s', filename, result)
-        # Remember the upload in case we share a cache
-        self._devirtualized_to_virtualized[abs_filename] = result
-        # And remember the local path in case we want a redownload
-        self._virtualized_to_devirtualized[result] = abs_filename
-        return result
+            file_id = self._file_store.writeGlobalFile(abs_filename)
+
+            file_dir = os.path.dirname(abs_filename)
+            parent_id = self._parent_dir_to_ids.setdefault(file_dir, uuid.uuid4())
+            result = pack_toil_uri(file_id, self.task_path, parent_id, os.path.basename(abs_filename))
+            logger.debug('Virtualized %s as WDL file %s', filename, result)
+            # Remember the upload in case we share a cache
+            self._devirtualized_to_virtualized[abs_filename] = result
+            # And remember the local path in case we want a redownload
+            self._virtualized_to_devirtualized[result] = abs_filename
+            return result
 
 class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     """
