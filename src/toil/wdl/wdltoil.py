@@ -1180,10 +1180,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             except FileNotFoundError:
                 # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eage which always raises an EvalError.
                 #  Ideally, the error raised here should escape to be captured in the wdl runner main loop, but I can't figure out how
-                raise WDL.runtime.DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
+                raise DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
             except HTTPError:
                 # Something went wrong with the connection, raise and retry later
                 raise
+            if imported is None:
+                # Satisfy mypy, this should never happen though as we don't pass a shared file name (which is the only way import_file returns None)
+                raise RuntimeError("Failed to import URL %s into jobstore." % filename)
             file_basename = os.path.basename(urlsplit(filename).path)
             # Get the URL to the parent directory and use that.
             parent_dir = urljoin(filename, ".")
