@@ -27,6 +27,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
@@ -47,7 +48,7 @@ from typing import (Any,
                     TypeVar,
                     Union,
                     cast,
-                    TypedDict)
+                    TypedDict, IO)
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -454,7 +455,11 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
 
 
-
+def virtualized_equal(file1: WDL.Value.Base, file2: WDL.Value.Base) -> bool:
+    def f(file: WDL.Value.File) -> WDL.Value.File:
+        file.value = getattr(file, "virtualized_value", file.value)
+        return file
+    return map_over_typed_files_in_value(file1, f) == map_over_typed_files_in_value(file2, f)
 
 # Bindings have a long type name
 WDLBindings = WDL.Env.Bindings[WDL.Value.Base]
@@ -477,11 +482,6 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
     #
     # So we do the merge manually.
 
-    new_all_bindings = []
-    for bindings in all_bindings:
-        new_bindings = map_over_typed_files_in_bindings(bindings, revert_file_to_original)
-        new_all_bindings.append(new_bindings)
-
     if len(all_bindings) == 0:
         # Combine nothing
         return WDL.Env.Bindings()
@@ -495,7 +495,7 @@ def combine_bindings(all_bindings: Sequence[WDLBindings]) -> WDLBindings:
                 if binding.name in merged:
                     # This is a duplicate
                     existing_value = merged[binding.name]
-                    if existing_value != binding.value:
+                    if not virtualized_equal(existing_value, binding.value):
                         raise RuntimeError('Conflicting bindings for %s with values %s and %s', binding.name, existing_value, binding.value)
                     else:
                         logger.debug('Drop duplicate binding for %s', binding.name)
@@ -996,6 +996,24 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         return f
 
+    def _write(
+        self, serialize: Callable[[WDL.Value.Base, IO[bytes]], None]
+    ) -> Callable[[WDL.Value.Base], WDL.Value.File]:
+        "generate write_* function implementation based on serialize"
+
+        def _f(
+            v: WDL.Value.Base,
+        ) -> WDL.Value.File:
+            os.makedirs(self._write_dir, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=self._write_dir, delete=False) as outfile:
+                serialize(v, outfile)
+                filename = outfile.name
+            from WDL._util import chmod_R_plus
+            chmod_R_plus(filename, file_bits=0o660)
+            return WDL.Value.File(filename)
+
+        return _f
+
     def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
         if getattr(file, "nonexistent", False):
             return file
@@ -1010,6 +1028,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return file
 
     def _virtualize_file(self, file: WDL.Value.File, enforce_existence: bool = True) -> WDL.Value.File:
+        if getattr(file, "virtualized_value", None) is not None:
+            return file
+
         if enforce_existence is False:
             # We only want to error on a nonexistent file in the output section
             # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
@@ -1022,10 +1043,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             if not AbstractJobStore.url_exists(file_uri):
                 setattr(file, "nonexistent", True)
                 return file
-        current_virtualized_value = getattr(file, "virtualized_value", None)
-        if current_virtualized_value is None:
-            virtualized = self._virtualize_filename(file.value)
-            setattr(file, "virtualized_value", virtualized)
+        virtualized = self._virtualize_filename(file.value)
+        setattr(file, "virtualized_value", virtualized)
         return file
 
     @memoize
@@ -1198,6 +1217,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # We can't the Toil URI in the cache because it would point to the URL instead of a file
             # which we don't have as we haven't written the contents of the URL into a file yet
             # The next devirtualize_filename call will generate a file and store it in the cache for us
+            # But store the forward mapping in case another virtualization is called
+            self._devirtualized_to_virtualized[filename] = result
             return result
         else:
             # Otherwise this is a local file and we want to fake it as a Toil file store file
@@ -1253,6 +1274,23 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
                 return parse(infile.read())
 
         return f
+
+    def _write(
+        self, serialize: Callable[[WDL.Value.Base, IO[bytes]], None]
+    ) -> Callable[[WDL.Value.Base], WDL.Value.File]:
+        def _f(
+            v: WDL.Value.Base,
+        ) -> WDL.Value.File:
+            os.makedirs(self._write_dir, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=self._write_dir, delete=False) as outfile:
+                serialize(v, outfile)
+                filename = outfile.name
+            from WDL._util import chmod_R_plus
+            chmod_R_plus(filename, file_bits=0o660)
+            vfn = self._virtualize_filename(filename)
+            return WDL.Value.File(vfn)
+
+        return _f
 
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
@@ -1998,8 +2036,6 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # UUID to use for virtualizing files
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(bindings, standard_library)
-
         if self._task.inputs:
             logger.debug("Evaluating task code")
             # Evaluate all the inputs that aren't pre-set
@@ -2098,7 +2134,6 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
             accelerator_requirement = parse_accelerator(accelerator_spec)
             runtime_accelerators = [accelerator_requirement]
-
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
         run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library, enforce_existence=False), virtualize_files(runtime_bindings, standard_library, enforce_existence=False), self._task_id, self._namespace, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
@@ -2681,8 +2716,6 @@ class WDLWorkflowNodeJob(WDLBaseJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(incoming_bindings, standard_library)
-
         if isinstance(self._node, WDL.Tree.Decl):
             # This is a variable assignment
             logger.info('Setting %s to %s', self._node.name, self._node.expr)
@@ -2777,8 +2810,6 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(current_bindings, standard_library)
-
         for node in self._nodes:
             if isinstance(node, WDL.Tree.Decl):
                 # This is a variable assignment
@@ -2819,8 +2850,6 @@ class WDLCombineBindingsJob(WDLBaseJob):
 
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
-
-        devirtualize_files(combined, standard_library)
 
         # Make sure to run the universal postprocessing steps
         return self.postprocess(combined)
@@ -3254,8 +3283,6 @@ class WDLScatterJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(bindings, standard_library)
-
         # Get what to scatter over
         try:
             scatter_value = evaluate_named_expression(self._scatter, self._scatter.variable, None, self._scatter.expr, bindings, standard_library)
@@ -3394,8 +3421,6 @@ class WDLConditionalJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(bindings, standard_library)
-
         # Get the expression value. Fake a name.
         try:
             expr_value = evaluate_named_expression(self._conditional, "<conditional expression>", WDL.Type.Boolean(), self._conditional.expr, bindings, standard_library)
@@ -3461,8 +3486,6 @@ class WDLWorkflowJob(WDLSectionJob):
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
-        devirtualize_files(bindings, standard_library)
-
         if self._workflow.inputs:
             try:
                 bindings = evaluate_decls_to_bindings(self._workflow.inputs, bindings, standard_library, include_previous=True)
@@ -3470,6 +3493,7 @@ class WDLWorkflowJob(WDLSectionJob):
                 # Report all files are downloaded now that all expressions are evaluated.
                 self.files_downloaded_hook([(p, p) for p in standard_library.get_local_paths()])
 
+        bindings = virtualize_files(bindings, standard_library, enforce_existence=False)
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
 
