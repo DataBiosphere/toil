@@ -138,7 +138,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("Getting coalesced job exit codes via bjobs")
                 bjobs_records = self.parseBjobs(
                     subprocess.run(
-                        args, check=False, stderr=subprocess.STDOUT, encoding="utf-8"
+                        args, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8"
                     ).stdout
                 )
                 if bjobs_records:
