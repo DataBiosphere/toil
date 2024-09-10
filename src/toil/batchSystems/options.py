@@ -185,6 +185,10 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
              "systems such as gridengine, htcondor, torque, slurm, and lsf."
     )
 
+    parser.add_argument('--memoryIsProduct', dest='memory_is_product', default=False, action="store_true",
+                        help="If the batch system understands requested memory as a product of the requested memory and the number"
+                             "of cores, set this flag to properly allocate memory.")
+
     for name in get_batch_systems():
         # All the batch systems are responsible for adding their own options
         # with the add_options class method.
