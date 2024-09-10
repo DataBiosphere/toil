@@ -128,7 +128,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                     len(self.runningJobs) < int(self.boss.config.max_jobs):
                 activity = True
                 jobID, cpu, memory, command, jobName, environment, gpus = self.waitingJobs.pop(0)
-
+                if self.boss.config.memory_is_product and cpu > 1:
+                    memory = memory // cpu
                 # prepare job submission command
                 subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName, environment, gpus)
                 logger.debug("Running %r", subLine)
