@@ -821,7 +821,6 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
            locations. Leave them as URIs.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
-    @memoize
     def convert_file_to_url(file: WDL.Value.File) -> WDL.Value.File:
         """
         Detect if any potential URI exists. Will convert a file's value to a URI and import it.
