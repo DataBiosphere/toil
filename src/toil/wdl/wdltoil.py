@@ -1926,6 +1926,25 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
+
+        # At this point we have what MiniWDL would call the "inputs" to the
+        # task (i.e. what you would put in a JSON file, without any defaulted
+        # or calculated inputs filled in). So start making cache keys.
+        input_digest = get_miniwdl_input_digest(bindings)
+        task_digest = self._task.digest
+        cache_key=f"{self._task.name}/{task_digest}/{input_digest}"
+        miniwdl_logger = logging.getLogger("MiniWDL")
+        # TODO: Ship config from leader? It might not see the right environment.
+        miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+        miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+        cached_result: Optional[WDLBindings] = miniwdl_cache.get(cache_key, bindings, self._task.effective_outputs)
+        if cached_result is not None:
+            logger.info("Found task call in cache")
+            return self.postprocess(cached_result)
+        else:
+            logger.debug("No cache hit for %s", cache_key)
+        # Otherwise we need to run the actual command.
+
         # Set up the WDL standard library
         # UUID to use for virtualizing files
         standard_library = ToilWDLStdLibBase(file_store, self._task_path)
@@ -2031,7 +2050,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             runtime_accelerators = [accelerator_requirement]
 
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
-        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
+        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options, cache_key=cache_key)
         # Run that as a child
         self.addChild(run_job)
 
@@ -2054,7 +2073,7 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], namespace: str, task_path: str, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], namespace: str, task_path: str, cache_key: Optional[str] = None, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
 
@@ -2063,11 +2082,12 @@ class WDLTaskJob(WDLBaseJob):
 
         :param task_path: Like the namespace, but including subscript numbers
                for scatters.
+
+        :param cache_key: Key to save outputs under in MiniWDL-compatible
+               cache. Cached outputs will not be postprocessed.
         """
 
         # This job should not be local because it represents a real workflow task.
-        # TODO: Instead of re-scheduling with more resources, add a local
-        # "wrapper" job like CWL uses to determine the actual requirements.
         super().__init__(unitName=task_path + ".command", displayName=namespace + ".command", local=False, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, namespace)
@@ -2078,6 +2098,7 @@ class WDLTaskJob(WDLBaseJob):
         self._task_id = task_id
         self._namespace = namespace
         self._task_path = task_path
+        self._cache_key = cache_key
 
     ###
     # Runtime code injection system
@@ -2317,7 +2338,7 @@ class WDLTaskJob(WDLBaseJob):
             raise RuntimeError(f"Could not find a working container engine to use; told to use {self._wdl_options.get('container')}")
 
         # Set up the MiniWDL container running stuff
-        miniwdl_logger = logging.getLogger("MiniWDLContainers")
+        miniwdl_logger = logging.getLogger("MiniWDL")
         miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
         if not getattr(TaskContainerImplementation, 'toil_initialized__', False):
             # Initialize the cointainer system
@@ -2578,6 +2599,14 @@ class WDLTaskJob(WDLBaseJob):
 
         # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
+
+        if self._cache_key is not None:
+            # Offer to save the not-yet-postprocessed result to the cache.
+            miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+            # TODO: We probably need to rewrite the file values and save copies
+            # of them outside the doomed jobstore
+            miniwdl_cache.put(self._cache_key, output_bindings)
+            logger.debug("Saved result to cache under %s", self._cache_key)
 
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
