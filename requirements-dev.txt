@@ -2,14 +2,14 @@ pytest>=6.2.1,<9
 pytest-cov>=2.12.1,<6
 pytest-timeout>=1.4.2,<3
 stubserver>=1.1,<2
-setuptools>=65.5.1,<73
+setuptools>=65.5.1,<74
 sphinx>=7,<9
 sphinx-autoapi>=3.2.1,<4
 astroid>=3,<4
 sphinx-autodoc-typehints>=1.24.0,<3
 sphinxcontrib-autoprogram==0.1.9
 cwltest>=2.2.20211116163652
-mypy==1.11.1
+mypy==1.11.2
 types-aws-xray-sdk
 types-boto<2.49.18.20240807
 types-Flask-Cors
