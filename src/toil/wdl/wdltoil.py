@@ -2089,7 +2089,8 @@ class WDLTaskJob(WDLBaseJob):
                 }
                 """)
             parts.append(script)
-            parts.append(f"_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &")
+            # Launch in a subshell so that it doesn't interfere with Bash "wait" in the main shell
+            parts.append(f"(_toil_resource_monitor {self.INJECTED_MESSAGE_DIR} &)")
 
         if isinstance(task_container, SwarmContainer) and platform.system() == "Darwin":
             # With gRPC FUSE file sharing, files immediately downloaded before
