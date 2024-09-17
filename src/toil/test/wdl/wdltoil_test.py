@@ -17,6 +17,7 @@ import pytest
 from toil.fileStores import FileID
 from toil.provisioners import cluster_factory
 from toil.test import (ToilTest,
+                       needs_docker,
                        needs_docker_cuda,
                        needs_google_storage,
                        needs_singularity_or_docker,
@@ -165,6 +166,21 @@ class WDLTests(BaseWDLTest):
         assert 'url_to_file.first_line' in result
         assert isinstance(result['url_to_file.first_line'], str)
         self.assertEqual(result['url_to_file.first_line'], 'chr1\t248387328')
+    
+    @needs_docker
+    def test_wait(self):
+        """
+        Test if Bash "wait" works in WDL scripts.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/wait.wdl')
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--wdlContainer=docker'])
+        result = json.loads(result_json)
+
+        assert 'wait.result' in result
+        assert isinstance(result['wait.result'], str)
+        self.assertEqual(result['wait.result'], 'waited')
 
     def test_url_to_optional_file(self):
         """
