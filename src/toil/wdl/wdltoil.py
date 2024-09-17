@@ -1934,7 +1934,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 all_specs = [part.value for part in disks_spec]
             else:
                 all_specs = disks_spec.split(',')
-            # Sum up the gigabytes in each disk specification
+            # Sum up the space in each disk specification
             total_bytes: float = 0
             for spec in all_specs:
                 # Split up each spec as space-separated. We assume no fields
