@@ -463,9 +463,11 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
 def virtualized_equal(file1: WDL.Value.Base, file2: WDL.Value.Base) -> bool:
     """
     Check if two WDL values are equal when taking account file virtualization.
+    
+    Treats virtualized and non-virtualized `File`s referring to the same underlying file as equal.
     :param file1: WDL value
     :param file2: WDL value
-    :return: Whether the two file values are true
+    :return: Whether the two values are equal with file virtualization accounted for
     """
     def f(file: WDL.Value.File) -> WDL.Value.File:
         file.value = getattr(file, "virtualized_value", file.value)
@@ -809,16 +811,15 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', T
 
 def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path: str, search_paths: Optional[List[str]] = None, skip_remote: bool = False) -> None:
     """
-    Iterate through the environment and convert all files that reference a remote file from the possible URIs to that URI.
-    If the file references a local file, leave it unchanged.
+    Resolve relative-URI files in the given environment and import all files.
     :param environment: Bindings to evaluate on
-    :param file_source: Context to search for remote files with
+    :param file_source: Context to search for files with
     :param task_path: Dotted WDL name of the user-level code doing the
            importing (probably the workflow name).
     :param search_paths: If set, try resolving input location relative to the URLs or
            directories in this list.
-    :param skip_remote: If set, don't try to import files from remote
-           locations. Leave them as URIs.
+    :param skip_remote: If set, don't actually import files from remote
+           locations. Leave them as URI references.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
     def convert_file_to_url(file: WDL.Value.File) -> WDL.Value.File:
@@ -1008,23 +1009,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         return list(self._virtualized_to_devirtualized.values())
 
-    def share_files(self, other: "ToilWDLStdLibBase") -> None:
-        """
-        Share caches for devirtualizing and virtualizing files with another instance.
-
-        Files devirtualized by one instance can be re-virtualized back to their
-        original virtualized filenames by the other.
-        """
-
-        if id(self._virtualized_to_devirtualized) != id(other._virtualized_to_devirtualized):
-            # Merge the virtualized to devirtualized mappings
-            self._virtualized_to_devirtualized.update(other._virtualized_to_devirtualized)
-            other._virtualized_to_devirtualized = self._virtualized_to_devirtualized
-
-        if id(self._devirtualized_to_virtualized) != id(other._devirtualized_to_virtualized):
-            # Merge the devirtualized to virtualized mappings
-            self._devirtualized_to_virtualized.update(other._devirtualized_to_virtualized)
-            other._devirtualized_to_virtualized = self._devirtualized_to_virtualized
 
     def _read(self, parse: Callable[[str], WDL.Value.Base]) -> Callable[[WDL.Value.File], WDL.Value.Base]:
         # To only virtualize on task/function boundaries, rely on the _read function
@@ -1241,7 +1225,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             try:
                 imported = self._file_store.import_file(filename)
             except FileNotFoundError:
-                # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eage which always raises an EvalError.
+                # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eager which always raises an EvalError.
                 #  Ideally, the error raised here should escape to be captured in the wdl runner main loop, but I can't figure out how
                 raise DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
             except HTTPError as e:
