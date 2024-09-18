@@ -63,7 +63,7 @@ from functools import partial
 import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser
-from WDL._util import byte_size_units
+from WDL._util import byte_size_units, chmod_R_plus
 from WDL.Tree import ReadSourceResult
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
@@ -101,8 +101,8 @@ logger = logging.getLogger(__name__)
 # WDL options to pass into the WDL jobs and standard libraries
 #   task_path: Dotted WDL name of the part of the workflow this library is working for.
 #   execution_dir: Directory to use as the working directory for workflow code.
-#   enforce_existence: If true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
 #   share_files_with: If set to an existing standard library instance, use the same file upload and download paths as it.
+#   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 WDL_OPTIONS = TypedDict('WDL_OPTIONS', {"execution_dir": NotRequired[str], "container": NotRequired[str],
                                         "share_files_with": NotRequired["ToilWDLStdLibBase"], "task_path": str})
 
@@ -796,7 +796,7 @@ def is_toil_url(filename: str) -> bool:
     return is_url(filename, schemes=[TOIL_URI_SCHEME])
 
 
-def is_normal_url(filename: str) -> bool:
+def is_standard_url(filename: str) -> bool:
     return is_url(filename, ['http:', 'https:', 's3:', 'gs:'])
 
 
@@ -809,17 +809,16 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', T
                 return True
         return False
 
-def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path: str, search_paths: Optional[List[str]] = None, skip_remote: bool = False) -> None:
+def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True) -> None:
     """
-    Resolve relative-URI files in the given environment and import all files.
+    Resolve relative-URI files in the given environment and import all files. Will set the value of the File to the relative-URI
     :param environment: Bindings to evaluate on
     :param file_source: Context to search for files with
     :param task_path: Dotted WDL name of the user-level code doing the
            importing (probably the workflow name).
     :param search_paths: If set, try resolving input location relative to the URLs or
            directories in this list.
-    :param skip_remote: If set, don't actually import files from remote
-           locations. Leave them as URI references.
+    :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
     def convert_file_to_url(file: WDL.Value.File) -> WDL.Value.File:
@@ -832,7 +831,7 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
         for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else []):
             tried.append(candidate_uri)
             try:
-                if skip_remote and is_url(candidate_uri):
+                if not import_remote_files and is_url(candidate_uri):
                     # Use remote URIs in place. But we need to find the one that exists.
                     if not file_source.url_exists(candidate_uri):
                         # Wasn't found there
@@ -877,11 +876,6 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
                 # We can't have files with no basename because we need to
                 # download them at that basename later.
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
-
-            if candidate_uri.startswith("file:") or filename == candidate_uri:
-                # Don't replace if the original file was already found
-                # or if the replacement value is the same as the original
-                return file
 
             # Was actually found
             if is_url(candidate_uri):
@@ -967,7 +961,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         self._wdl_options: WDL_OPTIONS = wdl_options
 
-        share_files_with = self.share_files_with
+        share_files_with = wdl_options.get("share_files_with")
         if share_files_with is None:
             # We get fresh file download/upload state
 
@@ -991,11 +985,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def execution_dir(self) -> Optional[str]:
         execution_dir: Optional[str] = self._wdl_options.get("execution_dir")
         return execution_dir
-
-    @property
-    def share_files_with(self) -> Optional["ToilWDLStdLibBase"]:
-        share_files_with: Optional["ToilWDLStdLibBase"] = self._wdl_options.get("share_files_with")
-        return share_files_with
 
     @property
     def task_path(self) -> str:
@@ -1038,13 +1027,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             with tempfile.NamedTemporaryFile(dir=self._write_dir, delete=False) as outfile:
                 serialize(v, outfile)
                 filename = outfile.name
-            from WDL._util import chmod_R_plus
             chmod_R_plus(filename, file_bits=0o660)
             return WDL.Value.File(filename)
 
         return _f
 
     def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
+        # We track whether files do not exist with the nonexistent flag in order to coerce to Null/error on use
         if getattr(file, "nonexistent", False):
             return file
         virtualized_filename = getattr(file, "virtualized_value", None)
@@ -1053,13 +1042,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return file
 
     def _virtualize_file(self, file: WDL.Value.File, enforce_existence: bool = True) -> WDL.Value.File:
+        # If enforce_existence is true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
         if getattr(file, "virtualized_value", None) is not None:
             return file
 
         if enforce_existence is False:
             # We only want to error on a nonexistent file in the output section
             # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
-            if is_normal_url(file.value):
+            if is_standard_url(file.value):
                 file_uri = Toil.normalize_uri(file.value)
             else:
                 abs_filepath = os.path.join(self.execution_dir, file.value) if self.execution_dir is not None else os.path.abspath(file.value)
@@ -1206,15 +1196,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
         """
-        from a local path in write_dir, 'virtualize' into the filename as it should present in a
-        File value
+        from a local path in write_dir, 'virtualize' into the filename as it should present in a File value
+        
+        :param filename: Can be a local file path, URL (http, https, s3, gs), or toilfile
         """
 
         if is_toil_url(filename):
             # Already virtual
             logger.debug('Already virtual: %s', filename)
             return filename
-        elif is_normal_url(filename):
+        elif is_standard_url(filename):
             # This is a URL (http, s3, etc) that we want to virtualize
             # First check the cache
             if filename in self._devirtualized_to_virtualized:
@@ -1225,9 +1216,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             try:
                 imported = self._file_store.import_file(filename)
             except FileNotFoundError:
-                # todo: raising exceptions inside of this function will be captured in StdLib.StaticFunction._call_eager which always raises an EvalError.
-                #  Ideally, the error raised here should escape to be captured in the wdl runner main loop, but I can't figure out how
-                raise DownloadFailed("File at URL %s does not exist or is inaccessible." % filename)
+                logger.error("File at URL %s does not exist or is inaccessible." % filename)
+                raise
             except HTTPError as e:
                 # Something went wrong with the connection
                 logger.error("File %s could not be downloaded due to HTTP error %d", filename, e.code)
@@ -1242,10 +1232,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
             result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
             logger.debug('Virtualized %s as WDL file %s', filename, result)
-            # We can't the Toil URI in the cache because it would point to the URL instead of a file
-            # which we don't have as we haven't written the contents of the URL into a file yet
-            # The next devirtualize_filename call will generate a file and store it in the cache for us
-            # But store the forward mapping in case another virtualization is called
+            # We can't put the Toil URI in the virtualized_to_devirtualized cache because it would point to the URL instead of a
+            # local file on the machine, so only store the forward mapping
             self._devirtualized_to_virtualized[filename] = result
             return result
         else:
@@ -1313,7 +1301,6 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
             with tempfile.NamedTemporaryFile(dir=self._write_dir, delete=False) as outfile:
                 serialize(v, outfile)
                 filename = outfile.name
-            from WDL._util import chmod_R_plus
             chmod_R_plus(filename, file_bits=0o660)
             vfn = self._virtualize_filename(filename)
             return WDL.Value.File(vfn)
@@ -3728,7 +3715,7 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, skip_remote=options.reference_inputs)
+                convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
                 wdl_options: WDL_OPTIONS = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name}
