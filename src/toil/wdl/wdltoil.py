@@ -2658,8 +2658,6 @@ class WDLTaskJob(WDLBaseJob):
         if workdir_in_container is not None:
             output_wdl_options["execution_dir"] = workdir_in_container
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, wdl_options=output_wdl_options)
-        # Make sure files downloaded as inputs get re-used if we re-upload them.
-        outputs_library.share_files(standard_library)
         output_bindings = evaluate_decls_to_bindings(self._task.outputs, bindings, outputs_library, drop_missing_files=True)
 
         # Now we know if the standard output and error were sent somewhere by
