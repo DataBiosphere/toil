@@ -3391,9 +3391,20 @@ class WDLOutputsJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store, self._task_path, execution_dir=self._wdl_options.get("execution_dir"))
 
         try:
-            if self._workflow.outputs is None:
-                # The output section is not declared
-                # So get all task outputs and return that
+            if self._workflow.outputs is not None:
+                # Output section is declared and is nonempty, so evaluate normally
+
+                # Combine the bindings from the previous job
+                with monkeypatch_coerce(standard_library):
+                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+            else:
+                # If no output section is present, start with an empty bindings
+                output_bindings = WDL.Env.Bindings()
+
+            if self._workflow.outputs is None or self._wdl_options.get("all_call_outputs", False):
+                # The output section is not declared, or we want to keep task outputs anyway.
+
+                # Get all task outputs and return that
                 # First get all task output names
                 output_set = set()
                 # We need to recurse down through scatters and conditionals to find all the task names.
@@ -3413,18 +3424,11 @@ class WDLOutputsJob(WDLBaseJob):
                         # For scatters and conditionals, recurse looking for calls.
                         for subnode in node.body:
                             stack.append(subnode)
-                # Collect all bindings that are task outputs
-                output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+                # Add in all bindings that are task outputs
                 for binding in unwrap(self._bindings):
                     if binding.name in output_set:
                         # The bindings will already be namespaced with the task namespaces
                         output_bindings = output_bindings.bind(binding.name, binding.value)
-            else:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
-                with monkeypatch_coerce(standard_library):
-                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -3622,6 +3626,7 @@ def main() -> None:
                 wdl_options["execution_dir"] = execution_dir
                 wdl_options["container"] = options.container
                 assert wdl_options.get("container") is not None
+                wdl_options["all_call_outputs"] = options.all_call_outputs
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
                 root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
