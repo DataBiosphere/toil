@@ -3567,6 +3567,26 @@ def main() -> None:
                 else:
                     raise WDL.Error.InputError("WDL document is empty!")
 
+                if "croo_out_def" in target.meta:
+                    # This workflow or task wants to have its outputs
+                    # "organized" by the Cromwell Output Organizer:
+                    # <https://github.com/ENCODE-DCC/croo>.
+                    #
+                    # TODO: We don't support generating anything that CROO can read.
+                    logger.warning("This WDL expects to be used with the Cromwell Output Organizer (croo) <https://github.com/ENCODE-DCC/croo>. Toil cannot yet produce the outputs that croo requires. You will not be able to use croo on the output of this Toil run!")
+
+                    # But we can assume that we need to preserve individual
+                    # taks outputs since the point of CROO is fetching those
+                    # from Cromwell's output directories.
+                    #
+                    # This isn't quite WDL spec compliant but it will rescue
+                    # runs of the popular
+                    # <https://github.com/ENCODE-DCC/atac-seq-pipeline>
+                    if options.all_call_outputs is None:
+                        logger.warning("Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file.")
+                        options.all_call_outputs = True
+
+
                 if options.inputs_uri:
                     # Load the inputs. Use the same loading mechanism, which means we
                     # have to break into async temporarily.

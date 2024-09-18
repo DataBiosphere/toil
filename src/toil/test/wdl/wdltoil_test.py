@@ -189,6 +189,16 @@ class WDLTests(BaseWDLTest):
         """
         wdl = os.path.abspath('src/toil/test/wdl/testfiles/not_enough_outputs.wdl')
 
+        # With no flag we don't include the call outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' not in result
+        assert 'wf.do_math.cube' not in result
+        assert 'wf.should_never_output' not in result
+
         # With flag off we don't include the call outputs
         result_json = subprocess.check_output(
             self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--allCallOutputs=false'])
@@ -207,6 +217,33 @@ class WDLTests(BaseWDLTest):
         assert 'wf.only_result' in result
         assert 'wf.do_math.square' in result
         assert 'wf.do_math.cube' in result
+        assert 'wf.should_never_output' not in result
+
+    @needs_singularity_or_docker
+    def test_croo_detection(self):
+        """
+        Test if Toil can detect and do something sensible with Cromwell Output Organizer workflows.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/croo.wdl')
+
+        # With no flag we should include all task outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' in result
+        assert 'wf.do_math.cube' in result
+        assert 'wf.should_never_output' not in result
+
+        # With flag off we obey the WDL spec even if we're suspicious
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--allCallOutputs=off'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' not in result
+        assert 'wf.do_math.cube' not in result
         assert 'wf.should_never_output' not in result
 
     def test_url_to_optional_file(self):
