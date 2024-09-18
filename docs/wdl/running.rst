@@ -78,10 +78,9 @@ isn't. Can also be set to ``docker`` or ``singularity`` explicitly.
 
 ``--allCallOutputs``: Specifies whether outputs from all calls in a workflow
 should be included alongside the outputs from the ``output`` section, when an
-``output`` section is defined. For strict WDL 1.0 compliance, should be set to
-``False``. Defaults to unset. If the workflow includes metadata for the
-`Cromwell Output Organizer (croo)`_, will default to ``True``. Otherwise,
-defaults to ``False``.
+``output`` section is defined. For strict WDL spec compliance, should be set to
+``False``. Usually defaults to ``False``. If the workflow includes metadata for
+the `Cromwell Output Organizer (croo)`_, will default to ``True``.
 
 .. _`Cromwell Output Organizer (croo)`: https://github.com/ENCODE-DCC/croo
 
