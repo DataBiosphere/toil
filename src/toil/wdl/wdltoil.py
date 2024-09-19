@@ -459,19 +459,19 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), uri)
 
 
-def virtualized_equal(file1: WDL.Value.Base, file2: WDL.Value.Base) -> bool:
+def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     """
     Check if two WDL values are equal when taking account file virtualization.
     
     Treats virtualized and non-virtualized `File`s referring to the same underlying file as equal.
-    :param file1: WDL value
-    :param file2: WDL value
+    :param value1: WDL value
+    :param value2: WDL value
     :return: Whether the two values are equal with file virtualization accounted for
     """
     def f(file: WDL.Value.File) -> WDL.Value.File:
         file.value = getattr(file, "virtualized_value", file.value)
         return file
-    return map_over_typed_files_in_value(file1, f) == map_over_typed_files_in_value(file2, f)
+    return map_over_typed_files_in_value(value1, f) == map_over_typed_files_in_value(value2, f)
 
 # Bindings have a long type name
 WDLBindings = WDL.Env.Bindings[WDL.Value.Base]
