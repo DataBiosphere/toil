@@ -103,7 +103,7 @@ logger = logging.getLogger(__name__)
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 WDL_Context = TypedDict('WDL_Context', {"execution_dir": NotRequired[str], "container": NotRequired[str],
-                                        "task_path": str})
+                                        "task_path": str, "namespace": str})
 
 
 @contextmanager
@@ -1382,7 +1382,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         # Just set up as ToilWDLStdLibBase, but it will call into
         # WDL.StdLib.TaskOutputs next.
-        super().__init__(file_store, wdl_options)
+        super().__init__(file_store, wdl_options, share_files_with)
 
         # Remember task output files
         self._stdout_path = stdout_path
@@ -2770,8 +2770,10 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             # aren't meant to be inputs, by not changing their names?
             passed_down_bindings = incoming_bindings.enter_namespace(self._node.name)
             task_path = self._wdl_options.get("task_path")
+            namespace = self._wdl_options.get("namespace")
             wdl_options = self._wdl_options.copy()
             wdl_options["task_path"] = f'{task_path}.{self._node.name}'
+            wdl_options["namespace"] = f'{namespace}.{self._node.name}'
 
             if isinstance(self._node.callee, WDL.Tree.Workflow):
                 # This is a call of a workflow
@@ -3732,7 +3734,7 @@ def main() -> None:
                 convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
-                wdl_options: WDL_Context = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name}
+                wdl_options: WDL_Context = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name, "namespace": target.name}
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
