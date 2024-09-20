@@ -1,5 +1,4 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
-import argparse
 # Copyright (C) 2015 Curoverse, Inc
 # Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
@@ -34,7 +33,6 @@ import stat
 import sys
 import textwrap
 import uuid
-from contextlib import contextmanager
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (IO,
@@ -47,13 +45,12 @@ from typing import (IO,
                     MutableMapping,
                     MutableSequence,
                     Optional,
-                    Sequence,
                     TextIO,
                     Tuple,
                     Type,
                     TypeVar,
                     Union,
-                    cast, Generator)
+                    cast)
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -3177,7 +3174,6 @@ class CWLWorkflow(CWLNamedJob):
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
-        self.cwlwf = self.cwlwf
         self.conditional = conditional or Conditional()
 
     def run(
