@@ -516,13 +516,12 @@ def get_supertype(types: Sequence[WDL.Type.Base]) -> WDL.Type.Base:
             # ignore an Any type, as we represent a bottom type as Any. See https://miniwdl.readthedocs.io/en/latest/WDL.html#WDL.Type.Any
             # and https://github.com/openwdl/wdl/blob/e43e042104b728df1f1ad6e6145945d2b32331a6/SPEC.md?plain=1#L1484
             optional = optional or typ.optional
+        elif supertype is None:
+            supertype = typ
+            optional = optional or typ.optional
         else:
-            if supertype is None:
-                supertype = typ
-                optional = optional or typ.optional
-            else:
-                # We have conflicting types
-                raise RuntimeError(f"Cannot generate a supertype from conflicting types: {types}")
+            # We have conflicting types
+            raise RuntimeError(f"Cannot generate a supertype from conflicting types: {types}")
     if supertype is None:
         return WDL.Type.Any(null=optional)  # optional flag isn't used in Any
     return supertype.copy(optional=optional)
