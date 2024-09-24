@@ -102,6 +102,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.integration import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
@@ -3738,6 +3739,11 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if options.restart:
                 outobj = toil.restart()
             else:
+                # Before showing the options to any cwltool stuff that wants to
+                # load the workflow, transform options.cwltool, where our
+                # argument for what to run is, to handle Dockstore workflows.
+                options.cwltool = resolve_workflow(options.cwltool)
+
                 loading_context.hints = [
                     {
                         "class": "ResourceRequirement",
