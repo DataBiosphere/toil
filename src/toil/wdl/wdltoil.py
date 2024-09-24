@@ -461,7 +461,7 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
 
 def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     """
-    Check if two WDL values are equal when taking account file virtualization.
+    Check if two WDL values are equal when taking into account file virtualization.
 
     Treats virtualized and non-virtualized `File`s referring to the same underlying file as equal.
 
@@ -1287,7 +1287,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
 
     # Revert the _read and _write functions to the parent WDL.StdLib.Base implementation
     # This is because the task command standard library is used in MiniWDL's internals when executing a task
-    # which we don't have much control over (miniwdl will create it's own file objects that represent files within the container)
+    # which we don't have much control over (miniwdl will create its own file objects that represent files within the container)
     # and MiniWDL seems to treat the task standard library and the base standard library different (mainly in how it creates File objects;
     # the file values are valid paths in the base standard library but are container paths in the task library)
     # In _read, we typically always ensure a file is virtualized before use. Here, we can't virtualize a within-container file because
