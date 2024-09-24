@@ -598,21 +598,22 @@ def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tu
             spec_parts.pop(i)
             break
     # unit specification is only allowed to be at the end
-    unit_spec = spec_parts[-1]
-    if part_suffix == "LOCAL":
-        # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
-        # can't imagine that ever being standardized; just leave it
-        # alone so that the workflow doesn't rely on this weird and
-        # likely-to-change Cromwell detail.
-        logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-    elif unit_spec in ("HDD", "SSD"):
-        # For cromwell compatibility, assume this means GB in units
-        # We don't actually differentiate between HDD and SSD
-        part_suffix = "GB"
-    if unit_spec.lower() in VALID_PREFIXES:
-        part_suffix = spec_parts[-1]
-        spec_parts.pop(-1)
-    #  The last remaining element, if it exists, is the mount point
+    if len(spec_parts) > 0:
+        unit_spec = spec_parts[-1]
+        if part_suffix == "LOCAL":
+            # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+            # can't imagine that ever being standardized; just leave it
+            # alone so that the workflow doesn't rely on this weird and
+            # likely-to-change Cromwell detail.
+            logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
+        elif unit_spec in ("HDD", "SSD"):
+            # For cromwell compatibility, assume this means GB in units
+            # We don't actually differentiate between HDD and SSD
+            part_suffix = "GB"
+        if unit_spec.lower() in VALID_PREFIXES:
+            part_suffix = spec_parts[-1]
+            spec_parts.pop(-1)
+        #  The last remaining element, if it exists, is the mount point
     if len(spec_parts) > 0:
         specified_mount_point = spec_parts[0]
 
