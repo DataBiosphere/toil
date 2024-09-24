@@ -598,7 +598,18 @@ def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tu
             spec_parts.pop(i)
             break
     # unit specification is only allowed to be at the end
-    if spec_parts[-1].lower() in VALID_PREFIXES:
+    unit_spec = spec_parts[-1]
+    if part_suffix == "LOCAL":
+        # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+        # can't imagine that ever being standardized; just leave it
+        # alone so that the workflow doesn't rely on this weird and
+        # likely-to-change Cromwell detail.
+        logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
+    elif unit_spec in ("HDD", "SSD"):
+        # For cromwell compatibility, assume this means GB in units
+        # We don't actually differentiate between HDD and SSD
+        part_suffix = "GB"
+    if unit_spec.lower() in VALID_PREFIXES:
         part_suffix = spec_parts[-1]
         spec_parts.pop(-1)
     #  The last remaining element, if it exists, is the mount point
@@ -608,17 +619,6 @@ def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tu
     if part_size is None:
         # Disk spec did not include a size
         raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
-
-    if part_suffix == "LOCAL":
-        # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
-        # can't imagine that ever being standardized; just leave it
-        # alone so that the workflow doesn't rely on this weird and
-        # likely-to-change Cromwell detail.
-        logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-    elif part_suffix in ("HDD", "SSD"):
-        # For cromwell compatibility, assume this means GB in units
-        # We don't actually differentiate between HDD and SSD
-        part_suffix = "GB"
 
     per_part_size = convert_units(part_size, part_suffix)
     return specified_mount_point, per_part_size, part_suffix
