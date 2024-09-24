@@ -1943,7 +1943,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 # default to the execution directory
                 specified_mount_point = None
                 # first get the size, since units should always be some nonnumerical string, get the last numerical value
-                for i, part in enumerate(spec_parts):
+                for i, part in reversed(list(enumerate(spec_parts))):
                     if part.replace(".", "", 1).isdigit():
                         part_size = int(float(part))
                         spec_parts.pop(i)
@@ -1974,22 +1974,19 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
                 per_part_size = convert_units(part_size, part_suffix)
                 total_bytes += per_part_size
+                if specified_mount_point == "local-disk":
+                    # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
+                    # When the mount point is omitted, default to the task's execution directory, which None will represent
+                    specified_mount_point = None
                 if mount_spec.get(specified_mount_point) is not None:
                     if specified_mount_point is not None:
                         # raise an error as all mount points must be unique
                         raise ValueError(f"Could not parse disks = {disks_spec} because the mount point {specified_mount_point} is specified multiple times")
                     else:
-                        if mount_spec.get(specified_mount_point) is not None:
-                            raise ValueError(f"Could not parse disks = {disks_spec} because the mount point is omitted more than once")
+                        raise ValueError(f"Could not parse disks = {disks_spec} because the mount point is omitted more than once")
 
                 # TODO: we always ignore the disk type and assume we have the right one.
-                if specified_mount_point != "local-disk":
-                    # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
-                    # When the mount point is omitted, default to the task's execution directory, which None will represent
-                    mount_spec[specified_mount_point] = int(per_part_size)
-                else:
-                    # local-disk is equivalent to an omitted mount point
-                    mount_spec[None] = int(per_part_size)
+                mount_spec[specified_mount_point] = int(per_part_size)
             runtime_disk = int(total_bytes)
         
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
