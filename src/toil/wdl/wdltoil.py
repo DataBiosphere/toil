@@ -1150,7 +1150,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         should not be added to the cache
 
         :param state: State dict which must be shared among successive calls into a dest_dir.
-        :param wdl_options: WDL options to carry through. If enforce_nonexistent is set to true inside, will raise an error if the file is nonexistent. Else, let it pass through.
+        :param wdl_options: WDL options to carry through.
         """
         if not os.path.isdir(dest_dir):
             # os.mkdir fails saying the directory *being made* caused a
