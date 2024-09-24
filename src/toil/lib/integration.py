@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 
 from urllib.parse import urlparse, unquote, quote
 import requests
@@ -113,7 +113,7 @@ def get_workflow_root_from_dockstore(workflow: str) -> str:
     logger.debug("Workflow descriptor URL: %s", trs_descriptor_url)
     trs_descriptor_document = requests.get(trs_descriptor_url).json()
 
-    return trs_descriptor_document["url"]
+    return cast(str, trs_descriptor_document["url"])
 
 def resolve_workflow(workflow: str) -> str:
     """
