@@ -568,6 +568,62 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
     # And produce the diff
     return needed - provided
 
+
+def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tuple[Optional[str], float, str]:
+    """
+
+    :param spec: Disks spec to parse
+    :param disks_spec: All disks spec as specified in the WDL file. Only used for better error messages.
+    :return: Specified mount point (None if omitted or local-disk), number of units, size of unit (ex GB)
+    """
+    # Split up each spec as space-separated. We assume no fields
+    # are empty, and we want to allow people to use spaces after
+    # their commas when separating the list, like in Cromwell's
+    # examples, so we strip whitespace.
+    spec_parts = spec.strip().split(' ')
+
+    # First check that this is a format we support. Both the WDL spec and Cromwell allow a max 3-piece specification
+    # So if there are more than 3 pieces, raise an error
+    if len(spec_parts) > 3:
+        raise RuntimeError(f"Could not parse disks = {disks_spec} because {spec_parts} contains more than 3 parts")
+    part_size = None
+    # default to GiB as per spec
+    part_suffix: str = "GiB"  # The WDL spec's default is 1 GiB
+    # default to the execution directory
+    specified_mount_point = None
+    # first get the size, since units should always be some nonnumerical string, get the last numerical value
+    for i, part in reversed(list(enumerate(spec_parts))):
+        if part.replace(".", "", 1).isdigit():
+            part_size = int(float(part))
+            spec_parts.pop(i)
+            break
+    # unit specification is only allowed to be at the end
+    if spec_parts[-1].lower() in VALID_PREFIXES:
+        part_suffix = spec_parts[-1]
+        spec_parts.pop(-1)
+    #  The last remaining element, if it exists, is the mount point
+    if len(spec_parts) > 0:
+        specified_mount_point = spec_parts[0]
+
+    if part_size is None:
+        # Disk spec did not include a size
+        raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
+
+    if part_suffix == "LOCAL":
+        # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
+        # can't imagine that ever being standardized; just leave it
+        # alone so that the workflow doesn't rely on this weird and
+        # likely-to-change Cromwell detail.
+        logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
+    elif part_suffix in ("HDD", "SSD"):
+        # For cromwell compatibility, assume this means GB in units
+        # We don't actually differentiate between HDD and SSD
+        part_suffix = "GB"
+
+    per_part_size = convert_units(part_size, part_suffix)
+    return specified_mount_point, per_part_size, part_suffix
+
+
 # We define a URI scheme kind of like but not actually compatible with the one
 # we use for CWL. CWL brings along the file basename in its file type, but
 # WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
@@ -1927,52 +1983,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # Sum up the space in each disk specification
             total_bytes: float = 0
             for spec in all_specs:
-                # Split up each spec as space-separated. We assume no fields
-                # are empty, and we want to allow people to use spaces after
-                # their commas when separating the list, like in Cromwell's
-                # examples, so we strip whitespace.
-                spec_parts = spec.strip().split(' ')
-
-                # First check that this is a format we support. Both the WDL spec and Cromwell allow a max 3-piece specification
-                # So if there are more than 3 pieces, raise an error
-                if len(spec_parts) > 3:
-                    raise RuntimeError(f"Could not parse disks = {disks_spec} because {all_specs} contains more than 3 parts")
-                part_size = None
-                # default to GiB as per spec
-                part_suffix: str = "GiB"  # The WDL spec's default is 1 GiB
-                # default to the execution directory
-                specified_mount_point = None
-                # first get the size, since units should always be some nonnumerical string, get the last numerical value
-                for i, part in reversed(list(enumerate(spec_parts))):
-                    if part.replace(".", "", 1).isdigit():
-                        part_size = int(float(part))
-                        spec_parts.pop(i)
-                        break
-                # unit specification is only allowed to be at the end
-                if spec_parts[-1].lower() in VALID_PREFIXES:
-                    part_suffix = spec_parts[-1]
-                    spec_parts.pop(-1)
-                #  The last remaining element, if it exists, is the mount point
-                if len(spec_parts) > 0:
-                    specified_mount_point = spec_parts[0]
-
-                if part_size is None:
-                    # Disk spec did not include a size
-                    raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
-
-
-                if part_suffix == "LOCAL":
-                    # TODO: Cromwell rounds LOCAL disks up to the nearest 375 GB. I
-                    # can't imagine that ever being standardized; just leave it
-                    # alone so that the workflow doesn't rely on this weird and
-                    # likely-to-change Cromwell detail.
-                    logger.warning('Not rounding LOCAL disk to the nearest 375 GB; workflow execution will differ from Cromwell!')
-                elif part_suffix in ("HDD", "SSD"):
-                    # For cromwell compatibility, assume this means GB in units
-                    # We don't actually differentiate between HDD and SSD
-                    part_suffix = "GB"
-
-                per_part_size = convert_units(part_size, part_suffix)
+                specified_mount_point, per_part_size, part_suffix = parse_disks(spec, disks_spec)
                 total_bytes += per_part_size
                 if specified_mount_point == "local-disk":
                     # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
