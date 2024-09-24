@@ -1653,6 +1653,7 @@ def test_download_structure(tmp_path: Path) -> None:
     )
 
 @needs_cwl
+@pytest.mark.timeout(300)
 def test_import_on_workers() -> None:
     args = ["src/toil/test/cwl/download.cwl",
             "src/toil/test/cwl/download_file.json",
