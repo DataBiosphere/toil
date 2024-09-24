@@ -463,7 +463,7 @@ def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     """
     Check if two WDL values are equal when taking into account file virtualization.
 
-    Treats virtualized and non-virtualized `File`s referring to the same underlying file as equal.
+    Treats virtualized and non-virtualized Files referring to the same underlying file as equal.
 
     :param value1: WDL value
     :param value2: WDL value
