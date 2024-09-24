@@ -616,12 +616,16 @@ def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tu
     if len(spec_parts) > 0:
         specified_mount_point = spec_parts[0]
 
+    if specified_mount_point == "local-disk":
+        # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
+        # When the mount point is omitted, default to the task's execution directory, which None will represent
+        specified_mount_point = None
+
     if part_size is None:
         # Disk spec did not include a size
         raise ValueError(f"Could not parse disks = {disks_spec} because {spec} does not specify a disk size")
 
-    per_part_size = convert_units(part_size, part_suffix)
-    return specified_mount_point, per_part_size, part_suffix
+    return specified_mount_point, part_size, part_suffix
 
 
 # We define a URI scheme kind of like but not actually compatible with the one
@@ -1983,12 +1987,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # Sum up the space in each disk specification
             total_bytes: float = 0
             for spec in all_specs:
-                specified_mount_point, per_part_size, part_suffix = parse_disks(spec, disks_spec)
+                specified_mount_point, part_size, part_suffix = parse_disks(spec, disks_spec)
+                per_part_size = convert_units(part_size, part_suffix)
                 total_bytes += per_part_size
-                if specified_mount_point == "local-disk":
-                    # Don't mount local-disk. This isn't in the spec, but is carried over from cromwell
-                    # When the mount point is omitted, default to the task's execution directory, which None will represent
-                    specified_mount_point = None
                 if mount_spec.get(specified_mount_point) is not None:
                     if specified_mount_point is not None:
                         # raise an error as all mount points must be unique
