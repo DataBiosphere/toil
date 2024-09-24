@@ -258,6 +258,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 newJob = self.newJobsQueue.get()
                 if newJob is None:
                     logger.debug('Received queue sentinel.')
+                    # Send out kill signals before stopping
+                    self.killJobs()
                     return False
             if self.killJobs():
                 activity = True
@@ -423,7 +425,14 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             gpus = self.count_needed_gpus(job_desc)
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
-            
+            gpus = 0
+            if isinstance(jobDesc.accelerators, list):
+                for accelerator in jobDesc.accelerators:
+                    if accelerator['kind'] == 'gpu':
+                        gpus = accelerator['count']
+            else:
+                gpus = jobDesc.accelerators
+
             self.newJobsQueue.put((job_id, job_desc.cores, job_desc.memory, command, get_job_kind(job_desc.get_names()),
                                    job_environment, gpus))
             logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(job_id),
@@ -506,6 +515,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
         """
         Signals thread to shutdown (via sentinel) then cleanly joins the thread
         """
+
+        for jobID in self.getIssuedBatchJobIDs():
+            # Send kill signals to any jobs that might be running
+            self.killQueue.put(jobID)
+
         self.shutdownLocal()
         newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
