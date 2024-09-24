@@ -46,7 +46,7 @@ class BaseWDLTest(ToilTest):
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "aa3b9807d13165e265f4ea0db0fdc6957925e545"
+WDL_CONFORMANCE_TEST_COMMIT = "2d617b703a33791f75f30a9db43c3740a499cd89"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL= [
