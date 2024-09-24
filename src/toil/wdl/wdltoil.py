@@ -462,8 +462,9 @@ async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tre
 def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     """
     Check if two WDL values are equal when taking account file virtualization.
-    
+
     Treats virtualized and non-virtualized `File`s referring to the same underlying file as equal.
+
     :param value1: WDL value
     :param value2: WDL value
     :return: Whether the two values are equal with file virtualization accounted for
@@ -810,13 +811,16 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', T
 
 def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True) -> None:
     """
-    Resolve relative-URI files in the given environment and import all files. Will set the value of the File to the relative-URI
+    Resolve relative-URI files in the given environment and import all files.
+
+    Will set the value of the File to the relative-URI.
+
     :param environment: Bindings to evaluate on
     :param file_source: Context to search for files with
     :param task_path: Dotted WDL name of the user-level code doing the
-           importing (probably the workflow name).
+        importing (probably the workflow name).
     :param search_paths: If set, try resolving input location relative to the URLs or
-           directories in this list.
+        directories in this list.
     :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
@@ -1195,7 +1199,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def _virtualize_filename(self, filename: str) -> str:
         """
         from a local path in write_dir, 'virtualize' into the filename as it should present in a File value
-        
+
         :param filename: Can be a local file path, URL (http, https, s3, gs), or toilfile
         """
 
