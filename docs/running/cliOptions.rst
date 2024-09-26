@@ -499,7 +499,8 @@ systems have issues!).
                         gzipped on the leader.
   --writeMessages FILEPATH
                         File to send messages from the leader's message bus to.
-  --realTimeLogging     Enable real-time logging from workers to leader.
+  --realTimeLogging BOOL
+                        Enable real-time logging from workers to leader.
 
 **Miscellaneous Options**
 
