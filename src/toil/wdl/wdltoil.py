@@ -3414,7 +3414,8 @@ class WDLOutputsJob(WDLBaseJob):
                         # For scatters and conditionals, recurse looking for calls.
                         for subnode in node.body:
                             stack.append(subnode)
-                # Add in all bindings that are task outputs
+                # Collect all bindings that are task outputs
+                output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
                 for binding in unwrap(self._bindings):
                     if binding.name in output_set:
                         # The bindings will already be namespaced with the task namespaces
