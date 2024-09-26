@@ -682,21 +682,27 @@ def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> None:
     setattr(file_value, SHARED_PATH_ATTR, path)
     return file_value
 
-def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
+def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
-    Get a digest for looking up the task call with the given inputs.
-
-    Represents all files by their shared filesystem paths so that cache entries written by MiniWDL can be used by Toil.
+    Given WDL bindings, return a copy where all files have their shared filesystem paths as their values.
     """
-
     def file_path_to_use(stored_file_string: str) -> str:
         """
         Return the shared FS path if we have one, or the current string.
         """
         return get_shared_fs_path(stored_file_string) or stored_file_string
 
-    transformed_bindings = map_over_files_in_bindings(bindings, file_path_to_use)
-    return WDL.Value.digest_env(transformed_bindings)
+    return map_over_files_in_bindings(bindings, file_path_to_use)
+
+
+def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
+    """
+    Get a digest for looking up the task call with the given inputs.
+
+    Represents all files by their shared filesystem paths so that cache entries written by MiniWDL can be used by Toil.
+    """
+   
+    return WDL.Value.digest_env(view_shared_fs_paths(bindings))
 
 
 DirectoryNamingStateDict = Dict[str, Tuple[Dict[str, str], Set[str]]]
@@ -2648,7 +2654,7 @@ class WDLTaskJob(WDLBaseJob):
                 # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
 
                 # Determine where we will save our cached versions of files.
-                output_directory = os.path.join(miniwdl_cache._call_cache_dir, "toil_files")
+                output_directory = os.path.join(miniwdl_cache._call_cache_dir, self._cache_key)
                 # This needs to exist before we can export to it
                 os.makedirs(output_directory, exist_ok=True)
 
@@ -2692,8 +2698,8 @@ class WDLTaskJob(WDLBaseJob):
                     return file_value
                 output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
 
-                # Save the bindings to the cache
-                miniwdl_cache.put(self._cache_key, output_bindings)
+                # Save the bindings to the cache, representing all files with their shared filesystem paths.
+                miniwdl_cache.put(self._cache_key, view_shared_fs_paths(output_bindings))
                 logger.debug("Saved result to cache under %s", self._cache_key)
 
                 # Keep using the transformed bindings so that later tasks use
