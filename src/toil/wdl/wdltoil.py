@@ -3543,9 +3543,20 @@ class WDLOutputsJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store, self._task_path, execution_dir=self._wdl_options.get("execution_dir"))
 
         try:
-            if self._workflow.outputs is None:
-                # The output section is not declared
-                # So get all task outputs and return that
+            if self._workflow.outputs is not None:
+                # Output section is declared and is nonempty, so evaluate normally
+
+                # Combine the bindings from the previous job
+                with monkeypatch_coerce(standard_library):
+                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
+            else:
+                # If no output section is present, start with an empty bindings
+                output_bindings = WDL.Env.Bindings()
+
+            if self._workflow.outputs is None or self._wdl_options.get("all_call_outputs", False):
+                # The output section is not declared, or we want to keep task outputs anyway.
+
+                # Get all task outputs and return that
                 # First get all task output names
                 output_set = set()
                 # We need to recurse down through scatters and conditionals to find all the task names.
@@ -3571,12 +3582,6 @@ class WDLOutputsJob(WDLBaseJob):
                     if binding.name in output_set:
                         # The bindings will already be namespaced with the task namespaces
                         output_bindings = output_bindings.bind(binding.name, binding.value)
-            else:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
-                with monkeypatch_coerce(standard_library):
-                    output_bindings = evaluate_output_decls(self._workflow.outputs, unwrap(self._bindings), standard_library)
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -3715,6 +3720,26 @@ def main() -> None:
                 else:
                     raise WDL.Error.InputError("WDL document is empty!")
 
+                if "croo_out_def" in target.meta:
+                    # This workflow or task wants to have its outputs
+                    # "organized" by the Cromwell Output Organizer:
+                    # <https://github.com/ENCODE-DCC/croo>.
+                    #
+                    # TODO: We don't support generating anything that CROO can read.
+                    logger.warning("This WDL expects to be used with the Cromwell Output Organizer (croo) <https://github.com/ENCODE-DCC/croo>. Toil cannot yet produce the outputs that croo requires. You will not be able to use croo on the output of this Toil run!")
+
+                    # But we can assume that we need to preserve individual
+                    # taks outputs since the point of CROO is fetching those
+                    # from Cromwell's output directories.
+                    #
+                    # This isn't quite WDL spec compliant but it will rescue
+                    # runs of the popular
+                    # <https://github.com/ENCODE-DCC/atac-seq-pipeline>
+                    if options.all_call_outputs is None:
+                        logger.warning("Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file.")
+                        options.all_call_outputs = True
+
+
                 if options.inputs_uri:
                     # Load the inputs. Use the same loading mechanism, which means we
                     # have to break into async temporarily.
@@ -3774,6 +3799,7 @@ def main() -> None:
                 wdl_options["execution_dir"] = execution_dir
                 wdl_options["container"] = options.container
                 assert wdl_options.get("container") is not None
+                wdl_options["all_call_outputs"] = options.all_call_outputs
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
                 root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
