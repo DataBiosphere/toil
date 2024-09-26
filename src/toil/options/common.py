@@ -629,7 +629,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     log_options.add_argument("--writeMessages", dest="write_messages", default=None,
                              type=lambda x: None if x is None else os.path.abspath(x), metavar="PATH",
                              help="File to send messages from the leader's message bus to.")
-    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", type=strtobool, default=False,
+    log_options.add_argument("--realTimeLogging", dest="realTimeLogging", type=strtobool, default=False, metavar="BOOL",
                              help="Enable real-time logging from workers to leader")
 
     # Misc options

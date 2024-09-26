@@ -2,6 +2,8 @@ from argparse import ArgumentParser
 
 from configargparse import SUPPRESS
 
+from toil.lib.conversions import strtobool
+
 
 def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     """
@@ -30,8 +32,11 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     parser.add_argument(*output_file_arguments, dest="output_file", type=str, default=None,
                         help=suppress_help or "File or URI to save output JSON to.")
     reference_inputs_arguments = ["--wdlReferenceInputs"] + (["--referenceInputs"] if not suppress else [])
-    parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type=bool, default=False,
+    parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type=strtobool, default=False,
                         help=suppress_help or "Pass input files by URL")
     container_arguments = ["--wdlContainer"] + (["--container"] if not suppress else [])
     parser.add_argument(*container_arguments, dest="container", type=str, choices=["singularity", "docker", "auto"], default="auto",
                         help=suppress_help or "Container engine to use to run WDL tasks")
+    all_call_outputs_arguments = ["--wdlAllCallOutputs"] + (["--allCallOutputs"] if not suppress else [])
+    parser.add_argument(*all_call_outputs_arguments, dest="all_call_outputs", type=strtobool, default=None,
+                        help=suppress_help or "Keep and return all call outputs as workflow outputs")
