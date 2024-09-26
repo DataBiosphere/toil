@@ -68,9 +68,21 @@ input JSON file, for compatibility with other WDL runners.
 ``cromwell`` to just return the workflow's output values as JSON or ``miniwdl``
 to nest that under an ``outputs`` key and includes a ``dir`` key.
 
+``--referenceInputs``: Specifies whether input files to Toil should be passed
+around by URL reference instead of being imported into Toil's storage. Defaults
+to off. Can be ``True`` or ``False`` or other similar words.
+
 ``--container``: Specifies the container engine to use to run tasks. By default
 this is ``auto``, which tries Singularity if it is installed and Docker if it
 isn't. Can also be set to ``docker`` or ``singularity`` explicitly.
+
+``--allCallOutputs``: Specifies whether outputs from all calls in a workflow
+should be included alongside the outputs from the ``output`` section, when an
+``output`` section is defined. For strict WDL spec compliance, should be set to
+``False``. Usually defaults to ``False``. If the workflow includes metadata for
+the `Cromwell Output Organizer (croo)`_, will default to ``True``.
+
+.. _`Cromwell Output Organizer (croo)`: https://github.com/ENCODE-DCC/croo
 
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.
