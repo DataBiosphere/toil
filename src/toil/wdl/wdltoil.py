@@ -3559,10 +3559,23 @@ class WDLOutputsJob(WDLBaseJob):
                 # So get all task outputs and return that
                 # First get all task output names
                 output_set = set()
-                for call in self._workflow.body:
-                    if isinstance(call, WDL.Tree.Call):
-                        for type_binding in call.effective_outputs:
+                # We need to recurse down through scatters and conditionals to find all the task names.
+                # The output variable names won't involve the scatters or conditionals as components.
+                stack = list(self._workflow.body)
+                while stack != []:
+                    node = stack.pop()
+                    if isinstance(node, WDL.Tree.Call):
+                        # For calls, promote all output names to workflow output names
+                        # TODO: Does effective_outputs already have the right
+                        # stuff for calls to workflows that themselves lack
+                        # output sections? If so, can't we just use that for
+                        # *this* workflow?
+                        for type_binding in node.effective_outputs:
                             output_set.add(type_binding.name)
+                    elif isinstance(node, WDL.Tree.Scatter) or isinstance(node, WDL.Tree.Conditional):
+                        # For scatters and conditionals, recurse looking for calls.
+                        for subnode in node.body:
+                            stack.append(subnode)
                 # Collect all bindings that are task outputs
                 output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
                 for binding in unwrap(self._bindings):
