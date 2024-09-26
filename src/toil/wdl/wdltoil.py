@@ -631,27 +631,41 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
 
 # TODO: Move to new file?
 
-def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
+SHARED_PATH_ATTR = "_shared_fs_path"
+
+def get_shared_fs_path(file: Union[str, WDL.Value.File]) -> Optional[str]:
     """
     If a File has a shared filesystem path, get that path.
 
     This will be the path the File was initially imported from, or the path that it has in the call cache.
+
+    Accepts either a WDL-level File or the actual str value of one.
     """
     # TODO: We hide this on the value string itself so we can
     # map_over_files_in_bindings and fetch it out. But really we should allow
     # mapping over bindings and getting the WDL.Value.Base objects and hide it
     # in there.
-    if hasattr(file.value, '_shared_fs_path'):
-        return cast(str, getattr(file.value, '_shared_fs_path'))
+    if isinstance(file, WDL.Value.File):
+        file_value = file.value
+    else:
+        file_value = file
+    if hasattr(file_value, SHARED_PATH_ATTR):
+        return cast(str, getattr(file_value, SHARED_PATH_ATTR))
     return None
 
-def set_shared_fs_path(file: WDL.Value.File, path: str) -> None:
+def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> None:
     """
     Mutate a File to associate it with the given shared filesystem path.
 
     This should be the path it was initially imported from, or the path that it has in the call cache.
+
+    Accepts either a WDL-level File or the actual str value of one.
     """
-    setattr(file.value, '_shared_fs_path', path)
+    if isinstance(file, WDL.Value.File):
+        file_value = file.value
+    else:
+        file_value = file
+    setattr(file_value, SHARED_PATH_ATTR, path)
 
 def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
     """
@@ -664,9 +678,7 @@ def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
         """
         Return the shared FS path if we have one, or the current string.
         """
-        if hasattr(stored_file_string, '_shared_fs_path'):
-            return cast(str, getattr(stored_file_string, '_shared_fs_path'))
-        return stored_file_string
+        return get_shared_fs_path(stored_file_string) or stored_file_string
 
     transformed_bindings = map_over_files_in_bindings(bindings, file_path_to_use)
     return WDL.Value.digest_env(transformed_bindings)
@@ -934,7 +946,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         state: DirectoryNamingStateDict,
         devirtualized_to_virtualized: Optional[Dict[str, str]] = None,
         virtualized_to_devirtualized: Optional[Dict[str, str]] = None,
-        enforce_existence: bool = True
+        enforce_existence: bool = True,
+        export: bool = False
     ) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
@@ -945,14 +958,16 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         don't clobber each other. Called from within this class for tasks, and
         statically at the end of the workflow for outputs.
 
-        Returns the local path to the file. If it already had a local path
-        elsewhere, it might not actually be put in dest_dir.
+        Returns the local path to the file. If the file is already a local
+        path, or if it already has an entry in virtualized_to_devirtualized,
+        that path will be re-used instead of creating a new copy in dest_dir.
 
         The input filename could already be devirtualized. In this case, the filename
-        should not be added to the cache
+        should not be added to the cache.
 
         :param state: State dict which must be shared among successive calls into a dest_dir.
         :param enforce_existence: Raise an error if the file is nonexistent. Else, let it pass through.
+        :param export: Always create exported copies of files rather than views that a FileStore might clean up.
         """
 
         if not os.path.isdir(dest_dir):
@@ -962,7 +977,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             raise RuntimeError(f"Cannot devirtualize {filename} into nonexistent directory {dest_dir}")
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
-        # TODO: For task inputs, we are supposed to make sure to put things in the same directory if they came from the same directory. See <https://github.com/openwdl/wdl/blob/main/versions/1.0/SPEC.md#task-input-localization>
         if is_url(filename):
             if virtualized_to_devirtualized is not None and filename in virtualized_to_devirtualized:
                 # The virtualized file is in the cache, so grab the already devirtualized result
@@ -999,17 +1013,20 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
             if filename.startswith(TOIL_URI_SCHEME):
                 # Get a local path to the file
-                if isinstance(file_source, AbstractFileStore):
+                if isinstance(file_source, Toil) or export:
+                    # Use the export method that both Toil and
+                    # AbstractFileStore have to get an unencumbered copy.
+                    file_source.export_file(file_id, dest_path)
+                    result = dest_path
+                elif isinstance(file_source, AbstractFileStore):
                     # Read from the file store.
                     # File is not allowed to be modified by the task. See
                     # <https://github.com/openwdl/wdl/issues/495>.
                     # We try to get away with symlinks and hope the task
                     # container can mount the destination file.
                     result = file_source.readGlobalFile(file_id, dest_path, mutable=False, symlink=True)
-                elif isinstance(file_source, Toil):
-                    # Read from the Toil context
-                    file_source.export_file(file_id, dest_path)
-                    result = dest_path
+                else:
+                    raise RuntimeError(f"Unsupported file source: {file_source}")
             else:
                 # Download to a local file with the right name and execute bit.
                 # Open it exclusively
@@ -1567,6 +1584,9 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                 # download them at that basename later.
                 raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
 
+            # If the file has a local path outside the job store, we want to know it for caching
+            local_path: Optional[str] = None
+
             # Was actually found
             if is_url(candidate_uri):
                 # Might be a file URI or other URI.
@@ -1575,18 +1595,25 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                 parsed = urlsplit(candidate_uri)
                 if parsed.scheme == "file:":
                     # This is a local file URI. Convert to a path for source directory tracking.
-                    parent_dir = os.path.dirname(unquote(parsed.path))
+                    local_path = unquote(parsed.path)
+                    parent_dir = os.path.dirname(local_path)
                 else:
                     # This is some other URL. Get the URL to the parent directory and use that.
                     parent_dir = urljoin(candidate_uri, ".")
             else:
                 # Must be a local path
+                local_path = candidate_uri
                 parent_dir = os.path.dirname(candidate_uri)
 
             # Pack a UUID of the parent directory
             dir_id = path_to_id.setdefault(parent_dir, uuid.uuid4())
 
-            return pack_toil_uri(imported, task_path, dir_id, file_basename)
+            file_value = pack_toil_uri(imported, task_path, dir_id, file_basename)
+            if local_path is not None:
+                # Mark the file as having a known local path outside the jobstore.
+                # TODO: Turn URLs into local files like the MiniWDL download cache.
+                set_shared_fs_path(file_value, local_path)
+            return file_value
 
         # If we get here we tried all the candidates
         raise RuntimeError(f"Could not find {uri} at any of: {tried}")
@@ -2297,7 +2324,7 @@ class WDLTaskJob(WDLBaseJob):
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
             singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            miniwdl_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
+            miniwdl_singularity_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
 
             # Cache Singularity's layers somewhere known to have space
             os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
@@ -2308,7 +2335,7 @@ class WDLTaskJob(WDLBaseJob):
             # Cache Singularity images for the workflow on this machine.
             # Since MiniWDL does only within-process synchronization for pulls,
             # we also will need to pre-pull one image into here at a time.
-            os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.environ.get("MINIWDL__SINGULARITY__IMAGE_CACHE", miniwdl_cache)
+            os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'] = os.environ.get("MINIWDL__SINGULARITY__IMAGE_CACHE", miniwdl_singularity_cache)
 
             # Make sure it exists.
             os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
@@ -2588,16 +2615,72 @@ class WDLTaskJob(WDLBaseJob):
                 # next task.
                 raise WDL.Error.EvalError(decl, f"non-optional value {decl.name} = {decl.expr} is missing")
 
-        # Upload any files in the outputs if not uploaded already. Accounts for how relative paths may still need to be container-relative.
+        # Upload any files in the outputs if not uploaded already. Accounts for
+        # how relative paths may still need to be container-relative.
         output_bindings = virtualize_files(output_bindings, outputs_library)
 
         if self._cache_key is not None:
-            # Offer to save the not-yet-postprocessed result to the cache.
+            # We might need to save to the call cache 
             miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-            # TODO: We probably need to rewrite the file values and save copies
-            # of them outside the doomed jobstore
-            miniwdl_cache.put(self._cache_key, output_bindings)
-            logger.debug("Saved result to cache under %s", self._cache_key)
+            if miniwdl_cache._cfg["call_cache"].get_bool("put"):
+                # Saving to the cache is on. If we ran somethign we write it to the cache.
+                # TODO: Get MiniWDL to expose this.
+
+                # Set up deduplication just for these outputs.
+                devirtualization_state: DirectoryNamingStateDict = {}
+                devirtualized_to_virtualized: Dict[str, str] = dict()
+                virtualized_to_devirtualized: Dict[str, str] = dict()
+                # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
+
+                # Determine where we will save our cached versions of files.
+                output_directory = os.path.join(miniwdl_cache._call_cache_dir, "toil_files")
+
+                # Adjust all files in the output bindings to have shared FS paths outside the job store.
+                def assign_shared_fs_path(file_value: str) -> str:
+                    """
+                    Given the string value inside a File, mutate the File to have a shared FS path outside the jobstore.
+
+                    Returns the string passed in.
+                    """
+                    
+                    # TODO: Change to using File objects when required PR with
+                    # the mapping functions for that is finally merged.
+
+                    # We need all the incoming paths to not already be local
+                    # paths, or devirtualizing them to export them will not
+                    # work.
+                    #
+                    # This ought to be the case because we just virtualized
+                    # them all for transport out of the machine.
+                    if not is_url(file_value):
+                        raise RuntimeError("File {file_value} caught escaping from task unvirtualized")
+
+                    if get_shared_fs_path(file_value) is None:
+                        # We need to save this file somewhere.
+                        exported_path = ToilWDLStdLibBase.devirtualize_to(
+                            file_value,
+                            output_directory,
+                            file_store,
+                            self._wdl_options.get("execution_dir"),
+                            devirtualization_state,
+                            devirtualized_to_virtualized,
+                            virtualized_to_devirtualized,
+                            enforce_existence=False,
+                            export=True
+                        )
+
+                        # Remember where it went
+                        set_shared_fs_path(file_value, exported_path)
+
+                    return file_value
+                output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
+
+                # Save the bindings to the cache
+                miniwdl_cache.put(self._cache_key, output_bindings)
+                logger.debug("Saved result to cache under %s", self._cache_key)
+
+                # Keep using the transformed bindings so that later tasks use
+                # the cached files in their input digests.
 
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
