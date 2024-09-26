@@ -111,6 +111,7 @@ def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None]
         UnimplementedURLException,
         JobTooBigError
     ) as e:
+        logger.exception(e)
         # Don't expose tracebacks to the user for exceptions that may be expected
         log("Could not " + task + " because:")
 
@@ -631,7 +632,14 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
 
 # TODO: Move to new file?
 
+# We store the shared FS path in an attribute on the string value in the WDL File.
+# TODO: When we can map and get the File, change this.
 SHARED_PATH_ATTR = "_shared_fs_path"
+
+# Since you can't actually *set* an attribute on a str, we need to have a
+# non-builtin str subclass to make the values be.
+class AttrStr(str):
+    pass
 
 def get_shared_fs_path(file: Union[str, WDL.Value.File]) -> Optional[str]:
     """
@@ -660,12 +668,19 @@ def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> None:
     This should be the path it was initially imported from, or the path that it has in the call cache.
 
     Accepts either a WDL-level File or the actual str value of one.
+
+    Returns a str that has to be assigned back to the WDL File's value, which
+    may be the same one.
     """
     if isinstance(file, WDL.Value.File):
         file_value = file.value
     else:
         file_value = file
+    if not isinstance(file_value, AttrStr):
+        # Make it be a str subclass we can set attributes on
+        file_value = AttrStr(file_value)
     setattr(file_value, SHARED_PATH_ATTR, path)
+    return file_value
 
 def get_miniwdl_input_digest(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> str:
     """
@@ -1612,7 +1627,7 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
             if local_path is not None:
                 # Mark the file as having a known local path outside the jobstore.
                 # TODO: Turn URLs into local files like the MiniWDL download cache.
-                set_shared_fs_path(file_value, local_path)
+                file_value = set_shared_fs_path(file_value, local_path)
             return file_value
 
         # If we get here we tried all the candidates
@@ -2634,13 +2649,15 @@ class WDLTaskJob(WDLBaseJob):
 
                 # Determine where we will save our cached versions of files.
                 output_directory = os.path.join(miniwdl_cache._call_cache_dir, "toil_files")
+                # This needs to exist before we can export to it
+                os.makedirs(output_directory, exist_ok=True)
 
                 # Adjust all files in the output bindings to have shared FS paths outside the job store.
                 def assign_shared_fs_path(file_value: str) -> str:
                     """
                     Given the string value inside a File, mutate the File to have a shared FS path outside the jobstore.
 
-                    Returns the string passed in.
+                    Returns the value to put in the WDL file to actually do the mutation.
                     """
                     
                     # TODO: Change to using File objects when required PR with
@@ -2670,7 +2687,7 @@ class WDLTaskJob(WDLBaseJob):
                         )
 
                         # Remember where it went
-                        set_shared_fs_path(file_value, exported_path)
+                        file_value = set_shared_fs_path(file_value, exported_path)
 
                     return file_value
                 output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
