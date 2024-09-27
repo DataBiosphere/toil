@@ -1772,7 +1772,8 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
                 parsed = urlsplit(candidate_uri)
-                if parsed.scheme == "file:":
+                # Note that parsing the URL does *not* include ':' in the scheme
+                if parsed.scheme == "file":
                     # This is a local file URI. Convert to a path for source directory tracking.
                     local_path = unquote(parsed.path)
                     parent_dir = os.path.dirname(local_path)
