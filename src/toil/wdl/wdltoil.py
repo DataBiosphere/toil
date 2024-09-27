@@ -29,6 +29,7 @@ import subprocess
 import sys
 import textwrap
 import uuid
+import hashlib
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from tempfile import mkstemp, gettempdir
@@ -41,6 +42,7 @@ from typing import (Any,
                     Iterator,
                     List,
                     Optional,
+                    Protocol,
                     Sequence,
                     Set,
                     Tuple,
@@ -48,6 +50,7 @@ from typing import (Any,
                     TypeVar,
                     Union,
                     cast)
+from typing_extensions import Buffer
 from mypy_extensions import Arg, DefaultArg
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
@@ -87,12 +90,58 @@ from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
 
-import hashlib
+logger = logging.getLogger(__name__)
+
+# We want to use hashlib.file_digest to avoid a 3-line hashing loop like
+# MiniWDL has. But it is only in 3.11+
+#
+# So we need to have a function that is either it or a fallback with the
+# hashing loop.
+#
+# So we need to be able to articulate the type of that function for MyPy, to
+# avoid needing to write a function with the *exact* signature of the import
+# (and not e.g. one that needs slightly different methods of its fileobjs or is
+# missing some kwarg features).
+#
+# So we need to define some protocols.
+#
+# TODO: Move this into lib somewhere?
+# TODO: Give up and license the 3 line loop MiniWDL has?
+class ReadableFileObj(Protocol):
+    """
+    Protocol that is more specific than what file_digest takes as an argument.
+    Also guarantees a read() method.
+    
+    Would extend the protocol from Typeshed for hashlib but those are only
+    declared for 3.11+.
+    """
+    def readinto(self, buf: bytearray, /) -> int: ...
+    def readable(self) -> bool: ...
+    def read(self, number: int) -> bytes: ...
+
+class FileDigester(Protocol):
+    """
+    Protocol for the features we need from hashlib.file_digest.
+    """
+    # We need __ prefixes here or the name of the argument becomes part of the required interface.
+    def __call__(self, __f: ReadableFileObj, __alg_name: str) -> hashlib._Hash: ...
+
 try:
-    from hashlib import file_digest
+    # Don't do a direct conditional import to the final name here because then
+    # the polyfill needs *exactly* the signature of file_digest, and not just
+    # one that can accept all calls we make in the file, or MyPy will complain.
+    #
+    # We need to tell MyPy we expect this import to fail, when typechecking on
+    # pythons that don't have it. But we also need to tell it that it is fine
+    # if it succeeds, for Pythons that do have it.
+    #
+    # TODO: Change to checking sys.version_info because MyPy understands that
+    # better?
+    from hashlib import file_digest as file_digest_impl # type: ignore[attr-defined,unused-ignore]
+    file_digest: FileDigester = file_digest_impl
 except ImportError:
     # Polyfill file_digest from 3.11+
-    def file_digest(f: IO[bytes], alg_name: str) -> hashlib._Hash:
+    def file_digest_fallback_impl(f: ReadableFileObj, alg_name: str) -> hashlib._Hash:
         BUFFER_SIZE = 1024 * 1024
         hasher = hashlib.new(alg_name)
         buffer = f.read(BUFFER_SIZE)
@@ -100,11 +149,7 @@ except ImportError:
             hasher.update(buffer)
             buffer = f.read(BUFFER_SIZE)
         return hasher
-        
-
-
-logger = logging.getLogger(__name__)
-
+    file_digest = file_digest_fallback_impl
 
 @contextmanager
 def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None, None, None]:
@@ -677,7 +722,7 @@ def get_shared_fs_path(file: Union[str, WDL.Value.File]) -> Optional[str]:
         return cast(str, getattr(file_value, SHARED_PATH_ATTR))
     return None
 
-def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> None:
+def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> str:
     """
     Mutate a File to associate it with the given shared filesystem path.
 
@@ -689,8 +734,9 @@ def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> None:
     input was not a WDL File.
     """
     if isinstance(file, WDL.Value.File):
-        file_value = file.value
+        file_value: str = file.value
     else:
+        assert isinstance(file, str)
         file_value = file
     if not isinstance(file_value, AttrStr):
         # Make it be a str subclass we can set attributes on
@@ -1181,7 +1227,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             devirtualized_filename = self._devirtualize_filename(virtualized_file.value)
             # Hash the file to hex
             hex_digest = file_digest(open(devirtualized_filename, "rb"), "sha256").hexdigest()
-            file_input_bindings = WDL.Env.Bindings(WDL.Env.Binding("file_sha256", WDL.Value.String(hex_digest)))
+            file_input_bindings = WDL.Env.Bindings(WDL.Env.Binding("file_sha256", cast(WDL.Value.Base, WDL.Value.String(hex_digest))))
             # Make an environment of "file_sha256" to that as a WDL string, and
             # digest that, and make a write_ cache key. No need to transform to
             # shared FS paths sonce no paths are in it.
@@ -1190,7 +1236,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             file_cache_key = "write_/" + input_digest
             # Construct a description of the types we expect to get from the
             # cache: just a File-type variable named "file"
-            expected_types = WDL.Env.Bindings(WDL.Env.Binding("file", WDL.Type.File()))
+            expected_types = WDL.Env.Bindings(WDL.Env.Binding("file", cast(WDL.Type.Base, WDL.Type.File())))
             # Query the cache
             file_output_bindings = self._miniwdl_cache.get(file_cache_key, file_input_bindings, expected_types)
             if file_output_bindings:
