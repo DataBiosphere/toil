@@ -687,9 +687,9 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
 
     return file_id, task_path, parent_id, file_basename
 
-##
+###
 # Caching machinery
-##
+###
 
 # TODO: Move to new file?
 
@@ -765,6 +765,115 @@ def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.
         return result
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
+
+def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings) -> Tuple[Optional[WDLBindings], str]:
+    """
+    Return the cached result of calling this workflow or task, and its key.
+
+    Returns None and the key if the cache has no result for us.
+
+    Deals in un-namespaced bindings.
+    """
+    # View the inputs as shared FS files.
+    transformed_bindings = view_shared_fs_paths(bindings)
+    log_bindings(logger.debug, "Digesting input bindings:", [transformed_bindings])
+    input_digest = WDL.Value.digest_env(transformed_bindings)
+    cache_key=f"{node.name}/{node.digest}/{input_digest}"
+    miniwdl_logger = logging.getLogger("MiniWDL")
+    # TODO: Ship config from leader? It might not see the right environment.
+    miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+    miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+    cached_result: Optional[WDLBindings] = miniwdl_cache.get(cache_key, transformed_bindings, node.effective_outputs)
+    if cached_result is not None:
+        logger.info("Found call in cache")
+        return cached_result, cache_key
+    else:
+        logger.debug("No cache hit for %s", cache_key)
+        return None, cache_key
+
+def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_store: AbstractFileStore, execution_dir: Optional[str], miniwdl_logger: Optional[logging.Logger] = None, miniwdl_config: Optional[WDL.runtime.config.Loader] = None) -> WDLBindings:
+    """
+    Cache the result of calling a workflow or task.
+
+    Deals in un-namespaced bindings.
+
+    :param execution_dir: Working directory where the user launched the
+        workflow.
+
+    :returns: possibly modified bindings to continue on with, that may
+        reference the cache. 
+    """
+
+    if miniwdl_logger is None:
+        miniwdl_logger = logging.getLogger("MiniWDL")
+    if miniwdl_config is None:
+        miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+
+    miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+    if not miniwdl_cache._cfg["call_cache"].get_bool("put"):
+        # Do nothing since the cache does not want new entries.
+        # TODO: Get MiniWDL to expose this.
+        return output_bindings
+
+    # Set up deduplication just for these outputs.
+    devirtualization_state: DirectoryNamingStateDict = {}
+    devirtualized_to_virtualized: Dict[str, str] = dict()
+    virtualized_to_devirtualized: Dict[str, str] = dict()
+    # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
+
+    # Determine where we will save our cached versions of files.
+    output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key)
+    
+    # Adjust all files in the output bindings to have shared FS paths outside the job store.
+    def assign_shared_fs_path(file_value: str) -> str:
+        """
+        Given the string value inside a File, mutate the File to have a shared FS path outside the jobstore.
+
+        Returns the value to put in the WDL file to actually do the mutation.
+        """
+        
+        # TODO: Change to using File objects when required PR with
+        # the mapping functions for that is finally merged.
+
+        # We need all the incoming paths to not already be local
+        # paths, or devirtualizing them to export them will not
+        # work.
+        #
+        # This ought to be the case because we just virtualized
+        # them all for transport out of the machine.
+        if not is_url(file_value):
+            raise RuntimeError("File {file_value} caught escaping from task unvirtualized")
+
+        if get_shared_fs_path(file_value) is None:
+            # We need to save this file somewhere.
+            # This needs to exist before we can export to it. And now we know
+            # we will export something, so make sure it exists.
+            os.makedirs(output_directory, exist_ok=True)
+            exported_path = ToilWDLStdLibBase.devirtualize_to(
+                file_value,
+                output_directory,
+                file_store,
+                execution_dir,
+                devirtualization_state,
+                devirtualized_to_virtualized,
+                virtualized_to_devirtualized,
+                enforce_existence=False,
+                export=True
+            )
+
+            # Remember where it went
+            file_value = set_shared_fs_path(file_value, exported_path)
+
+        return file_value
+    output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
+
+    # Save the bindings to the cache, representing all files with their shared filesystem paths.
+    miniwdl_cache.put(cache_key, view_shared_fs_paths(output_bindings))
+    logger.debug("Saved result to cache under %s", cache_key)
+
+    # Keep using the transformed bindings so that later tasks use
+    # the cached files in their input digests.
+    return output_bindings
 
 
 DirectoryNamingStateDict = Dict[str, Tuple[Dict[str, str], Set[str]]]
@@ -2134,27 +2243,13 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
-
+        
         # At this point we have what MiniWDL would call the "inputs" to the
-        # task (i.e. what you would put in a JSON file, without any defaulted
-        # or calculated inputs filled in). So start making cache keys.
-        # But first we need to view the inputs as shared FS files.
-        transformed_bindings = view_shared_fs_paths(bindings)
-        log_bindings(logger.debug, "Digesting input bindings:", [transformed_bindings])
-        input_digest = WDL.Value.digest_env(transformed_bindings)
-        task_digest = self._task.digest
-        cache_key=f"{self._task.name}/{task_digest}/{input_digest}"
-        miniwdl_logger = logging.getLogger("MiniWDL")
-        # TODO: Ship config from leader? It might not see the right environment.
-        miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
-        miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-        cached_result: Optional[WDLBindings] = miniwdl_cache.get(cache_key, transformed_bindings, self._task.effective_outputs)
+        # call (i.e. what you would put in a JSON file, without any defaulted
+        # or calculated inputs filled in).
+        cached_result, cache_key = poll_execution_cache(self._task, bindings)
         if cached_result is not None:
-            logger.info("Found task call in cache")
             return self.postprocess(cached_result)
-        else:
-            logger.debug("No cache hit for %s", cache_key)
-        # Otherwise we need to run the actual command.
 
         # Set up the WDL standard library
         # UUID to use for virtualizing files
@@ -2261,7 +2356,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             runtime_accelerators = [accelerator_requirement]
 
         # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
-        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options, cache_key=cache_key)
+        run_job = WDLTaskJob(self._task, virtualize_files(bindings, standard_library), virtualize_files(runtime_bindings, standard_library), self._task_id, self._namespace, self._task_path, cache_key=cache_key, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk, accelerators=runtime_accelerators or self.accelerators, wdl_options=self._wdl_options)
         # Run that as a child
         self.addChild(run_job)
 
@@ -2814,69 +2909,8 @@ class WDLTaskJob(WDLBaseJob):
         output_bindings = virtualize_files(output_bindings, outputs_library)
 
         if self._cache_key is not None:
-            # We might need to save to the call cache 
-            miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-            if miniwdl_cache._cfg["call_cache"].get_bool("put"):
-                # Saving to the cache is on. If we ran somethign we write it to the cache.
-                # TODO: Get MiniWDL to expose this.
-
-                # Set up deduplication just for these outputs.
-                devirtualization_state: DirectoryNamingStateDict = {}
-                devirtualized_to_virtualized: Dict[str, str] = dict()
-                virtualized_to_devirtualized: Dict[str, str] = dict()
-                # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
-
-                # Determine where we will save our cached versions of files.
-                output_directory = os.path.join(miniwdl_cache._call_cache_dir, self._cache_key)
-                # This needs to exist before we can export to it
-                os.makedirs(output_directory, exist_ok=True)
-
-                # Adjust all files in the output bindings to have shared FS paths outside the job store.
-                def assign_shared_fs_path(file_value: str) -> str:
-                    """
-                    Given the string value inside a File, mutate the File to have a shared FS path outside the jobstore.
-
-                    Returns the value to put in the WDL file to actually do the mutation.
-                    """
-                    
-                    # TODO: Change to using File objects when required PR with
-                    # the mapping functions for that is finally merged.
-
-                    # We need all the incoming paths to not already be local
-                    # paths, or devirtualizing them to export them will not
-                    # work.
-                    #
-                    # This ought to be the case because we just virtualized
-                    # them all for transport out of the machine.
-                    if not is_url(file_value):
-                        raise RuntimeError("File {file_value} caught escaping from task unvirtualized")
-
-                    if get_shared_fs_path(file_value) is None:
-                        # We need to save this file somewhere.
-                        exported_path = ToilWDLStdLibBase.devirtualize_to(
-                            file_value,
-                            output_directory,
-                            file_store,
-                            self._wdl_options.get("execution_dir"),
-                            devirtualization_state,
-                            devirtualized_to_virtualized,
-                            virtualized_to_devirtualized,
-                            enforce_existence=False,
-                            export=True
-                        )
-
-                        # Remember where it went
-                        file_value = set_shared_fs_path(file_value, exported_path)
-
-                    return file_value
-                output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
-
-                # Save the bindings to the cache, representing all files with their shared filesystem paths.
-                miniwdl_cache.put(self._cache_key, view_shared_fs_paths(output_bindings))
-                logger.debug("Saved result to cache under %s", self._cache_key)
-
-                # Keep using the transformed bindings so that later tasks use
-                # the cached files in their input digests.
+            # We might need to save to the execution cache 
+            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options.get("execution_dir"), miniwdl_logger=miniwdl_logger, miniwdl_config=miniwdl_config)
 
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
@@ -3678,8 +3712,15 @@ class WDLWorkflowJob(WDLSectionJob):
         logger.info("Running workflow %s (%s) called as %s", self._workflow.name, self._workflow_id, self._namespace)
 
         # Combine the bindings we get from previous jobs.
-        # For a task we only see the insode-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
+
+        # At this point we have what MiniWDL would call the "inputs" to the
+        # call (i.e. what you would put in a JSON file, without any defaulted
+        # or calculated inputs filled in).
+        cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
+        if cached_result is not None:
+            return self.postprocess(cached_result)
+
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibWorkflow(file_store, self._task_path, execution_dir=self._wdl_options.get("execution_dir"))
 
@@ -3695,34 +3736,35 @@ class WDLWorkflowJob(WDLSectionJob):
 
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
-
-        if self._workflow.outputs != []:  # Compare against empty list as None means there should be outputs
-            # Either the output section is declared and nonempty or it is not declared
-            # Add evaluating the outputs after the sink
-            outputs_job = WDLOutputsJob(self._workflow, sink.rv(), self._task_path, wdl_options=self._wdl_options)
-            sink.addFollowOn(outputs_job)
-            # Caller is responsible for making sure namespaces are applied
-            self.defer_postprocessing(outputs_job)
-            return outputs_job.rv()
-        else:
-            # No outputs from this workflow.
-            return self.postprocess(WDL.Env.Bindings())
+        
+        # To support the all call outputs feature, run an outputs job even if
+        # we have a declared but empty outputs section.
+        outputs_job = WDLOutputsJob(self._workflow, sink.rv(), self._task_path, cache_key=cache_key, wdl_options=self._wdl_options)
+        sink.addFollowOn(outputs_job)
+        # Caller is responsible for making sure namespaces are applied
+        self.defer_postprocessing(outputs_job)
+        return outputs_job.rv()
 
 class WDLOutputsJob(WDLBaseJob):
     """
-    Job which evaluates an outputs section (such as for a workflow).
+    Job which evaluates an outputs section for a workflow.
 
     Returns an environment with just the outputs bound, in no namespace.
     """
-    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], task_path: str, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any):
+    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], task_path: str, cache_key: Optional[str] = None, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
+
+        :param cache_key: If set and storing into the call cache is on, will
+               cache the workflow execution result under the given key in a
+               MiniWDL-compatible way.
         """
         super().__init__(wdl_options=wdl_options, **kwargs)
 
         self._bindings = bindings
         self._workflow = workflow
         self._task_path = task_path
+        self._cache_key = cache_key
 
     @report_wdl_errors("evaluate outputs")
     def run(self, file_store: AbstractFileStore) -> WDLBindings:
@@ -3786,6 +3828,9 @@ class WDLOutputsJob(WDLBaseJob):
 
         # Null nonexistent optional values and error on the rest
         output_bindings = drop_missing_files(output_bindings, self._wdl_options.get("execution_dir"))
+        
+        if self._cache_key is not None:
+            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options.get("execution_dir"))
 
         return self.postprocess(output_bindings)
 
