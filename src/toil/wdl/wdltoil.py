@@ -100,8 +100,10 @@ logger = logging.getLogger(__name__)
 
 # WDL options to pass into the WDL jobs and standard libraries
 #   task_path: Dotted WDL name of the part of the workflow this library is working for.
+#   namespace: namespace of the WDL that the current job is in
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
+#   all_call_outputs: whether a job should include all calls outputs
 WDLContext = TypedDict('WDLContext', {"execution_dir": NotRequired[str], "container": NotRequired[str],
                                       "task_path": str, "namespace": str, "all_call_outputs": bool})
 
@@ -3781,7 +3783,7 @@ def main() -> None:
 
                 # Configure workflow interpreter options
                 wdl_options: WDLContext = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
-                                            "namespace": target.name, "all_call_outputs": options.all_call_outputs}
+                                           "namespace": target.name, "all_call_outputs": options.all_call_outputs}
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
