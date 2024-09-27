@@ -103,7 +103,7 @@ logger = logging.getLogger(__name__)
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 WDL_Context = TypedDict('WDL_Context', {"execution_dir": NotRequired[str], "container": NotRequired[str],
-                                        "task_path": str, "namespace": str})
+                                        "task_path": str, "namespace": str, "all_call_outputs": bool})
 
 
 @contextmanager
@@ -3570,9 +3570,19 @@ class WDLOutputsJob(WDLBaseJob):
         standard_library = ToilWDLStdLibBase(file_store, self._wdl_options)
 
         try:
-            if self._workflow.outputs is None:
-                # The output section is not declared
-                # So get all task outputs and return that
+            if self._workflow.outputs is not None:
+                # Output section is declared and is nonempty, so evaluate normally
+
+                # Combine the bindings from the previous job
+                output_bindings = evaluate_decls_to_bindings(self._workflow.outputs, unwrap(self._bindings), standard_library)
+            else:
+                # If no output section is present, start with an empty bindings
+                output_bindings = WDL.Env.Bindings()
+
+            if self._workflow.outputs is None or self._wdl_options.get("all_call_outputs", False):
+                # The output section is not declared, or we want to keep task outputs anyway.
+
+                # Get all task outputs and return that
                 # First get all task output names
                 output_set = set()
                 # We need to recurse down through scatters and conditionals to find all the task names.
@@ -3593,7 +3603,6 @@ class WDLOutputsJob(WDLBaseJob):
                         for subnode in node.body:
                             stack.append(subnode)
                 # Collect all bindings that are task outputs
-                output_bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
                 for binding in unwrap(self._bindings):
                     if binding.name in output_set:
                         # The bindings will already be namespaced with the task namespaces
@@ -3697,6 +3706,26 @@ def main() -> None:
                 else:
                     raise WDL.Error.InputError("WDL document is empty!")
 
+                if "croo_out_def" in target.meta:
+                    # This workflow or task wants to have its outputs
+                    # "organized" by the Cromwell Output Organizer:
+                    # <https://github.com/ENCODE-DCC/croo>.
+                    #
+                    # TODO: We don't support generating anything that CROO can read.
+                    logger.warning("This WDL expects to be used with the Cromwell Output Organizer (croo) <https://github.com/ENCODE-DCC/croo>. Toil cannot yet produce the outputs that croo requires. You will not be able to use croo on the output of this Toil run!")
+
+                    # But we can assume that we need to preserve individual
+                    # taks outputs since the point of CROO is fetching those
+                    # from Cromwell's output directories.
+                    #
+                    # This isn't quite WDL spec compliant but it will rescue
+                    # runs of the popular
+                    # <https://github.com/ENCODE-DCC/atac-seq-pipeline>
+                    if options.all_call_outputs is None:
+                        logger.warning("Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file.")
+                        options.all_call_outputs = True
+
+
                 if options.inputs_uri:
                     # Load the inputs. Use the same loading mechanism, which means we
                     # have to break into async temporarily.
@@ -3751,7 +3780,8 @@ def main() -> None:
                 convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
-                wdl_options: WDL_Context = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name, "namespace": target.name}
+                wdl_options: WDL_Context = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
+                                            "namespace": target.name, "all_call_outputs": options.all_call_outputs}
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
