@@ -3438,7 +3438,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         return self.postprocess(output_bindings)
 
-class WDLRootJob(WDLSectionJob):
+class WDLStartJob(WDLSectionJob):
     """
     Job that evaluates an entire WDL workflow, and returns the workflow outputs
     namespaced with the workflow name. Inputs may or may not be namespaced with
@@ -3495,7 +3495,7 @@ class WDLImportJob(WDLSectionJob):
         :return: Promise of workflow outputs
         """
         input_bindings = import_files(self._inputs, self._target.name, file_store.jobStore, self._path, self._skip_remote, self._wdl_options.get("execution_dir"))
-        root_job = WDLRootJob(self._target, input_bindings, wdl_options=self._wdl_options)
+        root_job = WDLStartJob(self._target, input_bindings, wdl_options=self._wdl_options)
         self.addChild(root_job)
         return root_job.rv()
 
@@ -3552,7 +3552,7 @@ def make_root_job(target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBi
         # Import any files in the bindings
         input_bindings = import_files(inputs, target.name, toil._jobStore, inputs_search_path, skip_remote=options.reference_inputs)
         # Run the workflow and get its outputs namespaced with the workflow name.
-        root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options)
+        root_job = WDLStartJob(target, input_bindings, wdl_options=wdl_options)
     return root_job
 
 
@@ -3575,8 +3575,7 @@ def main() -> None:
 
     # Take care of incompatible arguments related to file imports
     if options.run_imports_on_workers is True and options.import_workers_disk is None:
-        logger.error("Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers.")
-        return
+        raise RuntimeError("Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers.")
 
     # Make sure we have an output directory (or URL prefix) and we don't need
     # to ever worry about a None, and MyPy knows it.
