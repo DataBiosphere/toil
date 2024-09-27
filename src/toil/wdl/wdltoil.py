@@ -74,7 +74,8 @@ from toil.job import (AcceleratorRequirement,
                       TemporaryID,
                       parse_accelerator,
                       unwrap,
-                      unwrap_all, ParseableIndivisibleResource)
+                      unwrap_all,
+                      ParseableIndivisibleResource)
 from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
                                              InvalidImportExportUrlException, LocatorException)
 from toil.lib.accelerators import get_individual_local_accelerators
@@ -3469,7 +3470,6 @@ class WDLRootJob(WDLSectionJob):
         self.defer_postprocessing(job)
         return job.rv()
 
-# @report_wdl_errors("run wdl import on worker", exit=True)
 class WDLImportJob(WDLSectionJob):
     def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, path: Optional[List[str]] = None, skip_remote: bool = False,
                  disk_size: Optional[ParseableIndivisibleResource] = None, wdl_options: Optional[Dict[str, str]] = None, **kwargs: Any):
