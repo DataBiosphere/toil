@@ -102,8 +102,8 @@ logger = logging.getLogger(__name__)
 #   task_path: Dotted WDL name of the part of the workflow this library is working for.
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
-WDLContext = TypedDict('WDL_Context', {"execution_dir": NotRequired[str], "container": NotRequired[str],
-                                        "task_path": str, "namespace": str, "all_call_outputs": bool})
+WDLContext = TypedDict('WDLContext', {"execution_dir": NotRequired[str], "container": NotRequired[str],
+                                      "task_path": str, "namespace": str, "all_call_outputs": bool})
 
 
 @contextmanager
