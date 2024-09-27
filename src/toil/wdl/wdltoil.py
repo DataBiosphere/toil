@@ -814,12 +814,16 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
     :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
     """
     path_to_id: Dict[str, uuid.UUID] = {}
-    def convert_file_to_url(file: WDL.Value.File) -> WDL.Value.File:
+    @memoize
+    def import_filename(filename: str) -> Tuple[Optional[str], Optional[str]]:
         """
         Detect if any potential URI exists. Will convert a file's value to a URI and import it.
+
+        Separated out from convert_file_to_url in order to properly memoize and avoid importing the same file twice
+        :param filename: Filename to import
+        :return: Tuple of the uri the file was found at and the virtualized import
         """
         # Search through any input search paths passed in and download it if found
-        filename = file.value
         tried = []
         for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else []):
             tried.append(candidate_uri)
@@ -831,8 +835,7 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
                         continue
 
                     # Now we know this exists, so pass it through
-                    file.value = candidate_uri
-                    return file
+                    return candidate_uri, None
                 else:
                     # Actually import
                     # Try to import the file. Don't raise if we can't find it, just
@@ -893,15 +896,28 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
 
             logger.info('Converting input file path %s to %s', filename, candidate_uri)
 
-            # Was actually found
+            return candidate_uri, toil_uri
+        # Not found, return None
+        return None, None
+
+    def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
+        """
+        Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
+        """
+        candidate_uri, toil_uri = import_filename(file.value)
+        if candidate_uri is None and toil_uri is None:
+            # If we get here we tried all the candidates
+            raise RuntimeError(f"Could not find {file.value} at any of: {list(potential_absolute_uris(file.value, search_paths if search_paths is not None else []))}")
+        elif candidate_uri is not None and toil_uri is None:
+            # A candidate exists but importing is disabled because import_remote_files is false
+            file.value = candidate_uri
+        else:
+            # Was actually found and imported
             file.value = candidate_uri
             setattr(file, "virtualized_value", toil_uri)
-            return file
+        return file
 
-        # If we get here we tried all the candidates
-        raise RuntimeError(f"Could not find {filename} at any of: {tried}")
-
-    map_over_files_in_bindings(environment, convert_file_to_url)
+    map_over_files_in_bindings(environment, convert_file_to_uri)
 
 
 # Both the WDL code itself **and** the commands that it runs will deal in
