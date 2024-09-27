@@ -3,6 +3,8 @@ from argparse import ArgumentParser
 from configargparse import SUPPRESS
 from toil.lib.conversions import human2bytes
 
+from toil.lib.conversions import strtobool
+
 
 def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     """
@@ -31,12 +33,11 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     parser.add_argument(*output_file_arguments, dest="output_file", type=str, default=None,
                         help=suppress_help or "File or URI to save output JSON to.")
     reference_inputs_arguments = ["--wdlReferenceInputs"] + (["--referenceInputs"] if not suppress else [])
-    parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type=bool, default=False,
+    parser.add_argument(*reference_inputs_arguments, dest="reference_inputs", type=strtobool, default=False,
                         help=suppress_help or "Pass input files by URL")
     container_arguments = ["--wdlContainer"] + (["--container"] if not suppress else [])
     parser.add_argument(*container_arguments, dest="container", type=str, choices=["singularity", "docker", "auto"], default="auto",
                         help=suppress_help or "Container engine to use to run WDL tasks")
-
     parser.add_argument(
         "--runImportsOnWorkers", "--run-imports-on-workers",
         action="store_true", default=False,
@@ -44,10 +45,12 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
                               "If set to true, the argument --importWorkersDisk must also be set.",
         dest="run_imports_on_workers"
     )
-
     parser.add_argument("--importWorkersDisk", "--import-workers-disk",
                         help=suppress_help or "Specify the amount of disk space an import worker will use. If file streaming for input files is not available,"
                                               "this should be set to the size of the largest input file. This must be set in conjunction with the argument runImportsOnWorkers.",
                         dest="import_workers_disk",
                         type=lambda x: human2bytes(str(x)),
                         default=None)
+    all_call_outputs_arguments = ["--wdlAllCallOutputs"] + (["--allCallOutputs"] if not suppress else [])
+    parser.add_argument(*all_call_outputs_arguments, dest="all_call_outputs", type=strtobool, default=None,
+                        help=suppress_help or "Keep and return all call outputs as workflow outputs")
