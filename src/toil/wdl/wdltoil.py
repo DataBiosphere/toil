@@ -719,7 +719,9 @@ def get_shared_fs_path(file: Union[str, WDL.Value.File]) -> Optional[str]:
     else:
         file_value = file
     if hasattr(file_value, SHARED_PATH_ATTR):
-        return cast(str, getattr(file_value, SHARED_PATH_ATTR))
+        result = cast(str, getattr(file_value, SHARED_PATH_ATTR))
+        assert not result.startswith("file://"), f"Found URI shared FS path of {result} on {file}"
+        return result
     return None
 
 def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> str:
@@ -733,6 +735,8 @@ def set_shared_fs_path(file: Union[str, WDL.Value.File], path: str) -> str:
     Returns a str that has to be assigned back to the WDL File's value, if the
     input was not a WDL File.
     """
+    # We should not have URLs here, only real paths.
+    assert not path.startswith("file://"), f"Cannot assign URI shared FS path of {path} to {file}"
     if isinstance(file, WDL.Value.File):
         file_value: str = file.value
     else:
@@ -755,7 +759,10 @@ def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.
         """
         Return the shared FS path if we have one, or the current string.
         """
-        return get_shared_fs_path(stored_file_string) or stored_file_string
+        shared_path = get_shared_fs_path(stored_file_string)
+        result = shared_path or stored_file_string
+        assert not result.startswith("file://"), f"Trying to digest file URI {result} for file {stored_file_string} with shared path {shared_path}"
+        return result
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
 
@@ -1767,7 +1774,11 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
             local_path: Optional[str] = None
 
             # Was actually found
-            if is_url(candidate_uri):
+            if is_url(candidate_uri) or candidate_uri.startswith("file://"):
+                # Is a non-file URI or file URI.
+                # TODO: is_url is due to be renamed.
+                # TODO: check for the // also for global URL/URI detection because http:stuff.dat is a valid local filename. Add it to the toilfile: URIs.
+
                 # Might be a file URI or other URI.
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
