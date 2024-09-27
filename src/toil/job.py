@@ -967,9 +967,9 @@ class JobDescription(Requirer):
 
     def successors_by_phase(self) -> Iterator[Tuple[int, str]]:
         """
-        Get an iterator over all child/follow-on/chained inherited successor job IDs, along with their phase numbere on the stack.
+        Get an iterator over all child/follow-on/chained inherited successor job IDs, along with their phase number on the stack.
 
-        Phases ececute higher numbers to lower numbers.
+        Phases execute higher numbers to lower numbers.
         """
 
         for i, phase in enumerate(self.successor_phases):
