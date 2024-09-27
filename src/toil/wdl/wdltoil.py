@@ -102,7 +102,7 @@ logger = logging.getLogger(__name__)
 #   task_path: Dotted WDL name of the part of the workflow this library is working for.
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
-WDL_Context = TypedDict('WDL_Context', {"execution_dir": NotRequired[str], "container": NotRequired[str],
+WDLContext = TypedDict('WDL_Context', {"execution_dir": NotRequired[str], "container": NotRequired[str],
                                         "task_path": str, "namespace": str, "all_call_outputs": bool})
 
 
@@ -949,7 +949,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
     """
-    def __init__(self, file_store: AbstractFileStore, wdl_options: WDL_Context, share_files_with: Optional["ToilWDLStdLibBase"] = None):
+    def __init__(self, file_store: AbstractFileStore, wdl_options: WDLContext, share_files_with: Optional["ToilWDLStdLibBase"] = None):
         """
         Set up the standard library.
         :param wdl_options: Options to pass into the standard library to use.
@@ -968,7 +968,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # Keep the file store around so we can access files.
         self._file_store = file_store
 
-        self._wdl_options: WDL_Context = wdl_options
+        self._wdl_options: WDLContext = wdl_options
 
         if share_files_with is None:
             # We get fresh file download/upload state
@@ -1142,7 +1142,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return result
 
     @staticmethod
-    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], state: DirectoryNamingStateDict, wdl_options: WDL_Context,
+    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], state: DirectoryNamingStateDict, wdl_options: WDLContext,
                         devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
@@ -1282,7 +1282,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     are host-side paths.
     """
 
-    def __init__(self, file_store: AbstractFileStore, container: TaskContainer, wdl_options: WDL_Context):
+    def __init__(self, file_store: AbstractFileStore, container: TaskContainer, wdl_options: WDLContext):
         """
         Set up the standard library for the task command section.
         """
@@ -1376,7 +1376,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         stdout_path: str,
         stderr_path: str,
         file_to_mountpoint: Dict[str, str],
-        wdl_options: WDL_Context,
+        wdl_options: WDLContext,
         share_files_with: Optional["ToilWDLStdLibBase"] = None
     ):
         """
@@ -1902,7 +1902,7 @@ class WDLBaseJob(Job):
     Also responsible for remembering the Toil WDL configuration keys and values.
     """
 
-    def __init__(self, wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a WDL-related job.
 
@@ -2036,7 +2036,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to determine resources and run a task.
 
@@ -2197,7 +2197,7 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
 
@@ -2592,7 +2592,7 @@ class WDLTaskJob(WDLBaseJob):
             contained_bindings = map_over_files_in_bindings(bindings, get_path_in_container)
 
             # Make a new standard library for evaluating the command specifically, which only deals with in-container paths and out-of-container paths.
-            command_wdl_options: WDL_Context = self._wdl_options.copy()
+            command_wdl_options: WDLContext = self._wdl_options.copy()
             if workdir_in_container is not None:
                 command_wdl_options["execution_dir"] = workdir_in_container
             command_library = ToilWDLStdLibTaskCommand(file_store, task_container, wdl_options=command_wdl_options)
@@ -2678,7 +2678,7 @@ class WDLTaskJob(WDLBaseJob):
         # container-determined strings that are absolute paths to WDL File
         # objects, and like MiniWDL we can say we only support
         # working-directory-based relative paths for globs.
-        output_wdl_options: WDL_Context = self._wdl_options.copy()
+        output_wdl_options: WDLContext = self._wdl_options.copy()
         if workdir_in_container is not None:
             output_wdl_options["execution_dir"] = workdir_in_container
         outputs_library = ToilWDLStdLibTaskOutputs(file_store, host_stdout_txt, host_stderr_txt, task_container.input_path_map, wdl_options=output_wdl_options, share_files_with=standard_library)
@@ -2727,7 +2727,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
     Job that evaluates a WDL workflow node.
     """
 
-    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, node: WDL.Tree.WorkflowNode, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a workflow node to completion.
         """
@@ -2822,7 +2822,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
     workflows or tasks or sections.
     """
 
-    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a list of workflow nodes to completion.
         """
@@ -3028,7 +3028,7 @@ class WDLSectionJob(WDLBaseJob):
     Job that can create more graph for a section of the workflow.
     """
 
-    def __init__(self, wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a WDLSectionJob where the interior runs in the given namespace,
         starting with the root workflow.
@@ -3286,7 +3286,7 @@ class WDLScatterJob(WDLSectionJob):
     instance of the body. If an instance of the body doesn't create a binding,
     it gets a null value in the corresponding array.
     """
-    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, scatter: WDL.Tree.Scatter, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL scatter. The scatter itself and the contents live in the given namespace.
         """
@@ -3428,7 +3428,7 @@ class WDLConditionalJob(WDLSectionJob):
     """
     Job that evaluates a conditional in a WDL workflow.
     """
-    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, conditional: WDL.Tree.Conditional, prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL conditional. The conditional itself and its contents live in the given namespace.
         """
@@ -3483,7 +3483,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -3550,7 +3550,7 @@ class WDLOutputsJob(WDLBaseJob):
 
     Returns an environment with just the outputs bound, in no namespace.
     """
-    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], wdl_options: WDL_Context, **kwargs: Any):
+    def __init__(self, workflow: WDL.Tree.Workflow, bindings: Promised[WDLBindings], wdl_options: WDLContext, **kwargs: Any):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
         """
@@ -3635,7 +3635,7 @@ class WDLRootJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
 
-    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDL_Context, **kwargs: Any) -> None:
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
@@ -3780,7 +3780,7 @@ def main() -> None:
                 convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
-                wdl_options: WDL_Context = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
+                wdl_options: WDLContext = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
                                             "namespace": target.name, "all_call_outputs": options.all_call_outputs}
                 assert wdl_options.get("container") is not None
 
