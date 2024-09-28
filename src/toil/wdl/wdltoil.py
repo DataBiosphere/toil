@@ -1321,13 +1321,8 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
         self, serialize: Callable[[WDL.Value.Base, IO[bytes]], None]
     ) -> Callable[[WDL.Value.Base], WDL.Value.File]:
         
-        if self._miniwdl_cache is None:
-            # We do indeed need a MiniWDL cache.
-            # Setting it up logs so make it lazily.
-            miniwdl_logger = logging.getLogger("MiniWDL")
-            # TODO: Ship config from leader? It might not see the right environment.
-            miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
-            self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+        # Note that the parent class constructor calls this method, but doesn't
+        # invoke the resulting function.
 
         # Get the normal writer
         writer = super()._write(serialize)
@@ -1341,6 +1336,14 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             # and not need to use the job store.
 
             virtualized_file = writer(v)
+
+            if self._miniwdl_cache is None:
+                # We do indeed need a MiniWDL cache.
+                # Setting it up logs so make it lazily.
+                miniwdl_logger = logging.getLogger("MiniWDL")
+                # TODO: Ship config from leader? It might not see the right environment.
+                miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+                self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
 
             # TODO: If we did this before the _virtualize_filename call in the
             # base _write we wouldn't need to immediately devirtualize. But we
