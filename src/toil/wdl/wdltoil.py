@@ -1856,7 +1856,6 @@ def import_files(environment: WDLBindings, task_path: str, file_dest: Union[Abst
                     if imported is None:
                         # Wasn't found there
                         continue
-                    logger.info('Imported %s', candidate_uri)
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
