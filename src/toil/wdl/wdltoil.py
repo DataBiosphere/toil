@@ -1306,13 +1306,9 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-
-        # Set up MiniWDL caching for files
-        miniwdl_logger = logging.getLogger("MiniWDL")
-        # TODO: Ship config from leader? It might not see the right environment.
-        miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
-        self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-
+       
+        self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
+        
     # This needs to be hash-compatible with MiniWDL.
     # MiniWDL hooks _virtualize_filename
     # <https://github.com/chanzuckerberg/miniwdl/blob/475dd3f3784d1390e6a0e880d43316a620114de3/WDL/runtime/workflow.py#L699-L729>,
@@ -1324,6 +1320,14 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
     def _write(
         self, serialize: Callable[[WDL.Value.Base, IO[bytes]], None]
     ) -> Callable[[WDL.Value.Base], WDL.Value.File]:
+        
+        if self._miniwdl_cache is None:
+            # We do indeed need a MiniWDL cache.
+            # Setting it up logs so make it lazily.
+            miniwdl_logger = logging.getLogger("MiniWDL")
+            # TODO: Ship config from leader? It might not see the right environment.
+            miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
+            self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
 
         # Get the normal writer
         writer = super()._write(serialize)
@@ -1355,6 +1359,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             # cache: just a File-type variable named "file"
             expected_types = WDL.Env.Bindings(WDL.Env.Binding("file", cast(WDL.Type.Base, WDL.Type.File())))
             # Query the cache
+            assert self._miniwdl_cache is not None
             file_output_bindings = self._miniwdl_cache.get(file_cache_key, file_input_bindings, expected_types)
             if file_output_bindings:
                 # File with this hash is cached.
