@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 
 from configargparse import SUPPRESS
-from toil.lib.conversions import human2bytes
 
 from toil.lib.conversions import strtobool
 
@@ -38,12 +37,6 @@ def add_wdl_options(parser: ArgumentParser, suppress: bool = True) -> None:
     container_arguments = ["--wdlContainer"] + (["--container"] if not suppress else [])
     parser.add_argument(*container_arguments, dest="container", type=str, choices=["singularity", "docker", "auto"], default="auto",
                         help=suppress_help or "Container engine to use to run WDL tasks")
-    parser.add_argument("--runImportsOnWorkers", action="store_true", default=False, dest="run_imports_on_workers",
-                        help=suppress_help or "Run the file imports on a worker instead of the leader. This is useful if the leader is not optimized for high network performance. "
-                                              "If set to true, the argument --importWorkersDisk must also be set.")
-    parser.add_argument("--importWorkersDisk", dest="import_workers_disk", type=lambda x: human2bytes(str(x)), default=None,
-                        help=suppress_help or "Specify the amount of disk space an import worker will use. If file streaming for input files is not available, "
-                                              "this should be set to the size of the largest input file. This must be set in conjunction with the argument runImportsOnWorkers.")
     all_call_outputs_arguments = ["--wdlAllCallOutputs"] + (["--allCallOutputs"] if not suppress else [])
     parser.add_argument(*all_call_outputs_arguments, dest="all_call_outputs", type=strtobool, default=None,
                         help=suppress_help or "Keep and return all call outputs as workflow outputs")
