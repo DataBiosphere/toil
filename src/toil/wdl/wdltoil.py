@@ -111,7 +111,7 @@ class ReadableFileObj(Protocol):
     """
     Protocol that is more specific than what file_digest takes as an argument.
     Also guarantees a read() method.
-    
+
     Would extend the protocol from Typeshed for hashlib but those are only
     declared for 3.11+.
     """
@@ -801,7 +801,7 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
         workflow.
 
     :returns: possibly modified bindings to continue on with, that may
-        reference the cache. 
+        reference the cache.
     """
 
     if miniwdl_logger is None:
@@ -823,7 +823,7 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
 
     # Determine where we will save our cached versions of files.
     output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key)
-    
+
     # Adjust all files in the output bindings to have shared FS paths outside the job store.
     def assign_shared_fs_path(file_value: str) -> str:
         """
@@ -831,20 +831,21 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
 
         Returns the value to put in the WDL file to actually do the mutation.
         """
-        
+
         # TODO: Change to using File objects when required PR with
         # the mapping functions for that is finally merged.
 
-        # We need all the incoming paths to not already be local
-        # paths, or devirtualizing them to export them will not
-        # work.
-        #
-        # This ought to be the case because we just virtualized
-        # them all for transport out of the machine.
-        if not is_url(file_value):
-            raise RuntimeError("File {file_value} caught escaping from task unvirtualized")
-
         if get_shared_fs_path(file_value) is None:
+            # We need all the incoming paths that aren't cache paths to not already
+            # be local paths, or devirtualizing them to export them will not work.
+            #
+            # This ought to be the case because we just virtualized
+            # them all for transport out of the machine.
+            if not is_url(file_value):
+                # TODO: If we're passing things around by URL reference and
+                # some of them are file: is this actually allowed?
+                raise RuntimeError(f"File {file_value} caught escaping from task unvirtualized")
+
             # We need to save this file somewhere.
             # This needs to exist before we can export to it. And now we know
             # we will export something, so make sure it exists.
@@ -1311,7 +1312,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
         # TODO: Ship config from leader? It might not see the right environment.
         miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
         self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-    
+
     # This needs to be hash-compatible with MiniWDL.
     # MiniWDL hooks _virtualize_filename
     # <https://github.com/chanzuckerberg/miniwdl/blob/475dd3f3784d1390e6a0e880d43316a620114de3/WDL/runtime/workflow.py#L699-L729>,
@@ -1382,13 +1383,13 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     enforce_existence=True,
                     export=True
                 )
-                
+
                 # Save the cache entry pointing to it
                 self._miniwdl_cache.put(
                     file_cache_key,
                     WDL.Env.Bindings(WDL.Env.Binding("file", WDL.Value.File(exported_path)))
                 )
-                
+
                 # Apply the shared filesystem path to the virtualized file
                 set_shared_fs_path(virtualized_file, exported_path)
 
@@ -1807,10 +1808,11 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
-def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Optional[List[str]] = None, skip_remote: bool = False) -> WDLBindings:
+def import_files(environment: WDLBindings, task_path: str, file_dest: Union[AbstractFileStore, Toil], path: Optional[List[str]] = None, skip_remote: bool = False) -> WDLBindings:
     """
-    Make sure all File values embedded in the given bindings are imported,
-    using the given Toil object.
+    Make sure all File values embedded in the given bindings are imported.
+
+    Uses the given Toil object or FileStore.
 
     :param task_path: Dotted WDL name of the user-level code doing the
            importing (probably the workflow name).
@@ -1845,7 +1847,12 @@ def import_files(environment: WDLBindings, task_path: str, toil: Toil, path: Opt
                     # Actually import
                     # Try to import the file. Don't raise if we can't find it, just
                     # return None!
-                    imported = toil.import_file(candidate_uri, check_existence=False)
+                    if isinstance(file_dest, Toil):
+                        imported = file_dest.import_file(candidate_uri, check_existence=False)
+                    else:
+                        # The file store import_file doesn't do an existence check.
+                        # TODO: Have a more compatible interface.
+                        imported = file_dest.import_file(candidate_uri)
                     if imported is None:
                         # Wasn't found there
                         continue
@@ -2240,20 +2247,28 @@ class WDLTaskWrapperJob(WDLBaseJob):
         super().run(file_store)
         logger.info("Evaluating inputs and runtime for task %s (%s) called as %s", self._task.name, self._task_id, self._namespace)
 
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibBase(file_store, self._task_path)
+
         # Combine the bindings we get from previous jobs.
         # For a task we are only passed the inside-the-task namespace.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
-        
+
         # At this point we have what MiniWDL would call the "inputs" to the
         # call (i.e. what you would put in a JSON file, without any defaulted
         # or calculated inputs filled in).
         cached_result, cache_key = poll_execution_cache(self._task, bindings)
         if cached_result is not None:
-            return self.postprocess(cached_result)
+            # Virtualize any files we loaded from the cache, to maintain the
+            # invariant that they are in the job store, and to avoid
+            # re-virtualizing them later if they oass through other tasks. This
+            # should mostly be symlinking because we are probably using the
+            # FileJobStore.
+            #
+            # TODO: Allow just propagating things through by normal path
+            # reference into the cache?
+            return self.postprocess(import_files(cached_result, self._task.name, file_store))
 
-        # Set up the WDL standard library
-        # UUID to use for virtualizing files
-        standard_library = ToilWDLStdLibBase(file_store, self._task_path)
         with monkeypatch_coerce(standard_library):
             if self._task.inputs:
                 logger.debug("Evaluating task code")
@@ -2909,7 +2924,7 @@ class WDLTaskJob(WDLBaseJob):
         output_bindings = virtualize_files(output_bindings, outputs_library)
 
         if self._cache_key is not None:
-            # We might need to save to the execution cache 
+            # We might need to save to the execution cache
             output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options.get("execution_dir"), miniwdl_logger=miniwdl_logger, miniwdl_config=miniwdl_config)
 
         # Do postprocessing steps to e.g. apply namespaces.
@@ -3719,7 +3734,7 @@ class WDLWorkflowJob(WDLSectionJob):
         # or calculated inputs filled in).
         cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
         if cached_result is not None:
-            return self.postprocess(cached_result)
+            return self.postprocess(import_files(cached_result, self._workflow.name, file_store))
 
         # Set up the WDL standard library
         standard_library = ToilWDLStdLibWorkflow(file_store, self._task_path, execution_dir=self._wdl_options.get("execution_dir"))
@@ -3736,7 +3751,7 @@ class WDLWorkflowJob(WDLSectionJob):
 
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
-        
+
         # To support the all call outputs feature, run an outputs job even if
         # we have a declared but empty outputs section.
         outputs_job = WDLOutputsJob(self._workflow, sink.rv(), self._task_path, cache_key=cache_key, wdl_options=self._wdl_options)
@@ -3828,7 +3843,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         # Null nonexistent optional values and error on the rest
         output_bindings = drop_missing_files(output_bindings, self._wdl_options.get("execution_dir"))
-        
+
         if self._cache_key is not None:
             output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options.get("execution_dir"))
 

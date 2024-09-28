@@ -131,6 +131,10 @@ class FileJobStore(AbstractJobStore):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir, "file")
         super().resume()
+        # TODO: Unify with initialize() configuration
+        self.linkImports = self.config.symlinkImports
+        self.moveExports = self.config.moveOutputs
+        self.symlink_job_store_reads = self.config.symlink_job_store_reads
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
@@ -298,26 +302,19 @@ class FileJobStore(AbstractJobStore):
     # Functions that deal with temporary files associated with jobs
     ##########################################
 
-    @contextmanager
-    def optional_hard_copy(self, hardlink):
-        if hardlink:
-            saved = self.linkImports
-            self.linkImports = False
-        yield
-        if hardlink:
-            self.linkImports = saved
-
-    def _copy_or_link(self, src_path, dst_path, symlink=False):
+    def _copy_or_link(self, src_path, dst_path, hardlink=False, symlink=False):
         # linking is not done be default because of issue #1755
-        srcPath = self._extract_path_from_url(src_path)
-        if self.linkImports and symlink:
-            os.symlink(os.path.realpath(srcPath), dst_path)
+        # TODO: is hardlinking ever actually done?
+        src_path = self._extract_path_from_url(src_path)
+        if self.linkImports and not hardlink and symlink:
+            os.symlink(os.path.realpath(src_path), dst_path)
         else:
-            atomic_copy(srcPath, dst_path)
+            atomic_copy(src_path, dst_path)
 
     def _import_file(self, otherCls, uri, shared_file_name=None, hardlink=False, symlink=True):
         # symlink argument says whether the caller can take symlinks or not.
         # ex: if false, it means the workflow cannot work with symlinks and we need to hardlink or copy.
+        # TODO: Do we ever actually hardlink?
         # default is true since symlinking everything is ideal
         uri_path = unquote(uri.path)
         if issubclass(otherCls, FileJobStore):
@@ -327,16 +324,14 @@ class FileJobStore(AbstractJobStore):
             if shared_file_name is None:
                 executable = os.stat(uri_path).st_mode & stat.S_IXUSR != 0
                 absPath = self._get_unique_file_path(uri_path)  # use this to get a valid path to write to in job store
-                with self.optional_hard_copy(hardlink):
-                    self._copy_or_link(uri, absPath, symlink=symlink)
+                self._copy_or_link(uri, absPath, hardlink=hardlink, symlink=symlink)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
                 return FileID(self._get_file_id_from_path(absPath), os.stat(absPath).st_size, executable)
             else:
                 self._requireValidSharedFileName(shared_file_name)
                 path = self._get_shared_file_path(shared_file_name)
-                with self.optional_hard_copy(hardlink):
-                    self._copy_or_link(uri, path, symlink=symlink)
+                self._copy_or_link(uri, path, hardlink=hardlink, symlink=symlink)
                 return None
         else:
             return super()._import_file(otherCls, uri, shared_file_name=shared_file_name)

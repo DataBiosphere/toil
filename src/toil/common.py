@@ -1158,7 +1158,15 @@ class Toil(ContextManager["Toil"]):
                     src_uri: str,
                     shared_file_name: None = None,
                     symlink: bool = True,
-                    check_existence: bool = True) -> FileID:
+                    check_existence: Literal[True] = True) -> FileID:
+        ...
+
+    @overload
+    def import_file(self,
+                    src_uri: str,
+                    shared_file_name: None = None,
+                    symlink: bool = True,
+                    check_existence: bool = True) -> Optional[FileID]:
         ...
 
     def import_file(self,
