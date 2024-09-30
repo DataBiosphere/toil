@@ -4020,12 +4020,6 @@ def main(args: Optional[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 # URLs.
                 builder = tool._init_job(initialized_job_order, runtime_context)
 
-                # make sure this doesn't add listing items; if shallow_listing is
-                # selected, it will discover dirs one deep and then again later on
-                # (probably when the cwltool builder gets ahold of the job in the
-                # CWL job's run()), producing 2+ deep listings instead of only 1.
-                builder.loadListing = "no_listing"
-
                 builder.bind_input(
                     tool.inputs_record_schema,
                     initialized_job_order,
