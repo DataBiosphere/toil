@@ -6,7 +6,7 @@ import string
 import subprocess
 import unittest
 from uuid import uuid4
-from typing import Optional
+from typing import Optional, Union
 
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
@@ -51,11 +51,10 @@ WDL_CONFORMANCE_TEST_COMMIT = "baf44bcc7e6f6927540adf77d91b26a5558ae4b7"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
-    16,  # Basic object test (deprecated and removed in 1.1); MiniWDL and toil-wdl-runner do not support Objects, so this will fail if ran by them
-    21,  # Parser: expression placeholders in strings in conditional expressions in 1.0, Cromwell style; Fails with MiniWDL and toil-wdl-runner
-    64,  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
-    72,  # Symlink passthrough; see <https://github.com/DataBiosphere/toil/issues/5031>
-    77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
+    16, # Basic object test (deprecated and removed in 1.1); MiniWDL and toil-wdl-runner do not support Objects, so this will fail if ran by them
+    21, # Parser: expression placeholders in strings in conditional expressions in 1.0, Cromwell style; Fails with MiniWDL and toil-wdl-runner
+    64, # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
+    77, # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
 WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     14,  # test_object, Objects are not supported
