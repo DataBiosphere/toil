@@ -383,7 +383,7 @@ class GoogleJobStore(AbstractJobStore):
 
         if exists:
             if not blob.exists():
-                raise NoSuchFileException
+                raise NoSuchFileException(fileName)
             # sync with cloud so info like size is available
             blob.reload()
         return blob
