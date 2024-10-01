@@ -68,7 +68,6 @@ WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     68,  # Bug
     69,  # Same as 68
     87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
-    88,  # will be fixed in #5028
     97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
     105, # miniwdl (and toil) bug, unserializable json is serialized
     107, # object not supported
