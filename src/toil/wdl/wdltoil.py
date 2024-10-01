@@ -571,7 +571,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
 
 def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tuple[Optional[str], float, str]:
     """
-
+    Parse a WDL disk spec into a disk mount specification.
     :param spec: Disks spec to parse
     :param disks_spec: All disks spec as specified in the WDL file. Only used for better error messages.
     :return: Specified mount point (None if omitted or local-disk), number of units, size of unit (ex GB)
@@ -2504,8 +2504,6 @@ class WDLTaskJob(WDLBaseJob):
 
                     The singularity and docker patch are separate as they have different function signatures
                     """
-                    # todo: support AWS EBS/Kubernetes persistent volumes
-                    # this logic likely only works for local clusters as we don't deal with the size of each mount point
                     mounts: List[Tuple[str, str, bool]] = singularity_original_prepare_mounts()
                     # todo: support AWS EBS/Kubernetes persistent volumes
                     # this logic likely only works for local clusters as we don't deal with the size of each mount point
