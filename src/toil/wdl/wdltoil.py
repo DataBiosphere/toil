@@ -2236,7 +2236,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                              virtualize_files(bindings, standard_library, enforce_existence=False),
                              virtualize_files(runtime_bindings, standard_library, enforce_existence=False),
                              self._task_id, cores=runtime_cores or self.cores, memory=runtime_memory or self.memory, disk=runtime_disk or self.disk,
-                             accelerators=runtime_accelerators or self.accelerators, wdl_options=task_wdl_options)
+                             accelerators=runtime_accelerators or self.accelerators, wdl_options=task_wdl_options, mount_spec=mount_spec)
         # Run that as a child
         self.addChild(run_job)
 
@@ -2259,7 +2259,8 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str],
+                 mount_spec: Dict[Optional[str], int], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
 
@@ -2280,6 +2281,7 @@ class WDLTaskJob(WDLBaseJob):
         self._task_internal_bindings = task_internal_bindings
         self._runtime_bindings = runtime_bindings
         self._task_id = task_id
+        self._mount_spec = mount_spec
 
     ###
     # Runtime code injection system
