@@ -6,7 +6,7 @@ import string
 import subprocess
 import unittest
 from uuid import uuid4
-from typing import Optional
+from typing import Optional, Union
 
 from unittest.mock import patch
 from typing import Any, Dict, List, Set
@@ -46,14 +46,13 @@ class BaseWDLTest(ToilTest):
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "01401a46bc0e60240fb2b69af4b978d0a5bd8fc8"
+WDL_CONFORMANCE_TEST_COMMIT = "2d617b703a33791f75f30a9db43c3740a499cd89"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
-WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL= [
+WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     16, # Basic object test (deprecated and removed in 1.1); MiniWDL and toil-wdl-runner do not support Objects, so this will fail if ran by them
     21, # Parser: expression placeholders in strings in conditional expressions in 1.0, Cromwell style; Fails with MiniWDL and toil-wdl-runner
     64, # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
-    72, # Symlink passthrough; see <https://github.com/DataBiosphere/toil/issues/5031>
     77, # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
 
@@ -166,7 +165,7 @@ class WDLTests(BaseWDLTest):
         assert 'url_to_file.first_line' in result
         assert isinstance(result['url_to_file.first_line'], str)
         self.assertEqual(result['url_to_file.first_line'], 'chr1\t248387328')
-    
+
     @needs_docker
     def test_wait(self):
         """
@@ -181,6 +180,70 @@ class WDLTests(BaseWDLTest):
         assert 'wait.result' in result
         assert isinstance(result['wait.result'], str)
         self.assertEqual(result['wait.result'], 'waited')
+
+    @needs_singularity_or_docker
+    def test_all_call_outputs(self):
+        """
+        Test if Toil can collect all call outputs from a workflow that doesn't expose them.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/not_enough_outputs.wdl')
+
+        # With no flag we don't include the call outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' not in result
+        assert 'wf.do_math.cube' not in result
+        assert 'wf.should_never_output' not in result
+
+        # With flag off we don't include the call outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--allCallOutputs=false'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' not in result
+        assert 'wf.do_math.cube' not in result
+        assert 'wf.should_never_output' not in result
+
+        # With flag on we do include the call outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--allCallOutputs=on'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' in result
+        assert 'wf.do_math.cube' in result
+        assert 'wf.should_never_output' not in result
+
+    @needs_singularity_or_docker
+    def test_croo_detection(self):
+        """
+        Test if Toil can detect and do something sensible with Cromwell Output Organizer workflows.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/croo.wdl')
+
+        # With no flag we should include all task outputs
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' in result
+        assert 'wf.do_math.cube' in result
+        assert 'wf.should_never_output' not in result
+
+        # With flag off we obey the WDL spec even if we're suspicious
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--allCallOutputs=off'])
+        result = json.loads(result_json)
+
+        assert 'wf.only_result' in result
+        assert 'wf.do_math.square' not in result
+        assert 'wf.do_math.cube' not in result
+        assert 'wf.should_never_output' not in result
 
     def test_url_to_optional_file(self):
         """
