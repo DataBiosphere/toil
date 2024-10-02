@@ -119,9 +119,9 @@ class WDLConformanceTests(BaseWDLTest):
         # There are still some bugs with the WDL spec, use a fixed version until
         repo_url = "https://github.com/stxue1/wdl.git"
         repo_branch = "wdl-1.1.3-fixes"
-        command = f"python setup_unit_tests.py -v 1.1 --extra-patch-data unit_tests_patch_data.yaml --repo {repo_url} --branch {repo_branch} --force-pull"
+        command = f"{exactPython} setup_unit_tests.py -v 1.1 --extra-patch-data unit_tests_patch_data.yaml --repo {repo_url} --branch {repo_branch} --force-pull"
         p = subprocess.run(command, capture_output=True)
-        command = f"python run_unit.py -r toil-wdl-runner -v 1.1 --progress --exclude-numbers {','.join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL])}"
+        command = f"{exactPython} run_unit.py -r toil-wdl-runner -v 1.1 --progress --exclude-numbers {','.join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL])}"
         p = subprocess.run(command, capture_output=True)
         self.check(p)
 
