@@ -791,10 +791,10 @@ def is_toil_url(filename: str) -> bool:
 
 
 def is_standard_url(filename: str) -> bool:
-    return is_url(filename, ['http:', 'https:', 's3:', 'gs:'])
+    return is_url(filename, ['http:', 'https:', 's3:', 'gs:', 'ftp:'])
 
 
-def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
+def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', 'ftp:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -843,12 +843,8 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
                     return candidate_uri, None
                 else:
                     # Actually import
-                    # Try to import the file. Don't raise if we can't find it, just
-                    # return None!
+                    # Try to import the file. If we can't find it, continue
                     imported = file_source.import_file(candidate_uri)
-                    if imported is None:
-                        # Wasn't found there
-                        continue
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -858,6 +854,9 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
                 # Something went wrong looking for it there.
                 logger.warning("Checked URL %s but got HTTP status %s", candidate_uri, e.code)
                 # Try the next location.
+                continue
+            except FileNotFoundError:
+                # Wasn't found there
                 continue
             except Exception:
                 # Something went wrong besides the file not being found. Maybe
