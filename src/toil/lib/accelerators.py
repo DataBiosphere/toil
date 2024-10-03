@@ -35,7 +35,7 @@ def have_working_nvidia_smi() -> bool:
     """
     try:
         subprocess.check_call(['nvidia-smi'])
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
         return False
     return True
 
@@ -78,7 +78,7 @@ def have_working_nvidia_docker_runtime() -> bool:
     try:
         # The runtime injects nvidia-smi; it doesn't seem to have to be in the image we use here
         subprocess.check_call(['docker', 'run', '--rm', '--runtime', 'nvidia', '--gpus', 'all', 'ubuntu:20.04', 'nvidia-smi'])
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError):
         return False
     return True
 
@@ -121,7 +121,7 @@ def count_amd_gpus() -> int:
         out = subprocess.check_output((["amd-smi", "static"]))
         gpu_count = len([line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")])
         return gpu_count
-    except (FileNotFoundError, subprocess.SubprocessError):
+    except (FileNotFoundError, PermissionError, subprocess.SubprocessError):
         # if the amd-smi command fails, try rocm-smi
         # if a different exception is raised, something other than the subprocess call is wrong
         pass
@@ -131,7 +131,7 @@ def count_amd_gpus() -> int:
         out = subprocess.check_output(["rocm-smi"])
         gpu_count = len([line for line in out.decode("utf-8").split("\n") if len(line)> 0 and line[0] in string.digits])
         return gpu_count
-    except (FileNotFoundError, subprocess.SubprocessError):
+    except (FileNotFoundError, PermissionError, subprocess.SubprocessError):
         pass
     return 0
 
