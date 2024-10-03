@@ -400,7 +400,7 @@ class WDLTests(BaseWDLTest):
         json_file = f"{base_uri}/params/giraffe.json"
 
         result_json = subprocess.check_output(
-            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale',
+            self.base_command + [wdl_file, json_file, '-o', self.output_dir, '--outputDialect', 'miniwdl', '--scale', '--logDebug',
                                  '0.1'])
         result = json.loads(result_json)
 
