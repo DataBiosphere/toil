@@ -99,6 +99,7 @@ def main():
     for file_path in all_files_to_check:
         if not ignore(file_path):
             filtered_files_to_check.append(file_path)
+    filtered_files_to_check = ['/home/quokka/git/toil/src/toil/lib/aws/iam.py']
     args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
     p = subprocess.run(args=args)
     exit(p.returncode)

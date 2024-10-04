@@ -98,8 +98,8 @@ def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = 
     iam_client.delete_role(RoleName=role_name)
     printq(f'Role {role_name} successfully deleted.', quiet)
 
-
-def create_iam_role(role_name: str, assume_role_policy_document: "PolicyDocumentDictTypeDef", policies: Dict[str, Any], region: Optional[str] = None):
+# "PolicyDocumentDictTypeDef"
+def create_iam_role(role_name: str, assume_role_policy_document: str, policies: Dict[str, Any], region: Optional[str] = None) -> str:
     """
     Creates an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
 
