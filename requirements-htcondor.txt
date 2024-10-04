@@ -1,1 +1,1 @@
-htcondor>=10.2.0.post1,<11
+htcondor>=10.2.0.post1,<24
