@@ -822,7 +822,14 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
     # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
 
     # Determine where we will save our cached versions of files.
-    output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key)
+    #
+    # We can't use just one directory for the task ever because if multiple
+    # jobs are running the same task at the same time we don't have a good way
+    # for them to clobber each others' output atomically.
+    #
+    # In that case we just pout up with useless/unreferenced files in the
+    # cache.
+    output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4()))
 
     # Adjust all files in the output bindings to have shared FS paths outside the job store.
     def assign_shared_fs_path(file_value: str) -> str:
@@ -1145,7 +1152,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
-        The destination directory must already exist.
+        The destination directory must already exist. No other devirtualize_to
+        call may be writing to it, including the case of another workflow
+        writing the same task to the same place in the call cache at the same
+        time.
 
         Makes sure sibling files stay siblings and files with the same name
         don't clobber each other. Called from within this class for tasks, and
