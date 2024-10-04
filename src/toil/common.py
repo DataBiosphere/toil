@@ -1121,6 +1121,9 @@ class Toil(ContextManager["Toil"]):
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
 
+    def url_exists(self, src_uri: str) -> bool:
+        return self._jobStore.url_exists(self.normalize_uri(src_uri))
+
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
 
