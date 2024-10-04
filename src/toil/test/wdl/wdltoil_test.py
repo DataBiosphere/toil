@@ -246,6 +246,62 @@ class WDLTests(BaseWDLTest):
         assert 'wf.do_math.cube' not in result
         assert 'wf.should_never_output' not in result
 
+    @needs_singularity_or_docker
+    def test_caching(self):
+        """
+        Test if Toil can cache task runs.
+        """
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/random.wdl')
+
+        caching_env = dict(os.environ)
+        caching_env["MINIWDL__CALL_CACHE__GET"] = "true"
+        caching_env["MINIWDL__CALL_CACHE__PUT"] = "true"
+        caching_env["MINIWDL__CALL_CACHE__DIR"] = self._createTempDir("cache")
+
+        result_json = subprocess.check_output(
+                self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}'],
+            env=caching_env)
+        result_initial = json.loads(result_json)
+
+        assert 'random.value_seen' in result_initial
+        assert 'random.value_written' in result_initial
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}'],
+            env=caching_env)
+        result_cached = json.loads(result_json)
+
+        assert 'random.value_seen' in result_cached
+        assert 'random.value_written' in result_cached
+
+        assert result_cached['random.value_seen'] == result_initial['random.value_seen']
+        assert result_cached['random.value_written'] == result_initial['random.value_written']
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 2, "random.task_2_input": 1}'],
+            env=caching_env)
+        result_not_cached = json.loads(result_json)
+
+        assert 'random.value_seen' in result_not_cached
+        assert 'random.value_written' in result_not_cached
+
+        assert result_not_cached['random.value_seen'] != result_initial['random.value_seen']
+        assert result_not_cached['random.value_written'] != result_initial['random.value_written']
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 2}'],
+            env=caching_env)
+        result_part_cached = json.loads(result_json)
+
+        assert 'random.value_seen' in result_part_cached
+        assert 'random.value_written' in result_part_cached
+
+        assert result_part_cached['random.value_seen'] == result_initial['random.value_seen']
+        assert result_part_cached['random.value_written'] != result_initial['random.value_written']
+        assert result_part_cached['random.value_written'] != result_not_cached['random.value_written']
+
+
+
     def test_url_to_optional_file(self):
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
