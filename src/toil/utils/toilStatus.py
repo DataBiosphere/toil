@@ -49,7 +49,7 @@ class ToilStatus:
 
         # Make job IDs to node names map
         jobsToNodeNames: Dict[str, str] = dict(
-            map(lambda job: (str(job.jobStoreID), str(job.jobStoreID).replace("_", "___").replace("/", "_").replace("-", "__")), self.jobsToReport)
+            map(lambda job: (str(job.jobStoreID), str(job.jobStoreID).replace("_", "_u_").replace("/", "_s_").replace("-", "_d_")), self.jobsToReport)
         )
 
         # Print the nodes
