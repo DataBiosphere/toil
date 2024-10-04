@@ -1869,7 +1869,7 @@ def import_files(environment: WDLBindings, task_path: str, file_dest: Union[Abst
                         imported = file_dest.import_file(candidate_uri, check_existence=False)
                     else:
                         # The file store import_file doesn't do an existence check.
-                        # TODO: Have a more compatible interface.
+                        # TODO: Make Toil and AbstractFileStore import_file functions more similar.
                         imported = file_dest.import_file(candidate_uri)
                     if imported is None:
                         # Wasn't found there
