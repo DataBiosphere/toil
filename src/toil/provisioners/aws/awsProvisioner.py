@@ -51,6 +51,7 @@ from toil.lib.aws.iam import (
     CLUSTER_LAUNCHING_PERMISSIONS,
     get_policy_permissions,
     policy_permissions_allow,
+    create_iam_role
 )
 from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.aws.session import client as get_client
@@ -1835,47 +1836,19 @@ class AWSProvisioner(AbstractProvisioner):
         Create an IAM role with the given policies, using the given name in
         addition to the cluster name, and return its full name.
         """
-
-        # Grab the connection we need to use for this operation.
-        boto3_iam: "IAMClient" = self.aws.client(self._region, "iam")
-
-        # Make sure we can tell our roles apart from roles for other clusters
-        aws_role_name = self._namespace_name(local_role_name)
-        try:
-            # Make the role
-            logger.debug('Creating IAM role %s...', aws_role_name)
-            assume_role_policy_document = json.dumps({
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": ["ec2.amazonaws.com"]},
-                    "Action": ["sts:AssumeRole"]}
-                ]})
-            boto3_iam.create_role(RoleName=aws_role_name, AssumeRolePolicyDocument=assume_role_policy_document)
-            logger.debug('Created new IAM role')
-        except ClientError as e:
-            if get_error_status(e) == 409 and get_error_code(e) == 'EntityAlreadyExists':
-                logger.debug('IAM role already exists. Reusing.')
-            else:
-                raise
-
-        # Delete superfluous policies
-        policy_names = set(boto3_iam.list_role_policies(RoleName=aws_role_name)["PolicyNames"])
-        for policy_name in policy_names.difference(set(list(policies.keys()))):
-            boto3_iam.delete_role_policy(RoleName=aws_role_name, PolicyName=policy_name)
-
-        # Create expected policies
-        for policy_name, policy in policies.items():
-            current_policy = None
-            try:
-                current_policy = boto3_iam.get_role_policy(RoleName=aws_role_name, PolicyName=policy_name)["PolicyDocument"]
-            except boto3_iam.exceptions.NoSuchEntityException:
-                pass
-            if current_policy != policy:
-                boto3_iam.put_role_policy(RoleName=aws_role_name, PolicyName=policy_name, PolicyDocument=json.dumps(policy))
-
-        # Now the role has the right policies so it is ready.
-        return aws_role_name
+        ec2_role_policy_document = json.dumps({
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": ["ec2.amazonaws.com"]},
+                "Action": ["sts:AssumeRole"]}
+            ]})
+        return create_iam_role(
+            role_name=self._namespace_name(local_role_name),
+            assume_role_policy_document=ec2_role_policy_document,
+            policies=policies,
+            region=self._region
+        )
 
     @awsRetry
     def _createProfileArn(self) -> str:

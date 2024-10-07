@@ -243,6 +243,8 @@ class Config:
     # CWL
     cwl: bool
 
+    memory_is_product: bool
+
     def __init__(self) -> None:
         # only default options that are not CLI options defined here (thus CLI options are centralized)
         self.cwl = False  # will probably remove later
@@ -416,6 +418,8 @@ class Config:
         set_option("badWorkerFailInterval")
         set_option("logLevel")
         set_option("colored_logs")
+
+        set_option("memory_is_product")
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
@@ -1116,6 +1120,9 @@ class Toil(ContextManager["Toil"]):
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
             logger.debug('Injecting user script %s into batch system.', userScriptResource)
             self._batchSystem.setUserScript(userScriptResource)
+
+    def url_exists(self, src_uri: str) -> bool:
+        return self._jobStore.url_exists(self.normalize_uri(src_uri))
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
