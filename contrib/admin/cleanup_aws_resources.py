@@ -22,7 +22,8 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from src.toil.lib import aws
 from src.toil.lib.aws import session
-from src.toil.lib.aws.utils import delete_iam_role, delete_iam_instance_profile, delete_s3_bucket, delete_sdb_domain
+from src.toil.lib.aws.iam import delete_iam_instance_profile, delete_iam_role
+from src.toil.lib.aws.utils import delete_s3_bucket, delete_sdb_domain
 from src.toil.lib.generatedEC2Lists import regionDict
 
 # put us-west-2 first as our default test region; that way anything with a universal region shows there
