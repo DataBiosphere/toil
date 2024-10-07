@@ -425,13 +425,6 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             gpus = self.count_needed_gpus(job_desc)
             job_id = self.getNextJobID()
             self.currentJobs.add(job_id)
-            gpus = 0
-            if isinstance(jobDesc.accelerators, list):
-                for accelerator in jobDesc.accelerators:
-                    if accelerator['kind'] == 'gpu':
-                        gpus = accelerator['count']
-            else:
-                gpus = jobDesc.accelerators
 
             self.newJobsQueue.put((job_id, job_desc.cores, job_desc.memory, command, get_job_kind(job_desc.get_names()),
                                    job_environment, gpus))

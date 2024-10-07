@@ -249,7 +249,9 @@ levels in toil are based on priority from the logging module:
   --slurmTime SLURM_TIME
                         Slurm job time limit, in [DD-]HH:MM:SS format.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
-                        for more than 1 CPU.
+                        for more than 1 CPU. Useful for Slurm clusters that do
+                        not offer a partition accepting both single-core and
+                        multi-core jobs.
   --slurmArgs SLURM_ARGS
                         Extra arguments to pass to Slurm.
   --kubernetesHostPath KUBERNETES_HOST_PATH

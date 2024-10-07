@@ -494,7 +494,6 @@ class CWLWorkflowTest(ToilTest):
             # Reap it
             child.wait()
             # The test passes
-            return
         else:
             out = json.loads(output)
             log.debug("Workflow output: %s", out)
