@@ -1651,3 +1651,44 @@ def test_download_structure(tmp_path: Path) -> None:
         ],
         any_order=True,
     )
+
+@needs_cwl
+@pytest.mark.timeout(300)
+def test_import_on_workers() -> None:
+    args = ["src/toil/test/cwl/download.cwl",
+            "src/toil/test/cwl/download_file.json",
+            "--runImportsOnWorkers",
+            "--importWorkersDisk=10MiB",
+            "--realTimeLogging=True",
+            "--logLevel=INFO", "--logColors=False"]
+    from toil.cwl import cwltoil
+
+    detector = ImportWorkersMessageHandler()
+
+    # Set up a log message detector to the root logger
+    logging.getLogger().addHandler(detector)
+
+    cwltoil.main(args)
+
+    assert detector.detected is True
+
+
+# StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
+if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
+    _stream_handler = logging.StreamHandler[SupportsWrite[str]]
+else:
+    _stream_handler = logging.StreamHandler
+class ImportWorkersMessageHandler(_stream_handler):
+    """
+    Detect the import workers log message and set a flag.
+    """
+
+    def __init__(self) -> None:
+        self.detected = False  # Have we seen the message we want?
+
+        super().__init__(sys.stderr)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if (record.msg % record.args).startswith("Issued job 'CWLImportJob' CWLImportJob"):
+            self.detected = True
