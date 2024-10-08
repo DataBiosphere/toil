@@ -1,14 +1,17 @@
+import hashlib
 import logging
 import os
 import shutil
 import sys
+import tempfile
 import zipfile
-from typing import Dict, List, Optional, Set, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from urllib.parse import urlparse, unquote, quote
 import requests
 
 from toil.lib.retry import retry
+from toil.lib.io import file_digest, robust_rmtree
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +58,13 @@ def parse_trs_spec(trs_spec: str) -> Tuple[str, Optional[str]]:
     else:
         # We don't know the version we want, we will have to pick one somehow.
         trs_version = None
+    return trs_workflow_id, trs_version
 
 @retry(errors=[requests.exceptions.ConnectionError])
 def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[Set[str]] = None) -> str:
     """
     Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow.
-    
+
     Accepts inputs like:
 
         - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
@@ -71,6 +75,9 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
     """
+
+    if supported_languages is not None and len(supported_languages) == 0:
+        raise ValueError("Set of supported languages must be nonempty if provided.")
 
     # Get the TRS id[:version] string from what might be a Dockstore URL
     trs_spec = find_trs_spec(workflow)
@@ -90,7 +97,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     workflow_versions: Dict[str, Dict[str, Any]] = {}
 
     # We also check which we actually know how to run
-    eligible_workflow_versions: Set(str) = set()
+    eligible_workflow_versions: Set[str] = set()
 
     for version_info in trs_workflow_document.get("versions", []):
         version_name: str = version_info["name"]
@@ -111,10 +118,6 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
                 continue
         eligible_workflow_versions.add(version_name)
 
-        # TODO: Why is there an array of descriptor types?
-        version_to_language[version_info["name"]] = version_info["descriptor_type"][0]
-        logger.debug("Workflow version %s is written in %s", version_info["name"], version_info["descriptor_type"][0])
-
     for default_version in ['main', 'master']:
         if trs_version is None and default_version in eligible_workflow_versions:
             # Fill in a version if the user didn't provide one.
@@ -127,7 +130,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
         trs_version = next(iter(eligible_workflow_versions))
         logger.debug("Defaulting to only eligible workflow version %s", trs_version)
 
-    
+
     # If we don't like what we found we compose a useful error message.
     problems: List[str] = []
     if trs_version is None:
@@ -135,16 +138,25 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     elif trs_version not in workflow_versions:
         problems.append(f"Workflow version {trs_version} from {workflow} does not exist")
     elif trs_version not in eligible_workflow_versions:
-        problems.append(f"Workflow version {trs_version} from {workflow} is not available in any of: {', '.join(supported_languages)}")
+        message = f"Workflow version {trs_version} from {workflow} is not available"
+        if supported_languages is not None:
+            message += f" in any of: {', '.join(supported_languages)}"
+        problems.append(message)
     if len(problems) > 0:
         if len(eligible_workflow_versions) == 0:
-            problems.append(f"No versions of the workflow are availalbe in: {', '.join(supported_languages)}")
+            message = "No versions of the workflow are available"
+            if supported_languages is not None:
+                message += f" in any of: {', '.join(supported_languages)}"
+            problems.append(message)
         elif trs_version is None:
             problems.append(f"Add ':' and the name of a workflow version ({', '.join(eligible_workflow_versions)}) after '{trs_workflow_id}'")
         else:
             problems.append(f"Replace '{trs_version}' with one of ({', '.join(eligible_workflow_versions)})")
         raise RuntimeError("; ".join(problems))
-    
+
+    # Tell MyPy we now have a version, or we would have raised
+    assert trs_version is not None
+
     # Select the language we will actually run
     chosen_version_languages: List[str] = workflow_versions[trs_version]["descriptor_type"]
     for candidate_language in chosen_version_languages:
@@ -158,52 +170,121 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     trs_files_url = f"{trs_version_url}/{language}/files"
     logger.debug("Workflow files URL: %s", trs_files_url)
     trs_files_document = requests.get(trs_files_url).json()
-    
+
     # Find the information we need to ID the primary descriptor file
     primary_descriptor_path: Optional[str] = None
-    primary_descriptor_hash: Optional[str] = None
     primary_descriptor_hash_algorithm: Optional[str] = None
+    primary_descriptor_hash: Optional[str] = None
     for file_info in trs_files_document:
         if file_info["file_type"] == "PRIMARY_DESCRIPTOR":
             primary_descriptor_path = file_info["path"]
-            primary_descriptor_hash = file_info["checksum"]["checksum"]
             primary_descriptor_hash_algorithm = file_info["checksum"]["type"]
+            primary_descriptor_hash = file_info["checksum"]["checksum"]
             break
     if primary_descriptor_path is None or primary_descriptor_hash is None or primary_descriptor_hash_algorithm is None:
         raise RuntimeError("Could not find a primary descriptor file for the workflow")
-
-    # Download the ZIP to a temporary file
-    trs_zip_file_url = f"{trs_files_url}?format=zip"
-    with tempfile.NamedTemporaryFile(suffix=".zip") as zip_file:
-        # We want to stream the zip to a file, but when we do it with the Requests
-        # file object like <https://stackoverflow.com/a/39217788> we don't get
-        # Requests' decoding of gzip or deflate response encodings. Since this file
-        # is already compressed the response compression can't help a lot anyway,
-        # so we tell the server that we can't understand it.
-        headers = {
-            "Accept-Encoding": "identity",
-            "Accept": "application/zip" # Help Dockstore avoid serving ZIP with a JSON content type. See <https://github.com/dockstore/dockstore/issues/6010>.
-        }
-        with requests.get(trs_zip_file_url, trs_zip_file_url, headers=headers) as response:
-            shutil.copyfileobj(response.raw, zip_file)
-        zip_file.flush()
-
-        # Unzip it to a directory we will leave laying around.
-        # TODO: Make the caller know how to delete it.
-        workflow_dir = tempfile.mkdtemp()
-        with zipfile.ZipFile(zip_file.name, 'r') as zip_ref:
-            zip_ref.extractall(workflow_dir)
-        logger.debug("Extracted workflow ZIP to %s", workflow_dir)
-   
-    # TODO: Hunt throught he directory for a file with the right basename and hash
     primary_descriptor_basename = os.path.basename(primary_descriptor_path)
 
-    # TODO: Return the path to it
+    # Work out how to compute the hash we are looking for. See
+    # <https://github.com/ga4gh-discovery/ga4gh-checksum/blob/master/hash-alg.csv>
+    # for the GA4GH names and <https://docs.python.org/3/library/hashlib.html>
+    # for the Python names.
+    #
+    # TODO: We don't support the various truncated hash flavors or the other checksums not in hashlib.
+    python_hash_name = primary_descriptor_hash_algorithm.replace("sha-", "sha").replace("blake2b-512", "blake2b").replace("-", "_")
+    if python_hash_name not in hashlib.algorithms_available:
+        raise RuntimeError(f"Primary descriptor is identified by a {primary_descriptor_hash_algorithm} hash but {python_hash_name} is not available in hashlib")
 
-    # If we get here, we could not find the right file.
-    raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash} in ZIP file at {trs_zip_file_url}")
+    # Figure out where to store the workflow. We don't want to deal with temp
+    # dir cleanup since we don't want to run the whole workflow setup and
+    # execution in a context manager. So we declare a cache.
+    # Note that it's still not safe to symlink out of this cache since XDG
+    # cache directories aren't guaranteed to be on shared storage.
+    cache_base_dir = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "toil/workflows")
 
-def resolve_workflow(workflow: str) -> str:
+    # Hash the workflow file list.
+    hasher = hashlib.sha256()
+    for file_info in sorted(trs_files_document, key=lambda rec: rec["path"]):
+        hasher.update(file_info["path"].encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(file_info["checksum"]["type"].encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(file_info["checksum"]["checksum"].encode("utf-8"))
+        hasher.update(b"\0")
+    cache_workflow_dir = os.path.join(cache_base_dir, hasher.hexdigest())
+
+    if os.path.exists(cache_workflow_dir):
+        logger.debug("Workflow already cached at %s", cache_workflow_dir)
+    else:
+        # Need to download the workflow
+
+        # Download the ZIP to a temporary file
+        trs_zip_file_url = f"{trs_files_url}?format=zip"
+        logger.debug("Workflow ZIP URL: %s", trs_zip_file_url)
+        with tempfile.NamedTemporaryFile(suffix=".zip") as zip_file:
+            # We want to stream the zip to a file, but when we do it with the Requests
+            # file object like <https://stackoverflow.com/a/39217788> we don't get
+            # Requests' decoding of gzip or deflate response encodings. Since this file
+            # is already compressed the response compression can't help a lot anyway,
+            # so we tell the server that we can't understand it.
+            headers = {
+                "Accept-Encoding": "identity",
+                # Help Dockstore avoid serving ZIP with a JSON content type. See
+                # <https://github.com/dockstore/dockstore/issues/6010>.
+                "Accept": "application/zip"
+            }
+            # If we don't set stream=True, we can't actually read anything from the
+            # raw stream, since Requests will have done it already.
+            with requests.get(trs_zip_file_url, trs_zip_file_url, headers=headers, stream=True) as response:
+                response_content_length = response.headers.get("Content-Length")
+                logger.debug("Server reports content length: %s", response_content_length)
+                shutil.copyfileobj(response.raw, zip_file)
+            zip_file.flush()
+
+            logger.debug("Downloaded ZIP to %s", zip_file.name)
+
+            # Unzip it to a directory next to where it will live
+            os.makedirs(cache_base_dir, exist_ok=True)
+            workflow_temp_dir = tempfile.mkdtemp(dir=cache_base_dir)
+            with zipfile.ZipFile(zip_file.name, "r") as zip_ref:
+                zip_ref.extractall(workflow_temp_dir)
+            logger.debug("Extracted workflow ZIP to %s", workflow_temp_dir)
+
+            # Try to atomically install into the cache
+            try:
+                os.rename(workflow_temp_dir, cache_workflow_dir)
+                logger.debug("Moved workflow to %s", cache_workflow_dir)
+            except OSError:
+                # Collision. Someone else installed the workflow before we could.
+                robust_rmtree(workflow_temp_dir)
+                logger.debug("Workflow cached at %s by someone else while we were donwloading it", cache_workflow_dir)
+
+    # Hunt throught he directory for a file with the right basename and hash
+    found_path: Optional[str] = None
+    for containing_dir, subdirectories, files in os.walk(cache_workflow_dir):
+        for filename in files:
+            if filename == primary_descriptor_basename:
+                # This could be it. Open the file off disk and hash it with the right algorithm.
+                file_path = os.path.join(containing_dir, filename)
+                file_hash = file_digest(open(file_path, "rb"), python_hash_name).hexdigest()
+                if file_hash == primary_descriptor_hash:
+                    # This looks like the right file
+                    logger.debug("Found candidate primary descriptor %s", file_path)
+                    if found_path is not None:
+                        # But there are multiple instances of it so we can't know which to run.
+                        # TODO: Find out the right path from Dockstore somehow!
+                        raise RuntimeError(f"Workflow contains multiple files named {primary_descriptor_basename} with {python_hash_name} hash {file_hash}: {found_path} and {file_path}")
+                    # This is the first file with the right name and hash
+                    found_path = file_path
+                else:
+                    logger.debug("Rejected %s because its %s hash %s is not %s", file_path, python_hash_name, file_hash, primary_descriptor_hash)
+    if found_path is None:
+        # We couldn't find the promised primary descriptor
+        raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash}")
+
+    return found_path
+
+def resolve_workflow(workflow: str, supported_languages: Optional[Set[str]] = None) -> str:
     """
     Find the real workflow URL or filename from a command line argument.
 
@@ -213,8 +294,8 @@ def resolve_workflow(workflow: str) -> str:
 
     if is_dockstore_workflow(workflow):
         # Ask Dockstore where to find Dockstore-y things
-        resolved = get_workflow_root_from_dockstore(workflow)
-        logger.info("Dockstore resolved workflow %s to %s", workflow, resolved)
+        resolved = get_workflow_root_from_dockstore(workflow, supported_languages=supported_languages)
+        logger.info("Resolved Dockstore workflow %s to %s", workflow, resolved)
         return resolved
     else:
         # Pass other things through.
@@ -222,9 +303,9 @@ def resolve_workflow(workflow: str) -> str:
 
 
 
-        
 
-    
+
+
 
 
 

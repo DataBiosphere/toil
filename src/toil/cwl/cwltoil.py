@@ -3419,7 +3419,7 @@ def import_workflow_inputs(jobstore: AbstractJobStore, options: Namespace, initi
     # We cast this because import_file is overloaded depending on if we
     # pass a shared file name or not, and we know the way we call it we
     # always get a FileID out.
-    file_import_function = cast(
+    input_import_function = cast(
         Callable[[str], FileID],
         functools.partial(jobstore.import_file, symlink=True),
     )
@@ -3429,7 +3429,7 @@ def import_workflow_inputs(jobstore: AbstractJobStore, options: Namespace, initi
     logger.info("Importing input files...")
     fs_access = ToilFsAccess(options.basedir)
     import_files(
-        file_import_function,
+        input_import_function,
         fs_access,
         fileindex,
         existing,
@@ -3439,6 +3439,15 @@ def import_workflow_inputs(jobstore: AbstractJobStore, options: Namespace, initi
         bypass_file_store=options.bypass_file_store,
         log_level=logging.INFO,
     )
+
+    # Make another function for importing tool files. This one doesn't allow
+    # symlinking, since the tools might be coming from storage not accessible
+    # to all nodes.
+    tool_import_function = cast(
+        Callable[[str], FileID],
+        functools.partial(jobstore.import_file, symlink=False),
+    )
+
     # Import all the files associated with tools (binaries, etc.).
     # Not sure why you would have an optional secondary file here, but
     # the spec probably needs us to support them.
@@ -3447,7 +3456,7 @@ def import_workflow_inputs(jobstore: AbstractJobStore, options: Namespace, initi
         tool,
         functools.partial(
             import_files,
-            file_import_function,
+            tool_import_function,
             fs_access,
             fileindex,
             existing,
