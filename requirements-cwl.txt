@@ -1,4 +1,4 @@
-cwltool==3.1.20240909164951
+cwltool==3.1.20241007082533
 schema-salad>=8.4.20230128170514,<9
 galaxy-tool-util<25
 galaxy-util<25
