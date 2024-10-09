@@ -62,7 +62,7 @@ from functools import partial
 
 import WDL.Error
 import WDL.runtime.config
-from configargparse import ArgParser
+from configargparse import ArgParser, Namespace
 from WDL._util import byte_size_units, chmod_R_plus
 from WDL.Tree import ReadSourceResult
 from WDL.CLI import print_error
@@ -83,7 +83,8 @@ from toil.job import (AcceleratorRequirement,
                       TemporaryID,
                       parse_accelerator,
                       unwrap,
-                      unwrap_all)
+                      unwrap_all,
+                      ParseableIndivisibleResource)
 from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
                                              InvalidImportExportUrlException, LocatorException)
 from toil.lib.accelerators import get_individual_local_accelerators
@@ -352,7 +353,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     return modified
 
 
-def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None) -> Iterator[str]:
+def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None, execution_dir: Optional[str] = None) -> Iterator[str]:
     """
     Get potential absolute URIs to check for an imported file.
 
@@ -394,7 +395,8 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
         full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
 
     # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
-    full_path_list.append(Toil.normalize_uri('.') + '/.')
+    # When importing on a worker, the cwd will be a tmpdir and will result in FileNotFoundError after os.path.abspath, so override with the execution dir
+    full_path_list.append(Toil.normalize_uri(execution_dir or '.') + '/.')
 
     # Then the specified paths.
     # TODO:
@@ -790,10 +792,10 @@ def is_toil_url(filename: str) -> bool:
 
 
 def is_standard_url(filename: str) -> bool:
-    return is_url(filename, ['http:', 'https:', 's3:', 'gs:'])
+    return is_url(filename, ['http:', 'https:', 's3:', 'gs:', 'ftp:'])
 
 
-def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', TOIL_URI_SCHEME]) -> bool:
+def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', 'ftp:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -802,7 +804,8 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', T
                 return True
         return False
 
-def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True) -> None:
+def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True,
+                         execution_dir: Optional[str] = None) -> None:
     """
     Resolve relative-URI files in the given environment and import all files.
 
@@ -828,7 +831,7 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
         """
         # Search through any input search paths passed in and download it if found
         tried = []
-        for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else []):
+        for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else [], execution_dir=execution_dir):
             tried.append(candidate_uri)
             try:
                 if not import_remote_files and is_url(candidate_uri):
@@ -841,12 +844,8 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
                     return candidate_uri, None
                 else:
                     # Actually import
-                    # Try to import the file. Don't raise if we can't find it, just
-                    # return None!
-                    imported = file_source.import_file(candidate_uri, check_existence=False)
-                    if imported is None:
-                        # Wasn't found there
-                        continue
+                    # Try to import the file. If we can't find it, continue
+                    imported = file_source.import_file(candidate_uri)
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -856,6 +855,9 @@ def convert_remote_files(environment: WDLBindings, file_source: Toil, task_path:
                 # Something went wrong looking for it there.
                 logger.warning("Checked URL %s but got HTTP status %s", candidate_uri, e.code)
                 # Try the next location.
+                continue
+            except FileNotFoundError:
+                # Wasn't found there
                 continue
             except Exception:
                 # Something went wrong besides the file not being found. Maybe
@@ -3631,7 +3633,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         return self.postprocess(output_bindings)
 
-class WDLRootJob(WDLSectionJob):
+class WDLStartJob(WDLSectionJob):
     """
     Job that evaluates an entire WDL workflow, and returns the workflow outputs
     namespaced with the workflow name. Inputs may or may not be namespaced with
@@ -3667,6 +3669,44 @@ class WDLRootJob(WDLSectionJob):
         self.defer_postprocessing(job)
         return job.rv()
 
+class WDLImportJob(WDLSectionJob):
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext, path: Optional[List[str]] = None, skip_remote: bool = False,
+                 disk_size: Optional[ParseableIndivisibleResource] = None, **kwargs: Any):
+        """
+        Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+        This class is only used when runImportsOnWorkers is enabled.
+        """
+        super().__init__(wdl_options=wdl_options, local=False,
+                         disk=disk_size, **kwargs)
+        self._target = target
+        self._inputs = inputs
+        self._path = path
+        self._skip_remote = skip_remote
+
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Promise of workflow outputs
+        """
+        convert_remote_files(self._inputs, file_store.jobStore, self._target.name, self._path, self._skip_remote, self._wdl_options.get("execution_dir"))
+        root_job = WDLStartJob(self._target, self._inputs, wdl_options=self._wdl_options)
+        self.addChild(root_job)
+        return root_job.rv()
+
+
+def make_root_job(target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, inputs_search_path: List[str], toil: Toil, wdl_options: WDLContext, options: Namespace) -> WDLSectionJob:
+    if options.run_imports_on_workers:
+        # Run WDL imports on a worker instead
+        root_job: WDLSectionJob = WDLImportJob(target, inputs, wdl_options=wdl_options, path=inputs_search_path, skip_remote=options.reference_inputs, disk_size=options.import_workers_disk)
+    else:
+        # Run WDL imports on leader
+        # Import any files in the bindings
+        convert_remote_files(inputs, toil._jobStore, target.name, inputs_search_path, import_remote_files=options.reference_inputs)
+        # Run the workflow and get its outputs namespaced with the workflow name.
+        root_job = WDLStartJob(target, inputs, wdl_options=wdl_options)
+    return root_job
+
 
 @report_wdl_errors("run workflow", exit=True)
 def main() -> None:
@@ -3684,6 +3724,10 @@ def main() -> None:
     if options.jobStore is None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(mkdtemp(), 'tree')
+
+    # Take care of incompatible arguments related to file imports
+    if options.run_imports_on_workers is True and options.import_workers_disk is None:
+        raise RuntimeError("Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers.")
 
     # Make sure we have an output directory (or URL prefix) and we don't need
     # to ever worry about a None, and MyPy knows it.
@@ -3780,7 +3824,7 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                convert_remote_files(input_bindings, toil, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
+                convert_remote_files(input_bindings, toil._jobStore, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
                 wdl_options: WDLContext = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
@@ -3788,7 +3832,7 @@ def main() -> None:
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
-                root_job = WDLRootJob(target, input_bindings, wdl_options=wdl_options, local=True)
+                root_job = make_root_job(target, input_bindings, inputs_search_path, toil, wdl_options, options)
                 output_bindings = toil.start(root_job)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
