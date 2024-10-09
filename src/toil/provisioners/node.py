@@ -13,7 +13,7 @@
 # limitations under the License.
 import datetime
 import logging
-import pipes
+import shlex
 import socket
 import subprocess
 import time
@@ -279,7 +279,7 @@ class Node:
             commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
 
         logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
-        args = list(map(pipes.quote, args))
+        args = list(map(shlex.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
         process = subprocess.Popen(commandTokens, **kwargs)
