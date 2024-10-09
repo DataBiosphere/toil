@@ -237,6 +237,23 @@ levels in toil are based on priority from the logging module:
                         Use a Mesos role.
   --mesosName MESOSNAME
                         The Mesos name to use. (default: toil)
+  --scale SCALE         A scaling factor to change the value of all submitted
+                        tasks' submitted cores. Used in single_machine batch
+                        system. Useful for running workflows on smaller
+                        machines than they were designed for, by setting a
+                        value less than 1. (default: 1)
+  --slurmAllocateMem SLURM_ALLOCATE_MEM
+                        If False, do not use --mem. Used as a workaround for
+                        Slurm clusters that reject jobs with memory
+                        allocations.
+  --slurmTime SLURM_TIME
+                        Slurm job time limit, in [DD-]HH:MM:SS format.
+  --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
+                        for more than 1 CPU. Useful for Slurm clusters that do
+                        not offer a partition accepting both single-core and
+                        multi-core jobs.
+  --slurmArgs SLURM_ARGS
+                        Extra arguments to pass to Slurm.
   --kubernetesHostPath KUBERNETES_HOST_PATH
                         Path on Kubernetes hosts to use as shared inter-pod temp
                         directory.
@@ -261,11 +278,6 @@ levels in toil are based on priority from the logging module:
                         The ARN of an IAM role to run AWS Batch jobs as, so they
                         can e.g. access a job store. Must be assumable by
                         ecs-tasks.amazonaws.com
-  --scale SCALE         A scaling factor to change the value of all submitted
-                        tasks' submitted cores. Used in single_machine batch
-                        system. Useful for running workflows on smaller
-                        machines than they were designed for, by setting a
-                        value less than 1. (default: 1)
 
 **Data Storage Options**
 Allows configuring Toil's data storage.

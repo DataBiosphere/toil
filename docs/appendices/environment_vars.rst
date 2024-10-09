@@ -131,6 +131,9 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
 |                                  | Google job store names for tests or CWL workflows. |
 +----------------------------------+----------------------------------------------------+
+| TOIL_SLURM_ALLOCATE_MEM          | Whether to allocate memory in Slurm with --mem.    |
+|                                  | True by default.                                   |
++----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |
@@ -140,8 +143,14 @@ There are several environment variables that affect the way Toil runs.
 |                                  | provided.                                          |
 +----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_PE                    | Name of the slurm partition to use for parallel    |
-|                                  | jobs.                                              |
+|                                  | jobs. Useful for Slurm clusters that do not offer  |
+|                                  | a partition accepting both single-core and         |
+|                                  | multi-core jobs.                                   |
 |                                  | There is no default value for this variable.       |
++----------------------------------+----------------------------------------------------+
+| TOIL_SLURM_TIME                  | Slurm job time limit, in [DD-]HH:MM:SS format. For |
+|                                  | example, ``2-07:15:30`` for 2 days, 7 hours, 15    |
+|                                  | minutes and 30 seconds, or ``4:00:00`` for 4 hours.|
 +----------------------------------+----------------------------------------------------+
 | TOIL_GRIDENGINE_ARGS             | Arguments for qsub for the gridengine batch        |
 |                                  | system. Do not pass CPU or memory specifications   |

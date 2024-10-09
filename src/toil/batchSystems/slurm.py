@@ -17,16 +17,18 @@ import logging
 import math
 import os
 import sys
-from argparse import ArgumentParser, _ArgumentGroup
+from argparse import ArgumentParser, _ArgumentGroup, SUPPRESS
 from shlex import quote
 from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
 
+from toil.bus import get_job_kind
 from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
-from toil.job import Requirer
+from toil.job import JobDescription, Requirer
+from toil.lib.conversions import strtobool
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.statsAndLogging import TRACE
 
@@ -566,7 +568,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu and cpu > 1 and parallel_env:
                 sbatch_line.append(f'--partition={parallel_env}')
 
-            if mem is not None and self.boss.config.allocate_mem:  # type: ignore[attr-defined]
+            if mem is not None and self.boss.config.slurm_allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
@@ -625,6 +627,33 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()
 
+    # Override issuing jobs so we can check if we need to use Slurm's magic
+    # whole-node-memory feature.
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        local_id = self.handleLocalJob(command, job_desc)
+        if local_id is not None:
+            return local_id
+        else:
+            self.check_resource_request(job_desc)
+            gpus = self.count_needed_gpus(job_desc)
+            job_id = self.getNextJobID()
+            self.currentJobs.add(job_id)
+
+            if "memory" not in job_desc.requirements and self.config.slurm_default_all_mem:  # type: ignore[attr-defined]
+                # The job doesn't have its own memory requirement, and we are
+                # defaulting to whole node memory. Use Slurm's 0-memory sentinel.
+                memory = 0
+            else:
+                # Use the memory actually on the job, or the Toil default memory
+                memory = job_desc.memory
+
+            self.newJobsQueue.put((job_id, job_desc.cores, memory, command, get_job_kind(job_desc.get_names()),
+                                   job_environment, gpus))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", command, str(job_id),
+                         get_job_kind(job_desc.get_names()))
+        return job_id
+
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
             if accelerator['kind'] != 'gpu':
@@ -647,26 +676,30 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        allocate_mem = parser.add_mutually_exclusive_group()
-        allocate_mem_help = ("A flag that can block allocating memory with '--mem' for job submissions "
-                             "on SLURM since some system servers may reject any job request that "
-                             "explicitly specifies the memory allocation.  The default is to always allocate memory.")
-        allocate_mem.add_argument("--dont_allocate_mem", action='store_false', dest="allocate_mem", help=allocate_mem_help)
-        allocate_mem.add_argument("--allocate_mem", action='store_true', dest="allocate_mem", help=allocate_mem_help)
-        allocate_mem.set_defaults(allocate_mem=True)
 
+        parser.add_argument("--slurmAllocateMem", dest="slurm_allocate_mem", type=strtobool, default=True, env_var="TOIL_SLURM_ALLOCATE_MEM",
+                            help="If False, do not use --mem. Used as a workaround for Slurm clusters that reject jobs "
+                                 "with memory allocations.")
+        # Keep these deprcated options for backward compatibility
+        parser.add_argument("--dont_allocate_mem", action='store_false', dest="slurm_allocate_mem", help=SUPPRESS)
+        parser.add_argument("--allocate_mem", action='store_true', dest="slurm_allocate_mem", help=SUPPRESS)
+
+        parser.add_argument("--slurmDefaultAllMem", dest="slurm_default_all_mem", type=strtobool, default=False, env_var="TOIL_SLURM_DEFAULT_ALL_MEM",
+                            help="If True, assign Toil jobs without their own memory requirements all available "
+                                 "memory on a Slurm node (via Slurm --mem=0).")
         parser.add_argument("--slurmTime", dest="slurm_time", type=parse_slurm_time, default=None, env_var="TOIL_SLURM_TIME",
-                            help="Slurm job time limit, in [DD-]HH:MM:SS format")
+                            help="Slurm job time limit, in [DD-]HH:MM:SS format.")
         parser.add_argument("--slurmPE", dest="slurm_pe", default=None, env_var="TOIL_SLURM_PE",
-                            help="Special partition to send Slurm jobs to if they ask for more than 1 CPU")
+                            help="Special partition to send Slurm jobs to if they ask for more than 1 CPU.")
         parser.add_argument("--slurmArgs", dest="slurm_args", default="", env_var="TOIL_SLURM_ARGS",
-                            help="Extra arguments to pass to Slurm")
+                            help="Extra arguments to pass to Slurm.")
 
 
     OptionType = TypeVar('OptionType')
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
-        setOption("allocate_mem")
+        setOption("slurm_allocate_mem")
+        setOption("slurm_default_all_mem")
         setOption("slurm_time")
         setOption("slurm_pe")
         setOption("slurm_args")

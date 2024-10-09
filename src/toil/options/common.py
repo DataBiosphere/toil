@@ -211,7 +211,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Core options
     core_options = parser.add_argument_group(
-        title="Toil core options.",
+        title="Toil core options",
         description="Options to specify the location of the Toil workflow and "
                     "turn on stats collation about the performance of jobs."
     )
@@ -297,7 +297,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                                    "shared between the containers.")
     core_options.add_argument("--coordinationDir", dest="coordination_dir", default=None,
                               env_var="TOIL_COORDINATION_DIR", action=CoordinationDirAction, metavar="PATH",
-                              help="Absolute path to directory where Toil will keep state and lock files."
+                              help="Absolute path to directory where Toil will keep state and lock files. "
                                    "When sharing a cache between containers on a host, this directory must be "
                                    "shared between the containers.")
     core_options.add_argument("--noStdOutErr", dest="noStdOutErr", default=False, action="store_true",
@@ -325,7 +325,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Restarting the workflow options
     restart_options = parser.add_argument_group(
-        title="Toil options for restarting an existing workflow.",
+        title="Toil options for restarting an existing workflow",
         description="Allows the restart of an existing workflow"
     )
     restart_options.add_argument("--restart", dest="restart", default=False, action="store_true",
@@ -335,14 +335,14 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Batch system options
     batchsystem_options = parser.add_argument_group(
-        title="Toil options for specifying the batch system.",
+        title="Toil options for specifying the batch system",
         description="Allows the specification of the batch system."
     )
     add_all_batchsystem_options(batchsystem_options)
 
     # File store options
     file_store_options = parser.add_argument_group(
-        title="Toil options for configuring storage.",
+        title="Toil options for configuring storage",
         description="Allows configuring Toil's data storage."
     )
     link_imports = file_store_options.add_mutually_exclusive_group()
@@ -375,7 +375,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(
-        title="Toil options for autoscaling the cluster of worker nodes.",
+        title="Toil options for autoscaling the cluster of worker nodes",
         description="Allows the specification of the minimum and maximum number of nodes in an autoscaled cluster, "
                     "as well as parameters to control the level of provisioning."
     )
@@ -485,8 +485,9 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
     # Parameters to limit service jobs / detect service deadlocks
     service_options = parser.add_argument_group(
         title="Toil options for limiting the number of service jobs and detecting service deadlocks",
-        description="Allows the specification of the maximum number of service jobs in a cluster.  By keeping "
-                    "this limited we can avoid nodes occupied with services causing deadlocks."
+        description=SUPPRESS if cwl else "Allows the specification of the maximum number of service jobs in a cluster. "
+                                         "By keeping this limited we can avoid nodes occupied with services causing "
+                                         "deadlocks."
     )
     service_options.add_argument("--maxServiceJobs", dest="maxServiceJobs", default=SYS_MAX_SIZE, type=int,
                                  metavar="INT",
@@ -515,7 +516,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Resource requirements
     resource_options = parser.add_argument_group(
-        title="Toil options for cores/memory requirements.",
+        title="Toil options for cores/memory requirements",
         description="The options to specify default cores/memory requirements (if not specified by the jobs "
                     "themselves), and to limit the total amount of memory/cores requested from the batch system."
     )
@@ -565,7 +566,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Retrying/rescuing jobs
     job_options = parser.add_argument_group(
-        title="Toil options for rescuing/killing/restarting jobs.",
+        title="Toil options for rescuing/killing/restarting jobs",
         description="The options for jobs that either run too long/fail or get lost (some batch systems have issues!)."
     )
     job_options.add_argument("--retryCount", dest="retryCount", default=1, type=int,
@@ -599,7 +600,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Log management options
     log_options = parser.add_argument_group(
-        title="Toil log management options.",
+        title="Toil log management options",
         description="Options for how Toil should manage its logs."
     )
     log_options.add_argument("--maxLogFileSize", dest="maxLogFileSize", default=100 * 1024 * 1024, type=h2b,
@@ -633,7 +634,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Misc options
     misc_options = parser.add_argument_group(
-        title="Toil miscellaneous options.",
+        title="Toil miscellaneous options",
         description="Everything else."
     )
     misc_options.add_argument('--disableChaining', dest='disableChaining', type=strtobool, default=False,
@@ -704,7 +705,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
 
     # Debug options
     debug_options = parser.add_argument_group(
-        title="Toil debug options.",
+        title="Toil debug options",
         description="Debug options for finding problems or helping with testing."
     )
     debug_options.add_argument("--debugWorker", dest="debugWorker", default=False, action="store_true",
