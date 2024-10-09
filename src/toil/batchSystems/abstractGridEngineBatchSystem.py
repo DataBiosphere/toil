@@ -25,6 +25,7 @@ from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.job import AcceleratorRequirement
+from toil.statsAndLogging import TRACE
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.retry import old_retry, DEFAULT_DELAYS, retry
 
@@ -267,7 +268,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             if self.checkOnJobs():
                 activity = True
             if not activity:
-                logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())
+                logger.log(TRACE, 'No activity, sleeping for %is', self.boss.sleepSeconds())
             return True
 
         def run(self):
