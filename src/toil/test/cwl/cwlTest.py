@@ -60,6 +60,7 @@ from toil.test import (ToilTest,
                        needs_cwl,
                        needs_docker,
                        needs_docker_cuda,
+                       needs_singularity_or_docker,
                        needs_env_var,
                        needs_fetchable_appliance,
                        needs_gridengine,
@@ -431,6 +432,24 @@ class CWLWorkflowTest(ToilTest):
             self._expected_colon_output(self.outDir),
             out_name="result",
         )
+    
+    @pytest.mark.integrative
+    @needs_singularity_or_docker
+    def test_run_dockstore_trs(self) -> None:
+        from toil.cwl import cwltoil
+
+        stdout = StringIO()
+        main_args = [
+            "--outdir",
+            self.outDir,
+            "#workflow/github.com/dockstore-testing/md5sum-checker",
+            "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/refs/heads/master/md5sum/md5sum-input-cwl.json"
+        ]
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
+        with open(out.get("output_file", {}).get("location")[len("file://") :]) as f:
+            computed_hash = f.read().strip()
+        self.assertEqual(computed_hash, "00579a00e3e7fa0674428ac7049423e2")
 
     def test_glob_dir_bypass_file_store(self) -> None:
         self.maxDiff = 1000
