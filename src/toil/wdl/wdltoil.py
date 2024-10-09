@@ -1249,9 +1249,10 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         else:
             # Otherwise this is a local file and we want to fake it as a Toil file store file
             # Make it an absolute path
-            if urlparse(filename).scheme == "file":
+            parsed = urlparse(unquote(filename))
+            if parsed.scheme == "file":
                 # conversion was already done by normalize_uri
-                abs_filename = urlparse(filename).path
+                abs_filename = parsed.path
             elif self.execution_dir is not None:
                 # To support relative paths from execution directory, join the execution dir and filename
                 # If filename is already an abs path, join() will not do anything
