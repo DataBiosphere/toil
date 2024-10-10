@@ -4,16 +4,17 @@ task md5 {
   input {
     File inputFile
   }
-  command {
-    /bin/my_md5sum ${inputFile}
-  }
+  command <<<
+    set -euf -o pipefail
+    md5sum ~{inputFile} | awk '{print $1}' > md5sum.txt
+  >>>
 
  output {
     File value = "md5sum.txt"
  }
 
  runtime {
-   docker: "quay.io/briandoconnor/dockstore-tool-md5sum:1.0.4"
+   docker: "ubuntu:22.04"
    cpu: 1
    memory: "512 MB"
    disks: "local-disk 10 HDD"
