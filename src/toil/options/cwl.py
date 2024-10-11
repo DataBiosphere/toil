@@ -2,7 +2,6 @@ import os
 from argparse import ArgumentParser
 
 from configargparse import SUPPRESS
-from toil.lib.conversions import human2bytes
 
 from toil.version import baseVersion
 
