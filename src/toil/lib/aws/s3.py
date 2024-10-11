@@ -54,6 +54,18 @@ def delete_s3_object(bucket: str, key: str, version: Optional[str], region: Opti
         return s3_client.delete_object(Bucket=bucket, Key=key)
 
 
+@retry(errors=[AWSServerErrors])
+def head_s3_bucket(bucket: str, region: Optional[str] = None) -> HeadBucketOutputTypeDef:
+    """
+    Attempt to HEAD an s3 bucket and return its response.
+
+    :param bucket: AWS bucket name
+    :param region: Region that we want to look for the bucket in
+    """
+    s3_client = session.client("s3", region_name=region)
+    return s3_client.head_bucket(Bucket=bucket)
+
+
 def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: int = 1) -> ListMultipartUploadsOutputTypeDef:
     s3_client = session.client("s3", region_name=region)
     return s3_client.list_multipart_uploads(Bucket=bucket, MaxUploads=max_uploads, Prefix=prefix)
