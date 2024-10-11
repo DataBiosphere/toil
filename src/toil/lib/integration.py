@@ -12,8 +12,17 @@ import requests
 
 from toil.lib.retry import retry
 from toil.lib.io import file_digest, robust_rmtree
+from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
+
+# We manage a Requests session at the module level in case we're supposed to be
+# doing cookies, and to send a sensible user agent.
+# We expect the Toil and Python version to not be personally identifiable even
+# in theory (someone might make a new Toil version first, buit there's no way
+# to know for sure that nobody else did the same thing).
+session = requests.Session()
+session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})
 
 def is_dockstore_workflow(workflow: str) -> bool:
     """
@@ -89,7 +98,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     # Fetch the main TRS document.
     # See e.g. https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fdockstore-testing%2Fmd5sum-checker
     trs_workflow_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
-    trs_workflow_document = requests.get(trs_workflow_url).json()
+    trs_workflow_document = session.get(trs_workflow_url).json()
 
     # Make a map from version to version info. We will need the
     # "descriptor_type" array to find eligible languages, and the "url" field
@@ -169,7 +178,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
     logger.debug("Workflow files URL: %s", trs_files_url)
-    trs_files_document = requests.get(trs_files_url).json()
+    trs_files_document = session.get(trs_files_url).json()
 
     # Find the information we need to ID the primary descriptor file
     primary_descriptor_path: Optional[str] = None
@@ -235,7 +244,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             }
             # If we don't set stream=True, we can't actually read anything from the
             # raw stream, since Requests will have done it already.
-            with requests.get(trs_zip_file_url, trs_zip_file_url, headers=headers, stream=True) as response:
+            with session.get(trs_zip_file_url, trs_zip_file_url, headers=headers, stream=True) as response:
                 response_content_length = response.headers.get("Content-Length")
                 logger.debug("Server reports content length: %s", response_content_length)
                 shutil.copyfileobj(response.raw, zip_file)
