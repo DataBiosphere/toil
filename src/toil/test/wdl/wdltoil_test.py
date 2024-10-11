@@ -24,7 +24,7 @@ from toil.test import (ToilTest,
                        needs_wdl,
                        slow, integrative)
 from toil.version import exactPython
-from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, remove_common_leading_whitespace
+from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, remove_common_leading_whitespace, parse_disks
 
 import WDL.Expr
 import WDL.Error
@@ -750,6 +750,42 @@ class WDLToilBenchTests(ToilTest):
 
         self.assertEqual(unpacked[3], file_basename)
 
+    def test_disk_parse(self):
+        """
+        Test to make sure the disk parsing is correct
+        """
+        # Test cromwell compatibility
+        spec = "local-disk 5 SSD"
+        specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
+        self.assertEqual(specified_mount_point, None)
+        self.assertEqual(part_size, 5)
+        self.assertEqual(part_suffix, "GB")
+
+        # Test spec conformance
+        # https://github.com/openwdl/wdl/blob/e43e042104b728df1f1ad6e6145945d2b32331a6/SPEC.md?plain=1#L5072-L5082
+        spec = "10"
+        specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
+        self.assertEqual(specified_mount_point, None)
+        self.assertEqual(part_size, 10)
+        self.assertEqual(part_suffix, "GiB")  # WDL spec default
+
+        spec = "1 MB"
+        specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
+        self.assertEqual(specified_mount_point, None)
+        self.assertEqual(part_size, 1)
+        self.assertEqual(part_suffix, "MB")
+
+        spec = "MOUNT_POINT 3"
+        specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
+        self.assertEqual(specified_mount_point, "MOUNT_POINT")
+        self.assertEqual(part_size, 3)
+        self.assertEqual(part_suffix, "GiB")
+
+        spec = "MOUNT_POINT 2 MB"
+        specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
+        self.assertEqual(specified_mount_point, "MOUNT_POINT")
+        self.assertEqual(part_size, 2)
+        self.assertEqual(part_suffix, "MB")
 
 
 if __name__ == "__main__":
