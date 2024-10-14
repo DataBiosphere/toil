@@ -244,7 +244,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             }
             # If we don't set stream=True, we can't actually read anything from the
             # raw stream, since Requests will have done it already.
-            with session.get(trs_zip_file_url, trs_zip_file_url, headers=headers, stream=True) as response:
+            with session.get(trs_zip_file_url, headers=headers, stream=True) as response:
                 response_content_length = response.headers.get("Content-Length")
                 logger.debug("Server reports content length: %s", response_content_length)
                 shutil.copyfileobj(response.raw, zip_file)
