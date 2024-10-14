@@ -239,11 +239,14 @@ class CWLWorkflowTest(ToilTest):
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
         self.rootDir = self._projectRootPath()
+        self.jobStoreDir = f"./jobstore-{str(uuid.uuid4())}"
 
     def tearDown(self) -> None:
         """Clean up outputs."""
         if os.path.exists(self.outDir):
             shutil.rmtree(self.outDir)
+        if os.path.exists(self.jobStoreDir):
+            shutil.rmtree(self.jobStoreDir)
         unittest.TestCase.tearDown(self)
 
     def test_cwl_cmdline_input(self) -> None:
@@ -469,6 +472,55 @@ class CWLWorkflowTest(ToilTest):
                 shutil.rmtree(os.path.join(os.getcwd(), "shouldmake"))
             except FileNotFoundError:
                 pass
+
+    @needs_slurm
+    def test_slurm_node_memory(self) -> None:
+        from toil.cwl import cwltoil
+
+        # Run the workflow. This will either finish quickly and tell us the
+        # memory we got, or take a long time because it requested a whole
+        # node's worth of memory and no nodes are free right now. We need to
+        # support both.
+
+        # And if we run out of time we need to stop the workflow gracefully and
+        # cancel the Slurm jobs.
+
+        main_args = [
+            f"--jobStore={self.jobStoreDir}",
+            # Avoid racing to toil kill before the jobstore is removed
+            "--clean=never",
+            "--batchSystem=slurm",
+            "--no-cwl-default-ram",
+            "--slurmDefaultAllMem=True",
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, "src/toil/test/cwl/measure_default_memory.cwl"),
+            os.path.join(self.rootDir, "src/toil/test/cwl/empty.json"),
+        ]
+        try:
+            log.debug("Start test workflow")
+            child = subprocess.Popen(["toil-cwl-runner"] + main_args, stdout=subprocess.PIPE)
+            output, _ = child.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            # The job didn't finish quickly; presumably waiting for a full node.
+            # Stop the workflow
+            log.debug("Workflow might be waiting for a full node. Stop it.")
+            subprocess.check_call(["toil", "kill", self.jobStoreDir])
+            # Wait another little bit for it to clean up, making sure to collect output in case it is blocked on writing
+            child.communicate(timeout=20)
+            # Kill it off in case it is still running
+            child.kill()
+            # Reap it
+            child.wait()
+            # The test passes
+        else:
+            out = json.loads(output)
+            log.debug("Workflow output: %s", out)
+            memory_string = open(out["memory"]["location"][len("file://") :]).read()
+            log.debug("Observed memory: %s", memory_string)
+            result = int(memory_string)
+            # We should see more than the CWL default or the Toil default, assuming Slurm nodes of reasonable size (3 GiB).
+            self.assertGreater(result, 3 * 1024 * 1024)
 
     @needs_aws_s3
     def test_download_s3(self) -> None:
