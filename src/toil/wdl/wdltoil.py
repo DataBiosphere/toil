@@ -88,7 +88,12 @@ from toil.job import (AcceleratorRequirement,
 from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
                                              InvalidImportExportUrlException, LocatorException)
 from toil.lib.accelerators import get_individual_local_accelerators
-from toil.lib.conversions import convert_units, human2bytes, VALID_PREFIXES
+from toil.lib.conversions import (
+    convert_units,
+    human2bytes,
+    VALID_PREFIXES,
+)
+from toil.lib.integration import resolve_workflow 
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
@@ -3897,7 +3902,7 @@ def main() -> None:
                 output_bindings = toil.restart()
             else:
                 # Load the WDL document
-                document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
+                document: WDL.Tree.Document = WDL.load(resolve_workflow(options.wdl_uri, supported_languages={"WDL"}), read_source=toil_read_source)
 
                 # See if we're going to run a workflow or a task
                 target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
