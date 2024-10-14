@@ -14,7 +14,11 @@
 import logging
 from typing import Dict, Any, Optional, List
 
-from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef, HeadObjectOutputTypeDef, DeleteObjectOutputTypeDef
+from mypy_boto3_s3.type_defs import \
+    ListMultipartUploadsOutputTypeDef,\
+    HeadObjectOutputTypeDef,\
+    DeleteObjectOutputTypeDef,\
+    HeadBucketOutputTypeDef
 
 from toil.lib.aws import session, AWSServerErrors
 from toil.lib.retry import retry
