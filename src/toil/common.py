@@ -56,6 +56,7 @@ import requests
 
 from toil.options.common import add_base_toil_options, JOBSTORE_HELP
 from toil.options.cwl import add_cwl_options
+from toil.options.runner import add_runner_options
 from toil.options.wdl import add_wdl_options
 
 if sys.version_info >= (3, 8):
@@ -583,6 +584,12 @@ def generate_config(filepath: str) -> None:
     all_data.append(toil_base_data)
 
     parser = ArgParser(YAMLConfigFileParser())
+    add_runner_options(parser)
+    toil_cwl_data = create_config_dict_from_parser(parser)
+    toil_cwl_data.yaml_set_start_comment("\nTOIL SHARED CWL AND WDL RUNNER OPTIONS")
+    all_data.append(toil_cwl_data)
+
+    parser = ArgParser(YAMLConfigFileParser())
     add_cwl_options(parser)
     toil_cwl_data = create_config_dict_from_parser(parser)
     toil_cwl_data.yaml_set_start_comment("\nTOIL CWL RUNNER OPTIONS")
@@ -616,10 +623,10 @@ def generate_config(filepath: str) -> None:
 
 
 def parser_with_common_options(
-    provisioner_options: bool = False,
-    jobstore_option: bool = True,
-    prog: Optional[str] = None,
-    default_log_level: Optional[int] = None
+        provisioner_options: bool = False,
+        jobstore_option: bool = True,
+        prog: Optional[str] = None,
+        default_log_level: Optional[int] = None
 ) -> ArgParser:
     parser = ArgParser(prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter)
 
@@ -694,6 +701,8 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     # This is done so the config file can hold all available options
     add_cwl_options(parser, suppress=not cwl)
     add_wdl_options(parser, suppress=not wdl)
+    # Add shared runner options
+    add_runner_options(parser)
 
     def check_arguments(typ: str) -> None:
         """
@@ -707,6 +716,7 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
             add_cwl_options(check_parser)
         if typ == "cwl":
             add_wdl_options(check_parser)
+        add_runner_options(check_parser)
         for action in check_parser._actions:
             action.default = SUPPRESS
         other_options, _ = check_parser.parse_known_args(sys.argv[1:], ignore_help_args=True)
@@ -911,7 +921,6 @@ class Toil(ContextManager["Toil"]):
 
         # Check that the rootJob has been initialized
         rootJob.check_initialized()
-
 
         # Write shared files to the job store
         self._jobStore.write_leader_pid()
