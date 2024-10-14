@@ -800,7 +800,7 @@ def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     Return a copy of a WDL File with all metadata intact but the value changed.
     """
     
-    new_file = WDL.Value.File(candidate_uri, file.expr)
+    new_file = WDL.Value.File(file.value, file.expr)
     clone_metadata(file, new_file)
     return new_file
 
@@ -857,7 +857,7 @@ def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.
         """
         shared_path = get_shared_fs_path(file)
         result_path = shared_path or file.value
-        assert not result.startswith("file://"), f"Trying to digest file URI {result} for file {stored_file_string} with shared path {shared_path}"
+        assert not result_path.startswith("file://"), f"Found file URI {result_path} instead of a path for file {file}"
         return set_file_value(file, result_path)
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
@@ -958,7 +958,6 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
                 wdl_options,
                 devirtualized_to_virtualized,
                 virtualized_to_devirtualized,
-                enforce_existence=False,
                 export=True
             )
 
@@ -1269,9 +1268,12 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
             new_file = set_file_value(file, candidate_uri)
         else:
             # Was actually found and imported
+            assert candidate_uri is not None
+            assert toil_uri is not None
             new_file = set_file_virtualized_value(set_file_value(file, candidate_uri), toil_uri)
         if candidate_uri is not None and (is_file_url(candidate_uri) or not is_any_url(candidate_uri)):
             # We imported a file so we have a local path
+            assert candidate_uri is not None
             if is_file_url(candidate_uri):
                 candidate_path = unquote(urlsplit(candidate_uri).path)
             else:
@@ -1506,6 +1508,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = dest_path
         return result
 
+    @staticmethod
     def devirtualize_to(
         filename: str,
         dest_dir: str,
@@ -1740,11 +1743,10 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     virtualized_file.value,
                     output_directory,
                     self._file_store,
-                    self._execution_dir,
+                    {},
+                    self._wdl_options,
                     {},
                     {},
-                    {},
-                    enforce_existence=True,
                     export=True
                 )
 
@@ -2684,9 +2686,9 @@ class WDLTaskWrapperJob(WDLBaseJob):
             memory=runtime_memory or self.memory,
             disk=runtime_disk or self.disk,
             accelerators=runtime_accelerators or self.accelerators,
-            cache_key=cache_key,
+            mount_spec=mount_spec,
             wdl_options=task_wdl_options,
-            mount_spec=mount_spec
+            cache_key=cache_key,
         )
         # Run that as a child
         self.addChild(run_job)
@@ -2717,8 +2719,8 @@ class WDLTaskJob(WDLBaseJob):
         runtime_bindings: Promised[WDLBindings], 
         task_id: List[str],
         mount_spec: Dict[Optional[str], int],
+        wdl_options: WDLContext,
         cache_key: Optional[str] = None, 
-        wdl_options: WDLContext, 
         **kwargs: Any
     ) -> None:
         """
@@ -4138,6 +4140,9 @@ class WDLWorkflowJob(WDLSectionJob):
 
         logger.info("Running workflow %s (%s) called as %s", self._workflow.name, self._workflow_id, self._wdl_options["namespace"])
 
+        # Set up the WDL standard library
+        standard_library = ToilWDLStdLibWorkflow(file_store, self._wdl_options)
+
         # Combine the bindings we get from previous jobs.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
 
@@ -4147,9 +4152,6 @@ class WDLWorkflowJob(WDLSectionJob):
         cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
         if cached_result is not None:
             return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
-
-        # Set up the WDL standard library
-        standard_library = ToilWDLStdLibWorkflow(file_store, self._wdl_options)
 
         if self._workflow.inputs:
             try:
@@ -4167,8 +4169,8 @@ class WDLWorkflowJob(WDLSectionJob):
         outputs_job = WDLOutputsJob(
             self._workflow,
             sink.rv(),
-            cache_key=cache_key,
             wdl_options=self._wdl_options,
+            cache_key=cache_key,
             local=True
         )
         sink.addFollowOn(outputs_job)
@@ -4186,8 +4188,8 @@ class WDLOutputsJob(WDLBaseJob):
         self, 
         workflow: WDL.Tree.Workflow, 
         bindings: Promised[WDLBindings],
+        wdl_options: WDLContext,
         cache_key: Optional[str] = None,
-        wdl_options: WDLContext, 
         **kwargs: Any
     ):
         """
