@@ -803,6 +803,173 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', '
                 return True
         return False
 
+
+def get_file_sizes(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True,
+                         execution_dir: Optional[str] = None) -> Dict[str, Tuple[str, uuid.UUID, Optional[int]]]:
+    """
+    Resolve relative-URI files in the given environment and them then into absolute normalized URIs. Returns a dictionary of WDL file values to a tuple of the normalized URI,
+    parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
+
+    Will set the value of the File to the relative-URI.
+
+    :param environment: Bindings to evaluate on
+    :param file_source: Context to search for files with
+    :param task_path: Dotted WDL name of the user-level code doing the
+        importing (probably the workflow name).
+    :param search_paths: If set, try resolving input location relative to the URLs or
+        directories in this list.
+    :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
+    """
+    # path_to_id: Dict[str, uuid.UUID] = {}
+    path_to_id: Dict[str, uuid.UUID] = {}
+    file_to_data = {}
+
+    @memoize
+    def get_filename_size(filename: str) -> None:
+        tried = []
+        for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else [], execution_dir=execution_dir):
+            tried.append(candidate_uri)
+            try:
+                if not import_remote_files and is_url(candidate_uri):
+                    # Use remote URIs in place. But we need to find the one that exists.
+                    if not file_source.url_exists(candidate_uri):
+                        # Wasn't found there
+                        continue
+
+                # Now we know this exists, so pass it through
+                # Get filesizes
+                filesize = file_source.get_size(candidate_uri)
+
+            except UnimplementedURLException as e:
+                # We can't find anything that can even support this URL scheme.
+                # Report to the user, they are probably missing an extra.
+                logger.critical('Error: ' + str(e))
+                raise
+            except HTTPError as e:
+                # Something went wrong looking for it there.
+                logger.warning("Checked URL %s but got HTTP status %s", candidate_uri, e.code)
+                # Try the next location.
+                continue
+            except FileNotFoundError:
+                # Wasn't found there
+                continue
+            except Exception:
+                # Something went wrong besides the file not being found. Maybe
+                # we have no auth.
+                logger.error("Something went wrong when testing for existence of %s", candidate_uri)
+                raise
+
+            # Work out what the basename for the file was
+            file_basename = os.path.basename(urlsplit(candidate_uri).path)
+
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later.
+                raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
+            # Was actually found
+            if is_url(candidate_uri):
+                # Might be a file URI or other URI.
+                # We need to make sure file URIs and local paths that point to
+                # the same place are treated the same.
+                parsed = urlsplit(candidate_uri)
+                if parsed.scheme == "file:":
+                    # This is a local file URI. Convert to a path for source directory tracking.
+                    parent_dir = os.path.dirname(unquote(parsed.path))
+                else:
+                    # This is some other URL. Get the URL to the parent directory and use that.
+                    parent_dir = urljoin(candidate_uri, ".")
+            else:
+                # Must be a local path
+                parent_dir = os.path.dirname(candidate_uri)
+
+            # Pack a UUID of the parent directory
+            dir_id = path_to_id.setdefault(parent_dir, uuid.uuid4())
+
+            file_to_data.setdefault(filename, (candidate_uri, dir_id, filesize))
+
+            return
+        # Not found
+        raise RuntimeError(f"Could not find {filename} at any of: {list(potential_absolute_uris(filename, search_paths if search_paths is not None else []))}")
+
+    def get_file_size(file: WDL.Value.File) -> WDL.Value.File:
+        """
+        Detect if any potential URI exists. Will convert a file's value to a URI and import it.
+
+        Separated out from convert_file_to_url in order to properly memoize and avoid importing the same file twice
+        :param filename: Filename to import
+        :return: Tuple of the uri the file was found at and the virtualized import
+        """
+        # Search through any input search paths passed in and download it if found
+        get_filename_size(file.value)
+        return file
+    map_over_files_in_bindings(environment, get_file_size)
+    return file_to_data
+
+def import_files(files: List[str], file_source: AbstractJobStore) -> Dict[str, FileID]:
+    """
+    Import all files from the list into the jobstore. Returns a dictionary mapping the filename to it's FileID
+    :param files: list of filenames
+    :param file_source: jobstore object
+    :return:
+    """
+
+    @memoize
+    def import_filename(filename: str) -> Optional[FileID]:
+        """
+        Detect if any potential URI exists. Will convert a file's value to a URI and import it.
+
+        Separated out from convert_file_to_url in order to properly memoize and avoid importing the same file twice
+        :param filename: Filename to import
+        :return: Tuple of the uri the file was found at and the virtualized import
+        """
+        # Search through any input search paths passed in and download it if found
+        # Actually import
+        # Try to import the file. If we can't find it, continue
+        return file_source.import_file(filename)
+
+    path_to_fileid = {}
+    for file in files:
+        imported = import_filename(file)
+        if imported is not None:
+            path_to_fileid[file] = imported
+    return path_to_fileid
+
+
+def convert_files(environment: WDLBindings, file_to_id: Dict[str, FileID], file_to_data: Dict[str, Tuple[str, uuid.UUID, int]], task_path: str) -> None:
+    """
+    Resolve relative-URI files in the given environment and import all files.
+
+    Will set the value of the File to the relative-URI.
+
+    :param environment: Bindings to evaluate on
+    """
+
+    def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
+        """
+        Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
+        """
+        candidate_uri = file_to_data[file.value][0]
+        file_id = file_to_id.get(candidate_uri)
+        dir_id = file_to_data[file.value][1]
+
+        # Work out what the basename for the file was
+        file_basename = os.path.basename(urlsplit(candidate_uri).path)
+
+        if file_basename == "":
+            # We can't have files with no basename because we need to
+            # download them at that basename later.
+            raise RuntimeError(f"File {candidate_uri} has no basename and so cannot be a WDL File")
+
+        toil_uri = pack_toil_uri(file_id, task_path, dir_id, file_basename)
+
+        setattr(file, "virtualized_value", toil_uri)
+        file.value = candidate_uri
+        return file
+
+    map_over_files_in_bindings(environment, convert_file_to_uri)
+
+
 def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True,
                          execution_dir: Optional[str] = None) -> None:
     """
@@ -3669,35 +3836,146 @@ class WDLStartJob(WDLSectionJob):
         return job.rv()
 
 class WDLImportJob(WDLSectionJob):
-    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext, path: Optional[List[str]] = None, skip_remote: bool = False,
-                 disk_size: Optional[ParseableIndivisibleResource] = None, **kwargs: Any):
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: List[str], wdl_options: WDLContext, path: Optional[List[str]] = None, skip_remote: bool = False,
+                 disk_size: Optional[ParseableIndivisibleResource] = None, stream: bool = True, **kwargs: Any):
         """
         Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
 
         This class is only used when runImportsOnWorkers is enabled.
         """
-        super().__init__(wdl_options=wdl_options, local=False,
-                         disk=disk_size, **kwargs)
+        if stream:
+            super().__init__(wdl_options=wdl_options, local=False, **kwargs)
+        else:
+            super().__init__(wdl_options=wdl_options, local=False, disk=disk_size, **kwargs)
+
         self._target = target
         self._inputs = inputs
         self._path = path
         self._skip_remote = skip_remote
+        self._disk_size = disk_size
+
+    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Promise of workflow outputs
+        """
+        try:
+            return import_files(self._inputs, file_store.jobStore)
+        except InsufficientSystemResources as e:
+            # If importing via streaming, then the job's disk size will not be set. Detect this to create a nonstreaming import job with sufficient disk space
+            # else, this is the nonstreaming import job and the exception is valid, so raise
+            if e.resource == "disk" and e.requested < self._disk_size:
+                non_streaming_import = WDLImportJob(self._target, self._inputs, wdl_options=self._wdl_options, disk=self._disk_size, stream=False,
+                                                    path=self._path, skip_remote=self._skip_remote)
+                self.addChild(non_streaming_import)
+                return non_streaming_import.rv()
+            else:
+                raise
+
+
+class WDLCombineImportsJob(WDLSectionJob):
+    def __init__(self, task_path: str, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, file_to_fileid: Sequence[Promised[Dict[str, FileID]]],
+                 file_to_data: Dict[str, Tuple[str, uuid.UUID, int]], wdl_options: WDLContext, **kwargs: Any) -> None:
+        """
+        Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+        This class is only used when runImportsOnWorkers is enabled.
+        """
+        super().__init__(local=True, wdl_options=wdl_options, **kwargs)
+        self._file_to_fileid = file_to_fileid
+        self._inputs = inputs
+        self._target = target
+        self._file_to_data = file_to_data
+        self._task_path = task_path
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         """
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
         """
-        convert_remote_files(self._inputs, file_store.jobStore, self._target.name, self._path, self._skip_remote, self._wdl_options.get("execution_dir"))
+
+        file_to_fileid = {k: v for d in unwrap_all(self._file_to_fileid) for k, v in d.items()}
+        convert_files(self._inputs, file_to_fileid, self._file_to_data, self._task_path)
         root_job = WDLStartJob(self._target, self._inputs, wdl_options=self._wdl_options)
         self.addChild(root_job)
         return root_job.rv()
 
+class WDLImportWrapper(WDLSectionJob):
+    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext,
+                 inputs_search_path, import_remote_files, import_workers_threshold, **kwargs: Any):
+        """
+        Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+        This class is only used when runImportsOnWorkers is enabled.
+        """
+        super().__init__(local=True, wdl_options=wdl_options, **kwargs)
+        self._inputs = inputs
+        self._target = target
+        self._inputs_search_path = inputs_search_path
+        self._import_remote_files = import_remote_files
+        self._import_workers_threshold = import_workers_threshold
+
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Promise of workflow outputs
+        """
+        inputs = self._inputs
+        target = self._target
+        inputs_search_path = self._inputs_search_path
+        wdl_options = self._wdl_options
+        import_remote_files = self._import_remote_files
+        import_workers_threshold = self._import_workers_threshold
+        # Run WDL imports on a worker instead
+        file_to_data = get_file_sizes(inputs, file_store.jobStore, target.name, inputs_search_path, import_remote_files=import_remote_files)
+
+        individual_import_files = []
+        batch_import_files = []
+        for filename, (candidate_uri, parent_id, size) in file_to_data.items():
+            if size < import_workers_threshold:
+                batch_import_files.append(filename)
+            else:
+                individual_import_files.append(filename)
+
+        import_jobs = []
+        for file in individual_import_files:
+            filesize = file_to_data[file][2]
+            filename = file_to_data[file][0]
+            import_jobs.append(WDLImportJob(target, [filename], wdl_options=wdl_options, path=inputs_search_path, skip_remote=import_remote_files, disk_size=filesize))
+
+        # create multiple batch jobs if necessary to not exceed the threshold
+        # todo: improve this logic
+        per_batch_files = []
+        per_batch_size = 0
+        while len(batch_import_files) > 0:
+            peek_filename = batch_import_files[0]
+            # See if adding this to the queue will make the batch job too big
+            filesize = file_to_data[peek_filename][2]
+            if per_batch_size + filesize >= import_workers_threshold:
+                # If so, it's too big, schedule the queue
+                import_jobs.append(WDLImportJob(target, per_batch_files, wdl_options=wdl_options, path=inputs_search_path, skip_remote=import_remote_files, disk_size=per_batch_size))
+                # reset
+                per_batch_size = 0
+                per_batch_files = []
+            else:
+                per_batch_size += filesize
+                candidate_uri = file_to_data[peek_filename][0]
+                per_batch_files.append(candidate_uri)
+                batch_import_files.pop(0)
+        if len(per_batch_files) > 0:
+            import_jobs.append(
+                WDLImportJob(target, per_batch_files, wdl_options=wdl_options, path=inputs_search_path, skip_remote=import_remote_files, disk_size=per_batch_size))
+        combine_imports_job = WDLCombineImportsJob(target.name, target, inputs, [job.rv() for job in import_jobs], file_to_data, wdl_options=wdl_options)
+
+        for job in import_jobs:
+            self.addChild(job)
+        self.addFollowOn(combine_imports_job)
+
+        return combine_imports_job.rv()
 
 def make_root_job(target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, inputs_search_path: List[str], toil: Toil, wdl_options: WDLContext, options: Namespace) -> WDLSectionJob:
     if options.run_imports_on_workers:
-        # Run WDL imports on a worker instead
-        root_job: WDLSectionJob = WDLImportJob(target, inputs, wdl_options=wdl_options, path=inputs_search_path, skip_remote=options.reference_inputs, disk_size=options.import_workers_disk)
+        root_job = WDLImportWrapper(target, inputs, wdl_options=wdl_options, inputs_search_path=inputs_search_path, import_remote_files=options.reference_inputs, import_workers_threshold=options.import_workers_threshold)
     else:
         # Run WDL imports on leader
         # Import any files in the bindings
@@ -3723,10 +4001,6 @@ def main() -> None:
     if options.jobStore is None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(mkdtemp(), 'tree')
-
-    # Take care of incompatible arguments related to file imports
-    if options.run_imports_on_workers is True and options.import_workers_disk is None:
-        raise RuntimeError("Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers.")
 
     # Make sure we have an output directory (or URL prefix) and we don't need
     # to ever worry about a None, and MyPy knows it.
@@ -3822,8 +4096,6 @@ def main() -> None:
 
                 # Get the execution directory
                 execution_dir = os.getcwd()
-
-                convert_remote_files(input_bindings, toil._jobStore, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
                 wdl_options: WDLContext = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
