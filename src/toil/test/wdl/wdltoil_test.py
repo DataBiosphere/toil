@@ -449,6 +449,8 @@ class WDLTests(BaseWDLTest):
     def test_giraffe(self):
         """Test if Giraffe runs. This could take 12 minutes. Also we scale it down but it still demands lots of memory."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
+        # TODO: Reduce memory requests with custom/smaller inputs.
+        # TODO: Skip if node lacks enough memory.
 
         json_dir = self._createTempDir()
         base_uri = 'https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a'
