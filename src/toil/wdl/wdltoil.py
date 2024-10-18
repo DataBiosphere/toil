@@ -804,12 +804,12 @@ def clone_metadata(old_file: WDL.Value.File, new_file: WDL.Value.File) -> None:
     for attribute in ["virtualized_value", "nonexistent", SHARED_PATH_ATTR]:
         if hasattr(old_file, attribute):
             setattr(new_file, attribute, getattr(old_file, attribute))
-    
+
 def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the value changed.
     """
-    
+
     new_file = WDL.Value.File(new_value, file.expr)
     clone_metadata(file, new_file)
     return new_file
@@ -954,16 +954,14 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
         Returns the value to put in the WDL file to actually do the mutation.
         """
 
-        # TODO: Change to using File objects when required PR with
-        # the mapping functions for that is finally merged.
-
         if get_shared_fs_path(file) is None:
-            # We need all the incoming paths that aren't cache paths to not already
-            # be local paths, or devirtualizing them to export them will not work.
+            # We need all the incoming paths that aren't cache paths to have
+            # virtualized paths, or devirtualizing them to export them will not
+            # work.
             #
             # This ought to be the case because we just virtualized
             # them all for transport out of the machine.
-            if not is_remote_url(file.value):
+            if get_file_virtualized_value(file) is None:
                 # TODO: If we're passing things around by URL reference and
                 # some of them are file: is this actually allowed?
                 raise RuntimeError(f"File {file} caught escaping from task unvirtualized")
@@ -972,8 +970,10 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
             # This needs to exist before we can export to it. And now we know
             # we will export something, so make sure it exists.
             os.makedirs(output_directory, exist_ok=True)
+
+            # Devirtualize the virtualized path to save the file
             exported_path = ToilWDLStdLibBase.devirtualize_to(
-                file.value,
+                get_file_virtualized_value(file),
                 output_directory,
                 file_store,
                 devirtualization_state,
@@ -1281,7 +1281,7 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
         Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
         """
         candidate_uri, toil_uri = import_filename(file.value)
-        
+
         if candidate_uri is None and toil_uri is None:
             # If we get here we tried all the candidates
             raise RuntimeError(f"Could not find {file.value} at any of: {list(potential_absolute_uris(file.value, search_paths if search_paths is not None else []))}")
@@ -1591,7 +1591,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = virtualized_to_devirtualized[filename]
                 logger.debug("Found virtualized %s in cache with devirtualized path %s", filename, result)
                 return result
-            result = ToilWDLStdLibBase._devirtualize_uri(filename, dest_dir, file_source, state)
+            # Actually need to download/put in place/export
+            result = ToilWDLStdLibBase._devirtualize_uri(filename, dest_dir, file_source, state, export=export)
             if devirtualized_to_virtualized is not None:
                 # Store the back mapping
                 devirtualized_to_virtualized[result] = filename
@@ -1602,7 +1603,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         else:
             # This is a local file or file URL
             if is_file_url(filename):
-                filename = unquote(urlsplit(filename).path) 
+                filename = unquote(urlsplit(filename).path)
             # To support relative paths, join the execution dir and filename
             # if filename is already an abs path, join() will do nothing
             execution_dir = wdl_options.get("execution_dir")
@@ -1701,9 +1702,9 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-       
+
         self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
-        
+
     # This needs to be hash-compatible with MiniWDL.
     # MiniWDL hooks _virtualize_filename
     # <https://github.com/chanzuckerberg/miniwdl/blob/475dd3f3784d1390e6a0e880d43316a620114de3/WDL/runtime/workflow.py#L699-L729>,
@@ -1715,7 +1716,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
     def _write(
         self, serialize: Callable[[WDL.Value.Base, IO[bytes]], None]
     ) -> Callable[[WDL.Value.Base], WDL.Value.File]:
-        
+
         # Note that the parent class constructor calls this method, but doesn't
         # invoke the resulting function.
 
@@ -2685,7 +2686,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 # TODO: we always ignore the disk type and assume we have the right one.
                 mount_spec[specified_mount_point] = int(per_part_size)
             runtime_disk = int(total_bytes)
-        
+
         if not runtime_bindings.has_binding("gpu") and self._task.effective_wdl_version in ('1.0', 'draft-2'):
             # For old WDL versions, guess whether the task wants GPUs if not specified.
             use_gpus = (runtime_bindings.has_binding('gpuCount') or
@@ -2759,14 +2760,14 @@ class WDLTaskJob(WDLBaseJob):
     """
 
     def __init__(
-        self, 
-        task: WDL.Tree.Task, 
-        task_internal_bindings: Promised[WDLBindings], 
-        runtime_bindings: Promised[WDLBindings], 
+        self,
+        task: WDL.Tree.Task,
+        task_internal_bindings: Promised[WDLBindings],
+        runtime_bindings: Promised[WDLBindings],
         task_id: List[str],
         mount_spec: Dict[Optional[str], int],
         wdl_options: WDLContext,
-        cache_key: Optional[str] = None, 
+        cache_key: Optional[str] = None,
         **kwargs: Any
     ) -> None:
         """
@@ -4236,8 +4237,8 @@ class WDLOutputsJob(WDLBaseJob):
     Returns an environment with just the outputs bound, in no namespace.
     """
     def __init__(
-        self, 
-        workflow: WDL.Tree.Workflow, 
+        self,
+        workflow: WDL.Tree.Workflow,
         bindings: Promised[WDLBindings],
         wdl_options: WDLContext,
         cache_key: Optional[str] = None,
