@@ -1436,9 +1436,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         virtualized_filename = get_file_virtualized_value(file)
         if virtualized_filename is not None:
             devirtualized_path = self._devirtualize_filename(virtualized_filename)
-            assert os.path.exists(devirtualized_path)
             file = set_file_value(file, devirtualized_path)
-            assert file.value == devirtualized_path
             logger.debug("For virtualized filename %s got devirtualized file %s", virtualized_filename, file)
         else:
             logger.debug("File has no virtualized value so not changing value")
@@ -1466,7 +1464,6 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         virtualized_filename = self._virtualize_filename(file.value)
         logger.debug('For file %s got virtualized filename %s', file, virtualized_filename)
         marked_file = set_file_virtualized_value(file, virtualized_filename)
-        assert get_file_virtualized_value(marked_file) == virtualized_filename
         return marked_file
 
     @memoize
@@ -3242,8 +3239,6 @@ class WDLTaskJob(WDLBaseJob):
                     logger.warning("Docker package not installed. Unable to add mount points.")
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in devirtualize_files(runtime_bindings, standard_library)})
-
-            log_bindings(logger.debug, "Bindings to add paths for:", [bindings])
 
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
