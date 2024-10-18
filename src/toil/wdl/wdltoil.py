@@ -1323,14 +1323,17 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
 # the MiniWDL machinery only gives us 2 levels to work with: "virtualized"
 # (visible to the workflow) and "devirtualized" (openable by this process).
 
-# So we sneakily swap out what "virtualized" means. Usually (as provided by
-# ToilWDLStdLibBase) a "virtualized" filename is the Toil filestore URL space.
-# But when evaluating a task command, we switch things so that the
-# "virtualized" space is the inside-the-container filename space (by
-# devirtualizing and then host-to-container-mapping all the visible files, and
-# then using ToilWDLStdLibTaskCommand for evaluating expressions, and then
-# going back from container to host space after the command). At all times the
-# "devirtualized" space is outside-the-container host filenames.
+# Also, the workflow can depend on the string contents of the workflow-visible
+# names. So we always need to have those hold the original file paths/URLs in
+# leader space when we are at workflow scope.
+
+# So we have our own notion of a "virtualized" file path that we hide in an
+# attribute on the File values, and our own separate set of virtualizing and
+# devirtualizing functions to fill this in or to download the file and put a
+# local-node path into the file value (which we confusingly call
+# "devirtualizing").
+
+# TODO: De-overload the "virtualized"/"devirtualized" notion.
 
 class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
