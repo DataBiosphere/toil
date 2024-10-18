@@ -545,8 +545,7 @@ def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     :return: Whether the two values are equal with file virtualization accounted for
     """
     def f(file: WDL.Value.File) -> WDL.Value.File:
-        file.value = get_file_virtualized_value(file) or file.value
-        return file
+        return set_file_value(file, get_file_virtualized_value(file) or file.value)
     return map_over_typed_files_in_value(value1, f) == map_over_typed_files_in_value(value2, f)
 
 # Bindings have a long type name
@@ -1176,11 +1175,14 @@ def is_url_with_scheme(filename: str, schemes: List[str]) -> bool:
     return False
 
 def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True,
-                         execution_dir: Optional[str] = None) -> None:
+                         execution_dir: Optional[str] = None) -> WDLBindings:
     """
     Resolve relative-URI files in the given environment and import all files.
 
-    Will set the value of the File to the relative-URI.
+    Returns an environment where each File's value is set to the URI it was
+    found at, its virtualized value is set to what it was loaded into the
+    filestore as (if applicable), and its shared filesystem path is set if it
+    came from the local filesystem.
 
     :param environment: Bindings to evaluate on
     :param file_source: Context to search for files with
@@ -1194,9 +1196,14 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
     @memoize
     def import_filename(filename: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        Detect if any potential URI exists. Will convert a file's value to a URI and import it.
+        Given a relative URI that a file comes from, poll the possible absolute
+        URIs that that could mean until one is found. If one is found, returns
+        the found absolute URI and the imported Toil URI.
 
-        Separated out from convert_file_to_url in order to properly memoize and avoid importing the same file twice
+        Memoized, so the same filename is only searched and imported once. If
+        two relative URIs somehow manage to point to the same absolute URI, it
+        will be imported multiple times.
+
         :param filename: Filename to import
         :return: Tuple of the uri the file was found at and the virtualized import
         """
@@ -1205,18 +1212,27 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
         for candidate_uri in potential_absolute_uris(filename, search_paths if search_paths is not None else [], execution_dir=execution_dir):
             tried.append(candidate_uri)
             try:
+                # Try polling existence first.
+                polled_existence = file_source.url_exists(candidate_uri)
+                if polled_existence is False:
+                    # Known not to exist
+                    logger.debug("URL does not exist: %s", candidate_uri)
+                    continue
                 if not import_remote_files and is_remote_url(candidate_uri):
                     # Use remote URIs in place. But we need to find the one that exists.
-                    if not file_source.url_exists(candidate_uri):
-                        # Wasn't found there
+                    if not polled_existence:
+                        # Not known to exist, and we're doing a reference.
+                        logger.debug("URL does not exist: %s", candidate_uri)
                         continue
 
                     # Now we know this exists, so pass it through
+                    logger.debug("URL found: %s", candidate_uri)
                     return candidate_uri, None
                 else:
-                    # Actually import
-                    # Try to import the file. If we can't find it, continue
+                    # Actually import (or at least try to)
                     imported = file_source.import_file(candidate_uri)
+                    # It might raise, or return None
+                    logger.debug("Imported URL %s as %s", candidate_uri, imported)
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -1229,6 +1245,7 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
                 continue
             except FileNotFoundError:
                 # Wasn't found there
+                logger.debug("URL does not exist: %s", candidate_uri)
                 continue
             except Exception:
                 # Something went wrong besides the file not being found. Maybe
@@ -1239,6 +1256,7 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
             if imported is None:
                 # Wasn't found there
                 # Mostly to satisfy mypy
+                logger.debug("URL did not import: %s", candidate_uri)
                 continue
 
             # Work out what the basename for the file was
@@ -1274,6 +1292,7 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
 
             return candidate_uri, toil_uri
         # Not found, return None
+        logger.warning("Could not find %s at any of: %s", filename, tried)
         return None, None
 
     def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
@@ -1304,7 +1323,7 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
             new_file = set_shared_fs_path(new_file, candidate_path)
         return new_file
 
-    environment = map_over_files_in_bindings(environment, convert_file_to_uri)
+    return map_over_files_in_bindings(environment, convert_file_to_uri)
 
 
 # Both the WDL code itself **and** the commands that it runs will deal in
@@ -4385,8 +4404,8 @@ class WDLImportJob(WDLSectionJob):
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
         """
-        convert_remote_files(self._inputs, file_store.jobStore, self._target.name, self._path, self._skip_remote, self._wdl_options.get("execution_dir"))
-        root_job = WDLStartJob(self._target, self._inputs, wdl_options=self._wdl_options)
+        imported_inputs = convert_remote_files(self._inputs, file_store.jobStore, self._target.name, self._path, self._skip_remote, self._wdl_options.get("execution_dir"))
+        root_job = WDLStartJob(self._target, imported_inputs, wdl_options=self._wdl_options)
         self.addChild(root_job)
         return root_job.rv()
 
@@ -4398,9 +4417,9 @@ def make_root_job(target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBi
     else:
         # Run WDL imports on leader
         # Import any files in the bindings
-        convert_remote_files(inputs, toil._jobStore, target.name, inputs_search_path, import_remote_files=options.reference_inputs)
+        imported_inputs = convert_remote_files(inputs, toil._jobStore, target.name, inputs_search_path, import_remote_files=options.reference_inputs)
         # Run the workflow and get its outputs namespaced with the workflow name.
-        root_job = WDLStartJob(target, inputs, wdl_options=wdl_options)
+        root_job = WDLStartJob(target, imported_inputs, wdl_options=wdl_options)
     return root_job
 
 
@@ -4520,7 +4539,7 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                convert_remote_files(input_bindings, toil._jobStore, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
+                imported_inputs = convert_remote_files(input_bindings, toil._jobStore, task_path=target.name, search_paths=inputs_search_path, import_remote_files=options.reference_inputs)
 
                 # Configure workflow interpreter options
                 wdl_options: WDLContext = {"execution_dir": execution_dir, "container": options.container, "task_path": target.name,
@@ -4528,7 +4547,7 @@ def main() -> None:
                 assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
-                root_job = make_root_job(target, input_bindings, inputs_search_path, toil, wdl_options, options)
+                root_job = make_root_job(target, imported_inputs, inputs_search_path, toil, wdl_options, options)
                 output_bindings = toil.start(root_job)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
