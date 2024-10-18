@@ -2618,6 +2618,10 @@ class WDLTaskWrapperJob(WDLBaseJob):
             #
             # TODO: Allow just propagating things through by normal path
             # reference into the cache?
+            #
+            # TODO: What if the same file is passed through several tasks, and
+            # we get cache hits on those tasks? Won't we upload it several
+            # times?
             return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
 
         if self._task.inputs:
@@ -2717,7 +2721,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
         task_wdl_options = self._wdl_options.copy()
         # A task is not guaranteed to have access to the current execution directory, so get rid of it. The execution directory also is not needed as all files will be virtualized
         task_wdl_options.pop("execution_dir")
-        # Schedule to get resources. Pass along the bindings from evaluating all the inputs and decls, and the runtime, with files virtualized.
+        # Schedule to get resources. Pass along the bindings from evaluating
+        # all the inputs and decls, and the runtime, with files virtualized.
         run_job = WDLTaskJob(
             self._task,
             virtualize_files(bindings, standard_library, enforce_existence=False),
