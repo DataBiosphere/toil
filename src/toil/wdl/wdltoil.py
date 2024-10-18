@@ -545,7 +545,7 @@ def virtualized_equal(value1: WDL.Value.Base, value2: WDL.Value.Base) -> bool:
     :return: Whether the two values are equal with file virtualization accounted for
     """
     def f(file: WDL.Value.File) -> WDL.Value.File:
-        file.value = getattr(file, "virtualized_value", file.value)
+        file.value = get_file_virtualized_value(file) or file.value
         return file
     return map_over_typed_files_in_value(value1, f) == map_over_typed_files_in_value(value2, f)
 
@@ -607,6 +607,16 @@ def log_bindings(log_function: Callable[..., None], message: str, all_bindings: 
         if isinstance(bindings, WDL.Env.Bindings):
             for binding in bindings:
                 log_function("%s = %s", binding.name, binding.value)
+                if isinstance(binding.value, WDL.Value.File):
+                    # For a file, log all the attributes
+                    virtualized_location = get_file_virtualized_value(binding.value)
+                    if virtualized_location is not None:
+                        log_function("\tVirtualized as %s", virtualized_location)
+                    shared_location = get_shared_fs_path(binding.value)
+                    if shared_location is not None:
+                        log_function("\tCached as %s", shared_location)
+                    if get_file_nonexistent(binding.value):
+                        log_function("\tNONEXISTENT!")
         elif isinstance(bindings, Promise):
             log_function("<Unfulfilled promise for bindings>")
 
@@ -800,7 +810,7 @@ def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     Return a copy of a WDL File with all metadata intact but the value changed.
     """
     
-    new_file = WDL.Value.File(file.value, file.expr)
+    new_file = WDL.Value.File(new_value, file.expr)
     clone_metadata(file, new_file)
     return new_file
 
@@ -813,6 +823,12 @@ def set_file_nonexistent(file: WDL.Value.File, nonexistent: bool) -> WDL.Value.F
     setattr(new_file, "nonexistent", nonexistent)
     return new_file
 
+def get_file_nonexistent(file: WDL.Value.File) -> bool:
+    """
+    Return the nonexistent flag for a file.
+    """
+    return cast(bool, getattr(file, "nonexistent", False))
+
 def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the virtualized_value attribute set to the given value.
@@ -821,6 +837,12 @@ def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> 
     clone_metadata(file, new_file)
     setattr(new_file, "virtualized_value", virtualized_value)
     return new_file
+
+def get_file_virtualized_value(file: WDL.Value.File) -> Optional[str]:
+    """
+    Get the virtualized storage location for a file.
+    """
+    return cast(Optional[str], getattr(file, "virtualized_value", None))
 
 def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
     """
@@ -1082,7 +1104,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
         total_size = 0.0
         for file in file_objects:
             # Sum up the sizes of all the files, if any.
-            uri = getattr(file, "virtualized_value", None) or file.value
+            uri = get_file_virtualized_value(file) or file.value
             if is_remote_url(uri):
                 if uri.startswith(TOIL_URI_SCHEME):
                     # This is a Toil File ID we encoded; we have the size
@@ -1381,9 +1403,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # I can't think of another way to do this. I still need to remember the original URL/path,
         # but I need to virtualize as well, so I can't remove one or the other.
         def _f(file: WDL.Value.File) -> WDL.Value.Base:
-            if getattr(file, "virtualized_value", None) is None:
+            if get_file_virtualized_value(file) is None:
                 file = set_file_virtualized_value(file, self._virtualize_filename(file.value))
-            with open(self._devirtualize_filename(getattr(file, "virtualized_value")), "r") as infile:
+            with open(self._devirtualize_filename(get_file_virtualized_value(file)), "r") as infile:
                 return parse(infile.read())
 
         return _f
@@ -1407,16 +1429,26 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
     def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
         # We track whether files do not exist with the nonexistent flag in order to coerce to Null/error on use
-        if getattr(file, "nonexistent", False):
+        logger.debug("Devirtualizing %s", file)
+        if get_file_nonexistent(file):
+            logger.debug("File is marked nonexistent so passing it through")
             return file
-        virtualized_filename = getattr(file, "virtualized_value", None)
+        virtualized_filename = get_file_virtualized_value(file)
         if virtualized_filename is not None:
-            file = set_file_value(file, self._devirtualize_filename(virtualized_filename))
+            devirtualized_path = self._devirtualize_filename(virtualized_filename)
+            assert os.path.exists(devirtualized_path)
+            file = set_file_value(file, devirtualized_path)
+            assert file.value == devirtualized_path
+            logger.debug("For virtualized filename %s got devirtualized file %s", virtualized_filename, file)
+        else:
+            logger.debug("File has no virtualized value so not changing value")
         return file
 
     def _virtualize_file(self, file: WDL.Value.File, enforce_existence: bool = True) -> WDL.Value.File:
+        logger.debug("Virtualizing %s", file)
         # If enforce_existence is true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
-        if getattr(file, "virtualized_value", None) is not None:
+        if get_file_virtualized_value(file) is not None:
+            logger.debug("File is marked nonexistent so passing it through")
             return file
 
         if enforce_existence is False:
@@ -1429,9 +1461,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 file_uri = Toil.normalize_uri(abs_filepath)
 
             if not AbstractJobStore.url_exists(file_uri):
+                logger.debug("File appears nonexistent so marking it nonexistent")
                 return set_file_nonexistent(file, True)
-        virtualized = self._virtualize_filename(file.value)
-        return set_file_virtualized_value(file, virtualized)
+        virtualized_filename = self._virtualize_filename(file.value)
+        logger.debug('For file %s got virtualized filename %s', file, virtualized_filename)
+        marked_file = set_file_virtualized_value(file, virtualized_filename)
+        assert get_file_virtualized_value(marked_file) == virtualized_filename
+        return marked_file
 
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
@@ -2158,6 +2194,7 @@ def devirtualize_files(environment: WDLBindings, stdlib: ToilWDLStdLibBase) -> W
     that are actually available to command line commands.
     The same virtual file always maps to the same devirtualized filename even with duplicates
     """
+    logger.info("Devirtualizing files")
     return map_over_files_in_bindings(environment, stdlib._devirtualize_file)
 
 def virtualize_files(environment: WDLBindings, stdlib: ToilWDLStdLibBase, enforce_existence: bool = True) -> WDLBindings:
@@ -2165,6 +2202,7 @@ def virtualize_files(environment: WDLBindings, stdlib: ToilWDLStdLibBase, enforc
     Make sure all the File values embedded in the given bindings point to files
     that are usable from other machines.
     """
+    logger.info("Virtualizing files")
     virtualize_func = partial(stdlib._virtualize_file, enforce_existence=enforce_existence)
     return map_over_files_in_bindings(environment, virtualize_func)
 
@@ -2210,7 +2248,7 @@ def drop_if_missing(file: WDL.Value.File, standard_library: ToilWDLStdLibBase) -
     the current working directory of the job and is where all relative paths will be interpreted from
     """
     work_dir = standard_library.execution_dir
-    filename = getattr(file, "virtualized_value", None) or file.value
+    filename = get_file_virtualized_value(file) or file.value
     value_type = file.type
     logger.debug("Consider file %s", filename)
 
@@ -2265,7 +2303,7 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     def append_to_paths(file: WDL.Value.File) -> Optional[WDL.Value.File]:
         # Append element and return the element. This is to avoid a logger warning inside map_over_typed_files_in_value()
         # But don't process nonexistent files
-        if getattr(file, "nonexistent", False) is False:
+        if get_file_nonexistent(file) is False:
             path = file.value
             paths.append(path)
             return file
@@ -2546,6 +2584,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
         super().__init__(unitName=wdl_options["task_path"] + ".inputs", displayName=wdl_options["namespace"] + ".inputs", wdl_options=wdl_options, **kwargs)
 
         logger.info("Preparing to run task code for %s as %s", task.name, wdl_options["namespace"])
+        log_bindings(logger.debug, "Incoming bindings:", prev_node_results)
 
         self._task = task
         self._prev_node_results = prev_node_results
@@ -2590,6 +2629,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # We need these in order to evaluate the runtime.
             # TODO: What if they wanted resources from the runtime?
             bindings = evaluate_decls_to_bindings(self._task.postinputs, bindings, standard_library, include_previous=True)
+
+        log_bindings(logger.debug, "Task bindings:", [bindings])
 
         # Evaluate the runtime section
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
@@ -2735,6 +2776,8 @@ class WDLTaskJob(WDLBaseJob):
         super().__init__(unitName=wdl_options["task_path"] + ".command", displayName=wdl_options["namespace"] + ".command", local=False, wdl_options=wdl_options, **kwargs)
 
         logger.info("Preparing to run task %s as %s", task.name, wdl_options["namespace"])
+        log_bindings(logger.debug, "Internal bindings:", [task_internal_bindings])
+        log_bindings(logger.debug, "Runtime bindings:", [runtime_bindings])
 
         self._task = task
         self._task_internal_bindings = task_internal_bindings
@@ -2994,6 +3037,9 @@ class WDLTaskJob(WDLBaseJob):
         # And the bindings from evaluating the runtime section
         runtime_bindings = unwrap(self._runtime_bindings)
 
+        log_bindings(logger.debug, "Internal bindings:", [bindings])
+        log_bindings(logger.debug, "Runtime bindings:", [runtime_bindings])
+
         # We have all the resources we need, so run the task
 
         if shutil.which('singularity') and self._wdl_options.get("container") in ["singularity", "auto"]:
@@ -3197,6 +3243,8 @@ class WDLTaskJob(WDLBaseJob):
             # Show the runtime info to the container
             task_container.process_runtime(miniwdl_logger, {binding.name: binding.value for binding in devirtualize_files(runtime_bindings, standard_library)})
 
+            log_bindings(logger.debug, "Bindings to add paths for:", [bindings])
+
             # Tell the container to take up all these files. It will assign
             # them all new paths in task_container.input_path_map which we can
             # read. We also get a task_container.host_path() to go the other way.
@@ -3207,7 +3255,7 @@ class WDLTaskJob(WDLBaseJob):
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
             def get_path_in_container(file: WDL.Value.File) -> Optional[WDL.Value.File]:
-                if getattr(file, "nonexistent", False) is False:
+                if get_file_nonexistent(file) is False:
                     return set_file_value(file, task_container.input_path_map[file.value])
             contained_bindings = map_over_files_in_bindings(bindings, get_path_in_container)
 
@@ -4493,7 +4541,7 @@ def main() -> None:
                 """
                 # Make sure the output directory exists if we have output files
                 # that might need to use it.
-                filename = getattr(file, "virtualized_value", None) or file.value
+                filename = get_file_virtualized_value(file) or file.value
                 os.makedirs(output_directory, exist_ok=True)
                 new_value = ToilWDLStdLibBase.devirtualize_to(
                     filename,
