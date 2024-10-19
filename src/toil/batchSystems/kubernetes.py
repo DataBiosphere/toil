@@ -49,9 +49,13 @@ if sys.version_info < (3, 10):
 else:
     from typing import ParamSpec
 
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
+else:
+    from typing import NotRequired
+
 from typing import Protocol, TypedDict, runtime_checkable
 
-# TODO: When this gets into the standard library, get it from there and drop
 import urllib3
 import yaml
 # The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
@@ -89,8 +93,6 @@ from kubernetes.config.kube_config import (list_kube_config_contexts,
                                            load_kube_config)
 # TODO: Watch API is not typed yet
 from kubernetes.watch import Watch  # type: ignore
-# typing-extensions dependency on Pythons that are new enough.
-from typing_extensions import NotRequired
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,

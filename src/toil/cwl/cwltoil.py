@@ -36,7 +36,15 @@ import uuid
 from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
-from typing import IO, Any, Callable, Optional, TextIO, TypeVar, Union, cast
+from typing import (IO,
+                    Any,
+                    Callable,
+                    Literal,
+                    Optional,
+                    TextIO,
+                    TypeVar,
+                    Union,
+                    cast)
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -80,7 +88,6 @@ from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
 from schema_salad.ref_resolver import file_uri, uri_file_path
 from schema_salad.sourceline import SourceLine
-from typing_extensions import Literal
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM

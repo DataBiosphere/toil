@@ -20,6 +20,7 @@ import logging
 import math
 import os
 import pickle
+import sys
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -41,9 +42,11 @@ from typing import (TYPE_CHECKING,
 
 import dill
 from configargparse import ArgParser
-# TODO: When this gets into the standard library, get it from there and drop
-# typing-extensions dependency on Pythons that are new enough.
-from typing_extensions import NotRequired
+
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
+else:
+    from typing import NotRequired
 
 from toil.bus import Names
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
