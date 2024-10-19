@@ -31,7 +31,7 @@ class Node:
     maxWaitTime = 7 * 60
 
     def __init__(self, publicIP: str, privateIP: str, name: str, launchTime: Union[datetime.datetime, str],
-                 nodeType: Optional[str], preemptible: bool, tags: Optional[Dict[str, str]] = None, use_private_ip: Optional[bool] = None) -> None:
+                 nodeType: Optional[str], preemptible: bool, tags: Optional[dict[str, str]] = None, use_private_ip: Optional[bool] = None) -> None:
         self.publicIP = publicIP
         self.privateIP = privateIP
         if use_private_ip:
@@ -296,7 +296,7 @@ class Node:
                                % (' '.join(args), exit_code, stdout, stderr))
         return stdout
 
-    def coreRsync(self, args: List[str], applianceName: str = 'toil_leader', **kwargs: Any) -> int:
+    def coreRsync(self, args: list[str], applianceName: str = 'toil_leader', **kwargs: Any) -> int:
         remoteRsync = "docker exec -i %s rsync -v" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         sshCommand = "ssh"

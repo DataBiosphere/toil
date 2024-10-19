@@ -29,7 +29,8 @@ import time
 import threading
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Iterator, Optional, Union, cast
+from typing import Dict, Optional, Union, cast
+from collections.abc import Iterator
 
 import psutil
 
@@ -67,7 +68,7 @@ def ensure_filesystem_lockable(path: str, timeout: float = 30, hint: Optional[st
         try:
             # Start a child process to stat the path. See <https://unix.stackexchange.com/a/402236>.
             # We really should call statfs but no bindings for it are in PyPI.
-            completed = subprocess.run(["stat", "-f", "-c", "%T", path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
+            completed = subprocess.run(["stat", "-f", "-c", "%T", path], check=True, capture_output=True, timeout=timeout)
         except subprocess.TimeoutExpired as e:
             # The subprocess itself is Too Slow
             raise RuntimeError(f"Polling filesystem type at {path} took more than {timeout} seconds; is your filesystem working?") from e
@@ -323,7 +324,7 @@ def cpu_count() -> int:
 current_process_name_lock = threading.Lock()
 # And a global dict from work directory to name in that work directory.
 # We also have a file descriptor per work directory but it is just leaked.
-current_process_name_for: Dict[str, str] = {}
+current_process_name_for: dict[str, str] = {}
 
 def collect_process_name_garbage() -> None:
     """

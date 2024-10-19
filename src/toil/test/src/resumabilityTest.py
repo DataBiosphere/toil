@@ -70,7 +70,7 @@ class ResumabilityTest(ToilTest):
             # This one is intended to fail.
             Job.Runner.startToil(root, options)
 
-        with open(options.logFile, 'r') as f:
+        with open(options.logFile) as f:
             log_content = f.read()
             # Make sure we actually did do chaining
             assert "Chaining from" in log_content

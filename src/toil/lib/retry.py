@@ -135,14 +135,12 @@ from contextlib import contextmanager
 from typing import (Any,
                     Callable,
                     ContextManager,
-                    Generator,
-                    Iterable,
                     List,
                     Optional,
-                    Sequence,
                     Tuple,
                     Type,
                     Union, TypeVar)
+from collections.abc import Generator, Iterable, Sequence
 
 import requests.exceptions
 import urllib3.exceptions
@@ -177,8 +175,8 @@ class ErrorCondition:
 
     def __init__(self,
                  error: Optional[Any] = None,
-                 error_codes: List[int] = None,
-                 boto_error_codes: List[str] = None,
+                 error_codes: list[int] = None,
+                 boto_error_codes: list[str] = None,
                  error_message_must_include: str = None,
                  retry_on_this_condition: bool = True):
         """
@@ -228,11 +226,11 @@ class ErrorCondition:
 # https://stackoverflow.com/a/68290080
 RT = TypeVar("RT")
 def retry(
-    intervals: Optional[List] = None,
+    intervals: Optional[list] = None,
     infinite_retries: bool = False,
-    errors: Optional[Sequence[Union[ErrorCondition, Type[Exception]]]] = None,
-    log_message: Optional[Tuple[Callable, str]] = None,
-    prepare: Optional[List[Callable]] = None,
+    errors: Optional[Sequence[Union[ErrorCondition, type[Exception]]]] = None,
+    log_message: Optional[tuple[Callable, str]] = None,
+    prepare: Optional[list[Callable]] = None,
 ) -> Callable[[Callable[..., RT]], Callable[..., RT]]:
     """
     Retry a function if it fails with any Exception defined in "errors".
@@ -456,7 +454,7 @@ def meets_error_message_condition(e: Exception, error_message: Optional[str]):
         return True
 
 
-def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
+def meets_error_code_condition(e: Exception, error_codes: Optional[list[int]]):
     """These are expected to be normal HTTP error codes, like 404 or 500."""
     if error_codes:
         status_code = get_error_status(e)
@@ -465,7 +463,7 @@ def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
         return True
 
 
-def meets_boto_error_code_condition(e: Exception, boto_error_codes: Optional[List[str]]):
+def meets_boto_error_code_condition(e: Exception, boto_error_codes: Optional[list[str]]):
     """These are expected to be AWS's custom error aliases, like 'BucketNotFound' or 'AccessDenied'."""
     if boto_error_codes:
         status_code = get_error_code(e)

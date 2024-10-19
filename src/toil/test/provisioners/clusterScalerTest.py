@@ -538,7 +538,7 @@ class ClusterScalerTest(ToilTest):
         # A 62.5Gi job is sent to the larger node
         self._check_job_estimate([(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b('62.5 Gi'))
 
-    def _check_job_estimate(self, nodes: List[Tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
+    def _check_job_estimate(self, nodes: list[tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
         """
         Make sure that a job with the given requirements, when run on the given
         nodes, produces the given numbers of them.
@@ -822,7 +822,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     # AbstractProvisioner methods
-    def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
+    def setAutoscaledNodeTypes(self, node_types: list[tuple[set[Shape], Optional[float]]]):
         self.node_shapes_for_testing = sorted(it for t in node_types for it in t[0])
         super().setAutoscaledNodeTypes(node_types)
 
@@ -889,7 +889,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return nodes
 
     # AbstractProvisioner functionality
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible) -> int:
+    def addNodes(self, nodeTypes: set[str], numNodes, preemptible) -> int:
         nodeType = next(iter(nodeTypes))
         self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptible=preemptible)
         return self.getNumberOfNodes(nodeType=nodeType, preemptible=preemptible)

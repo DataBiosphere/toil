@@ -23,14 +23,13 @@ from typing import (IO,
                     ContextManager,
                     DefaultDict,
                     Dict,
-                    Generator,
-                    Iterator,
                     List,
                     Literal,
                     Optional,
                     Union,
                     cast,
                     overload)
+from collections.abc import Generator, Iterator
 
 import dill
 
@@ -58,7 +57,7 @@ class NonCachingFileStore(AbstractFileStore):
         super().__init__(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
-        self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
+        self.localFileMap: DefaultDict[str, list[str]] = defaultdict(list)
 
         self.check_for_state_corruption()
 
@@ -290,7 +289,7 @@ class NonCachingFileStore(AbstractFileStore):
                         safe_unlock_and_close(dirFD)
 
     @classmethod
-    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[Dict[str, str]]:
+    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
@@ -334,10 +333,10 @@ class NonCachingFileStore(AbstractFileStore):
             error=FileNotFoundError,
             retry_on_this_condition=False
         )])
-    def _readJobState(jobStateFileName: str) -> Dict[str, str]:
+    def _readJobState(jobStateFileName: str) -> dict[str, str]:
         with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
-        return cast(Dict[str, str], state)
+        return cast(dict[str, str], state)
 
     def _createJobStateFile(self) -> str:
         """

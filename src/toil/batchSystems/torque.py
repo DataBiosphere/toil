@@ -132,8 +132,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[Dict[str, str]] = None,
-            gpus: Optional[int] = None) -> List[str]:
+            job_environment: Optional[dict[str, str]] = None,
+            gpus: Optional[int] = None) -> list[str]:
             return self.prepareQsub(cpu, memory, jobID, job_environment) + [
                 self.generateTorqueWrapper(command, jobID)
             ]
@@ -176,8 +176,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             cpu: int,
             mem: int,
             jobID: int,
-            job_environment: Optional[Dict[str, str]],
-        ) -> List[str]:
+            job_environment: Optional[dict[str, str]],
+        ) -> list[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?

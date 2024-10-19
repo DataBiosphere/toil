@@ -29,8 +29,8 @@ from typing import (IO,
                     BinaryIO,
                     Callable,
                     Optional,
-                    Sequence,
                     Type)
+from collections.abc import Sequence
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile
@@ -475,11 +475,11 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         """
         return self._getResourceClass().create(jobStore, self._resourcePath)
 
-    def _getResourceClass(self) -> Type[Resource]:
+    def _getResourceClass(self) -> type[Resource]:
         """
         Return the concrete subclass of Resource that's appropriate for auto-deploying this module.
         """
-        subcls: Type[Resource]
+        subcls: type[Resource]
         if self.fromVirtualEnv:
             subcls = VirtualEnvResource
         elif os.path.isdir(self._resourcePath):

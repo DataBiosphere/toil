@@ -17,7 +17,8 @@ import logging
 import time
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Iterable, Optional, Set
+from typing import Optional, Set
+from collections.abc import Iterable
 
 from toil.job import ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -40,7 +41,7 @@ class ServiceManager:
 
         # These are all the client jobs that are waiting for their services to
         # start.
-        self.__waiting_clients: Set[str] = set()
+        self.__waiting_clients: set[str] = set()
 
         # This is used to terminate the thread associated with the service
         # manager

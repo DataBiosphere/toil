@@ -86,7 +86,7 @@ def run_conformance_tests(
     selected_tests: Optional[str] = None,
     selected_tags: Optional[str] = None,
     skipped_tests: Optional[str] = None,
-    extra_args: Optional[List[str]] = None,
+    extra_args: Optional[list[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
 ) -> None:
@@ -181,7 +181,7 @@ def run_conformance_tests(
         cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
-        output_lines: List[str] = []
+        output_lines: list[str] = []
         try:
             child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
@@ -264,7 +264,7 @@ class CWLWorkflowTest(ToilTest):
         cwlfile: str,
         jobfile: str,
         expect: "CWLObjectType",
-        main_args: List[str] = [],
+        main_args: list[str] = [],
         out_name: str = "output",
         output_here: bool = False,
     ) -> None:
@@ -650,7 +650,7 @@ class CWLWorkflowTest(ToilTest):
             pass
 
     @needs_aws_s3
-    def test_streamable(self, extra_args: Optional[List[str]] = None) -> None:
+    def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
         """
         Test that a file with 'streamable'=True is a named pipe.
         This is a CWL1.2 feature.
@@ -921,7 +921,7 @@ class CWLv10Test(ToilTest):
         caching: bool = False,
         selected_tests: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
     ) -> None:
         run_conformance_tests(
             workDir=self.workDir,
@@ -1049,7 +1049,7 @@ class CWLv11Test(ToilTest):
         caching: bool = False,
         batchSystem: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
     ) -> None:
         run_conformance_tests(
             workDir=self.cwlSpec,
@@ -1123,7 +1123,7 @@ class CWLv12Test(ToilTest):
         batchSystem: Optional[str] = None,
         selected_tests: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
         must_support_all_features: bool = False,
         junit_file: Optional[str] = None,
     ) -> None:
@@ -1594,7 +1594,7 @@ def test_visit_cwl_class_and_reduce() -> None:
     up_count = 0
     up_child_count = 0
 
-    def op_up(thing: "CWLObjectType", down_value: int, child_results: List[str]) -> str:
+    def op_up(thing: "CWLObjectType", down_value: int, child_results: list[str]) -> str:
         """
         Check the down return value and the up return values, and count
         what we visit going up and what child relationships we have.
@@ -1648,9 +1648,9 @@ def test_download_structure(tmp_path: Path) -> None:
     # These will be populated.
     # TODO: This cache seems unused. Remove it?
     # This maps filesystem path to CWL URI
-    index: Dict[str, str] = {}
+    index: dict[str, str] = {}
     # This maps CWL URI to filesystem path
-    existing: Dict[str, str] = {}
+    existing: dict[str, str] = {}
 
     # Do the download
     download_structure(file_store, index, existing, structure, to_dir)

@@ -2,7 +2,8 @@ import json
 import logging
 import os
 import urllib.request
-from typing import Dict, Iterator, Optional, cast
+from typing import Dict, Optional, cast
+from collections.abc import Iterator
 from urllib.error import HTTPError, URLError
 
 from botocore.client import BaseClient
@@ -183,7 +184,7 @@ def aws_marketplace_flatcar_ami_search(ec2_client: BaseClient, architecture: str
                             'arm64': 'arm64'}
     response: dict = ec2_client.describe_images(Owners=['aws-marketplace'],  # type: ignore
                                                 Filters=[{'Name': 'name', 'Values': ['Flatcar-stable-*']}])
-    latest: Dict[str, str] = {'CreationDate': '0lder than atoms.'}
+    latest: dict[str, str] = {'CreationDate': '0lder than atoms.'}
     for image in response['Images']:
         if image['Architecture'] == architecture_mapping[architecture] and image['State'] == 'available':
             if image['CreationDate'] > latest['CreationDate']:

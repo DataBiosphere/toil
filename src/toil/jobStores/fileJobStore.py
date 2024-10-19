@@ -23,13 +23,11 @@ import sys
 import time
 import uuid
 from contextlib import contextmanager
-from typing import IO, Iterable, Iterator, List, Optional, Union, overload
+from typing import IO, List, Optional, Union, overload
+from collections.abc import Iterable, Iterator
 from urllib.parse import ParseResult, quote, unquote
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID
@@ -411,7 +409,7 @@ class FileJobStore(AbstractJobStore):
                        executable=executable)
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> list[str]:
         path = cls._extract_path_from_url(url)
         listing = []
         for p in os.listdir(path):
@@ -607,7 +605,7 @@ class FileJobStore(AbstractJobStore):
 
         try:
             st = os.stat(absPath)
-        except os.error:
+        except OSError:
             return False
         if not stat.S_ISREG(st.st_mode):
             raise NoSuchFileException(file_id)
@@ -625,7 +623,7 @@ class FileJobStore(AbstractJobStore):
 
         try:
             st = os.stat(absPath)
-        except os.error:
+        except OSError:
             return 0
         return st.st_size
 
@@ -748,15 +746,11 @@ class FileJobStore(AbstractJobStore):
                     job_id = self._get_job_id_from_files_dir(job_instance_dir)
                     jobs.append(job_id)
 
-            for name in os.listdir(self.sharedFilesDir):
-                # Announce all the shared files
-                yield name
+            yield from os.listdir(self.sharedFilesDir)
 
             for file_dir_path in self._list_dynamic_spray_dir(self.filesDir):
                 # Run on all the no-job files
-                for dir_file in os.listdir(file_dir_path):
-                    # There ought to be just one file in here.
-                    yield dir_file
+                yield from os.listdir(file_dir_path)
 
         for job_store_id in jobs:
             # Files from _get_job_files_dir
@@ -768,9 +762,7 @@ class FileJobStore(AbstractJobStore):
                         # Except the cleanup directory which we do later.
                         continue
                     file_dir_path = os.path.join(job_files_dir, file_dir)
-                    for dir_file in os.listdir(file_dir_path):
-                        # There ought to be just one file in here.
-                        yield dir_file
+                    yield from os.listdir(file_dir_path)
 
                 # Files from _get_job_files_cleanup_dir
                 job_cleanup_files_dir = os.path.join(job_files_dir, "cleanup")
@@ -778,9 +770,7 @@ class FileJobStore(AbstractJobStore):
                     for file_dir in os.listdir(job_cleanup_files_dir):
                         # Each file is in its own directory
                         file_dir_path = os.path.join(job_cleanup_files_dir, file_dir)
-                        for dir_file in os.listdir(file_dir_path):
-                            # There ought to be just one file in here.
-                            yield dir_file
+                        yield from os.listdir(file_dir_path)
 
     def write_logs(self, msg):
         # Temporary files are placed in the stats directory tree

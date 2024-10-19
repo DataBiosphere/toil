@@ -44,7 +44,7 @@ def get_or_die(module: types.ModuleType, name: str) -> Any:
         sys.exit(1)
 
 
-def loadModules() -> Dict[str, types.ModuleType]:
+def loadModules() -> dict[str, types.ModuleType]:
     # noinspection PyUnresolvedReferences
     from toil.utils import toilClean  # noqa
     from toil.utils import toilConfig  # noqa
@@ -62,7 +62,7 @@ def loadModules() -> Dict[str, types.ModuleType]:
     return {'-'.join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
 
 
-def printHelp(modules: Dict[str, types.ModuleType]) -> None:
+def printHelp(modules: dict[str, types.ModuleType]) -> None:
     name = os.path.basename(sys.argv[0])
     descriptions = '\n        '.join(f'{cmd} - {get_or_die(mod, "__doc__").strip()}' for cmd, mod in modules.items() if mod)
     print(textwrap.dedent(f"""

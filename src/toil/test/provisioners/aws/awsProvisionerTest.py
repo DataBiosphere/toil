@@ -130,11 +130,11 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', '-z', self.zone, self.clusterName] + [src, dest])
 
     def getRootVolID(self) -> str:
-        instances: List["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
+        instances: list["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
         instances.sort(key=lambda x: x.get("LaunchTime"))
         leader: "InstanceTypeDef" = instances[0]  # assume leader was launched first
 
-        bdm: Optional[List["InstanceBlockDeviceMappingTypeDef"]] = leader.get(
+        bdm: Optional[list["InstanceBlockDeviceMappingTypeDef"]] = leader.get(
             "BlockDeviceMappings"
         )
         assert bdm is not None
@@ -218,7 +218,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         self.cluster.destroyCluster()
         boto3_ec2: "EC2Client" = self.aws.client(region=self.region, service_name="ec2")
         volume_filter: "FilterTypeDef" = {"Name": "volume-id", "Values": [volumeID]}
-        volumes: Optional[List["VolumeTypeDef"]] = None
+        volumes: Optional[list["VolumeTypeDef"]] = None
         for attempt in range(6):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
@@ -328,7 +328,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         # visible to EC2 read requests immediately after the create returns,
         # which is the last thing that starting the cluster does.
         time.sleep(10)
-        nodes: List["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
+        nodes: list["InstanceTypeDef"] = self.cluster._get_nodes_in_cluster_boto3()
         nodes.sort(key=lambda x: x.get("LaunchTime"))
         # assuming that leader is first
         workers = nodes[1:]
@@ -341,7 +341,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
         worker: "InstanceTypeDef" = next(wait_instances_running(boto3_ec2, [worker]))
 
-        bdm: Optional[List["InstanceBlockDeviceMappingTypeDef"]] = worker.get(
+        bdm: Optional[list["InstanceBlockDeviceMappingTypeDef"]] = worker.get(
             "BlockDeviceMappings"
         )
         assert bdm is not None

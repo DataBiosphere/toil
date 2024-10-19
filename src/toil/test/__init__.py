@@ -34,7 +34,6 @@ from textwrap import dedent
 from typing import (Any,
                     Callable,
                     Dict,
-                    Generator,
                     List,
                     Literal,
                     Optional,
@@ -43,15 +42,13 @@ from typing import (Any,
                     TypeVar,
                     Union,
                     cast)
+from collections.abc import Generator
 from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
-if sys.version_info >= (3, 9):
-    import zoneinfo
-else:
-    from backports import zoneinfo
+import zoneinfo
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
@@ -82,7 +79,7 @@ class ToilTest(unittest.TestCase):
     """
 
     _tempBaseDir: Optional[str] = None
-    _tempDirs: List[str] = []
+    _tempDirs: list[str] = []
 
     def setup_method(self, method: Any) -> None:
         western = zoneinfo.ZoneInfo("America/Los_Angeles")
@@ -952,9 +949,9 @@ class ApplianceTestSupport(ToilTest):
 
     @contextmanager
     def _applianceCluster(
-        self, mounts: Dict[str, str], numCores: Optional[int] = None
+        self, mounts: dict[str, str], numCores: Optional[int] = None
     ) -> Generator[
-        Tuple["ApplianceTestSupport.LeaderThread", "ApplianceTestSupport.WorkerThread"],
+        tuple["ApplianceTestSupport.LeaderThread", "ApplianceTestSupport.WorkerThread"],
         None,
         None,
     ]:
@@ -987,7 +984,7 @@ class ApplianceTestSupport(ToilTest):
             return 'leader'
 
         @abstractmethod
-        def _containerCommand(self) -> List[str]:
+        def _containerCommand(self) -> list[str]:
             pass
 
         @abstractmethod
@@ -1000,7 +997,7 @@ class ApplianceTestSupport(ToilTest):
         def __init__(
             self,
             outer: "ApplianceTestSupport",
-            mounts: Dict[str, str],
+            mounts: dict[str, str],
             cleanMounts: bool = False,
         ) -> None:
             assert all(
@@ -1033,7 +1030,7 @@ class ApplianceTestSupport(ToilTest):
 
         # noinspection PyUnusedLocal
         def __exit__(
-            self, exc_type: Type[BaseException], exc_val: Exception, exc_tb: Any
+            self, exc_type: type[BaseException], exc_val: Exception, exc_tb: Any
         ) -> Literal[False]:
             try:
                 try:
@@ -1141,7 +1138,7 @@ class ApplianceTestSupport(ToilTest):
         def _getRole(self) -> str:
             return 'leader'
 
-        def _containerCommand(self) -> List[str]:
+        def _containerCommand(self) -> list[str]:
             return ['--registry=in_memory',
                     '--ip=127.0.0.1',
                     '--port=5050',
@@ -1149,7 +1146,7 @@ class ApplianceTestSupport(ToilTest):
 
     class WorkerThread(Appliance):
         def __init__(
-            self, outer: "ApplianceTestSupport", mounts: Dict[str, str], numCores: int
+            self, outer: "ApplianceTestSupport", mounts: dict[str, str], numCores: int
         ) -> None:
             self.numCores = numCores
             super().__init__(outer, mounts)
@@ -1160,7 +1157,7 @@ class ApplianceTestSupport(ToilTest):
         def _getRole(self) -> str:
             return 'worker'
 
-        def _containerCommand(self) -> List[str]:
+        def _containerCommand(self) -> list[str]:
             return ['--work_dir=/var/lib/mesos',
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',

@@ -31,7 +31,7 @@ ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
 
 
 def get_aws_zone_from_spot_market(spotBid: Optional[float], nodeType: Optional[str],
-                                  boto3_ec2: Optional[BaseClient], zone_options: Optional[List[str]]) -> \
+                                  boto3_ec2: Optional[BaseClient], zone_options: Optional[list[str]]) -> \
 Optional[str]:
     """
     If a spot bid, node type, and Boto2 EC2 connection are specified, picks a
@@ -59,7 +59,7 @@ Optional[str]:
 
 def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] = None,
                       boto3_ec2: Optional[BaseClient] = None,
-                      zone_options: Optional[List[str]] = None) -> Optional[str]:
+                      zone_options: Optional[list[str]] = None) -> Optional[str]:
     """
     Get the right AWS zone to use.
 
@@ -91,8 +91,8 @@ def get_best_aws_zone(spotBid: Optional[float] = None, nodeType: Optional[str] =
         get_aws_zone_from_boto()
 
 
-def choose_spot_zone(zones: List[str], bid: float,
-                     spot_history: List['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:
+def choose_spot_zone(zones: list[str], bid: float,
+                     spot_history: list['boto.ec2.spotpricehistory.SpotPriceHistory']) -> str:
     """
     Returns the zone to put the spot request based on, in order of priority:
 
@@ -143,7 +143,7 @@ def choose_spot_zone(zones: List[str], bid: float,
     return min(markets_under_bid or markets_over_bid, key=attrgetter('price_deviation')).name
 
 
-def optimize_spot_bid(boto3_ec2: BaseClient, instance_type: str, spot_bid: float, zone_options: List[str]):
+def optimize_spot_bid(boto3_ec2: BaseClient, instance_type: str, spot_bid: float, zone_options: list[str]):
     """
     Check whether the bid is in line with history and makes an effort to place
     the instance in a sensible zone.

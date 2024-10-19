@@ -87,7 +87,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None,
+                              job_environment: Optional[dict[str, str]] = None,
                               gpus: Optional[int] = None):
             return (self.prepareBsub(cpu, memory, jobID) + [command],
                     job_environment)  # pass job_environment to .submitJob()
@@ -161,7 +161,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         status_resonse.append(None)
             return status_resonse
 
-        def getJobExitCode(self, lsfJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def getJobExitCode(self, lsfJobID) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             # the task is set as part of the job ID if using getBatchSystemID()
             if "NOT_SUBMITTED" in lsfJobID:
                 logger.error("bjobs detected job failed to submit")
@@ -186,7 +186,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             return self.fallbackGetJobExitCode(job)
 
-        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
@@ -237,7 +237,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
                 return self.getJobExitCodeBACCT(job)
 
-        def getJobExitCodeBACCT(self,job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def getJobExitCodeBACCT(self,job) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: "
                          "{}".format(job))
@@ -258,7 +258,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "running: {}".format(job))
             return None
 
-        def fallbackGetJobExitCode(self, job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def fallbackGetJobExitCode(self, job) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             args = ["bjobs", "-l", str(job)]
             logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
             stdout = call_command(args)
@@ -293,7 +293,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
+        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> list[str]:
             """
             Make a bsub commandline to execute.
 

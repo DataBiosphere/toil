@@ -237,5 +237,5 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
         RealtimeLogger._startLeader(self.__batchSystem, level=self.__level)
 
     # noinspection PyUnusedLocal
-    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+    def __exit__(self, exc_type: Optional[type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
         RealtimeLogger._stopLeader()

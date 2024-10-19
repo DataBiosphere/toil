@@ -174,7 +174,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def unignoreNode(self, nodeAddress):
         self.ignoredNodes.remove(nodeAddress)
 
-    def issueBatchJob(self, command: str, jobNode: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobNode: JobDescription, job_environment: Optional[dict[str, str]] = None):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus
@@ -714,7 +714,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def getNodes(self,
                  preemptible: Optional[bool] = None,
-                 timeout: Optional[int] = None) -> Dict[str, NodeInfo]:
+                 timeout: Optional[int] = None) -> dict[str, NodeInfo]:
         """
         Return all nodes that match:
          - preemptible status (None includes all)

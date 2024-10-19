@@ -31,7 +31,7 @@ from toil.statsAndLogging import configure_root_logger, set_log_level
 logger = logging.getLogger(__name__)
 
 
-def pack_job(command: str, user_script: Optional[Resource] = None, environment: Optional[Dict[str, str]] = None) -> List[str]:
+def pack_job(command: str, user_script: Optional[Resource] = None, environment: Optional[dict[str, str]] = None) -> list[str]:
     """
     Create a command that runs the given command in an environment. 
 
@@ -45,7 +45,7 @@ def pack_job(command: str, user_script: Optional[Resource] = None, environment: 
     """
     # Make a job dict to send to the executor.
     # TODO: Factor out executor setup from here and Kubernetes and TES
-    job: Dict[str, Any] = {"command": command}
+    job: dict[str, Any] = {"command": command}
     if user_script is not None:
         # If there's a user script resource be sure to send it along
         job['userScript'] = user_script

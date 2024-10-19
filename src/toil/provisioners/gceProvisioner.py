@@ -248,7 +248,7 @@ class GCEProvisioner(AbstractProvisioner):
             instancesToKill = [i for i in instances if i.name in nodeNames]
             self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible, spotBid=None) -> int:
+    def addNodes(self, nodeTypes: set[str], numNodes, preemptible, spotBid=None) -> int:
         assert self._leaderPrivateIP
 
         # We don't support any balancing here so just pick one of the

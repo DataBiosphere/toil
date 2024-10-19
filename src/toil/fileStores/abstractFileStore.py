@@ -23,8 +23,6 @@ from typing import (IO,
                     Callable,
                     ContextManager,
                     Dict,
-                    Generator,
-                    Iterator,
                     List,
                     Literal,
                     Optional,
@@ -34,6 +32,7 @@ from typing import (IO,
                     Union,
                     cast,
                     overload)
+from collections.abc import Generator, Iterator
 
 import dill
 
@@ -78,7 +77,7 @@ class AbstractFileStore(ABC):
     """
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
-    _pendingFileWrites: Set[str] = set()
+    _pendingFileWrites: set[str] = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
     def __init__(
@@ -115,16 +114,16 @@ class AbstractFileStore(ABC):
         self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
         self.jobName: str = str(self.jobDesc)
         self.waitForPreviousCommit = waitForPreviousCommit
-        self.logging_messages: List[Dict[str, Union[int, str]]] = []
-        self.logging_user_streams: List[dict[str, str]] = []
+        self.logging_messages: list[dict[str, Union[int, str]]] = []
+        self.logging_user_streams: list[dict[str, str]] = []
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
         # This is a set of str objects, not FileIDs.
-        self.filesToDelete: Set[str] = set()
+        self.filesToDelete: set[str] = set()
         # Holds records of file ID, or file ID and local path, for reporting
         # the accessed files of failed jobs.
-        self._accessLog: List[Tuple[str, ...]] = []
+        self._accessLog: list[tuple[str, ...]] = []
         # Holds total bytes of observed disk usage for the last job run under open()
         self._job_disk_used: Optional[int] = None
 
@@ -141,7 +140,7 @@ class AbstractFileStore(ABC):
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
-        fileStoreCls: Union[Type["CachingFileStore"], Type["NonCachingFileStore"]] = (
+        fileStoreCls: Union[type["CachingFileStore"], type["NonCachingFileStore"]] = (
             CachingFileStore if caching else NonCachingFileStore
         )
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
@@ -317,7 +316,7 @@ class AbstractFileStore(ABC):
         basename: Optional[str] = None,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[Tuple[WriteWatchingStream, FileID]]:
+    ) -> Iterator[tuple[WriteWatchingStream, FileID]]:
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
@@ -586,7 +585,7 @@ class AbstractFileStore(ABC):
     class _StateFile:
         """Read and write dill-ed state dictionaries from/to a file into a namespace."""
 
-        def __init__(self, stateDict: Dict[str, Any]):
+        def __init__(self, stateDict: dict[str, Any]):
             assert isinstance(stateDict, dict)
             self.__dict__.update(stateDict)
 

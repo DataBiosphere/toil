@@ -16,10 +16,7 @@ import sys
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, List, Optional, TypeVar, Union
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    from typing_extensions import Protocol
+from typing import Protocol
 
 from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
                                         get_batch_system,
@@ -43,8 +40,8 @@ class OptionSetter(Protocol):
         parsing_function: Optional[Callable[[Any], OptionType]] = None,
         check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
         default: Optional[OptionType] = None,
-        env: Optional[List[str]] = None,
-        old_names: Optional[List[str]] = None
+        env: Optional[list[str]] = None,
+        old_names: Optional[list[str]] = None
     ) -> bool:
         ...
 

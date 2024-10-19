@@ -21,7 +21,6 @@ from contextlib import contextmanager
 from typing import (Any,
                     Callable,
                     Dict,
-                    Generator,
                     List,
                     Optional,
                     TextIO,
@@ -29,6 +28,7 @@ from typing import (Any,
                     Type,
                     Union,
                     overload)
+from collections.abc import Generator
 
 from flask import send_from_directory
 from werkzeug.utils import redirect
@@ -122,7 +122,7 @@ class ToilWorkflow:
         """ Return the state of the current run."""
         return self.state_machine.get_current_state()
 
-    def check_on_run(self, task_runner: Type[TaskRunner]) -> None:
+    def check_on_run(self, task_runner: type[TaskRunner]) -> None:
         """
         Check to make sure nothing has gone wrong in the task runner for this
         workflow. If something has, log, and fail the workflow with an error.
@@ -144,7 +144,7 @@ class ToilWorkflow:
         shutil.rmtree(self.scratch_dir)
         # Don't remove state; state needs to persist forever.
 
-    def queue_run(self, task_runner: Type[TaskRunner], request: Dict[str, Any], options: List[str]) -> None:
+    def queue_run(self, task_runner: type[TaskRunner], request: dict[str, Any], options: list[str]) -> None:
         """This workflow should be ready to run. Hand this to the task system."""
         with open(os.path.join(self.scratch_dir, "request.json"), "w") as f:
             # Save the request to disk for get_run_log()
@@ -201,7 +201,7 @@ class ToilWorkflow:
         """
         return self._get_scratch_file_path('bus_messages')
 
-    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, JobStatus], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, JobStatus], Optional[TaskLog]]] = None) -> list[dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
 
@@ -226,7 +226,7 @@ class ToilWorkflow:
             abs_path = os.path.join(self.scratch_dir, path)
             job_statuses = replay_message_bus(abs_path)
             # Compose log objects from recovered job info.
-            logs: List[TaskLog] = []
+            logs: list[TaskLog] = []
             for job_status in job_statuses.values():
                 task: Optional[TaskLog] = {"name": job_status.name, "exit_code": job_status.exit_code}
                 if filter_function is not None:
@@ -250,7 +250,7 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
     """
 
-    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str],
+    def __init__(self, work_dir: str, state_store: Optional[str], options: list[str],
                  dest_bucket_base: Optional[str], bypass_celery: bool = False, wes_dialect: str = "standard") -> None:
         """
         Make a new ToilBackend for serving WES.
@@ -403,7 +403,7 @@ class ToilBackend(WESBackend):
         run.check_on_run(self.task_runner)
         return run
 
-    def get_runs(self) -> Generator[Tuple[str, str], None, None]:
+    def get_runs(self) -> Generator[tuple[str, str], None, None]:
         """ A generator of a list of run ids and their state."""
         if not os.path.exists(self.work_dir):
             return
@@ -423,7 +423,7 @@ class ToilBackend(WESBackend):
         return self._get_run(run_id, should_exists=True).get_state()
 
     @handle_errors
-    def get_service_info(self) -> Dict[str, Any]:
+    def get_service_info(self) -> dict[str, Any]:
         """ Get information about the Workflow Execution Service."""
 
         state_counts = Counter(state for _, state in self.get_runs())
@@ -460,7 +460,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def list_runs(self, page_size: Optional[int] = None, page_token: Optional[str] = None) -> Dict[str, Any]:
+    def list_runs(self, page_size: Optional[int] = None, page_token: Optional[str] = None) -> dict[str, Any]:
         """ List the workflow runs."""
         # TODO: implement pagination
         return {
@@ -474,7 +474,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def run_workflow(self) -> Dict[str, str]:
+    def run_workflow(self) -> dict[str, str]:
         """ Run a workflow."""
         run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
@@ -527,7 +527,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def get_run_log(self, run_id: str) -> Dict[str, Any]:
+    def get_run_log(self, run_id: str) -> dict[str, Any]:
         """ Get detailed info about a workflow run."""
         run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
@@ -589,7 +589,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def cancel_run(self, run_id: str) -> Dict[str, str]:
+    def cancel_run(self, run_id: str) -> dict[str, str]:
         """ Cancel a running workflow."""
         run = self._get_run(run_id, should_exists=True)
 
@@ -613,7 +613,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def get_run_status(self, run_id: str) -> Dict[str, str]:
+    def get_run_status(self, run_id: str) -> dict[str, str]:
         """
         Get quick status info about a workflow run, returning a simple result
         with the overall state of the workflow run.

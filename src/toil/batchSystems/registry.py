@@ -16,7 +16,8 @@ import importlib
 import logging
 import pkgutil
 import warnings
-from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Tuple, Type
+from typing import TYPE_CHECKING, Callable, Dict, List, Tuple, Type
+from collections.abc import Sequence
 
 from toil.lib.compatibility import deprecated
 from toil.lib.memoize import memoize
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Plugin system/API
 #####
 
-def add_batch_system_factory(key: str, class_factory: Callable[[], Type['AbstractBatchSystem']]):
+def add_batch_system_factory(key: str, class_factory: Callable[[], type['AbstractBatchSystem']]):
     """
     Adds a batch system to the registry for workflow or plugin-supplied batch systems.
 
@@ -47,7 +48,7 @@ def get_batch_systems() -> Sequence[str]:
 
     return _registry_keys
 
-def get_batch_system(key: str) -> Type['AbstractBatchSystem']:
+def get_batch_system(key: str) -> type['AbstractBatchSystem']:
     """
     Get a batch system class by name.
 
@@ -110,7 +111,7 @@ def kubernetes_batch_system_factory():
 # Registry implementation
 #####
 
-_registry: Dict[str, Callable[[], Type["AbstractBatchSystem"]]] = {
+_registry: dict[str, Callable[[], type["AbstractBatchSystem"]]] = {
     'aws_batch'      : aws_batch_batch_system_factory,
     'single_machine' : single_machine_batch_system_factory,
     'grid_engine'    : gridengine_batch_system_factory,
@@ -165,7 +166,7 @@ def __getattr__(name):
 
 
 @deprecated(new_function_name="add_batch_system_factory")
-def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['AbstractBatchSystem']]):
+def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], type['AbstractBatchSystem']]):
     """
     Deprecated method to add a batch system.
     """
@@ -180,7 +181,7 @@ def addBatchSystemFactory(key: str, batchSystemFactory: Callable[[], Type['Abstr
 # the globals because module-level globals are their own references, so we
 # can't touch this module's global name bindings from a client module.
 
-def save_batch_system_plugin_state() -> Tuple[List[str], Dict[str, Callable[[], Type['AbstractBatchSystem']]]]:
+def save_batch_system_plugin_state() -> tuple[list[str], dict[str, Callable[[], type['AbstractBatchSystem']]]]:
     """
     Return a snapshot of the plugin registry that can be restored to remove
     added plugins. Useful for testing the plugin system in-process with other
@@ -190,7 +191,7 @@ def save_batch_system_plugin_state() -> Tuple[List[str], Dict[str, Callable[[], 
     snapshot = (list(_registry_keys), dict(_registry))
     return snapshot
 
-def restore_batch_system_plugin_state(snapshot: Tuple[List[str], Dict[str, Callable[[], Type['AbstractBatchSystem']]]]):
+def restore_batch_system_plugin_state(snapshot: tuple[list[str], dict[str, Callable[[], type['AbstractBatchSystem']]]]):
     """
     Restore the batch system registry state to a snapshot from
     save_batch_system_plugin_state().

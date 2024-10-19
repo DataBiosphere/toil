@@ -59,10 +59,7 @@ from toil.options.cwl import add_cwl_options
 from toil.options.runner import add_runner_options
 from toil.options.wdl import add_wdl_options
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import set_batchsystem_options
@@ -174,15 +171,15 @@ class Config:
 
     # Autoscaling options
     provisioner: Optional[str]
-    nodeTypes: List[Tuple[Set[str], Optional[float]]]
-    minNodes: List[int]
-    maxNodes: List[int]
+    nodeTypes: list[tuple[set[str], Optional[float]]]
+    minNodes: list[int]
+    maxNodes: list[int]
     targetTime: float
     betaInertia: float
     scaleInterval: int
     preemptibleCompensation: float
     nodeStorage: int
-    nodeStorageOverrides: List[str]
+    nodeStorageOverrides: list[str]
     metrics: bool
     assume_zero_overhead: bool
 
@@ -201,7 +198,7 @@ class Config:
     # TODO: These names are generated programmatically in
     # Requirer._fetchRequirement so we can't use snake_case until we fix
     # that (and add compatibility getters/setters?)
-    defaultAccelerators: List['AcceleratorRequirement']
+    defaultAccelerators: list['AcceleratorRequirement']
     maxCores: int
     maxMemory: int
     maxDisk: int
@@ -223,7 +220,7 @@ class Config:
     realTimeLogging: bool
 
     # Misc
-    environment: Dict[str, str]
+    environment: dict[str, str]
     disableChaining: bool
     disableJobStoreChecksumVerification: bool
     sseKey: Optional[str]
@@ -284,7 +281,7 @@ class Config:
         """Creates a config object from the options object."""
 
         def set_option(option_name: str,
-                       old_names: Optional[List[str]] = None) -> None:
+                       old_names: Optional[list[str]] = None) -> None:
             """
             Determine the correct value for the given option.
 
@@ -539,7 +536,7 @@ def generate_config(filepath: str) -> None:
         :return: CommentedMap of what to put into the config file
         """
         data = CommentedMap()  # to preserve order
-        group_title_key: Dict[str, str] = dict()
+        group_title_key: dict[str, str] = dict()
         for action in parser._actions:
             if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
                 continue
@@ -685,14 +682,14 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         raise RuntimeError(
             f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
     try:
-        with open(DEFAULT_CONFIG_FILE, "r") as f:
+        with open(DEFAULT_CONFIG_FILE) as f:
             yaml = YAML(typ="safe")
             s = yaml.load(f)
             logger.debug("Initialized default configuration: %s", json.dumps(s))
     except:
         # Something went wrong reading the default config, so dump its
         # contents to the log.
-        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
+        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE).read())
         raise
 
     # Add base toil options
@@ -824,7 +821,7 @@ class Toil(ContextManager["Toil"]):
         """
         super().__init__()
         self.options = options
-        self._jobCache: Dict[Union[str, "TemporaryID"], "JobDescription"] = {}
+        self._jobCache: dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager: bool = False
         self._inRestart: bool = False
 
@@ -868,7 +865,7 @@ class Toil(ContextManager["Toil"]):
 
     def __exit__(
             self,
-            exc_type: Optional[Type[BaseException]],
+            exc_type: Optional[type[BaseException]],
             exc_val: Optional[BaseException],
             exc_tb: Optional[TracebackType],
     ) -> Literal[False]:
@@ -1027,7 +1024,7 @@ class Toil(ContextManager["Toil"]):
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
     @staticmethod
-    def parseLocator(locator: str) -> Tuple[str, str]:
+    def parseLocator(locator: str) -> tuple[str, str]:
         if locator[0] in '/.' or ':' not in locator:
             return 'file', locator
         else:
@@ -1564,7 +1561,7 @@ class ToilMetrics:
         # a function that can cast.
         MessageType = TypeVar('MessageType')
 
-        def get_listener(message_type: Type[MessageType]) -> Callable[[MessageType], None]:
+        def get_listener(message_type: type[MessageType]) -> Callable[[MessageType], None]:
             return cast(Callable[[MessageType], None], TARGETS[message_type])
 
         # Then set up the listeners.
@@ -1713,7 +1710,7 @@ def getDirSizeRecursively(dirPath: str) -> int:
         return total_size
 
 
-def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
+def getFileSystemSize(dirPath: str) -> tuple[int, int]:
     """
     Return the free space, and total size of the file system hosting `dirPath`.
 

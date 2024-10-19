@@ -59,7 +59,7 @@ CLUSTER_LAUNCHING_PERMISSIONS = [
     "ec2:TerminateInstances",
 ]
 
-AllowedActionCollection = Dict[str, Dict[str, List[str]]]
+AllowedActionCollection = dict[str, dict[str, list[str]]]
 
 
 @retry(errors=[AWSServerErrors])
@@ -99,7 +99,7 @@ def delete_iam_role(role_name: str, region: Optional[str] = None, quiet: bool = 
     printq(f'Role {role_name} successfully deleted.', quiet)
 
 # "PolicyDocumentDictTypeDef"
-def create_iam_role(role_name: str, assume_role_policy_document: str, policies: Dict[str, Any], region: Optional[str] = None) -> str:
+def create_iam_role(role_name: str, assume_role_policy_document: str, policies: dict[str, Any], region: Optional[str] = None) -> str:
     """
     Creates an AWS IAM role. Any separate policies are detached from the role, and any inline policies are deleted.
 
@@ -166,7 +166,7 @@ def add_to_action_collection(a: AllowedActionCollection, b: AllowedActionCollect
     return to_return
 
 
-def policy_permissions_allow(given_permissions: AllowedActionCollection, required_permissions: List[str] = []) -> bool:
+def policy_permissions_allow(given_permissions: AllowedActionCollection, required_permissions: list[str] = []) -> bool:
     """
     Check whether given set of actions are a subset of another given set of actions, returns true if they are
     otherwise false and prints a warning.
@@ -193,7 +193,7 @@ def policy_permissions_allow(given_permissions: AllowedActionCollection, require
     return True
 
 
-def permission_matches_any(perm: str, list_perms: List[str]) -> bool:
+def permission_matches_any(perm: str, list_perms: list[str]) -> bool:
     """
     Takes a permission and checks whether it's contained within a list of given permissions
     Returns True if it is otherwise False
@@ -242,7 +242,7 @@ def get_actions_from_policy_document(
 
 
 def allowed_actions_attached(
-    iam: "IAMClient", attached_policies: List["AttachedPolicyTypeDef"]
+    iam: "IAMClient", attached_policies: list["AttachedPolicyTypeDef"]
 ) -> AllowedActionCollection:
     """
     Go through all attached policy documents and create an AllowedActionCollection representing granted permissions.
@@ -263,7 +263,7 @@ def allowed_actions_attached(
 
 
 def allowed_actions_roles(
-    iam: "IAMClient", policy_names: List[str], role_name: str
+    iam: "IAMClient", policy_names: list[str], role_name: str
 ) -> AllowedActionCollection:
     """
     Returns a dictionary containing a list of all aws actions allowed for a given role.
@@ -293,7 +293,7 @@ def allowed_actions_roles(
 
 
 def collect_policy_actions(
-    policy_documents: List[Union[str, "PolicyDocumentDictTypeDef"]]
+    policy_documents: list[Union[str, "PolicyDocumentDictTypeDef"]]
 ) -> AllowedActionCollection:
     """
     Collect all of the actions allowed by the given policy documents into one AllowedActionCollection.
@@ -310,7 +310,7 @@ def collect_policy_actions(
 
 
 def allowed_actions_user(
-    iam: "IAMClient", policy_names: List[str], user_name: str
+    iam: "IAMClient", policy_names: list[str], user_name: str
 ) -> AllowedActionCollection:
     """
     Gets all allowed actions for a user given by user_name, returns a dictionary, keyed by resource,
@@ -331,7 +331,7 @@ def allowed_actions_user(
 
 
 def allowed_actions_group(
-    iam: "IAMClient", policy_names: List[str], group_name: str
+    iam: "IAMClient", policy_names: list[str], group_name: str
 ) -> AllowedActionCollection:
     """
     Gets all allowed actions for a group given by group_name, returns a dictionary, keyed by resource,
@@ -405,7 +405,7 @@ def get_policy_permissions(region: str) -> AllowedActionCollection:
     logger.debug("Allowed actions: %s", allowed_actions)
     return allowed_actions
 
-@lru_cache()
+@lru_cache
 def get_aws_account_num() -> Optional[str]:
     """
     Returns AWS account num

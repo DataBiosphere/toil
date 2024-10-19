@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # Unit name of the job
 # Environment dict for the job
 # Accelerator requirements for the job
-JobTuple = Tuple[int, float, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
+JobTuple = tuple[int, float, int, str, str, dict[str, str], list[AcceleratorRequirement]]
 
 class ExceededRetryAttempts(Exception):
     def __init__(self):
@@ -77,11 +77,11 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
             self.killedJobsQueue = killedJobsQueue
-            self.waitingJobs: List[JobTuple] = list()
+            self.waitingJobs: list[JobTuple] = list()
             self.runningJobs = set()
             # TODO: Why do we need a lock for this? We have the GIL.
             self.runningJobsLock = Lock()
-            self.batchJobIDs: Dict[int, str] = dict()
+            self.batchJobIDs: dict[int, str] = dict()
             self._checkOnJobsCache = None
             self._checkOnJobsTimestamp = None
             self.exception = None
@@ -229,7 +229,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             return activity
 
         def _handle_job_status(
-            self, job_id: int, status: Union[int, Tuple[int, Optional[BatchJobExitReason]], None], activity: bool
+            self, job_id: int, status: Union[int, tuple[int, Optional[BatchJobExitReason]], None], activity: bool
         ) -> bool:
             """
             Helper method for checkOnJobs to handle job statuses
@@ -285,7 +285,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                 # signalling exception in the thread as we expect the thread to
                 # always be running for the duration of the workflow
 
-        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> List[Union[int, Tuple[int, Optional[BatchJobExitReason]], None]]:
+        def coalesce_job_exit_codes(self, batch_job_id_list: list) -> list[Union[int, tuple[int, Optional[BatchJobExitReason]], None]]:
             """
             Returns exit codes and possibly exit reasons for a list of jobs, or None if they are running.
 
@@ -312,8 +312,8 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None,
-                              gpus: Optional[int] = None) -> List[str]:
+                              job_environment: Optional[dict[str, str]] = None,
+                              gpus: Optional[int] = None) -> list[str]:
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
@@ -363,7 +363,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
         @abstractmethod
-        def getJobExitCode(self, batchJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def getJobExitCode(self, batchJobID) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Returns job exit code and possibly an instance of abstractBatchSystem.BatchJobExitReason.
 
@@ -415,7 +415,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
         return gpus
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:

@@ -110,7 +110,7 @@ def is_number(s: str) -> bool:
     return False
 
 
-def parse_storage(storage_info: str) -> Union[List[int], Tuple[Union[int, float], float]]:
+def parse_storage(storage_info: str) -> Union[list[int], tuple[Union[int, float], float]]:
     """
     Parses EC2 JSON storage param string into a number.
 
@@ -176,7 +176,7 @@ def download_region_json(filename: str, region: str = 'us-east-1') -> None:
                 file.write(data)
 
 
-def reduce_region_json_size(filename:str) -> List[Dict[str, Any]]:
+def reduce_region_json_size(filename:str) -> list[dict[str, Any]]:
     """
     Deletes information in the json file that we don't need, and rewrites it.  This makes the file smaller.
 
@@ -185,7 +185,7 @@ def reduce_region_json_size(filename:str) -> List[Dict[str, Any]]:
     (with AWS's new Query API), but even those may eventually one day grow ridiculously large, so we do what we can to
     keep the file sizes down (and thus also the amount loaded into memory) to keep this script working for longer.
     """
-    with open(filename, 'r') as f:
+    with open(filename) as f:
         aws_products = json.loads(f.read())['products']
     aws_product_list = list()
     for k in list(aws_products.keys()):
@@ -229,13 +229,13 @@ def updateStaticEC2Instances() -> None:
         os.mkdir(region_json_dirname)
 
     currentEC2List = []
-    instancesByRegion: Dict[str, List[str]] = {}
+    instancesByRegion: dict[str, list[str]] = {}
     for region in EC2Regions.keys():
         region_json = os.path.join(region_json_dirname, f'{region}.json')
 
         if os.path.exists(region_json):
             try:
-                with open(region_json, 'r') as f:
+                with open(region_json) as f:
                     aws_products = json.loads(f.read())['aws']
                 print(f'Reusing previously downloaded json @: {region_json}')
             except:

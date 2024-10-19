@@ -1427,7 +1427,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
         from toil.lib.threading import cpu_count
 
-        threads: Tuple[int, ...] = (2, cpu_count()) if cpu_count() > 2 else (2, )
+        threads: tuple[int, ...] = (2, cpu_count()) if cpu_count() > 2 else (2, )
         num_of_files: int = 5
         size: int = 1 << 16 + 1
 

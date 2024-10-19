@@ -21,14 +21,13 @@ from typing import (
     Callable,
     ContextManager,
     Dict,
-    Iterable,
-    Iterator,
     List,
     Optional,
     Set,
     Tuple,
     cast,
 )
+from collections.abc import Iterable, Iterator
 from urllib.parse import ParseResult
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
@@ -144,8 +143,8 @@ def delete_s3_bucket(
             # defined for them in the stubs to express that. See
             # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
             # have to do gymnastics to get them into the same list.
-            to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
-                                              cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
+            to_delete: list[dict[str, Any]] = cast(list[dict[str, Any]], response.get('Versions', [])) + \
+                                              cast(list[dict[str, Any]], response.get('DeleteMarkers', []))
             for entry in to_delete:
                 printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
                 s3_resource.meta.client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
@@ -220,7 +219,7 @@ class NoBucketLocationError(Exception):
     """
     pass
 
-def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
+def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[set[int]] = None) -> str:
     """
     Get the AWS region name associated with the given S3 bucket, or raise NoBucketLocationError.
 
@@ -270,7 +269,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
 
     # Compose a list of strategies we want to try in order, which may work.
     # None is an acceptable return type that actually means something.
-    strategies: List[Callable[[], Optional[str]]] = []
+    strategies: list[Callable[[], Optional[str]]] = []
     strategies.append(attempt_get_bucket_location)
     if not endpoint_url:
         # We should only try to talk to us-east-1 if we don't have a custom
@@ -278,7 +277,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         strategies.append(attempt_get_bucket_location_from_us_east_1)
     strategies.append(attempt_head_bucket)
 
-    error_logs: List[Tuple[int, str]] = []
+    error_logs: list[tuple[int, str]] = []
     for attempt in retry_s3():
         with attempt:
             for i, strategy in enumerate(strategies):
@@ -377,7 +376,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
 
 
 @retry(errors=[AWSServerErrors])
-def list_objects_for_url(url: ParseResult) -> List[str]:
+def list_objects_for_url(url: ParseResult) -> list[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be
         supplemented with a trailing slash if it is missing.
@@ -421,7 +420,7 @@ def list_objects_for_url(url: ParseResult) -> List[str]:
         logger.debug('Found in %s items: %s', url, listing)
         return listing
 
-def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
+def flatten_tags(tags: dict[str, str]) -> list[dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
@@ -450,7 +449,7 @@ def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: s
         yield from page.get(result_attribute_name, [])
 
 
-def get_item_from_attributes(attributes: List["AttributeTypeDef"], name: str) -> Any:
+def get_item_from_attributes(attributes: list["AttributeTypeDef"], name: str) -> Any:
     """
     Given a list of attributes, find the attribute associated with the name and return its corresponding value.
 

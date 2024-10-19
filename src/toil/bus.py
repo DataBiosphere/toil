@@ -72,13 +72,13 @@ from typing import (IO,
                     Any,
                     Callable,
                     Dict,
-                    Iterator,
                     List,
                     NamedTuple,
                     Optional,
                     Type,
                     TypeVar,
                     cast)
+from collections.abc import Iterator
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
@@ -240,7 +240,7 @@ def message_to_bytes(message: NamedTuple) -> bytes:
         if isinstance(item, (int, float, bool)) or item is None:
             # This also handles e.g. values from an IntEnum, where the type extends int.
             # They might replace __str__() but we hope they use a compatible __format__()
-            parts.append(f"{item}".encode('utf-8'))
+            parts.append(f"{item}".encode())
         elif isinstance(item, str):
             parts.append(item.encode('unicode_escape'))
         else:
@@ -251,7 +251,7 @@ def message_to_bytes(message: NamedTuple) -> bytes:
 
 # TODO: Messages have to be named tuple types.
 MessageType = TypeVar('MessageType')
-def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageType:
+def bytes_to_message(message_type: type[MessageType], data: bytes) -> MessageType:
     """
     Convert bytes from message_to_bytes back to a message of the given type.
     """
@@ -260,12 +260,12 @@ def bytes_to_message(message_type: Type[MessageType], data: bytes) -> MessageTyp
     # Get a mapping from field name to type in the named tuple.
     # We need to check a couple different fields because this moved in a recent
     # Python 3 release.
-    field_to_type: Optional[Dict[str, type]] = cast(Optional[Dict[str, type]],
+    field_to_type: Optional[dict[str, type]] = cast(Optional[dict[str, type]],
                                                     getattr(message_type, '__annotations__',
                                                             getattr(message_type, '_field_types', None)))
     if field_to_type is None:
         raise RuntimeError(f"Cannot get field types from {message_type}")
-    field_names: List[str] = getattr(message_type, '_fields')
+    field_names: list[str] = getattr(message_type, '_fields')
 
     if len(field_names) != len(parts):
         raise RuntimeError(f"Cannot parse {field_names} from {parts}")
@@ -366,7 +366,7 @@ class MessageBus:
     # This next function takes callables that take things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
     MessageType = TypeVar('MessageType', bound='NamedTuple')
-    def subscribe(self, message_type: Type[MessageType], handler: Callable[[MessageType], Any]) -> Listener:
+    def subscribe(self, message_type: type[MessageType], handler: Callable[[MessageType], Any]) -> Listener:
         """
         Register the given callable to be called when messages of the given type are sent.
         It will be called with messages sent after the subscription is created.
@@ -390,7 +390,7 @@ class MessageBus:
         setattr(listener, 'handler_wrapper', handler_wraper)
         return listener
 
-    def connect(self, wanted_types: List[type]) -> 'MessageBusConnection':
+    def connect(self, wanted_types: list[type]) -> 'MessageBusConnection':
         """
         Get a connection object that serves as an inbox for messages of the
         given types.
@@ -456,7 +456,7 @@ class MessageBus:
     # union of the types passed in message_types, in a way that MyPy can
     # understand.
     @classmethod
-    def scan_bus_messages(cls, stream: IO[bytes], message_types: List[Type[NamedTuple]]) -> Iterator[Any]:
+    def scan_bus_messages(cls, stream: IO[bytes], message_types: list[type[NamedTuple]]) -> Iterator[Any]:
         """
         Get an iterator over all messages in the given log stream of the given
         types, in order. Discard any trailing partial messages.
@@ -522,16 +522,16 @@ class MessageInbox(MessageBusClient):
         super().__init__()
 
         # This holds all the messages on the bus, organized by type.
-        self._messages_by_type: Dict[type, List[Any]] = {}
+        self._messages_by_type: dict[type, list[Any]] = {}
         # This holds listeners for all the types, when we connect to a bus
-        self._listeners_by_type: Dict[type, Listener] = {}
+        self._listeners_by_type: dict[type, Listener] = {}
 
         # We define a handler for messages
         def on_message(message: Any) -> None:
             self._messages_by_type[type(message)].append(message)
         self._handler = on_message
 
-    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
+    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: list[type]) -> None:
         """
         Connect to the given bus and collect the given message types.
 
@@ -577,7 +577,7 @@ class MessageInbox(MessageBusClient):
     # This next function returns things of the type that was passed in as a
     # runtime argument, which we can explain to MyPy using a TypeVar and Type[]
     MessageType = TypeVar('MessageType')
-    def for_each(self, message_type: Type[MessageType]) -> Iterator[MessageType]:
+    def for_each(self, message_type: type[MessageType]) -> Iterator[MessageType]:
         """
         Loop over all messages currently pending of the given type. Each that
         is handled without raising an exception will be removed.
@@ -657,7 +657,7 @@ class MessageBusConnection(MessageInbox, MessageOutbox):
         """
         super().__init__()
 
-    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: List[type]) -> None:
+    def _set_bus_and_message_types(self, bus: MessageBus, wanted_types: list[type]) -> None:
         """
         Connect to the given bus and collect the given message types.
 
@@ -680,7 +680,7 @@ class JobStatus:
     job_store_id: str
     name: str
     exit_code: int
-    annotations: Dict[str, str]
+    annotations: dict[str, str]
     toil_batch_id: int
     external_batch_id: str
     batch_system: str
@@ -691,7 +691,7 @@ class JobStatus:
     def is_running(self) -> bool:
         return self.exit_code < 0 and self.job_store_id != ""  # if the exit code is -1 and the job id is specified, we assume the job is running
 
-def replay_message_bus(path: str) -> Dict[str, JobStatus]:
+def replay_message_bus(path: str) -> dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.
 
@@ -707,7 +707,7 @@ def replay_message_bus(path: str) -> Dict[str, JobStatus]:
     is running.
     """
 
-    job_statuses: Dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
+    job_statuses: dict[str, JobStatus] = collections.defaultdict(lambda: JobStatus('', '', -1, {}, -1, '', ''))
     batch_to_job_id = {}
     try:
         with open(path, 'rb') as log_stream:
