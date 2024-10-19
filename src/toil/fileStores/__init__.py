@@ -28,7 +28,7 @@ class FileID(str):
     the job store if unavailable in the ID.
     """
 
-    def __new__(cls, fileStoreID: str, *args: Any) -> 'FileID':
+    def __new__(cls, fileStoreID: str, *args: Any) -> "FileID":
         return super().__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID: str, size: int, executable: bool = False) -> None:
@@ -43,18 +43,18 @@ class FileID(str):
         return f'{self.size}:{"1" if self.executable else "0"}:{self}'
 
     @classmethod
-    def forPath(cls, fileStoreID: str, filePath: str) -> 'FileID':
+    def forPath(cls, fileStoreID: str, filePath: str) -> "FileID":
         executable = os.stat(filePath).st_mode & stat.S_IXUSR != 0
         return cls(fileStoreID, os.stat(filePath).st_size, executable)
 
     @classmethod
-    def unpack(cls, packedFileStoreID: str) -> 'FileID':
+    def unpack(cls, packedFileStoreID: str) -> "FileID":
         """Unpack the result of pack() into a FileID object."""
         # Only separate twice in case the FileID itself has colons in it
-        vals = packedFileStoreID.split(':', 2)
+        vals = packedFileStoreID.split(":", 2)
         # Break up the packed value
         size = int(vals[0])
-        executable = (vals[1] == "1")
+        executable = vals[1] == "1"
         value = vals[2]
         # Create the FileID
         return cls(value, size, executable)

@@ -31,8 +31,7 @@ def check_cwltool_version() -> None:
     try:
         # Setuptools 66+ will raise this if any package on the system has a version that isn't PEP440.
         # See https://github.com/pypa/setuptools/issues/3772
-        from setuptools.extern.packaging.version import \
-            InvalidVersion  # type: ignore
+        from setuptools.extern.packaging.version import InvalidVersion  # type: ignore
     except ImportError:
         # It's not clear that this exception is really part fo the public API, so fake it.
         class InvalidVersion(Exception):  # type: ignore

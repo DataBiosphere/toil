@@ -29,6 +29,7 @@ class GunicornApplication(BaseApplication):  # type: ignore
 
     For more details, see: https://docs.gunicorn.org/en/latest/custom.html
     """
+
     def __init__(self, app: object, options: Optional[dict[str, Any]] = None):
         self.options = options or {}
         self.application = app

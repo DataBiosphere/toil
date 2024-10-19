@@ -17,8 +17,7 @@ from typing import Optional
 
 from toil.bus import JobUpdatedMessage, MessageBus
 from toil.job import CheckpointJobDescription, JobDescription
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException)
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,7 @@ class ToilState:
     def load_workflow(
         self,
         rootJob: JobDescription,
-        jobCache: Optional[dict[str, JobDescription]] = None
+        jobCache: Optional[dict[str, JobDescription]] = None,
     ) -> None:
         """
         Load the workflow rooted at the given job.
@@ -281,7 +280,11 @@ class ToilState:
             )
         else:
             self.successorCounts[predecessor_id] -= 1
-            logger.debug("Successors: one fewer for %s, now have %d", predecessor_id, self.successorCounts[predecessor_id])
+            logger.debug(
+                "Successors: one fewer for %s, now have %d",
+                predecessor_id,
+                self.successorCounts[predecessor_id],
+            )
             if self.successorCounts[predecessor_id] == 0:
                 del self.successorCounts[predecessor_id]
 
@@ -295,7 +298,6 @@ class ToilState:
             return 0
         else:
             return self.successorCounts[predecessor_id]
-
 
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
@@ -330,7 +332,10 @@ class ToilState:
             # Set the job updated because we should be able to make progress on it.
             self.bus.publish(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
 
-            if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
+            if (
+                isinstance(jobDesc, CheckpointJobDescription)
+                and jobDesc.checkpoint is not None
+            ):
                 jobDesc.restore_checkpoint()
 
         else:  # There exist successors
@@ -345,7 +350,9 @@ class ToilState:
                 jobDesc.nextSuccessors() or set()
             )
 
-            def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
+            def processSuccessorWithMultiplePredecessors(
+                successor: JobDescription,
+            ) -> None:
                 # If jobDesc is not reported as complete by the successor
                 if jobDesc.jobStoreID not in successor.predecessorsFinished:
 
@@ -354,11 +361,15 @@ class ToilState:
 
                 # If the successor has no predecessors to finish
                 if len(successor.predecessorsFinished) > successor.predecessorNumber:
-                    raise RuntimeError("There are more finished predecessors than possible.")
+                    raise RuntimeError(
+                        "There are more finished predecessors than possible."
+                    )
                 if len(successor.predecessorsFinished) == successor.predecessorNumber:
 
                     # It is ready to be run, so remove it from the set of waiting jobs
-                    self.jobsToBeScheduledWithMultiplePredecessors.remove(successorJobStoreID)
+                    self.jobsToBeScheduledWithMultiplePredecessors.remove(
+                        successorJobStoreID
+                    )
 
                     # Recursively consider the successor
                     self._buildToilState(successor)
@@ -383,9 +394,16 @@ class ToilState:
 
                         # We put the successor job in the set of waiting successor
                         # jobs with multiple predecessors
-                        if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
-                            raise RuntimeError("Failed to schedule the successor job. The successor job is already scheduled.")
-                        self.jobsToBeScheduledWithMultiplePredecessors.add(successorJobStoreID)
+                        if (
+                            successorJobStoreID
+                            in self.jobsToBeScheduledWithMultiplePredecessors
+                        ):
+                            raise RuntimeError(
+                                "Failed to schedule the successor job. The successor job is already scheduled."
+                            )
+                        self.jobsToBeScheduledWithMultiplePredecessors.add(
+                            successorJobStoreID
+                        )
 
                         # Process successor
                         processSuccessorWithMultiplePredecessors(successor)
@@ -399,14 +417,22 @@ class ToilState:
                     # We've already seen the successor
 
                     # Add the job as a predecessor
-                    if jobDesc.jobStoreID in self.successor_to_predecessors[successorJobStoreID]:
-                        raise RuntimeError("Failed to add the job as a predecessor. The job is already added as a predecessor.")
+                    if (
+                        jobDesc.jobStoreID
+                        in self.successor_to_predecessors[successorJobStoreID]
+                    ):
+                        raise RuntimeError(
+                            "Failed to add the job as a predecessor. The job is already added as a predecessor."
+                        )
                     self.successor_to_predecessors[successorJobStoreID].add(
                         str(jobDesc.jobStoreID)
                     )
 
                     # If the successor has multiple predecessors
-                    if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
+                    if (
+                        successorJobStoreID
+                        in self.jobsToBeScheduledWithMultiplePredecessors
+                    ):
 
                         # Get the successor from cache
                         successor = self.get_job(successorJobStoreID)
