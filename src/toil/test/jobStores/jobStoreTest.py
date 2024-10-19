@@ -28,7 +28,7 @@ from itertools import chain, islice
 from queue import Queue
 from tempfile import mkstemp
 from threading import Thread
-from typing import Any, Tuple
+from typing import Any
 from urllib.request import Request, urlopen
 
 import pytest

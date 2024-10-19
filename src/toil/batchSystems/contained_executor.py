@@ -22,7 +22,7 @@ import os
 import pickle
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from toil.batchSystems.abstractBatchSystem import EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.resource import Resource

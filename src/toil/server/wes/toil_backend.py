@@ -20,12 +20,8 @@ from collections import Counter
 from contextlib import contextmanager
 from typing import (Any,
                     Callable,
-                    Dict,
-                    List,
                     Optional,
                     TextIO,
-                    Tuple,
-                    Type,
                     Union,
                     overload)
 from collections.abc import Generator

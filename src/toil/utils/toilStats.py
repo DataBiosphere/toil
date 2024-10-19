@@ -18,7 +18,7 @@ import math
 import sys
 from argparse import ArgumentParser, Namespace
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, TextIO, Union
+from typing import Any, Callable, Optional, TextIO, Union
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job

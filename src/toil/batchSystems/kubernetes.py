@@ -34,13 +34,8 @@ from queue import Empty, Queue
 from threading import Condition, Event, RLock, Thread
 from typing import (Any,
                     Callable,
-                    Dict,
-                    List,
                     Literal,
                     Optional,
-                    Set,
-                    Tuple,
-                    Type,
                     TypeVar,
                     Union,
                     cast,

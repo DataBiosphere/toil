@@ -20,10 +20,9 @@
 
 import json
 import logging
-import sys
 import zipfile
 from os import path
-from typing import IO, List, Optional, cast
+from typing import IO, Optional, cast
 
 from typing import TypedDict
 

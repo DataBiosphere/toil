@@ -22,8 +22,6 @@ from typing import (IO,
                     Callable,
                     ContextManager,
                     DefaultDict,
-                    Dict,
-                    List,
                     Literal,
                     Optional,
                     Union,
@@ -119,7 +117,6 @@ class NonCachingFileStore(AbstractFileStore):
                 os.remove(self.jobStateFile)
             except FileNotFoundError:
                 logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
-                pass
 
     def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)

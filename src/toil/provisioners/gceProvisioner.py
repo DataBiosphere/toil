@@ -17,7 +17,7 @@ import os
 import threading
 import time
 import uuid
-from typing import Optional, Set
+from typing import Optional
 
 import requests
 from libcloud.compute.drivers.gce import GCEFailedNode

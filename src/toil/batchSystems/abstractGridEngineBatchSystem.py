@@ -17,7 +17,7 @@ from abc import ABCMeta, abstractmethod
 from datetime import datetime
 from queue import Empty, Queue
 from threading import Lock, Thread
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
@@ -26,7 +26,7 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
 from toil.job import JobDescription, AcceleratorRequirement
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.retry import old_retry, DEFAULT_DELAYS, retry
+from toil.lib.retry import old_retry, DEFAULT_DELAYS
 
 logger = logging.getLogger(__name__)
 

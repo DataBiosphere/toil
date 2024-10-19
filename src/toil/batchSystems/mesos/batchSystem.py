@@ -22,7 +22,7 @@ import time
 import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 from urllib.parse import quote_plus
 from urllib.request import urlopen
 

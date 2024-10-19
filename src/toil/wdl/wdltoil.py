@@ -32,19 +32,15 @@ import textwrap
 import uuid
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
-from tempfile import mkstemp, gettempdir
+from tempfile import mkstemp
 from typing import (Any,
                     Callable,
-                    Dict,
-                    List,
                     Optional,
-                    Set,
-                    Tuple,
-                    Type,
                     TypeVar,
                     Union,
                     cast,
-                    TypedDict, IO)
+                    TypedDict,
+                    IO)
 from collections.abc import Generator, Iterable, Iterator, Sequence
 
 if sys.version_info < (3, 11):
@@ -52,7 +48,6 @@ if sys.version_info < (3, 11):
 else:
     # NotRequired is recommended for TypedDicts over Optional but was introduced in Python 3.11
     from typing import NotRequired
-from mypy_extensions import Arg, DefaultArg
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
 from functools import partial
@@ -2715,7 +2710,7 @@ class WDLTaskJob(WDLBaseJob):
 
                 try:
                     # miniwdl depends on docker so this should be available but check just in case
-                    import docker
+                    pass
                     # docker stubs are still WIP: https://github.com/docker/docker-py/issues/2796
                     from docker.types import Mount  # type: ignore[import-untyped]
 

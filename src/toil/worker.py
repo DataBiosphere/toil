@@ -26,7 +26,7 @@ import sys
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Any, Callable, List, Set, Optional
+from typing import Any, Callable, Optional
 from collections.abc import Iterator
 
 from configargparse import ArgParser

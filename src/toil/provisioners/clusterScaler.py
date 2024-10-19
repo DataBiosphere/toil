@@ -21,11 +21,7 @@ from collections import defaultdict
 from typing import (TYPE_CHECKING,
                     Any,
                     Callable,
-                    Dict,
-                    List,
                     Optional,
-                    Set,
-                    Tuple,
                     Union)
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,

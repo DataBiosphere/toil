@@ -13,7 +13,6 @@
 # limitations under the License.
 import logging
 import os
-import sys
 import time
 
 from argparse import Namespace
@@ -22,7 +21,7 @@ from typing import Optional
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest, slow
+from toil.test import ToilTest
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
 logger = logging.getLogger(__name__)

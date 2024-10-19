@@ -22,9 +22,6 @@ import stat
 from typing import (
     Any,
     Callable,
-    Dict,
-    List,
-    Type,
     TypeVar,
     Union,
 )

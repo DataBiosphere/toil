@@ -9,20 +9,18 @@ from uuid import uuid4
 from typing import Optional, Union
 
 from unittest.mock import patch
-from typing import Any, Dict, List, Set
+from typing import Any
 
 import logging
-import pytest
 
 from toil.fileStores import FileID
-from toil.provisioners import cluster_factory
 from toil.test import (ToilTest,
                        needs_docker,
                        needs_docker_cuda,
                        needs_google_storage,
                        needs_singularity_or_docker,
                        needs_wdl,
-                       slow, integrative)
+                       slow)
 from toil.version import exactPython
 from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, remove_common_leading_whitespace, parse_disks
 

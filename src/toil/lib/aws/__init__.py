@@ -17,7 +17,7 @@ import os
 import re
 import socket
 from http.client import HTTPException
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
+from typing import TYPE_CHECKING, Literal, Optional, Union
 from collections.abc import MutableMapping
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -103,7 +103,6 @@ def get_aws_zone_from_boto() -> Optional[str]:
     """
     try:
         import boto3
-        from session import client
         boto3_session = boto3.session.Session()
         # this should check AWS_DEFAULT_REGION and ~/.aws/config
         zone = boto3_session.region_name

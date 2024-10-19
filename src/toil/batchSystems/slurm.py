@@ -19,7 +19,7 @@ import os
 import sys
 from argparse import ArgumentParser, _ArgumentGroup, SUPPRESS
 from shlex import quote
-from typing import Dict, List, Optional, Set, Tuple, TypeVar, Union, NamedTuple
+from typing import TypeVar, NamedTuple
 
 from toil.bus import get_job_kind
 from toil.common import Config

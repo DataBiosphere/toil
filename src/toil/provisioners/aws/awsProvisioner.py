@@ -28,21 +28,13 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Set,
     TypeVar,
-    Union,
     cast,
 )
 from collections.abc import Collection, Iterable
-from urllib.parse import unquote
 
 # We need these to exist as attributes we can get off of the boto object
 from botocore.exceptions import ClientError
-from mypy_extensions import KwArg, VarArg
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
@@ -54,7 +46,7 @@ from toil.lib.aws.iam import (
 )
 from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.aws.session import client as get_client
-from toil.lib.aws.utils import boto3_pager, create_s3_bucket, flatten_tags
+from toil.lib.aws.utils import boto3_pager, create_s3_bucket
 from toil.lib.conversions import human2bytes
 from toil.lib.ec2 import (
     a_short_time,
@@ -73,7 +65,6 @@ from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import (
-    ErrorCondition,
     get_error_body,
     get_error_code,
     get_error_message,

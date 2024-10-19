@@ -19,9 +19,9 @@ import pprint
 import sys
 
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Toil, parser_with_common_options
 from toil.job import FilesDownloadedStoppingPointReached
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import set_logging_from_options

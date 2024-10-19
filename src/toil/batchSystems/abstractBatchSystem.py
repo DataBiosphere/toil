@@ -22,11 +22,8 @@ from contextlib import contextmanager
 from threading import Condition
 from typing import (Any,
                     ContextManager,
-                    Dict,
-                    List,
                     NamedTuple,
                     Optional,
-                    Set,
                     Union,
                     cast)
 from collections.abc import Iterator

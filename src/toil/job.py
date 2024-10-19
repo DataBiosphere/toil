@@ -20,7 +20,6 @@ import logging
 import math
 import os
 import pickle
-import sys
 import time
 import uuid
 from abc import ABCMeta, abstractmethod
@@ -30,12 +29,8 @@ from io import BytesIO
 from typing import (TYPE_CHECKING,
                     Any,
                     Callable,
-                    Dict,
-                    List,
                     NamedTuple,
                     Optional,
-                    Set,
-                    Tuple,
                     TypeVar,
                     Union,
                     cast,
@@ -118,7 +113,6 @@ class DebugStoppingPointReached(BaseException):
     """
     Raised when a job reaches a point at which it has been instructed to stop for debugging.
     """
-    pass
 
 class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
     """

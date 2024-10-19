@@ -13,7 +13,7 @@
 # limitations under the License.
 import logging
 import time
-from typing import Dict, Optional, Set
+from typing import Optional
 
 from toil.bus import JobUpdatedMessage, MessageBus
 from toil.job import CheckpointJobDescription, JobDescription

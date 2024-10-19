@@ -135,11 +135,9 @@ from contextlib import contextmanager
 from typing import (Any,
                     Callable,
                     ContextManager,
-                    List,
                     Optional,
-                    Tuple,
-                    Type,
-                    Union, TypeVar)
+                    Union,
+                    TypeVar)
 from collections.abc import Generator, Iterable, Sequence
 
 import requests.exceptions

@@ -16,7 +16,7 @@ import logging
 import os
 from abc import abstractmethod
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 import requests

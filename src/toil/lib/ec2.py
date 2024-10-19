@@ -1,20 +1,15 @@
 import logging
 import time
 from base64 import b64encode
-from operator import itemgetter
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    List,
     Optional,
     Union,
 )
 from collections.abc import Generator, Iterable, Mapping
 
-import botocore.client
-from boto3.resources.base import ServiceResource
 
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags

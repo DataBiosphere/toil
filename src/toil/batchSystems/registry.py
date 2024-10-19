@@ -16,7 +16,7 @@ import importlib
 import logging
 import pkgutil
 import warnings
-from typing import TYPE_CHECKING, Callable, Dict, List, Tuple, Type
+from typing import TYPE_CHECKING, Callable
 from collections.abc import Sequence
 
 from toil.lib.compatibility import deprecated

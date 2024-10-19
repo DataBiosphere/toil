@@ -21,7 +21,7 @@ from argparse import Namespace
 from collections import defaultdict
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import List, Optional, Set, Tuple
+from typing import Optional
 from unittest.mock import MagicMock
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,

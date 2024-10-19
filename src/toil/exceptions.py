@@ -1,7 +1,7 @@
 """Neutral place for exceptions, to break import cycles."""
 
 import logging
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from toil.statsAndLogging import StatsAndLogging
 

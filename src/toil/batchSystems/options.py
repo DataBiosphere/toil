@@ -12,9 +12,8 @@
 # See the License for the specific language governing permissions and
 
 import logging
-import sys
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, List, Optional, TypeVar, Union
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from typing import Protocol
 

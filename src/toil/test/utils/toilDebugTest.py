@@ -16,7 +16,6 @@ import os
 import subprocess
 import tempfile
 
-import pytest
 
 from toil.test import ToilTest
 
@@ -149,7 +148,6 @@ class DebugJobTest(ToilTest):
         except subprocess.CalledProcessError:
             # Should fail to run
             logger.info("Task failed successfully")
-            pass
         
         # Get the job ID.
         # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?

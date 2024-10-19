@@ -23,7 +23,6 @@ import tempfile
 import time
 import uuid
 import warnings
-from io import StringIO
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -32,7 +31,7 @@ from argparse import (SUPPRESS,
                       ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
-                      _ArgumentGroup, Action, _StoreFalseAction, _StoreTrueAction, _AppendAction)
+                      _ArgumentGroup, _StoreFalseAction, _StoreTrueAction)
 from functools import lru_cache
 from types import TracebackType
 from typing import (IO,
@@ -40,12 +39,7 @@ from typing import (IO,
                     Any,
                     Callable,
                     ContextManager,
-                    Dict,
-                    List,
                     Optional,
-                    Set,
-                    Tuple,
-                    Type,
                     TypeVar,
                     Union,
                     cast,

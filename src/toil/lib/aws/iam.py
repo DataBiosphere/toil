@@ -6,7 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 from collections import defaultdict
 from functools import lru_cache
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Any
+from typing import TYPE_CHECKING, Optional, Union, Any
 
 from toil.lib.aws import AWSServerErrors, session
 from toil.lib.misc import printq

@@ -19,10 +19,9 @@ import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
 
-import botocore.exceptions
 import pytest
 
 from toil.provisioners import cluster_factory

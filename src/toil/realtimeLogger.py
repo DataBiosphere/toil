@@ -20,7 +20,7 @@ import os.path
 import socketserver as SocketServer
 import threading
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional
 
 from toil.lib.misc import get_public_ip
 from toil.statsAndLogging import set_log_level

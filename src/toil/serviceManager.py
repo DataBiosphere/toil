@@ -17,7 +17,7 @@ import logging
 import time
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import Optional, Set
+from typing import Optional
 from collections.abc import Iterable
 
 from toil.job import ServiceJobDescription

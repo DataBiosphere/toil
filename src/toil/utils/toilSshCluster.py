@@ -15,7 +15,6 @@
 import argparse
 import logging
 import sys
-from typing import List
 
 from toil.common import parser_with_common_options
 from toil.provisioners import cluster_factory, NoSuchClusterException

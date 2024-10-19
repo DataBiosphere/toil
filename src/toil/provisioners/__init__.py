@@ -14,7 +14,7 @@
 import argparse
 import logging
 from difflib import get_close_matches
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple, Type, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     from toil.provisioners.aws.awsProvisioner import AWSProvisioner
