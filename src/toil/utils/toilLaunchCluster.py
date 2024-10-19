@@ -15,7 +15,7 @@
 
 import logging
 import os
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options

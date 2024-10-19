@@ -17,7 +17,7 @@ import datetime
 import re
 from functools import lru_cache, wraps
 from threading import Lock
-from typing import Any, Callable, Dict, Tuple, TypeVar
+from typing import Any, Callable, TypeVar
 
 memoize = lru_cache(maxsize=None)
 """

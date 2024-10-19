@@ -25,7 +25,7 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal

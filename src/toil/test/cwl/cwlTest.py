@@ -29,8 +29,6 @@ from io import StringIO
 from pathlib import Path
 from typing import (TYPE_CHECKING,
                     Callable,
-                    Dict,
-                    List,
                     Optional,
                     cast)
 from unittest.mock import Mock, call
@@ -53,15 +51,11 @@ from toil.cwl.utils import (DirectoryStructure,
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-from toil.provisioners import cluster_factory
 from toil.test import (ToilTest,
-                       needs_aws_ec2,
                        needs_aws_s3,
                        needs_cwl,
                        needs_docker,
                        needs_docker_cuda,
-                       needs_env_var,
-                       needs_fetchable_appliance,
                        needs_gridengine,
                        needs_kubernetes,
                        needs_local_cuda,
@@ -456,7 +450,7 @@ class CWLWorkflowTest(ToilTest):
 
     @needs_slurm
     def test_slurm_node_memory(self) -> None:
-        from toil.cwl import cwltoil
+        pass
 
         # Run the workflow. This will either finish quickly and tell us the
         # memory we got, or take a long time because it requested a whole

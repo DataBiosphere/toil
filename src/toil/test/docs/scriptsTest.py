@@ -6,12 +6,11 @@ import sys
 import unittest
 import pytest
 
-from typing import List
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import ToilTest, needs_cwl, needs_docker
+from toil.test import ToilTest, needs_docker
 from toil.version import python
 
 

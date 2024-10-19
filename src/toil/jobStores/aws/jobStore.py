@@ -26,10 +26,7 @@ from io import BytesIO
 from typing import (
     IO,
     TYPE_CHECKING,
-    Dict,
-    List,
     Optional,
-    Tuple,
     Union,
     cast,
 )

@@ -20,7 +20,6 @@ import re
 import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 import unittest
@@ -33,12 +32,8 @@ from tempfile import mkstemp
 from textwrap import dedent
 from typing import (Any,
                     Callable,
-                    Dict,
-                    List,
                     Literal,
                     Optional,
-                    Tuple,
-                    Type,
                     TypeVar,
                     Union,
                     cast)

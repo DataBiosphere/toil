@@ -28,8 +28,7 @@ from typing import (IO,
                     TYPE_CHECKING,
                     BinaryIO,
                     Callable,
-                    Optional,
-                    Type)
+                    Optional)
 from collections.abc import Sequence
 from urllib.error import HTTPError
 from urllib.request import urlopen

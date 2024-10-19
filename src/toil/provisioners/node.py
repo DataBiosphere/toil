@@ -18,7 +18,7 @@ import socket
 import subprocess
 import time
 from itertools import count
-from typing import Union, Dict, Optional, List, Any
+from typing import Union, Optional, Any
 
 from toil.lib.memoize import parse_iso_utc
 

@@ -18,7 +18,7 @@ import shlex
 import tempfile
 from queue import Empty
 from shlex import quote
-from typing import Dict, List, Optional
+from typing import Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
                                                              UpdatedBatchJobInfo)

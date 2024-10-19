@@ -2,7 +2,6 @@
 import argparse
 import subprocess
 import sys
-from typing import List
 
 from configargparse import ArgumentParser
 

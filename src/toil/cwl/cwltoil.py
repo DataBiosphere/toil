@@ -38,12 +38,8 @@ from threading import Thread
 from typing import (IO,
                     Any,
                     Callable,
-                    Dict,
-                    List,
                     Optional,
                     TextIO,
-                    Tuple,
-                    Type,
                     TypeVar,
                     Union,
                     cast)
@@ -3661,7 +3657,6 @@ def determine_load_listing(
 class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
-    pass
 
 
 def generate_default_job_store(

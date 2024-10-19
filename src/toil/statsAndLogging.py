@@ -20,7 +20,7 @@ import time
 from argparse import ArgumentParser, Namespace
 from logging.handlers import RotatingFileHandler
 from threading import Event, Thread
-from typing import IO, TYPE_CHECKING, Any, Callable, List, Optional, Union
+from typing import IO, TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando

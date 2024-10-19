@@ -34,7 +34,7 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Optional, Union
 from collections.abc import Iterator
 
 from botocore.exceptions import ClientError

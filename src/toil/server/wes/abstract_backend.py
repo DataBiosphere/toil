@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from abc import abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 from urllib.parse import urldefrag
 
 import connexion  # type: ignore

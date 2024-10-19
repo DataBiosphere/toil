@@ -19,11 +19,10 @@ import random
 import re
 import shutil
 import stat
-import sys
 import time
 import uuid
 from contextlib import contextmanager
-from typing import IO, List, Optional, Union, overload
+from typing import IO, Optional, Union, overload
 from collections.abc import Iterable, Iterator
 from urllib.parse import ParseResult, quote, unquote
 

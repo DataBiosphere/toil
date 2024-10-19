@@ -26,8 +26,7 @@ from contextlib import contextmanager
 from tempfile import mkstemp
 from typing import (Any,
                     Callable,
-                    Optional,
-                    Tuple)
+                    Optional)
 from collections.abc import Generator, Iterator, Sequence
 
 from toil.common import cacheDirName, getFileSystemSize

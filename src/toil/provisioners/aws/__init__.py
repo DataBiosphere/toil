@@ -16,7 +16,7 @@ import logging
 from collections import namedtuple
 from operator import attrgetter
 from statistics import mean, stdev
-from typing import List, Optional
+from typing import Optional
 
 from botocore.client import BaseClient
 

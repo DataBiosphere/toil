@@ -15,10 +15,10 @@
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 from toil.bus import replay_message_bus
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Toil, parser_with_common_options
 from toil.job import JobDescription, JobException, ServiceJobDescription
 from toil.jobStores.abstractJobStore import (NoSuchFileException,
                                              NoSuchJobStoreException)

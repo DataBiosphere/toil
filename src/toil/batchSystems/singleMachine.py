@@ -22,7 +22,7 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Optional, Union
 from collections.abc import Sequence
 
 import toil

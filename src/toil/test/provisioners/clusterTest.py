@@ -17,7 +17,7 @@ import subprocess
 import time
 
 from uuid import uuid4
-from typing import Optional, List
+from typing import Optional
 
 from toil.lib.retry import retry
 from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance, slow, needs_env_var

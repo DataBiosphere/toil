@@ -11,21 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import errno
 import logging
 import os
 import re
 import socket
 import sys
-import time
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING, Optional
 
 import requests
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
-from toil.lib.retry import retry
 from toil.version import currentCommit
 
 if TYPE_CHECKING:
@@ -439,11 +436,6 @@ def logProcessContext(config: "Config") -> None:
 
 
 try:
-    from botocore.credentials import (JSONFileCache,
-                                      RefreshableCredentials,
-                                      create_credential_resolver)
-    from botocore.session import Session
-
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
     log = logging.getLogger(__name__)

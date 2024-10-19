@@ -17,7 +17,7 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config

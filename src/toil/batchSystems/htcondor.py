@@ -18,7 +18,7 @@ import os
 import time
 from contextlib import contextmanager
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import htcondor
 

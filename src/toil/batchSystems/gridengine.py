@@ -17,7 +17,7 @@ import os
 import shlex
 import time
 from shlex import quote
-from typing import Dict, List, Optional
+from typing import Optional
 
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem

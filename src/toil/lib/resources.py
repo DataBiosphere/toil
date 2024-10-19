@@ -16,7 +16,6 @@ import os
 import math
 import sys
 import resource
-from typing import List, Tuple
 
 class ResourceMonitor:
     """

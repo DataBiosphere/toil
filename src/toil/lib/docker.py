@@ -17,7 +17,7 @@ import os
 import re
 import struct
 from shlex import quote
-from typing import List, Optional
+from typing import Optional
 
 import requests
 

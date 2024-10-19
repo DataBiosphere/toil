@@ -16,7 +16,6 @@ import os
 import pickle
 import re
 import shutil
-import sys
 from abc import ABC, ABCMeta, abstractmethod
 from contextlib import closing, contextmanager
 from datetime import timedelta
@@ -26,15 +25,11 @@ from typing import (IO,
                     Any,
                     Callable,
                     ContextManager,
-                    Dict,
-                    List,
                     Optional,
-                    Set,
-                    Tuple,
                     Union,
                     cast,
                     overload)
-from collections.abc import Iterable, Iterator, ValuesView
+from collections.abc import Iterator, ValuesView
 
 from typing import Literal
 

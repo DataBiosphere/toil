@@ -6,7 +6,7 @@ import sys
 import time
 from base64 import b64encode
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Optional, cast
 from collections.abc import Iterable
 from urllib.parse import urldefrag, urljoin, urlparse
 

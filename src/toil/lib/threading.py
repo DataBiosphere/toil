@@ -29,14 +29,13 @@ import time
 import threading
 import traceback
 from contextlib import contextmanager
-from typing import Dict, Optional, Union, cast
+from typing import Optional, Union, cast
 from collections.abc import Iterator
 
 import psutil
 
 from toil.lib.exceptions import raise_
 from toil.lib.io import robust_rmtree
-from toil.lib.memoize import memoize
 
 logger = logging.getLogger(__name__)
 

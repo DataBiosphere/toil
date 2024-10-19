@@ -15,33 +15,36 @@ import errno
 import logging
 import os
 import socket
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Optional,
-    cast,
-)
-from collections.abc import Iterable, Iterator
+from typing import (Any,
+                    Callable,
+                    ContextManager,
+                    Dict,
+                    Iterable,
+                    Iterator,
+                    List,
+                    Optional,
+                    Set,
+<<<<<<< HEAD
+                    Tuple,
+                    cast)
+=======
+                    cast,
+                    TYPE_CHECKING)
+>>>>>>> ce9c91c31 (Allow for not installing the mypy_boto3_* packages)
 from urllib.parse import ParseResult
 
-from toil.lib.aws import AWSRegionName, AWSServerErrors, session
+from toil.lib.aws import session, AWSRegionName, AWSServerErrors
 from toil.lib.misc import printq
-from toil.lib.retry import (
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT,
-    get_error_code,
-    get_error_status,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            get_error_code,
+                            get_error_status,
+                            old_retry,
+                            retry, ErrorCondition)
 
 if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3ServiceResource
-    from mypy_boto3_s3.service_resource import Bucket
-    from mypy_boto3_s3.service_resource import Object as S3Object
     from mypy_boto3_sdb.type_defs import AttributeTypeDef
+    from mypy_boto3_s3.service_resource import Bucket, Object as S3Object
 
 try:
     from botocore.exceptions import ClientError, EndpointConnectionError
@@ -70,6 +73,47 @@ THROTTLED_ERROR_CODES = [
         'PriorRequestNotComplete',
         'EC2ThrottledException',
 ]
+
+@retry(errors=[AWSServerErrors])
+def delete_iam_role(
+    role_name: str, region: Optional[str] = None, quiet: bool = True
+) -> None:
+    # TODO: the Boto3 type hints are a bit oversealous here; they want hundreds
+    # of overloads of the client-getting methods to exist based on the literal
+    # string passed in, to return exactly the right kind of client or resource.
+    # So we end up having to wrap all the calls in casts, which kind of defeats
+    # the point of a nice fluent method you can call with the name of the thing
+    # you want; we should have been calling iam_client() and so on all along if
+    # we wanted MyPy to be able to understand us. So at some point we should
+    # consider revising our API here to be less annoying to explain to the type
+    # checker.
+    iam_client = session.client('iam', region_name=region)
+    iam_resource = session.resource('iam', region_name=region)
+    role = iam_resource.Role(role_name)
+    # normal policies
+    for attached_policy in role.attached_policies.all():
+        printq(f'Now dissociating policy: {attached_policy.policy_name} from role {role.name}', quiet)
+        role.detach_policy(PolicyArn=attached_policy.arn)
+    # inline policies
+    for inline_policy in role.policies.all():
+        printq(f'Deleting inline policy: {inline_policy.policy_name} from role {role.name}', quiet)
+        iam_client.delete_role_policy(RoleName=role.name, PolicyName=inline_policy.policy_name)
+    iam_client.delete_role(RoleName=role_name)
+    printq(f'Role {role_name} successfully deleted.', quiet)
+
+
+@retry(errors=[AWSServerErrors])
+def delete_iam_instance_profile(
+    instance_profile_name: str, region: Optional[str] = None, quiet: bool = True
+) -> None:
+    iam_resource = session.resource("iam", region_name=region)
+    instance_profile = iam_resource.InstanceProfile(instance_profile_name)
+    if instance_profile.roles is not None:
+        for role in instance_profile.roles:
+            printq(f'Now dissociating role: {role.name} from instance profile {instance_profile_name}', quiet)
+            instance_profile.remove_role(RoleName=role.name)
+    instance_profile.delete()
+    printq(f'Instance profile "{instance_profile_name}" successfully deleted.', quiet)
 
 
 @retry(errors=[AWSServerErrors])
@@ -138,8 +182,8 @@ def delete_s3_bucket(
             # defined for them in the stubs to express that. See
             # <https://github.com/vemel/mypy_boto3_builder/issues/123>. So we
             # have to do gymnastics to get them into the same list.
-            to_delete: list[dict[str, Any]] = cast(list[dict[str, Any]], response.get('Versions', [])) + \
-                                              cast(list[dict[str, Any]], response.get('DeleteMarkers', []))
+            to_delete: List[Dict[str, Any]] = cast(List[Dict[str, Any]], response.get('Versions', [])) + \
+                                              cast(List[Dict[str, Any]], response.get('DeleteMarkers', []))
             for entry in to_delete:
                 printq(f"    Deleting {entry['Key']} version {entry['VersionId']}", quiet)
                 s3_resource.meta.client.delete_object(Bucket=bucket, Key=entry['Key'], VersionId=entry['VersionId'])
@@ -162,7 +206,7 @@ def create_s3_bucket(
 
     *ALL* S3 bucket creation should use this function.
     """
-    logger.info("Creating bucket '%s' in region %s.", bucket_name, region)
+    logger.debug("Creating bucket '%s' in region %s.", bucket_name, region)
     if region == "us-east-1":  # see https://github.com/boto/boto3/issues/125
         bucket = s3_resource.create_bucket(Bucket=bucket_name)
     else:
@@ -212,8 +256,9 @@ class NoBucketLocationError(Exception):
     """
     Error to represent that we could not get a location for a bucket.
     """
+    pass
 
-def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[set[int]] = None) -> str:
+def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only_strategies: Optional[Set[int]] = None) -> str:
     """
     Get the AWS region name associated with the given S3 bucket, or raise NoBucketLocationError.
 
@@ -263,7 +308,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
 
     # Compose a list of strategies we want to try in order, which may work.
     # None is an acceptable return type that actually means something.
-    strategies: list[Callable[[], Optional[str]]] = []
+    strategies: List[Callable[[], Optional[str]]] = []
     strategies.append(attempt_get_bucket_location)
     if not endpoint_url:
         # We should only try to talk to us-east-1 if we don't have a custom
@@ -271,7 +316,7 @@ def get_bucket_region(bucket_name: str, endpoint_url: Optional[str] = None, only
         strategies.append(attempt_get_bucket_location_from_us_east_1)
     strategies.append(attempt_head_bucket)
 
-    error_logs: list[tuple[int, str]] = []
+    error_logs: List[Tuple[int, str]] = []
     for attempt in retry_s3():
         with attempt:
             for i, strategy in enumerate(strategies):
@@ -309,7 +354,6 @@ def region_to_bucket_location(region: str) -> str:
 
 def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
-
 
 def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3Object":
         """
@@ -370,7 +414,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
 
 
 @retry(errors=[AWSServerErrors])
-def list_objects_for_url(url: ParseResult) -> list[str]:
+def list_objects_for_url(url: ParseResult) -> List[str]:
         """
         Extracts a key (object) from a given parsed s3:// URL. The URL will be
         supplemented with a trailing slash if it is missing.
@@ -414,7 +458,7 @@ def list_objects_for_url(url: ParseResult) -> list[str]:
         logger.debug('Found in %s items: %s', url, listing)
         return listing
 
-def flatten_tags(tags: dict[str, str]) -> list[dict[str, str]]:
+def flatten_tags(tags: Dict[str, str]) -> List[Dict[str, str]]:
     """
     Convert tags from a key to value dict into a list of 'Key': xxx, 'Value': xxx dicts.
     """
@@ -443,7 +487,7 @@ def boto3_pager(requestor_callable: Callable[..., Any], result_attribute_name: s
         yield from page.get(result_attribute_name, [])
 
 
-def get_item_from_attributes(attributes: list["AttributeTypeDef"], name: str) -> Any:
+def get_item_from_attributes(attributes: List["AttributeTypeDef"], name: str) -> Any:
     """
     Given a list of attributes, find the attribute associated with the name and return its corresponding value.
 

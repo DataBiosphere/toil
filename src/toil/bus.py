@@ -71,11 +71,8 @@ from dataclasses import dataclass
 from typing import (IO,
                     Any,
                     Callable,
-                    Dict,
-                    List,
                     NamedTuple,
                     Optional,
-                    Type,
                     TypeVar,
                     cast)
 from collections.abc import Iterator

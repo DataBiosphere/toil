@@ -21,7 +21,7 @@ import requests
 import shutil
 import enlighten  # type: ignore
 
-from typing import Dict, List, Tuple, Union, Any
+from typing import Union, Any
 
 
 logger = logging.getLogger(__name__)

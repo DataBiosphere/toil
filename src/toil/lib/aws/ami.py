@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import urllib.request
-from typing import Dict, Optional, cast
+from typing import Optional, cast
 from collections.abc import Iterator
 from urllib.error import HTTPError, URLError
 
