@@ -219,8 +219,8 @@ def aws_marketplace_flatcar_ami_search(
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
     # Possible arch choices on AWS: 'i386'|'x86_64'|'arm64'|'x86_64_mac'
     architecture_mapping = {"amd64": "x86_64", "arm64": "arm64"}
-    response: dict = ec2_client.describe_images(
-        Owners=["aws-marketplace"],  # type: ignore
+    response = ec2_client.describe_images(  # type: ignore[attr-defined]
+        Owners=["aws-marketplace"],
         Filters=[{"Name": "name", "Values": ["Flatcar-stable-*"]}],
     )
     latest: dict[str, str] = {"CreationDate": "0lder than atoms."}
