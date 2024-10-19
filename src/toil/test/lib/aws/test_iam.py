@@ -13,9 +13,9 @@
 # limitations under the License.
 import json
 import logging
-import boto3
-
 from uuid import uuid4
+
+import boto3
 from moto import mock_aws
 
 from toil.lib.aws import iam

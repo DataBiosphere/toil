@@ -30,6 +30,7 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
+from collections.abc import Iterator
 from queue import Empty, Queue
 from threading import Condition, Event, RLock, Thread
 from typing import (Any,
@@ -40,7 +41,6 @@ from typing import (Any,
                     Union,
                     cast,
                     overload)
-from collections.abc import Iterator
 
 from toil.lib.conversions import opt_strtobool
 
@@ -48,7 +48,9 @@ if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
 else:
     from typing import ParamSpec
+
 from typing import Protocol, TypedDict, runtime_checkable
+
 # TODO: When this gets into the standard library, get it from there and drop
 import urllib3
 import yaml
@@ -75,9 +77,10 @@ from kubernetes.client import (BatchV1Api,
                                V1PreferredSchedulingTerm,
                                V1ResourceRequirements,
                                V1SecretVolumeSource,
+                               V1SecurityContext,
                                V1Toleration,
                                V1Volume,
-                               V1VolumeMount, V1SecurityContext)
+                               V1VolumeMount)
 from kubernetes.client.api_client import ApiClient
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
@@ -99,11 +102,11 @@ from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
 from toil.common import Config, Toil
-from toil.options.common import SYS_MAX_SIZE
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
+from toil.options.common import SYS_MAX_SIZE
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)

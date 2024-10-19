@@ -25,8 +25,8 @@ from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
 
 from toil.jobStores.googleJobStore import GoogleJobStore
-from toil.lib.conversions import human2bytes
 from toil.lib.compatibility import compat_bytes_recursive
+from toil.lib.conversions import human2bytes
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node

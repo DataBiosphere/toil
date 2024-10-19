@@ -17,7 +17,6 @@ import logging
 import os
 import pprint
 import sys
-
 from pathlib import Path
 from typing import Optional
 

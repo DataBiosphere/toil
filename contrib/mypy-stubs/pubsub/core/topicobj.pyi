@@ -1,4 +1,11 @@
-from typing import Any, Callable, Iterator, List, Sequence, Tuple, Union, ValuesView
+from typing import (Any,
+                    Callable,
+                    Iterator,
+                    List,
+                    Sequence,
+                    Tuple,
+                    Union,
+                    ValuesView)
 
 from _typeshed import Incomplete
 
@@ -7,12 +14,18 @@ from .listener import CallArgsInfo, Listener, ListenerValidator, UserListener
 from .topicargspec import ArgsDocs, ArgsInfo, ArgSpecGiven
 from .topicargspec import MessageDataSpecError as MessageDataSpecError
 from .topicargspec import MsgData
-from .topicargspec import SenderMissingReqdMsgDataError as SenderMissingReqdMsgDataError
-from .topicargspec import SenderUnknownMsgDataError as SenderUnknownMsgDataError
+from .topicargspec import \
+    SenderMissingReqdMsgDataError as SenderMissingReqdMsgDataError
+from .topicargspec import \
+    SenderUnknownMsgDataError as SenderUnknownMsgDataError
 from .topicargspec import topicArgsFromCallable
 from .topicexc import ExcHandlerError as ExcHandlerError
 from .topicexc import TopicDefnError, TopicNameError
-from .topicutils import ALL_TOPICS, smartDedent, stringize, tupleize, validateName
+from .topicutils import (ALL_TOPICS,
+                         smartDedent,
+                         stringize,
+                         tupleize,
+                         validateName)
 
 class TreeConfig: ...
 

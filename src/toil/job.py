@@ -24,36 +24,32 @@ import time
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from io import BytesIO
 from typing import (TYPE_CHECKING,
                     Any,
                     Callable,
+                    Literal,
                     NamedTuple,
                     Optional,
+                    TypedDict,
                     TypeVar,
                     Union,
                     cast,
                     overload)
-from collections.abc import Iterator, Mapping, Sequence
-
-from configargparse import ArgParser
-
-from toil.bus import Names
-from toil.lib.compatibility import deprecated
-
-from typing import TypedDict
 
 import dill
+from configargparse import ArgParser
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
 
-from typing import Literal
-
+from toil.bus import Names
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
+from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.expando import Expando
 from toil.lib.resources import ResourceMonitor

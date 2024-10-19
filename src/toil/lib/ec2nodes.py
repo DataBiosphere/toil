@@ -16,13 +16,12 @@ import json
 import logging
 import os
 import re
-import textwrap
-import requests
 import shutil
+import textwrap
+from typing import Any, Union
+
 import enlighten  # type: ignore
-
-from typing import Union, Any
-
+import requests
 
 logger = logging.getLogger(__name__)
 manager = enlighten.get_manager()

@@ -15,27 +15,18 @@ import errno
 import logging
 import os
 import socket
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ContextManager,
-    Optional,
-    cast,
-)
 from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, cast
 from urllib.parse import ParseResult
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.misc import printq
-from toil.lib.retry import (
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT,
-    get_error_code,
-    get_error_status,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            get_error_code,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource

@@ -1,17 +1,19 @@
+import logging
 import os
-from argparse import ArgumentParser, Action, _AppendAction
-from typing import Any, Optional, Union, Callable, TYPE_CHECKING
+from argparse import Action, ArgumentParser, _AppendAction
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from configargparse import SUPPRESS
-import logging
-
 from ruamel.yaml import YAML
 
-from toil.lib.conversions import bytes2human, human2bytes, strtobool, opt_strtobool
-
 from toil.batchSystems.options import add_all_batchsystem_options
+from toil.lib.conversions import (bytes2human,
+                                  human2bytes,
+                                  opt_strtobool,
+                                  strtobool)
 from toil.provisioners import parse_node_types
 from toil.statsAndLogging import add_logging_options
+
 if TYPE_CHECKING:
     from toil.job import AcceleratorRequirement
 

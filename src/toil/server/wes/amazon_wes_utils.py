@@ -22,10 +22,7 @@ import json
 import logging
 import zipfile
 from os import path
-from typing import IO, Optional, cast
-
-from typing import TypedDict
-
+from typing import IO, Optional, TypedDict, cast
 from urllib.parse import ParseResult, urlparse
 
 from toil.bus import JobStatus

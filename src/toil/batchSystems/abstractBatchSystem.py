@@ -18,15 +18,10 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
+from collections.abc import Iterator
 from contextlib import contextmanager
 from threading import Condition
-from typing import (Any,
-                    ContextManager,
-                    NamedTuple,
-                    Optional,
-                    Union,
-                    cast)
-from collections.abc import Iterator
+from typing import Any, ContextManager, NamedTuple, Optional, Union, cast
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox

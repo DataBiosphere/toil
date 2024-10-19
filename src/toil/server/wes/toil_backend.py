@@ -17,14 +17,9 @@ import os
 import shutil
 import uuid
 from collections import Counter
-from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    Optional,
-                    TextIO,
-                    Union,
-                    overload)
 from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, TextIO, Union, overload
 
 from flask import send_from_directory
 from werkzeug.utils import redirect

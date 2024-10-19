@@ -2,7 +2,11 @@ from typing import List, Mapping, TextIO
 
 from _typeshed import Incomplete
 
-from ..core import INotificationHandler, Listener, Publisher, Topic, TopicManager
+from ..core import (INotificationHandler,
+                    Listener,
+                    Publisher,
+                    Topic,
+                    TopicManager)
 
 class IgnoreNotificationsMixin(INotificationHandler):
     def notifySubscribe(self, pubListener: Listener, topicObj: Topic, newSub: bool): ...

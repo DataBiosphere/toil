@@ -23,14 +23,10 @@ import sys
 import unittest
 import uuid
 import zipfile
-
 from functools import partial
 from io import StringIO
 from pathlib import Path
-from typing import (TYPE_CHECKING,
-                    Callable,
-                    Optional,
-                    cast)
+from typing import TYPE_CHECKING, Callable, Optional, cast
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 

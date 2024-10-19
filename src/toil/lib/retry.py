@@ -131,14 +131,9 @@ import sqlite3
 import time
 import traceback
 import urllib.error
-from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    ContextManager,
-                    Optional,
-                    Union,
-                    TypeVar)
 from collections.abc import Generator, Iterable, Sequence
+from contextlib import contextmanager
+from typing import Any, Callable, ContextManager, Optional, TypeVar, Union
 
 import requests.exceptions
 import urllib3.exceptions

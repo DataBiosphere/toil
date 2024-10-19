@@ -51,11 +51,9 @@ class ToilServerUtilsTest(ToilTest):
         away without flipping the state.
         """
 
-        from toil.server.utils import (
-            MemoryStateStore,
-            WorkflowStateMachine,
-            WorkflowStateStore,
-        )
+        from toil.server.utils import (MemoryStateStore,
+                                       WorkflowStateMachine,
+                                       WorkflowStateStore)
 
         store = WorkflowStateStore(MemoryStateStore(), "test-workflow")
 

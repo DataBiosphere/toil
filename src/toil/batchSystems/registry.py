@@ -16,8 +16,8 @@ import importlib
 import logging
 import pkgutil
 import warnings
-from typing import TYPE_CHECKING, Callable
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, Callable
 
 from toil.lib.compatibility import deprecated
 from toil.lib.memoize import memoize

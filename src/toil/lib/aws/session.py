@@ -15,13 +15,7 @@ import collections
 import logging
 import os
 import threading
-from typing import (
-    TYPE_CHECKING,
-    Literal,
-    Optional,
-    cast,
-    overload,
-)
+from typing import TYPE_CHECKING, Literal, Optional, cast, overload
 
 import boto3
 import boto3.resources.base

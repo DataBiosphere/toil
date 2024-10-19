@@ -20,11 +20,10 @@ from contextlib import contextmanager
 
 import dill
 
-
 from toil.lib.io import robust_rmtree
+from toil.lib.threading import safe_lock, safe_unlock_and_close
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
-from toil.lib.threading import safe_lock, safe_unlock_and_close
 
 logger = logging.getLogger(__name__)
 

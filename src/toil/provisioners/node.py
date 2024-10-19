@@ -13,12 +13,12 @@
 # limitations under the License.
 import datetime
 import logging
-from shlex import quote
 import socket
 import subprocess
 import time
 from itertools import count
-from typing import Union, Optional, Any
+from shlex import quote
+from typing import Any, Optional, Union
 
 from toil.lib.memoize import parse_iso_utc
 

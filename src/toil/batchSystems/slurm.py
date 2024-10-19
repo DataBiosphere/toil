@@ -17,16 +17,18 @@ import logging
 import math
 import os
 import sys
-from argparse import ArgumentParser, _ArgumentGroup, SUPPRESS
+from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
 from shlex import quote
-from typing import TypeVar, NamedTuple
+from typing import NamedTuple, TypeVar
 
-from toil.bus import get_job_kind
-from toil.common import Config
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE, InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchJobExitReason,
+                                                   InsufficientSystemResources)
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.options import OptionSetter
+from toil.bus import get_job_kind
+from toil.common import Config
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import strtobool
 from toil.lib.misc import CalledProcessErrorStderr, call_command

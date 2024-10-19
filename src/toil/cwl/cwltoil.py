@@ -33,17 +33,10 @@ import stat
 import sys
 import textwrap
 import uuid
+from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
-from typing import (IO,
-                    Any,
-                    Callable,
-                    Optional,
-                    TextIO,
-                    TypeVar,
-                    Union,
-                    cast)
-from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
+from typing import IO, Any, Callable, Optional, TextIO, TypeVar, Union, cast
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -69,6 +62,7 @@ from cwltool.process import (Process,
                              fill_in_defaults,
                              shortname)
 from cwltool.secrets import SecretStore
+from cwltool.singularity import SingularityCommandLineJob
 from cwltool.software_requirements import (DependenciesConfiguration,
                                            get_container_from_software_requirements)
 from cwltool.stdfsaccess import StdFsAccess, abspath
@@ -81,7 +75,6 @@ from cwltool.utils import (CWLObjectType,
                            get_listing,
                            normalizeFilesDirs,
                            visit_class)
-from cwltool.singularity import SingularityCommandLineJob
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
@@ -106,8 +99,11 @@ from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
-from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchFileException, LocatorException,
-                                             InvalidImportExportUrlException, UnimplementedURLException)
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             InvalidImportExportUrlException,
+                                             LocatorException,
+                                             NoSuchFileException,
+                                             UnimplementedURLException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp

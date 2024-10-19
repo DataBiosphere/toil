@@ -1,13 +1,14 @@
 import unittest
-
-from toil.test.provisioners.clusterTest import AbstractClusterTest
 from uuid import uuid4
 
 import pytest
 
 from toil.provisioners import cluster_factory
-from toil.test import (slow, integrative)
-from toil.test.wdl.wdltoil_test import WDL_CONFORMANCE_TEST_REPO, WDL_CONFORMANCE_TEST_COMMIT
+from toil.test import integrative, slow
+from toil.test.provisioners.clusterTest import AbstractClusterTest
+from toil.test.wdl.wdltoil_test import (WDL_CONFORMANCE_TEST_COMMIT,
+                                        WDL_CONFORMANCE_TEST_REPO)
+
 
 @integrative
 @slow

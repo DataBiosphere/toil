@@ -16,9 +16,9 @@ import logging
 import os
 import re
 import socket
+from collections.abc import MutableMapping
 from http.client import HTTPException
 from typing import TYPE_CHECKING, Literal, Optional, Union
-from collections.abc import MutableMapping
 from urllib.error import URLError
 from urllib.request import urlopen
 

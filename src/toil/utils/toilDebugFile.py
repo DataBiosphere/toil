@@ -20,8 +20,8 @@ from typing import Optional
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.resources import glob
 from toil.lib.conversions import strtobool
+from toil.lib.resources import glob
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)

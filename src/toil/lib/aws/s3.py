@@ -15,7 +15,7 @@ import logging
 
 from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef
 
-from toil.lib.aws import session, AWSServerErrors
+from toil.lib.aws import AWSServerErrors, session
 from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)

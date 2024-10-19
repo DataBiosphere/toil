@@ -25,9 +25,9 @@ import stat
 import sys
 import time
 import traceback
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Callable, Optional
-from collections.abc import Iterator
 
 from configargparse import ArgParser
 
@@ -37,12 +37,17 @@ from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
                             CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE)
 from toil.deferred import DeferredFunctionManager
 from toil.fileStores.abstractFileStore import AbstractFileStore
-from toil.job import CheckpointJobDescription, Job, JobDescription, DebugStoppingPointReached
+from toil.job import (CheckpointJobDescription,
+                      DebugStoppingPointReached,
+                      Job,
+                      JobDescription)
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.expando import MagicExpando
 from toil.lib.io import make_public_dir
 from toil.lib.resources import ResourceMonitor
-from toil.statsAndLogging import configure_root_logger, set_log_level, install_log_color
+from toil.statsAndLogging import (configure_root_logger,
+                                  install_log_color,
+                                  set_log_level)
 
 logger = logging.getLogger(__name__)
 

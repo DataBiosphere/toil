@@ -13,9 +13,11 @@
 # limitations under the License.
 import logging
 from typing import Optional
+
 from configargparse import ArgParser, ArgumentParser
 
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem, UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.options import OptionSetter
 from toil.batchSystems.registry import add_batch_system_factory

@@ -20,16 +20,12 @@ import os
 import shutil
 import sys
 from collections import namedtuple
+from collections.abc import Sequence
 from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from types import ModuleType
-from typing import (IO,
-                    TYPE_CHECKING,
-                    BinaryIO,
-                    Callable,
-                    Optional)
-from collections.abc import Sequence
+from typing import IO, TYPE_CHECKING, BinaryIO, Callable, Optional
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from zipfile import ZipFile

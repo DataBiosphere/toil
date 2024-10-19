@@ -1,17 +1,17 @@
 import json
+import logging
 import os
 import re
 import shutil
 import string
 import subprocess
 import unittest
-from uuid import uuid4
-from typing import Optional, Union
-
+from typing import Any, Optional, Union
 from unittest.mock import patch
-from typing import Any
+from uuid import uuid4
 
-import logging
+import WDL.Error
+import WDL.Expr
 
 from toil.fileStores import FileID
 from toil.test import (ToilTest,
@@ -22,10 +22,10 @@ from toil.test import (ToilTest,
                        needs_wdl,
                        slow)
 from toil.version import exactPython
-from toil.wdl.wdltoil import WDLSectionJob, WDLWorkflowGraph, remove_common_leading_whitespace, parse_disks
-
-import WDL.Expr
-import WDL.Error
+from toil.wdl.wdltoil import (WDLSectionJob,
+                              WDLWorkflowGraph,
+                              parse_disks,
+                              remove_common_leading_whitespace)
 
 logger = logging.getLogger(__name__)
 
@@ -681,7 +681,8 @@ class WDLToilBenchTests(ToilTest):
         Test to make sure that we pick sensible but non-colliding directories to put files in.
         """
 
-        from toil.wdl.wdltoil import choose_human_readable_directory, DirectoryNamingStateDict
+        from toil.wdl.wdltoil import (DirectoryNamingStateDict,
+                                      choose_human_readable_directory)
 
         state: DirectoryNamingStateDict = {}
 

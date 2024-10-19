@@ -18,23 +18,19 @@ import math
 import os
 import time
 from collections import defaultdict
-from typing import (TYPE_CHECKING,
-                    Any,
-                    Callable,
-                    Optional,
-                    Union)
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    AbstractScalableBatchSystem,
                                                    NodeInfo)
 from toil.bus import ClusterDesiredSizeMessage, ClusterSizeMessage
 from toil.common import Config
-from toil.options.common import defaultTargetTime
 from toil.job import JobDescription, ServiceJobDescription
 from toil.lib.conversions import bytes2human, human2bytes
 from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
 from toil.lib.throttle import throttle
+from toil.options.common import defaultTargetTime
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 
 if TYPE_CHECKING:

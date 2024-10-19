@@ -19,6 +19,7 @@ from typing import Union
 
 from toil import applianceSelf
 from toil.common import parser_with_common_options
+
 try:
     from toil.lib.aws import build_tag_dict_from_env
 except ModuleNotFoundError:

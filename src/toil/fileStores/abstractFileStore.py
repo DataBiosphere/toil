@@ -14,6 +14,7 @@
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from tempfile import mkstemp
 from threading import Event, Semaphore
@@ -27,13 +28,12 @@ from typing import (IO,
                     Union,
                     cast,
                     overload)
-from collections.abc import Generator, Iterator
 
 import dill
 
 from toil.common import Toil, cacheDirName, getDirSizeRecursively
 from toil.fileStores import FileID
-from toil.job import Job, JobDescription, DebugStoppingPointReached
+from toil.job import DebugStoppingPointReached, Job, JobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import bytes2human

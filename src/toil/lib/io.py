@@ -4,10 +4,10 @@ import shutil
 import stat
 import tempfile
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
 from typing import IO, Any, Callable, Optional, Union
-from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
