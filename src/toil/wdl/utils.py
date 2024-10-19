@@ -22,14 +22,14 @@ def get_version(iterable: Iterable[str]) -> str:
     :return: The WDL version used in the workflow.
     """
     if isinstance(iterable, str):
-        iterable = iterable.split('\n')
+        iterable = iterable.split("\n")
 
     for line in iterable:
         line = line.strip()
         # check if the first non-empty, non-comment line is the version statement
-        if line and not line.startswith('#'):
-            if line.startswith('version '):
+        if line and not line.startswith("#"):
+            if line.startswith("version "):
                 return line[8:].strip()
             break
     # only draft-2 doesn't contain the version declaration
-    return 'draft-2'
+    return "draft-2"

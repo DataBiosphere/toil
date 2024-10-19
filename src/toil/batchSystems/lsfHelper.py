@@ -72,7 +72,7 @@ def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
         conf_file = get_conf_file(conf_filename, env)
         if conf_file:
-            with open(conf_file, encoding='utf-8') as conf_handle:
+            with open(conf_file, encoding="utf-8") as conf_handle:
                 value = fn(conf_handle)
             if value:
                 return value
@@ -112,9 +112,9 @@ def apply_bparams(fn):
     """
     cmd = ["bparams", "-a"]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
     except subprocess.CalledProcessError as exc:
-        logger.debug(exc.output.decode('utf-8'))
+        logger.debug(exc.output.decode("utf-8"))
         return None
     return fn(output.split("\n"))
 
@@ -125,9 +125,9 @@ def apply_lsadmin(fn):
     """
     cmd = ["lsadmin", "showconf", "lim"]
     try:
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode("utf-8")
     except subprocess.CalledProcessError as exc:
-        logger.debug(exc.output.decode('utf-8'))
+        logger.debug(exc.output.decode("utf-8"))
         return None
     return fn(output.split("\n"))
 
@@ -161,7 +161,7 @@ def parse_mem_and_cmd_from_output(output: str):
     # Handle hard wrapping in the middle of words and arbitrary
     # indents. May drop spaces at the starts of lines that aren't
     # meant to be part of the indent.
-    cleaned_up_output = ' '.join(re.sub(r"\n\s*", "", output).split(','))
+    cleaned_up_output = " ".join(re.sub(r"\n\s*", "", output).split(","))
     max_mem = re.search(r"MAX ?MEM: ?(.*?);", cleaned_up_output)
     command = re.search(r"Command ?<(.*?)>", cleaned_up_output)
     return max_mem, command
@@ -173,10 +173,10 @@ def get_lsf_version():
     """
     cmd = ["lsid"]
     try:
-        output = subprocess.check_output(cmd).decode('utf-8')
+        output = subprocess.check_output(cmd).decode("utf-8")
     except:
         return None
-    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),', output)
+    bjobs_search = re.search("IBM Spectrum LSF Standard (.*),", output)
     if bjobs_search:
         lsf_version = bjobs_search.group(1)
         return lsf_version
@@ -188,7 +188,9 @@ def check_lsf_json_output_supported():
     """Check if the current LSF system supports bjobs json output."""
     try:
         lsf_version = get_lsf_version()
-        if lsf_version and (version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION)):
+        if lsf_version and (
+            version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION)
+        ):
             return True
     except:
         return False
@@ -197,11 +199,11 @@ def check_lsf_json_output_supported():
 
 def parse_memory(mem: float) -> str:
     """Parse memory parameter."""
-    megabytes_of_mem = convert_units(float(mem), src_unit='B', dst_unit='MB')
+    megabytes_of_mem = convert_units(float(mem), src_unit="B", dst_unit="MB")
     if megabytes_of_mem < 1:
         megabytes_of_mem = 1.0
     # round as a string here to avoid returning something like 1.231e+12
-    return f'{megabytes_of_mem:.0f}MB'
+    return f"{megabytes_of_mem:.0f}MB"
 
 
 def per_core_reservation():

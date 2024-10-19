@@ -1,4 +1,5 @@
 """Implemented support for Common Workflow Language (CWL) for Toil."""
+
 # Copyright (C) 2015 Curoverse, Inc
 # Copyright (C) 2015-2021 Regents of the University of California
 # Copyright (C) 2019-2020 Seven Bridges
@@ -36,15 +37,7 @@ import uuid
 from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
-from typing import (IO,
-                    Any,
-                    Callable,
-                    Literal,
-                    Optional,
-                    TextIO,
-                    TypeVar,
-                    Union,
-                    cast)
+from typing import IO, Any, Callable, Literal, Optional, TextIO, TypeVar, Union, cast
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -64,25 +57,31 @@ from cwltool.loghandler import defaultStreamHandler
 from cwltool.mpi import MpiConfig
 from cwltool.mutation import MutationManager
 from cwltool.pathmapper import MapperEnt, PathMapper
-from cwltool.process import (Process,
-                             add_sizes,
-                             compute_checksums,
-                             fill_in_defaults,
-                             shortname)
+from cwltool.process import (
+    Process,
+    add_sizes,
+    compute_checksums,
+    fill_in_defaults,
+    shortname,
+)
 from cwltool.secrets import SecretStore
 from cwltool.singularity import SingularityCommandLineJob
-from cwltool.software_requirements import (DependenciesConfiguration,
-                                           get_container_from_software_requirements)
+from cwltool.software_requirements import (
+    DependenciesConfiguration,
+    get_container_from_software_requirements,
+)
 from cwltool.stdfsaccess import StdFsAccess, abspath
-from cwltool.utils import (CWLObjectType,
-                           CWLOutputType,
-                           DirectoryType,
-                           adjustDirObjs,
-                           aslist,
-                           downloadHttpFile,
-                           get_listing,
-                           normalizeFilesDirs,
-                           visit_class)
+from cwltool.utils import (
+    CWLObjectType,
+    CWLOutputType,
+    DirectoryType,
+    adjustDirObjs,
+    aslist,
+    downloadHttpFile,
+    get_listing,
+    normalizeFilesDirs,
+    visit_class,
+)
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from schema_salad.avro.schema import Names
 from schema_salad.exceptions import ValidationException
@@ -97,20 +96,24 @@ from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
 check_cwltool_version()
-from toil.cwl.utils import (CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
-                            CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
-                            download_structure,
-                            get_from_structure,
-                            visit_cwl_class_and_reduce)
+from toil.cwl.utils import (
+    CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION,
+    CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
+    download_structure,
+    get_from_structure,
+    visit_cwl_class_and_reduce,
+)
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import AcceleratorRequirement, Job, Promise, Promised, unwrap
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             InvalidImportExportUrlException,
-                                             LocatorException,
-                                             NoSuchFileException,
-                                             UnimplementedURLException)
+from toil.jobStores.abstractJobStore import (
+    AbstractJobStore,
+    InvalidImportExportUrlException,
+    LocatorException,
+    NoSuchFileException,
+    UnimplementedURLException,
+)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
@@ -230,7 +233,9 @@ def ensure_no_collisions(
             seen_names.add(wanted_name)
 
 
-def try_prepull(cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str) -> None:
+def try_prepull(
+    cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeContext, batchsystem: str
+) -> None:
     """
     Try to prepull all containers in a CWL workflow with Singularity or Docker.
     This will not prepull the default container specified on the command line.
@@ -242,7 +247,15 @@ def try_prepull(cwl_tool_uri: str, runtime_context: cwltool.context.RuntimeConte
     if runtime_context.singularity:
         if "CWL_SINGULARITY_CACHE" in os.environ:
             logger.info("Prepulling the workflow's containers with Singularity...")
-            call_command(["cwl-docker-extract", "--singularity", "--dir", os.environ['CWL_SINGULARITY_CACHE'], cwl_tool_uri])
+            call_command(
+                [
+                    "cwl-docker-extract",
+                    "--singularity",
+                    "--dir",
+                    os.environ["CWL_SINGULARITY_CACHE"],
+                    cwl_tool_uri,
+                ]
+            )
     elif not runtime_context.user_space_docker_cmd and not runtime_context.podman:
         # For udocker and podman prefetching is unimplemented
         # This is docker
@@ -961,7 +974,9 @@ class ToilPathMapper(PathMapper):
                     # URI for a local file it downloaded.
                     if self.get_file:
                         deref = self.get_file(
-                            location, obj.get("streamable", False), self.streaming_allowed
+                            location,
+                            obj.get("streamable", False),
+                            self.streaming_allowed,
                         )
                     else:
                         deref = ab
@@ -1023,15 +1038,25 @@ class ToilSingleJobExecutor(cwltool.executors.SingleJobExecutor):
     ) -> None:
         """run_jobs from SingleJobExecutor, but not in a top level runtime context."""
         runtime_context.toplevel = False
-        if isinstance(process, cwltool.command_line_tool.CommandLineTool) and isinstance(process.make_job_runner(runtime_context), SingularityCommandLineJob):
+        if isinstance(
+            process, cwltool.command_line_tool.CommandLineTool
+        ) and isinstance(
+            process.make_job_runner(runtime_context), SingularityCommandLineJob
+        ):
             # Set defaults for singularity cache environment variables, similar to what we do in wdltoil
             # Use the same place as the default singularity cache directory
             singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            os.environ['SINGULARITY_CACHEDIR'] = os.environ.get("SINGULARITY_CACHEDIR", singularity_cache)
+            os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
+                "SINGULARITY_CACHEDIR", singularity_cache
+            )
 
             # If singularity is detected, prepull the image to ensure locking
-            (docker_req, docker_is_req) = process.get_requirement(feature="DockerRequirement")
-            with global_mutex(os.environ['SINGULARITY_CACHEDIR'], 'toil_singularity_cache_mutex'):
+            (docker_req, docker_is_req) = process.get_requirement(
+                feature="DockerRequirement"
+            )
+            with global_mutex(
+                os.environ["SINGULARITY_CACHEDIR"], "toil_singularity_cache_mutex"
+            ):
                 SingularityCommandLineJob.get_image(
                     dockerRequirement=cast(dict[str, str], docker_req),
                     pull_image=runtime_context.pull_image,
@@ -1129,7 +1154,9 @@ class ToilCommandLineTool(ToilTool, cwltool.command_line_tool.CommandLineTool):
                 for _, mapper_entry in pm.items_exclude_children():
                     # We know that mapper_entry.target as seen by the task is
                     # mapper_entry.resolved on the host.
-                    host_and_job_paths.append((mapper_entry.resolved, mapper_entry.target))
+                    host_and_job_paths.append(
+                        (mapper_entry.resolved, mapper_entry.target)
+                    )
 
             # Notice that we have downloaded our inputs. Explain which files
             # those are here and what the task will expect to call them.
@@ -1388,7 +1415,9 @@ class ToilFsAccess(StdFsAccess):
         elif parse.scheme == "":
             pattern = os.path.abspath(pattern)
         else:
-            raise RuntimeError(f"Cannot efficiently support globbing on {parse.scheme} URIs")
+            raise RuntimeError(
+                f"Cannot efficiently support globbing on {parse.scheme} URIs"
+            )
 
         # Actually do the glob
         return [schema_salad.ref_resolver.file_uri(f) for f in glob.glob(pattern)]
@@ -1425,12 +1454,12 @@ class ToilFsAccess(StdFsAccess):
         else:
             # This should be supported by a job store.
             byte_stream = AbstractJobStore.open_url(fn)
-            if 'b' in mode:
+            if "b" in mode:
                 # Pass stream along in binary
                 return byte_stream
             else:
                 # Wrap it in a text decoder
-                return io.TextIOWrapper(byte_stream, encoding='utf-8')
+                return io.TextIOWrapper(byte_stream, encoding="utf-8")
 
     def exists(self, path: str) -> bool:
         """Test for file existence."""
@@ -1558,7 +1587,9 @@ class ToilFsAccess(StdFsAccess):
                 if got is None:
                     raise RuntimeError(f"Cannot list nonexistent directory: {fn}")
                 if isinstance(got, str):
-                    raise RuntimeError(f"Cannot list file or dubdirectory of a file: {fn}")
+                    raise RuntimeError(
+                        f"Cannot list file or dubdirectory of a file: {fn}"
+                    )
                 here = got
             # List all the things in here and make full URIs to them
             return [os.path.join(fn, k) for k in here.keys()]
@@ -1687,9 +1718,7 @@ def toil_get_file(
             and streamable
             and not isinstance(file_store.jobStore, FileJobStore)
         ):
-            logger.debug(
-                "Streaming file %s", uri
-            )
+            logger.debug("Streaming file %s", uri)
             src_path = file_store.getLocalTempFileName()
             os.mkfifo(src_path)
             th = ExceptionalThread(
@@ -1711,25 +1740,24 @@ def toil_get_file(
                 if uri.startswith("toilfile:"):
                     # Download from the file store
                     file_store_id = FileID.unpack(uri[len("toilfile:") :])
-                    src_path = file_store.readGlobalFile(
-                        file_store_id, symlink=True
-                    )
+                    src_path = file_store.readGlobalFile(file_store_id, symlink=True)
                 else:
                     # Download from the URI via the job store.
 
                     # Figure out where it goes.
                     src_path = file_store.getLocalTempFileName()
                     # Open that path exclusively to make sure we created it
-                    with open(src_path, 'xb') as fh:
+                    with open(src_path, "xb") as fh:
                         # Download into the file
-                       size, executable = AbstractJobStore.read_from_url(uri, fh)
-                       if executable:
-                           # Set the execute bit in the file's permissions
-                           os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
+                        size, executable = AbstractJobStore.read_from_url(uri, fh)
+                        if executable:
+                            # Set the execute bit in the file's permissions
+                            os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
 
         index[src_path] = uri
         existing[uri] = src_path
         return schema_salad.ref_resolver.file_uri(src_path)
+
 
 def write_file(
     writeFunc: Callable[[str], FileID],
@@ -1788,7 +1816,7 @@ def import_files(
     mark_broken: bool = False,
     skip_remote: bool = False,
     bypass_file_store: bool = False,
-    log_level: int = logging.DEBUG
+    log_level: int = logging.DEBUG,
 ) -> None:
     """
     Prepare all files and directories.
@@ -1945,7 +1973,12 @@ def import_files(
 
             # Upload the file itself, which will adjust its location.
             upload_file(
-                import_and_log, fileindex, existing, rec, mark_broken=mark_broken, skip_remote=skip_remote
+                import_and_log,
+                fileindex,
+                existing,
+                rec,
+                mark_broken=mark_broken,
+                skip_remote=skip_remote,
             )
 
             # Make a record for this file under its name
@@ -2053,7 +2086,7 @@ def upload_file(
     existing: dict[str, str],
     file_metadata: CWLObjectType,
     mark_broken: bool = False,
-    skip_remote: bool = False
+    skip_remote: bool = False,
 ) -> None:
     """
     Update a file object so that the file will be accessible from another machine.
@@ -2088,11 +2121,15 @@ def upload_file(
             logger.debug("File %s is missing", file_metadata)
             file_metadata["location"] = location = MISSING_FILE
         else:
-            raise cwl_utils.errors.WorkflowException("File is missing: %s" % file_metadata)
+            raise cwl_utils.errors.WorkflowException(
+                "File is missing: %s" % file_metadata
+            )
 
     if location.startswith("file://") or not skip_remote:
         # This is a local file, or we also need to download and re-upload remote files
-        file_metadata["location"] = write_file(uploadfunc, fileindex, existing, location)
+        file_metadata["location"] = write_file(
+            uploadfunc, fileindex, existing, location
+        )
 
     logger.debug("Sending file at: %s", file_metadata["location"])
 
@@ -2203,7 +2240,7 @@ def toilStageFiles(
     cwljob: Union[CWLObjectType, list[CWLObjectType]],
     outdir: str,
     destBucket: Union[str, None] = None,
-    log_level: int = logging.DEBUG
+    log_level: int = logging.DEBUG,
 ) -> None:
     """
     Copy input files out of the global file store and update location and path.
@@ -2297,13 +2334,17 @@ def toilStageFiles(
                         # TODO: Use direct S3 to S3 copy on exports as well
                         file_id_or_contents = (
                             "toilfile:"
-                            + toil.import_file(file_id_or_contents, symlink=False).pack()
+                            + toil.import_file(
+                                file_id_or_contents, symlink=False
+                            ).pack()
                         )
 
                     if file_id_or_contents.startswith("toilfile:"):
                         # This is something we can export
                         # TODO: Do we need to urlencode the parts before sending them to S3?
-                        dest_url = "/".join(s.strip("/") for s in [destBucket, baseName])
+                        dest_url = "/".join(
+                            s.strip("/") for s in [destBucket, baseName]
+                        )
                         logger.log(log_level, "Saving %s...", dest_url)
                         toil.export_file(
                             FileID.unpack(file_id_or_contents[len("toilfile:") :]),
@@ -2589,9 +2630,9 @@ class CWLJob(CWLNamedJob):
         required_env_vars = {}
         # iterate over EnvVarRequirement env vars, if any
         for k, v in self.required_env_vars(cwljob):
-            required_env_vars[
-                k
-            ] = v  # will tell cwltool which env vars to take from the environment
+            required_env_vars[k] = (
+                v  # will tell cwltool which env vars to take from the environment
+            )
             os.environ[k] = v
             # needs to actually be populated in the environment as well or
             # they're not used
@@ -2708,9 +2749,13 @@ class CWLJob(CWLNamedJob):
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.
         default_stdout = TemporaryFile()
-        runtime_context.default_stdout = os.fdopen(os.dup(default_stdout.fileno()), 'wb')
+        runtime_context.default_stdout = os.fdopen(
+            os.dup(default_stdout.fileno()), "wb"
+        )
         default_stderr = TemporaryFile()
-        runtime_context.default_stderr = os.fdopen(os.dup(default_stderr.fileno()), 'wb')
+        runtime_context.default_stderr = os.fdopen(
+            os.dup(default_stderr.fileno()), "wb"
+        )
 
         process_uuid = uuid.uuid4()  # noqa F841
         started_at = datetime.datetime.now()  # noqa F841
@@ -2741,17 +2786,27 @@ class CWLJob(CWLNamedJob):
             default_stdout.seek(0, os.SEEK_END)
             if default_stdout.tell() > 0:
                 default_stdout.seek(0)
-                file_store.log_user_stream(self.description.unitName + '.stdout', default_stdout)
+                file_store.log_user_stream(
+                    self.description.unitName + ".stdout", default_stdout
+                )
                 if status != "success":
                     default_stdout.seek(0)
-                    logger.error("Failed command standard output:\n%s", default_stdout.read().decode("utf-8", errors="replace"))
+                    logger.error(
+                        "Failed command standard output:\n%s",
+                        default_stdout.read().decode("utf-8", errors="replace"),
+                    )
             default_stderr.seek(0, os.SEEK_END)
             if default_stderr.tell():
                 default_stderr.seek(0)
-                file_store.log_user_stream(self.description.unitName + '.stderr', default_stderr)
+                file_store.log_user_stream(
+                    self.description.unitName + ".stderr", default_stderr
+                )
                 if status != "success":
                     default_stderr.seek(0)
-                    logger.error("Failed command standard error:\n%s", default_stderr.read().decode("utf-8", errors="replace"))
+                    logger.error(
+                        "Failed command standard error:\n%s",
+                        default_stderr.read().decode("utf-8", errors="replace"),
+                    )
 
         if status != "success":
             raise cwl_utils.errors.WorkflowException(status)
@@ -2798,13 +2853,14 @@ def get_container_engine(runtime_context: cwltool.context.RuntimeContext) -> str
         return "singularity"
     return "docker"
 
+
 def makeRootJob(
     tool: Process,
     jobobj: CWLObjectType,
     runtime_context: cwltool.context.RuntimeContext,
     initialized_job_order: CWLObjectType,
     options: Namespace,
-    toil: Toil
+    toil: Toil,
 ) -> CWLNamedJob:
     """
     Create the Toil root Job object for the CWL tool. Is the same as makeJob() except this also handles import logic.
@@ -2819,8 +2875,15 @@ def makeRootJob(
         import_job = CWLImportJob(initialized_job_order, tool, runtime_context, options)
         return import_job
     else:
-        import_workflow_inputs(toil._jobStore, options, initialized_job_order=initialized_job_order, tool=tool)
-        rootJob, followOn = makeJob(tool, jobobj, runtime_context, None, None)  # toplevel, no name needed
+        import_workflow_inputs(
+            toil._jobStore,
+            options,
+            initialized_job_order=initialized_job_order,
+            tool=tool,
+        )
+        rootJob, followOn = makeJob(
+            tool, jobobj, runtime_context, None, None
+        )  # toplevel, no name needed
         rootJob.cwljob = initialized_job_order
         return rootJob
 
@@ -3376,7 +3439,13 @@ class CWLSetupJob(CWLNamedJob):
     """
     Job to take a CWL tool and job order with all files imported and makes a CWLWorkflow as a child to run it.
     """
-    def __init__(self, initialized_job_order: Promised[CWLObjectType], tool: Promised[Process], runtime_context: cwltool.context.RuntimeContext):
+
+    def __init__(
+        self,
+        initialized_job_order: Promised[CWLObjectType],
+        tool: Promised[Process],
+        runtime_context: cwltool.context.RuntimeContext,
+    ):
         super().__init__()
         self.initialized_job_order = initialized_job_order
         self.tool = tool
@@ -3388,7 +3457,9 @@ class CWLSetupJob(CWLNamedJob):
         """
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
-        root_job, _ = makeJob(tool, initialized_job_order, self.runtime_context, None, None)
+        root_job, _ = makeJob(
+            tool, initialized_job_order, self.runtime_context, None, None
+        )
         self.addChild(root_job)
 
         root_job.cwljob = initialized_job_order
@@ -3402,7 +3473,14 @@ class CWLImportJob(CWLNamedJob):
 
     This class is only used when runImportsOnWorkers is enabled.
     """
-    def __init__(self, initialized_job_order: CWLObjectType, tool: Process, runtime_context: cwltool.context.RuntimeContext, options: Namespace):
+
+    def __init__(
+        self,
+        initialized_job_order: CWLObjectType,
+        tool: Process,
+        runtime_context: cwltool.context.RuntimeContext,
+        options: Namespace,
+    ):
         super().__init__(local=False, disk=options.import_workers_disk)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
@@ -3414,13 +3492,22 @@ class CWLImportJob(CWLNamedJob):
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
         """
-        import_workflow_inputs(file_store.jobStore, self.options, self.initialized_job_order, self.tool)
-        setup_job = CWLSetupJob(self.initialized_job_order, self.tool, self.runtime_context)
+        import_workflow_inputs(
+            file_store.jobStore, self.options, self.initialized_job_order, self.tool
+        )
+        setup_job = CWLSetupJob(
+            self.initialized_job_order, self.tool, self.runtime_context
+        )
         self.addChild(setup_job)
         return setup_job.rv()
 
 
-def import_workflow_inputs(jobstore: AbstractJobStore, options: Namespace, initialized_job_order: CWLObjectType, tool: Process) -> None:
+def import_workflow_inputs(
+    jobstore: AbstractJobStore,
+    options: Namespace,
+    initialized_job_order: CWLObjectType,
+    tool: Process,
+) -> None:
     fileindex: dict[str, str] = {}
     existing: dict[str, str] = {}
     # Define something we can call to import a file and get its file
@@ -3541,21 +3628,26 @@ def filtered_secondary_files(
             if ("$(" not in sf_loc) and ("${" not in sf_loc):
                 intermediate_secondary_files.append(sf)
             else:
-                logger.debug("Secondary file %s is dropped because it has an uninterpolated location", sf)
+                logger.debug(
+                    "Secondary file %s is dropped because it has an uninterpolated location",
+                    sf,
+                )
         else:
-            logger.debug("Secondary file %s is dropped because it has an uninterpolated basename", sf)
+            logger.debug(
+                "Secondary file %s is dropped because it has an uninterpolated basename",
+                sf,
+            )
     # remove secondary files that are not present in the filestore or pointing
     # to existant things on disk
     for sf in intermediate_secondary_files:
         sf_loc = cast(str, sf.get("location", ""))
-        if (
-            sf_loc != MISSING_FILE
-            or sf.get("class", "") == "Directory"
-        ):
+        if sf_loc != MISSING_FILE or sf.get("class", "") == "Directory":
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
         else:
-            logger.debug("Secondary file %s is dropped because it is known to be missing", sf)
+            logger.debug(
+                "Secondary file %s is dropped because it is known to be missing", sf
+            )
     return final_secondary_files
 
 
@@ -3661,7 +3753,6 @@ class NoAvailableJobStoreException(Exception):
     """Indicates that no job store name is available."""
 
 
-
 def generate_default_job_store(
     batch_system_name: Optional[str],
     provisioner_name: Optional[str],
@@ -3743,6 +3834,7 @@ usage_message = "\n\n" + textwrap.dedent(
     ]
 )
 
+
 def get_options(args: list[str]) -> Namespace:
     """
     Parse given args and properly add non-Toil arguments into the cwljob of the Namespace.
@@ -3770,12 +3862,16 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # Take care of incompatible arguments related to file imports
     if options.run_imports_on_workers is True and options.import_workers_disk is None:
-        logger.error("Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers.")
+        logger.error(
+            "Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers."
+        )
         return 1
 
     # Do cwltool setup
     cwltool.main.setup_schema(args=options, custom_schema_callback=None)
-    tmpdir_prefix = options.tmpdir_prefix = options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
+    tmpdir_prefix = options.tmpdir_prefix = (
+        options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
+    )
 
     # We need a workdir for the CWL runtime contexts.
     if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
@@ -3923,16 +4019,20 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         # See https://github.com/common-workflow-language/cwl-utils/issues/309
                         try_prepull(uri, runtime_context, toil.config.batchSystem)
                     else:
-                        logger.debug("Not prepulling containers as cwltool extensions are not supported.")
+                        logger.debug(
+                            "Not prepulling containers as cwltool extensions are not supported."
+                        )
 
                 options.tool_help = None
                 options.debug = options.logLevel == "DEBUG"
-                job_order_object, options.basedir, jobloader = cwltool.main.load_job_order(
-                    options,
-                    sys.stdin,
-                    loading_context.fetcher_constructor,
-                    loading_context.overrides_list,
-                    tool_file_uri,
+                job_order_object, options.basedir, jobloader = (
+                    cwltool.main.load_job_order(
+                        options,
+                        sys.stdin,
+                        loading_context.fetcher_constructor,
+                        loading_context.overrides_list,
+                        tool_file_uri,
+                    )
                 )
                 if options.overrides:
                     loading_context.overrides_list.extend(
@@ -4006,9 +4106,9 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         shortname(inp["id"]) in initialized_job_order
                         and inp["type"] == "File"
                     ):
-                        cast(CWLObjectType, initialized_job_order[shortname(inp["id"])])[
-                            "streamable"
-                        ] = inp.get("streamable", False)
+                        cast(
+                            CWLObjectType, initialized_job_order[shortname(inp["id"])]
+                        )["streamable"] = inp.get("streamable", False)
                         # TODO also for nested types that contain streamable Files
 
                 runtime_context.use_container = not options.no_container
@@ -4055,7 +4155,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                         runtime_context=runtime_context,
                         initialized_job_order=initialized_job_order,
                         options=options,
-                        toil=toil
+                        toil=toil,
                     )
                 except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:
                     logging.error(err)
@@ -4076,7 +4176,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 outobj,
                 outdir,
                 destBucket=options.destBucket,
-                log_level=logging.INFO
+                log_level=logging.INFO,
             )
             logger.info("Stored workflow outputs")
 
@@ -4139,8 +4239,13 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         else:
             logging.error(err)
             return 1
-    except (InsufficientSystemResources, LocatorException, InvalidImportExportUrlException, UnimplementedURLException,
-            JobTooBigError) as err:
+    except (
+        InsufficientSystemResources,
+        LocatorException,
+        InvalidImportExportUrlException,
+        UnimplementedURLException,
+        JobTooBigError,
+    ) as err:
         logging.error(err)
         return 1
 

@@ -6,12 +6,20 @@ from toil.lib.io import mkdtemp
 
 
 def parentJob(job):
-    downloadJob = Job.wrapJobFn(stageFn, "file://" + os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
+    downloadJob = Job.wrapJobFn(
+        stageFn,
+        "file://" + os.path.realpath(__file__),
+        cores=0.1,
+        memory="32M",
+        disk="1M",
+    )
     job.addChild(downloadJob)
 
-    analysis = Job.wrapJobFn(analysisJob,
-                             fileStoreID=downloadJob.rv(0),
-                             disk=PromisedRequirement(downloadJob.rv(1)))
+    analysis = Job.wrapJobFn(
+        analysisJob,
+        fileStoreID=downloadJob.rv(0),
+        disk=PromisedRequirement(downloadJob.rv(1)),
+    )
     job.addFollowOn(analysis)
 
 

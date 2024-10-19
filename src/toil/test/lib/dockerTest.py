@@ -22,12 +22,14 @@ from docker.errors import ContainerError
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import Job
-from toil.lib.docker import (FORGO,
-                             RM,
-                             STOP,
-                             apiDockerCall,
-                             containerIsRunning,
-                             dockerKill)
+from toil.lib.docker import (
+    FORGO,
+    RM,
+    STOP,
+    apiDockerCall,
+    containerIsRunning,
+    dockerKill,
+)
 from toil.test import ToilTest, needs_docker, slow
 
 logger = logging.getLogger(__name__)
@@ -47,15 +49,12 @@ class DockerTest(ToilTest):
     removed during tear down.
     Otherwise, left-over files will not be removed.
     """
-    def setUp(self):
-        self.tempDir = self._createTempDir(purpose='tempDir')
-        self.dockerTestLogLevel = 'INFO'
 
-    def testDockerClean(self,
-                        caching=False,
-                        detached=True,
-                        rm=True,
-                        deferParam=None):
+    def setUp(self):
+        self.tempDir = self._createTempDir(purpose="tempDir")
+        self.dockerTestLogLevel = "INFO"
+
+    def testDockerClean(self, caching=False, detached=True, rm=True, deferParam=None):
         """
         Run the test container that creates a file in the work dir, and sleeps
         for 5 minutes.
@@ -73,29 +72,25 @@ class DockerTest(ToilTest):
         # detached     X         R         E      X
         #  Neither     X         R         E      X
 
-        data_dir = os.path.join(self.tempDir, 'data')
-        working_dir = os.path.join(self.tempDir, 'working')
-        test_file = os.path.join(working_dir, 'test.txt')
+        data_dir = os.path.join(self.tempDir, "data")
+        working_dir = os.path.join(self.tempDir, "working")
+        test_file = os.path.join(working_dir, "test.txt")
 
         os.makedirs(data_dir, exist_ok=True)
         os.makedirs(working_dir, exist_ok=True)
 
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
-                                                            'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, "jobstore"))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = working_dir
-        options.clean = 'always'
+        options.clean = "always"
         options.retryCount = 0  # we're expecting the job to fail so don't retry!
         options.caching = caching
 
         # No base64 logic since it might create a name starting with a `-`.
         container_name = uuid.uuid4().hex
-        A = Job.wrapJobFn(_testDockerCleanFn,
-                          working_dir,
-                          detached,
-                          rm,
-                          deferParam,
-                          container_name)
+        A = Job.wrapJobFn(
+            _testDockerCleanFn, working_dir, detached, rm, deferParam, container_name
+        )
         try:
             with Toil(options) as toil:
                 toil.start(A)
@@ -110,18 +105,21 @@ class DockerTest(ToilTest):
 
             if (rm and (deferParam != FORGO)) or deferParam == RM or deferParam is None:
                 # These containers should not exist
-                assert containerIsRunning(container_name) is None, \
-                    'Container was not removed.'
+                assert (
+                    containerIsRunning(container_name) is None
+                ), "Container was not removed."
 
             elif deferParam == STOP:
                 # These containers should exist but be non-running
-                assert containerIsRunning(container_name) == False, \
-                    'Container was not stopped.'
+                assert (
+                    containerIsRunning(container_name) == False
+                ), "Container was not stopped."
 
             else:
                 # These containers will be running
-                assert containerIsRunning(container_name) == True, \
-                    'Container was not running.'
+                assert (
+                    containerIsRunning(container_name) == True
+                ), "Container was not running."
         finally:
             # Clean up
             try:
@@ -131,121 +129,97 @@ class DockerTest(ToilTest):
                 pass
 
     def testDockerClean_CRx_FORGO(self):
-        self.testDockerClean(caching=False, detached=False, rm=True,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=False, detached=False, rm=True, deferParam=FORGO)
 
     def testDockerClean_CRx_STOP(self):
-        self.testDockerClean(caching=False, detached=False, rm=True,
-                             deferParam=STOP)
+        self.testDockerClean(caching=False, detached=False, rm=True, deferParam=STOP)
 
     def testDockerClean_CRx_RM(self):
-        self.testDockerClean(caching=False, detached=False, rm=True,
-                             deferParam=RM)
+        self.testDockerClean(caching=False, detached=False, rm=True, deferParam=RM)
 
     @slow
     def testDockerClean_CRx_None(self):
-        self.testDockerClean(caching=False, detached=False, rm=True,
-                             deferParam=None)
+        self.testDockerClean(caching=False, detached=False, rm=True, deferParam=None)
 
     @slow
     def testDockerClean_CxD_FORGO(self):
-        self.testDockerClean(caching=False, detached=True, rm=False,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=False, detached=True, rm=False, deferParam=FORGO)
 
     @slow
     def testDockerClean_CxD_STOP(self):
-        self.testDockerClean(caching=False, detached=True, rm=False,
-                             deferParam=STOP)
+        self.testDockerClean(caching=False, detached=True, rm=False, deferParam=STOP)
 
     @slow
     def testDockerClean_CxD_RM(self):
-        self.testDockerClean(caching=False, detached=True, rm=False,
-                             deferParam=RM)
+        self.testDockerClean(caching=False, detached=True, rm=False, deferParam=RM)
 
     @slow
     def testDockerClean_CxD_None(self):
-        self.testDockerClean(caching=False, detached=True, rm=False,
-                             deferParam=None)
+        self.testDockerClean(caching=False, detached=True, rm=False, deferParam=None)
 
     @slow
     def testDockerClean_Cxx_FORGO(self):
-        self.testDockerClean(caching=False, detached=False, rm=False,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=False, detached=False, rm=False, deferParam=FORGO)
 
     @slow
     def testDockerClean_Cxx_STOP(self):
-        self.testDockerClean(caching=False, detached=False, rm=False,
-                             deferParam=STOP)
+        self.testDockerClean(caching=False, detached=False, rm=False, deferParam=STOP)
 
     @slow
     def testDockerClean_Cxx_RM(self):
-        self.testDockerClean(caching=False, detached=False, rm=False,
-                             deferParam=RM)
+        self.testDockerClean(caching=False, detached=False, rm=False, deferParam=RM)
 
     @slow
     def testDockerClean_Cxx_None(self):
-        self.testDockerClean(caching=False, detached=False, rm=False,
-                             deferParam=None)
+        self.testDockerClean(caching=False, detached=False, rm=False, deferParam=None)
 
     @slow
     def testDockerClean_xRx_FORGO(self):
-        self.testDockerClean(caching=True, detached=False, rm=True,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=True, detached=False, rm=True, deferParam=FORGO)
 
     @slow
     def testDockerClean_xRx_STOP(self):
-        self.testDockerClean(caching=True, detached=False, rm=True,
-                             deferParam=STOP)
+        self.testDockerClean(caching=True, detached=False, rm=True, deferParam=STOP)
 
     @slow
     def testDockerClean_xRx_RM(self):
-        self.testDockerClean(caching=True, detached=False, rm=True,
-                             deferParam=RM)
+        self.testDockerClean(caching=True, detached=False, rm=True, deferParam=RM)
 
     @slow
     def testDockerClean_xRx_None(self):
-        self.testDockerClean(caching=True, detached=False, rm=True,
-                             deferParam=None)
+        self.testDockerClean(caching=True, detached=False, rm=True, deferParam=None)
 
     @slow
     def testDockerClean_xxD_FORGO(self):
-        self.testDockerClean(caching=True, detached=True, rm=False,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=True, detached=True, rm=False, deferParam=FORGO)
 
     @slow
     def testDockerClean_xxD_STOP(self):
-        self.testDockerClean(caching=True, detached=True, rm=False,
-                             deferParam=STOP)
+        self.testDockerClean(caching=True, detached=True, rm=False, deferParam=STOP)
 
     @slow
     def testDockerClean_xxD_RM(self):
-        self.testDockerClean(caching=True, detached=True, rm=False,
-                             deferParam=RM)
+        self.testDockerClean(caching=True, detached=True, rm=False, deferParam=RM)
 
     @slow
     def testDockerClean_xxD_None(self):
-        self.testDockerClean(caching=True, detached=True, rm=False,
-                             deferParam=None)
+        self.testDockerClean(caching=True, detached=True, rm=False, deferParam=None)
 
     @slow
     def testDockerClean_xxx_FORGO(self):
-        self.testDockerClean(caching=True, detached=False, rm=False,
-                             deferParam=FORGO)
+        self.testDockerClean(caching=True, detached=False, rm=False, deferParam=FORGO)
 
     @slow
     def testDockerClean_xxx_STOP(self):
-        self.testDockerClean(caching=True, detached=False, rm=False,
-                             deferParam=STOP)
+        self.testDockerClean(caching=True, detached=False, rm=False, deferParam=STOP)
 
     @slow
     def testDockerClean_xxx_RM(self):
-        self.testDockerClean(caching=True, detached=False, rm=False,
-                             deferParam=RM)
+        self.testDockerClean(caching=True, detached=False, rm=False, deferParam=RM)
 
     @slow
     def testDockerClean_xxx_None(self):
-        self.testDockerClean(caching=True, detached=False, rm=False,
-                             deferParam=None)
+        self.testDockerClean(caching=True, detached=False, rm=False, deferParam=None)
 
     def testDockerPipeChain(self, caching=False):
         r"""
@@ -255,16 +229,16 @@ class DockerTest(ToilTest):
         ex:  ``parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ]`` should execute:
         ``printf 'x\n y\n' | wc -l``
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, "jobstore"))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
-        options.clean = 'always'
+        options.clean = "always"
         options.caching = caching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
-        logger.info('Container pipeline result: %s', repr(rv))
-        rv = rv.decode('utf-8')
-        assert rv.strip() == '2'
+        logger.info("Container pipeline result: %s", repr(rv))
+        rv = rv.decode("utf-8")
+        assert rv.strip() == "2"
 
     def testDockerPipeChainErrorDetection(self, caching=False):
         """
@@ -273,10 +247,10 @@ class DockerTest(ToilTest):
         silently missed.  This tests to make sure that the piping API for
         dockerCall() throws an exception if non-last commands in the chain fail.
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, "jobstore"))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
-        options.clean = 'always'
+        options.clean = "always"
         options.caching = caching
         A = Job.wrapJobFn(_testDockerPipeChainErrorFn)
         rv = Job.Runner.startToil(A, options)
@@ -291,19 +265,21 @@ class DockerTest(ToilTest):
     def testDockerLogs(self, stream=False, demux=False):
         """Test for the different log outputs when deatch=False."""
 
-        working_dir = os.path.join(self.tempDir, 'working')
-        script_file = os.path.join(working_dir, 'script.sh')
+        working_dir = os.path.join(self.tempDir, "working")
+        script_file = os.path.join(working_dir, "script.sh")
         os.makedirs(working_dir, exist_ok=True)
 
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, "jobstore"))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = working_dir
-        options.clean = 'always'
-        A = Job.wrapJobFn(_testDockerLogsFn,
-                          working_dir=working_dir,
-                          script_file=script_file,
-                          stream=stream,
-                          demux=demux)
+        options.clean = "always"
+        A = Job.wrapJobFn(
+            _testDockerLogsFn,
+            working_dir=working_dir,
+            script_file=script_file,
+            stream=stream,
+            demux=demux,
+        )
 
         try:
             rv = Job.Runner.startToil(A, options)
@@ -324,12 +300,9 @@ class DockerTest(ToilTest):
         self.testDockerLogs(stream=True, demux=True)
 
 
-def _testDockerCleanFn(job,
-                       working_dir,
-                       detached=None,
-                       rm=None,
-                       deferParam=None,
-                       containerName=None):
+def _testDockerCleanFn(
+    job, working_dir, detached=None, rm=None, deferParam=None, containerName=None
+):
     """
     Test function for test docker_clean.  Runs a container with given flags and
     then dies leaving behind a zombie container.
@@ -340,11 +313,12 @@ def _testDockerCleanFn(job,
     :param int deferParam: See `deferParam=` in :func:`dockerCall`
     :param str containerName: See `container_name=` in :func:`dockerCall`
     """
+
     def killSelf():
-        test_file = os.path.join(working_dir, 'test.txt')
+        test_file = os.path.join(working_dir, "test.txt")
         # Kill the worker once we are sure the docker container is started
         while not os.path.exists(test_file):
-            logger.debug('Waiting on the file created by spooky_container.')
+            logger.debug("Waiting on the file created by spooky_container.")
             time.sleep(1)
         # By the time we reach here, we are sure the container is running.
         time.sleep(1)
@@ -354,48 +328,48 @@ def _testDockerCleanFn(job,
     # Make it a daemon thread so that thread failure doesn't hang tests.
     t.daemon = True
     t.start()
-    apiDockerCall(job,
-                  image='quay.io/ucsc_cgl/spooky_test',
-                  working_dir=working_dir,
-                  deferParam=deferParam,
-                  containerName=containerName,
-                  detach=detached,
-                  remove=rm,
-                  privileged=True)
+    apiDockerCall(
+        job,
+        image="quay.io/ucsc_cgl/spooky_test",
+        working_dir=working_dir,
+        deferParam=deferParam,
+        containerName=containerName,
+        detach=detached,
+        remove=rm,
+        privileged=True,
+    )
 
 
 def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
-    parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
-    return apiDockerCall(job,
-                         image='quay.io/ucsc_cgl/ubuntu:20.04',
-                         parameters=parameters,
-                         privileged=True)
+    parameters = [["printf", "x\n y\n"], ["wc", "-l"]]
+    return apiDockerCall(
+        job,
+        image="quay.io/ucsc_cgl/ubuntu:20.04",
+        parameters=parameters,
+        privileged=True,
+    )
 
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
-    parameters = [['exit', '1'], ['wc', '-l']]
+    parameters = [["exit", "1"], ["wc", "-l"]]
     try:
-        apiDockerCall(job,
-                      image='quay.io/ucsc_cgl/spooky_test',
-                      parameters=parameters)
+        apiDockerCall(job, image="quay.io/ucsc_cgl/spooky_test", parameters=parameters)
     except ContainerError:
         return True
     return False
 
 
-def _testDockerLogsFn(job,
-                      working_dir,
-                      script_file,
-                      stream=False,
-                      demux=False):
+def _testDockerLogsFn(job, working_dir, script_file, stream=False, demux=False):
     """Return True if the test succeeds. Otherwise Exception is raised."""
 
     # we write a script file because the redirection operator, '>&2', is wrapped
     # in quotes when passed as parameters.
     import textwrap
-    bash_script = textwrap.dedent('''
+
+    bash_script = textwrap.dedent(
+        """
     #!/bin/bash
     echo hello stdout ;
     echo hello stderr >&2 ;
@@ -403,27 +377,30 @@ def _testDockerLogsFn(job,
     echo hello stderr >&2 ;
     echo hello stdout ;
     echo hello stdout ;
-    ''')
+    """
+    )
 
-    with open(script_file, 'w') as file:
+    with open(script_file, "w") as file:
         file.write(bash_script)
 
-    out = apiDockerCall(job,
-                        image='quay.io/ucsc_cgl/ubuntu:20.04',
-                        working_dir=working_dir,
-                        parameters=[script_file],
-                        volumes={working_dir: {'bind': working_dir, 'mode': 'rw'}},
-                        entrypoint="/bin/bash",
-                        stdout=True,
-                        stderr=True,
-                        stream=stream,
-                        demux=demux)
+    out = apiDockerCall(
+        job,
+        image="quay.io/ucsc_cgl/ubuntu:20.04",
+        working_dir=working_dir,
+        parameters=[script_file],
+        volumes={working_dir: {"bind": working_dir, "mode": "rw"}},
+        entrypoint="/bin/bash",
+        stdout=True,
+        stderr=True,
+        stream=stream,
+        demux=demux,
+    )
 
     # we check the output length because order is not guaranteed.
     if stream:
         if demux:
             # a generator with tuples of (stdout, stderr)
-            assert hasattr(out, '__iter__')
+            assert hasattr(out, "__iter__")
             for _ in range(6):
                 stdout, stderr = next(out)
                 if stdout:
@@ -435,7 +412,7 @@ def _testDockerLogsFn(job,
                     assert False
         else:
             # a generator with bytes
-            assert hasattr(out, '__iter__')
+            assert hasattr(out, "__iter__")
             for _ in range(6):
                 assert len(next(out)) == 13
     else:

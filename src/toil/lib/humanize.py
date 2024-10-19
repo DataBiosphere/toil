@@ -25,7 +25,9 @@ def bytes2human(n: SupportsInt) -> str:
     """
     Convert n bytes into a human readable string.
     """
-    logger.warning('Deprecated toil method.  Please use "toil.lib.conversions.bytes2human()" instead."')
+    logger.warning(
+        'Deprecated toil method.  Please use "toil.lib.conversions.bytes2human()" instead."'
+    )
     return b2h(n)
 
 
@@ -36,5 +38,7 @@ def human2bytes(s: str) -> int:
 
     When unable to recognize the format ValueError is raised.
     """
-    logger.warning('Deprecated toil method.  Please use "toil.lib.conversions.human2bytes()" instead."')
+    logger.warning(
+        'Deprecated toil method.  Please use "toil.lib.conversions.human2bytes()" instead."'
+    )
     return h2b(s)

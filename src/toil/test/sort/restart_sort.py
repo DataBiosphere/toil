@@ -29,7 +29,7 @@ from toil.realtimeLogger import RealtimeLogger
 
 defaultLines = 1000
 defaultLineLen = 50
-sortMemory = '600M'
+sortMemory = "600M"
 
 
 def setup(job, inputFile, N, downCheckpoints, options):
@@ -38,12 +38,16 @@ def setup(job, inputFile, N, downCheckpoints, options):
     Returns the FileID of the sorted file
     """
     RealtimeLogger.info("Starting the merge sort")
-    return job.addChildJobFn(down,
-                             inputFile, N, 'root',
-                             downCheckpoints,
-                             options = options,
-                             preemptible=True,
-                             memory=sortMemory).rv()
+    return job.addChildJobFn(
+        down,
+        inputFile,
+        N,
+        "root",
+        downCheckpoints,
+        options=options,
+        preemptible=True,
+        memory=sortMemory,
+    ).rv()
 
 
 def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMemory):
@@ -61,34 +65,57 @@ def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMe
     length = os.path.getsize(inputFile)
     if length > N:
         # We will subdivide the file
-        RealtimeLogger.critical("Splitting file: %s of size: %s"
-                % (inputFileStoreID, length))
+        RealtimeLogger.critical(
+            "Splitting file: %s of size: %s" % (inputFileStoreID, length)
+        )
         # Split the file into two copies
         midPoint = getMidPoint(inputFile, 0, length)
         t1 = job.fileStore.getLocalTempFile()
-        with open(t1, 'w') as fH:
-            fH.write(copySubRangeOfFile(inputFile, 0, midPoint+1))
+        with open(t1, "w") as fH:
+            fH.write(copySubRangeOfFile(inputFile, 0, midPoint + 1))
         t2 = job.fileStore.getLocalTempFile()
-        with open(t2, 'w') as fH:
-            fH.write(copySubRangeOfFile(inputFile, midPoint+1, length))
+        with open(t2, "w") as fH:
+            fH.write(copySubRangeOfFile(inputFile, midPoint + 1, length))
         # Call down recursively. By giving the rv() of the two jobs as inputs to the follow-on job, up,
         # we communicate the dependency without hindering concurrency.
-        result = job.addFollowOnJobFn(up,
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, path + '/0',
-                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptible=True, memory=options.sortMemory).rv(),
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, path + '/1',
-                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
-                                                      preemptible=True, memory=options.mergeMemory).rv(),
-                                    path + '/up', preemptible=True, options=options, memory=options.sortMemory).rv()
+        result = job.addFollowOnJobFn(
+            up,
+            job.addChildJobFn(
+                down,
+                job.fileStore.writeGlobalFile(t1),
+                N,
+                path + "/0",
+                downCheckpoints,
+                checkpoint=downCheckpoints,
+                options=options,
+                preemptible=True,
+                memory=options.sortMemory,
+            ).rv(),
+            job.addChildJobFn(
+                down,
+                job.fileStore.writeGlobalFile(t2),
+                N,
+                path + "/1",
+                downCheckpoints,
+                checkpoint=downCheckpoints,
+                options=options,
+                preemptible=True,
+                memory=options.mergeMemory,
+            ).rv(),
+            path + "/up",
+            preemptible=True,
+            options=options,
+            memory=options.sortMemory,
+        ).rv()
     else:
         # We can sort this bit of the file
-        RealtimeLogger.critical("Sorting file: %s of size: %s"
-                % (inputFileStoreID, length))
+        RealtimeLogger.critical(
+            "Sorting file: %s of size: %s" % (inputFileStoreID, length)
+        )
         # Sort the copy and write back to the fileStore
-        shutil.copyfile(inputFile, inputFile + '.sort')
-        sort(inputFile + '.sort')
-        result = job.fileStore.writeGlobalFile(inputFile + '.sort')
+        shutil.copyfile(inputFile, inputFile + ".sort")
+        sort(inputFile + ".sort")
+        result = job.fileStore.writeGlobalFile(inputFile + ".sort")
 
     RealtimeLogger.info("Down job finished: %s" % path)
     return result
@@ -102,13 +129,15 @@ def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
     RealtimeLogger.info("Up job starting: %s" % path)
 
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
-        fileHandle = codecs.getwriter('utf-8')(fileHandle)
+        fileHandle = codecs.getwriter("utf-8")(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
-            inputFileHandle1 = codecs.getreader('utf-8')(inputFileHandle1)
+            inputFileHandle1 = codecs.getreader("utf-8")(inputFileHandle1)
             with job.fileStore.readGlobalFileStream(inputFileID2) as inputFileHandle2:
-                inputFileHandle2 = codecs.getreader('utf-8')(inputFileHandle2)
-                RealtimeLogger.info("Merging %s and %s to %s"
-                    % (inputFileID1, inputFileID2, outputFileStoreID))
+                inputFileHandle2 = codecs.getreader("utf-8")(inputFileHandle2)
+                RealtimeLogger.info(
+                    "Merging %s and %s to %s"
+                    % (inputFileID1, inputFileID2, outputFileStoreID)
+                )
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
@@ -126,7 +155,7 @@ def sort(file):
 
     lines.sort()
 
-    with open(file, 'w') as f:
+    with open(file, "w") as f:
         for line in lines:
             f.write(line)
 
@@ -181,9 +210,12 @@ def getMidPoint(file, fileStart, fileEnd):
 
 
 def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
-    with open(fileName, 'w') as f:
+    with open(fileName, "w") as f:
         for _ in range(lines):
-            line = "".join(random.choice('actgACTGNXYZ') for _ in range(lineLen - 1)) + '\n'
+            line = (
+                "".join(random.choice("actgACTGNXYZ") for _ in range(lineLen - 1))
+                + "\n"
+            )
             f.write(line)
 
 
@@ -192,25 +224,51 @@ def main(options=None):
         # deal with command line arguments
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
-        parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
-        parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
+        parser.add_argument(
+            "--numLines",
+            default=defaultLines,
+            help="Number of lines in file to sort.",
+            type=int,
+        )
+        parser.add_argument(
+            "--lineLength",
+            default=defaultLineLen,
+            help="Length of lines in file to sort.",
+            type=int,
+        )
         parser.add_argument("--fileToSort", help="The file you wish to sort")
         parser.add_argument("--outputFile", help="Where the sorted output will go")
-        parser.add_argument("--overwriteOutput", help="Write over the output file if it already exists.", default=True)
-        parser.add_argument("--N", dest="N",
-                            help="The threshold below which a serial sort function is used to sort file. "
-                                 "All lines must of length less than or equal to N or program will fail",
-                            default=10000)
-        parser.add_argument('--downCheckpoints', action='store_true',
-                            help='If this option is set, the workflow will make checkpoints on its way through'
-                                 'the recursive "down" part of the sort')
-        parser.add_argument("--sortMemory", dest="sortMemory",
-                        help="Memory for jobs that sort chunks of the file.",
-                        default=None)
+        parser.add_argument(
+            "--overwriteOutput",
+            help="Write over the output file if it already exists.",
+            default=True,
+        )
+        parser.add_argument(
+            "--N",
+            dest="N",
+            help="The threshold below which a serial sort function is used to sort file. "
+            "All lines must of length less than or equal to N or program will fail",
+            default=10000,
+        )
+        parser.add_argument(
+            "--downCheckpoints",
+            action="store_true",
+            help="If this option is set, the workflow will make checkpoints on its way through"
+            'the recursive "down" part of the sort',
+        )
+        parser.add_argument(
+            "--sortMemory",
+            dest="sortMemory",
+            help="Memory for jobs that sort chunks of the file.",
+            default=None,
+        )
 
-        parser.add_argument("--mergeMemory", dest="mergeMemory",
-                        help="Memory for jobs that collate results.",
-                        default=None)
+        parser.add_argument(
+            "--mergeMemory",
+            dest="mergeMemory",
+            help="Memory for jobs that collate results.",
+            default=None,
+        )
 
         options = parser.parse_args()
     if not hasattr(options, "sortMemory") or not options.sortMemory:
@@ -221,19 +279,25 @@ def main(options=None):
     # do some input verification
     sortedFileName = options.outputFile or "sortedFile.txt"
     if not options.overwriteOutput and os.path.exists(sortedFileName):
-        print(f'Output file {sortedFileName} already exists.  '
-              f'Delete it to run the sort example again or use --overwriteOutput=True')
+        print(
+            f"Output file {sortedFileName} already exists.  "
+            f"Delete it to run the sort example again or use --overwriteOutput=True"
+        )
         exit()
 
     fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = 'fileToSort.txt'
+        fileName = "fileToSort.txt"
         if os.path.exists(fileName):
-            print(f'Sorting existing file: {fileName}')
+            print(f"Sorting existing file: {fileName}")
         else:
-            print(f'No sort file specified. Generating one automatically called: {fileName}.')
-            makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
+            print(
+                f"No sort file specified. Generating one automatically called: {fileName}."
+            )
+            makeFileToSort(
+                fileName=fileName, lines=options.numLines, lineLen=options.lineLength
+            )
     else:
         if not os.path.exists(options.fileToSort):
             raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
@@ -241,24 +305,29 @@ def main(options=None):
     if int(options.N) <= 0:
         raise RuntimeError("Invalid value of N: %s" % options.N)
 
-
     # Now we are ready to run
     with Toil(options) as workflow:
-        sortedFileURL = 'file://' + os.path.abspath(sortedFileName)
-        #raise Exception('test')
+        sortedFileURL = "file://" + os.path.abspath(sortedFileName)
+        # raise Exception('test')
 
         if not workflow.options.restart:
-            sortFileURL = 'file://' + os.path.abspath(fileName)
+            sortFileURL = "file://" + os.path.abspath(fileName)
             sortFileID = workflow.importFile(sortFileURL)
-            sortedFileID = workflow.start(Job.wrapJobFn(setup,
-                                                        sortFileID,
-                                                        int(options.N),
-                                                        options.downCheckpoints,
-                                                        options=options,
-                                                        memory=sortMemory))
+            sortedFileID = workflow.start(
+                Job.wrapJobFn(
+                    setup,
+                    sortFileID,
+                    int(options.N),
+                    options.downCheckpoints,
+                    options=options,
+                    memory=sortMemory,
+                )
+            )
         """
         The else block is removed here to test that the job store is not
         destroyed when attempting to resume without restart().
         """
-if __name__ == '__main__':
+
+
+if __name__ == "__main__":
     main()

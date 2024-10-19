@@ -21,8 +21,7 @@ import time
 import unittest
 
 from toil.common import Toil
-from toil.jobStores.abstractJobStore import (NoSuchFileException,
-                                             NoSuchJobStoreException)
+from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.jobStores.utils import generate_locator
 from toil.test import ToilTest, needs_aws_s3, needs_cwl
 
@@ -61,7 +60,7 @@ class ToilKillTest(ToilTest):
         kill_cmd = ["toil", "kill", self.job_store]
 
         # run the sleep workflow
-        logger.info('Running workflow: %s', ' '.join(run_cmd))
+        logger.info("Running workflow: %s", " ".join(run_cmd))
         cwl_process = subprocess.Popen(run_cmd)
 
         # wait until workflow starts running
@@ -75,9 +74,9 @@ class ToilKillTest(ToilTest):
                     # kill flag exists to be deleted to kill the leader
                     break
                 else:
-                    logger.info('Waiting for kill flag...')
+                    logger.info("Waiting for kill flag...")
             except (NoSuchJobStoreException, NoSuchFileException):
-                logger.info('Waiting for job store to be openable...')
+                logger.info("Waiting for job store to be openable...")
             time.sleep(2)
 
         # run toil kill

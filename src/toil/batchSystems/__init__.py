@@ -18,6 +18,7 @@ class DeadlockException(Exception):
     Exception thrown by the Leader or BatchSystem when a deadlock is encountered due to insufficient
     resources to run the workflow
     """
+
     def __init__(self, msg):
         self.msg = f"Deadlock encountered: {msg}"
         super().__init__()

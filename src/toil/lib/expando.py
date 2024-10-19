@@ -14,6 +14,7 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
+
 class Expando(dict):
     """
     Pass initial attributes to the constructor:
@@ -100,13 +101,14 @@ class Expando(dict):
     True
     """
 
-    def __init__( self, *args, **kwargs ):
-        super().__init__( *args, **kwargs )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__slots__ = None
         self.__dict__ = self
 
     def copy(self):
         return type(self)(self)
+
 
 class MagicExpando(Expando):
     """

@@ -15,12 +15,15 @@ import logging
 from argparse import ArgumentParser, _ArgumentGroup
 from typing import Any, Callable, Optional, Protocol, TypeVar, Union
 
-from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
-                                        get_batch_system,
-                                        get_batch_systems)
+from toil.batchSystems.registry import (
+    DEFAULT_BATCH_SYSTEM,
+    get_batch_system,
+    get_batch_systems,
+)
 from toil.lib.threading import cpu_count
 
 logger = logging.getLogger(__name__)
+
 
 class OptionSetter(Protocol):
     """
@@ -30,7 +33,8 @@ class OptionSetter(Protocol):
     Actual functionality is defined in the Config class.
     """
 
-    OptionType = TypeVar('OptionType')
+    OptionType = TypeVar("OptionType")
+
     def __call__(
         self,
         option_name: str,
@@ -38,11 +42,13 @@ class OptionSetter(Protocol):
         check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
         default: Optional[OptionType] = None,
         env: Optional[list[str]] = None,
-        old_names: Optional[list[str]] = None
-    ) -> bool:
-        ...
+        old_names: Optional[list[str]] = None,
+    ) -> bool: ...
 
-def set_batchsystem_options(batch_system: Optional[str], set_option: OptionSetter) -> None:
+
+def set_batchsystem_options(
+    batch_system: Optional[str], set_option: OptionSetter
+) -> None:
     """
     Call set_option for all the options for the given named batch system, or
     all batch systems if no name is provided.
@@ -104,11 +110,11 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
     parser.add_argument(
         "--maxJobs",
         dest="max_jobs",
-        default=SYS_MAX_SIZE, # This is *basically* unlimited and saves a lot of Optional[]
+        default=SYS_MAX_SIZE,  # This is *basically* unlimited and saves a lot of Optional[]
         type=lambda x: int(x) or SYS_MAX_SIZE,
         help="Specifies the maximum number of jobs to submit to the "
-             "backing scheduler at once. Not supported on Mesos or "
-             "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
+        "backing scheduler at once. Not supported on Mesos or "
+        "AWS Batch. Use 0 for unlimited. Defaults to unlimited.",
     )
     parser.add_argument(
         "--maxLocalJobs",
@@ -116,8 +122,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=None,
         type=lambda x: int(x) or 0,
         help=f"Specifies the maximum number of housekeeping jobs to "
-             f"run sumultaneously on the local system. Use 0 for "
-             f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
+        f"run sumultaneously on the local system. Use 0 for "
+        f"unlimited. Defaults to the number of local cores ({cpu_count()}).",
     )
     parser.add_argument(
         "--manualMemArgs",
@@ -156,8 +162,8 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         type=int,
         default=None,
         help="Time, in seconds, to wait before doing a scheduler query for job state.  "
-             "Return cached results if within the waiting period. Only works for grid "
-             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+        "Return cached results if within the waiting period. Only works for grid "
+        "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf.",
     )
     parser.add_argument(
         "--statePollingTimeout",
@@ -165,7 +171,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         type=int,
         default=1200,
         help="Time, in seconds, to retry against a broken scheduler. Only works for grid "
-             "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf."
+        "engine batch systems such as gridengine, htcondor, torque, slurm, and lsf.",
     )
     parser.add_argument(
         "--batchLogsDir",
@@ -173,15 +179,20 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         default=None,
         env_var="TOIL_BATCH_LOGS_DIR",
         help="Directory to tell the backing batch system to log into. Should be available "
-             "on both the leader and the workers, if the backing batch system writes logs "
-             "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
-             "the Toil work directory will be used. Only works for grid engine batch "
-             "systems such as gridengine, htcondor, torque, slurm, and lsf."
+        "on both the leader and the workers, if the backing batch system writes logs "
+        "to the worker machines' filesystems, as many HPC schedulers do. If unset, "
+        "the Toil work directory will be used. Only works for grid engine batch "
+        "systems such as gridengine, htcondor, torque, slurm, and lsf.",
     )
 
-    parser.add_argument('--memoryIsProduct', dest='memory_is_product', default=False, action="store_true",
-                        help="If the batch system understands requested memory as a product of the requested memory and the number"
-                             "of cores, set this flag to properly allocate memory.")
+    parser.add_argument(
+        "--memoryIsProduct",
+        dest="memory_is_product",
+        default=False,
+        action="store_true",
+        help="If the batch system understands requested memory as a product of the requested memory and the number"
+        "of cores, set this flag to properly allocate memory.",
+    )
 
     for name in get_batch_systems():
         # All the batch systems are responsible for adding their own options
@@ -192,5 +203,5 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
             # Skip anything we can't import
             continue
         # Ask the batch system to create its options in the parser
-        logger.debug('Add options for %s batch system', name)
+        logger.debug("Add options for %s batch system", name)
         batch_system_type.add_options(parser)

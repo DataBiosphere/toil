@@ -18,16 +18,18 @@ from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from tempfile import mkstemp
 from threading import Event, Semaphore
-from typing import (IO,
-                    TYPE_CHECKING,
-                    Any,
-                    Callable,
-                    ContextManager,
-                    Literal,
-                    Optional,
-                    Union,
-                    cast,
-                    overload)
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ContextManager,
+    Literal,
+    Optional,
+    Union,
+    cast,
+    overload,
+)
 
 import dill
 
@@ -70,6 +72,7 @@ class AbstractFileStore(ABC):
     Also responsible for committing completed jobs back to the job store with
     an update operation, and allowing that commit operation to be waited for.
     """
+
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
     _pendingFileWrites: set[str] = set()
@@ -105,8 +108,14 @@ class AbstractFileStore(ABC):
         # This gets replaced with a subdirectory of itself on open()
         self.localTempDir: str = os.path.abspath(file_store_dir)
         assert self.jobStore.config.workflowID is not None
-        self.workflow_dir: str = Toil.getLocalWorkflowDir(self.jobStore.config.workflowID, self.jobStore.config.workDir)
-        self.coordination_dir: str =Toil.get_local_workflow_coordination_dir(self.jobStore.config.workflowID, self.jobStore.config.workDir, self.jobStore.config.coordination_dir)
+        self.workflow_dir: str = Toil.getLocalWorkflowDir(
+            self.jobStore.config.workflowID, self.jobStore.config.workDir
+        )
+        self.coordination_dir: str = Toil.get_local_workflow_coordination_dir(
+            self.jobStore.config.workflowID,
+            self.jobStore.config.workDir,
+            self.jobStore.config.coordination_dir,
+        )
         self.jobName: str = str(self.jobDesc)
         self.waitForPreviousCommit = waitForPreviousCommit
         self.logging_messages: list[dict[str, Union[int, str]]] = []
@@ -141,7 +150,11 @@ class AbstractFileStore(ABC):
         return fileStoreCls(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
 
     @staticmethod
-    def shutdownFileStore(workflowID: str, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> None:
+    def shutdownFileStore(
+        workflowID: str,
+        config_work_dir: Optional[str],
+        config_coordination_dir: Optional[str],
+    ) -> None:
         """
         Carry out any necessary filestore-specific cleanup.
 
@@ -161,7 +174,9 @@ class AbstractFileStore(ABC):
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
         workflowDir = Toil.getLocalWorkflowDir(workflowID, config_work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(workflowID, config_work_dir, config_coordination_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(
+            workflowID, config_work_dir, config_coordination_dir
+        )
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
             # The presence of the cacheDir suggests this was a cached run. We don't need
@@ -202,12 +217,16 @@ class AbstractFileStore(ABC):
             percent: float = 0.0
             if job_requested_disk and job_requested_disk > 0:
                 percent = float(self._job_disk_used) / job_requested_disk * 100
-            disk_usage: str = (f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(self._job_disk_used)}B [{self._job_disk_used}B] used, "
-                               f"{bytes2human(job_requested_disk)}B [{job_requested_disk}B] requested).")
+            disk_usage: str = (
+                f"Job {self.jobName} used {percent:.2f}% disk ({bytes2human(self._job_disk_used)}B [{self._job_disk_used}B] used, "
+                f"{bytes2human(job_requested_disk)}B [{job_requested_disk}B] requested)."
+            )
             if self._job_disk_used > job_requested_disk:
-                self.log_to_leader("Job used more disk than requested. For CWL, consider increasing the outdirMin "
-                                 f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
-                                 level=logging.WARNING)
+                self.log_to_leader(
+                    "Job used more disk than requested. For CWL, consider increasing the outdirMin "
+                    f"requirement, otherwise, consider increasing the disk requirement. {disk_usage}",
+                    level=logging.WARNING,
+                )
             else:
                 self.log_to_leader(disk_usage, level=logging.DEBUG)
 
@@ -219,7 +238,6 @@ class AbstractFileStore(ABC):
         TODO: Sample periodically and record peak usage.
         """
         return self._job_disk_used
-
 
     # Functions related to temp files and directories
     def getLocalTempDir(self) -> str:
@@ -235,7 +253,9 @@ class AbstractFileStore(ABC):
         """
         return os.path.abspath(mkdtemp(dir=self.localTempDir))
 
-    def getLocalTempFile(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
+    def getLocalTempFile(
+        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+    ) -> str:
         """
         Get a new local temporary file that will persist for the duration of the job.
 
@@ -252,12 +272,14 @@ class AbstractFileStore(ABC):
         handle, tmpFile = mkstemp(
             suffix=".tmp" if suffix is None else suffix,
             prefix="tmp" if prefix is None else prefix,
-            dir=self.localTempDir
+            dir=self.localTempDir,
         )
         os.close(handle)
         return os.path.abspath(tmpFile)
 
-    def getLocalTempFileName(self, suffix: Optional[str] = None, prefix: Optional[str] = None) -> str:
+    def getLocalTempFileName(
+        self, suffix: Optional[str] = None, prefix: Optional[str] = None
+    ) -> str:
         """
         Get a valid name for a new local file. Don't actually create a file at the path.
 
@@ -351,11 +373,14 @@ class AbstractFileStore(ABC):
             def handle(numBytes: int) -> None:
                 # No scope problem here, because we don't assign to a fileID local
                 fileID.size += numBytes
+
             wrappedStream.onWrite(handle)
 
             yield wrappedStream, fileID
 
-    def _dumpAccessLogs(self, job_type: str = "Failed", log_level: int = logging.WARNING) -> None:
+    def _dumpAccessLogs(
+        self, job_type: str = "Failed", log_level: int = logging.WARNING
+    ) -> None:
         """
         Log a report of the files accessed.
 
@@ -364,7 +389,7 @@ class AbstractFileStore(ABC):
         :param job_type: Adjective to describe the job in the report.
         """
         if len(self._accessLog) > 0:
-            logger.log(log_level, '%s job accessed files:', job_type)
+            logger.log(log_level, "%s job accessed files:", job_type)
 
             for item in self._accessLog:
                 # For each access record
@@ -373,14 +398,29 @@ class AbstractFileStore(ABC):
                     file_id, dest_path = item
                     if os.path.exists(dest_path):
                         if os.path.islink(dest_path):
-                            logger.log(log_level, 'Symlinked file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(
+                                log_level,
+                                "Symlinked file '%s' to path '%s'",
+                                file_id,
+                                dest_path,
+                            )
                         else:
-                            logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\'', file_id, dest_path)
+                            logger.log(
+                                log_level,
+                                "Downloaded file '%s' to path '%s'",
+                                file_id,
+                                dest_path,
+                            )
                     else:
-                        logger.log(log_level, 'Downloaded file \'%s\' to path \'%s\' (gone!)', file_id, dest_path)
+                        logger.log(
+                            log_level,
+                            "Downloaded file '%s' to path '%s' (gone!)",
+                            file_id,
+                            dest_path,
+                        )
                 else:
                     # Otherwise dump without the name
-                    logger.log(log_level, 'Streamed file \'%s\'', *item)
+                    logger.log(log_level, "Streamed file '%s'", *item)
 
     def logAccess(
         self, fileStoreID: Union[FileID, str], destination: Union[str, None] = None
@@ -447,14 +487,12 @@ class AbstractFileStore(ABC):
         fileStoreID: str,
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[IO[bytes]]:
-        ...
+    ) -> ContextManager[IO[bytes]]: ...
 
     @overload
     def readGlobalFileStream(
         self, fileStoreID: str, encoding: str, errors: Optional[str] = None
-    ) -> ContextManager[IO[str]]:
-        ...
+    ) -> ContextManager[IO[str]]: ...
 
     @abstractmethod
     def readGlobalFileStream(
@@ -498,7 +536,7 @@ class AbstractFileStore(ABC):
         :return: File's size in bytes, as stored in the job store
         """
         # First try and see if the size is still attached
-        size = getattr(fileStoreID, 'size', None)
+        size = getattr(fileStoreID, "size", None)
 
         if size is None:
             # It fell off
@@ -551,7 +589,7 @@ class AbstractFileStore(ABC):
     ) -> Optional[FileID]:
         return self.jobStore.import_file(src_uri, shared_file_name=shared_file_name)
 
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
@@ -608,7 +646,7 @@ class AbstractFileStore(ABC):
             """
             # Read the value from the cache state file then initialize and instance of
             # _CacheState with it.
-            with open(fileName, 'rb') as fH:
+            with open(fileName, "rb") as fH:
                 infoDict = dill.load(fH)
             return cls(infoDict)
 
@@ -618,14 +656,14 @@ class AbstractFileStore(ABC):
 
             :param fileName: Path to the state file.
             """
-            with open(fileName + '.tmp', 'wb') as fH:
+            with open(fileName + ".tmp", "wb") as fH:
                 # Based on answer by user "Mark" at:
                 # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                 # We can't pickle nested classes. So we have to pickle the variables
                 # of the class.
                 # If we ever change this, we need to ensure it doesn't break FileID
                 dill.dump(self.__dict__, fH)
-            os.rename(fileName + '.tmp', fileName)
+            os.rename(fileName + ".tmp", fileName)
 
     # Functions related to logging
     def log_to_leader(self, text: str, level: int = logging.INFO) -> None:
@@ -639,8 +677,7 @@ class AbstractFileStore(ABC):
         logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
         self.logging_messages.append(dict(text=text, level=level))
 
-
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def logToMaster(self, text: str, level: int = logging.INFO) -> None:
         self.log_to_leader(text, level)
 
@@ -658,7 +695,7 @@ class AbstractFileStore(ABC):
         """
 
         # Read the whole stream into memory
-        steam_data = stream.read().decode('utf-8', errors='replace')
+        steam_data = stream.read().decode("utf-8", errors="replace")
         # And remember it for the worker to fish out
         self.logging_user_streams.append(dict(name=name, text=steam_data))
 

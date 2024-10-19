@@ -7,8 +7,8 @@ from toil.lib.io import mkdtemp
 
 def binaryStringFn(job, depth, message=""):
     if depth > 0:
-        job.addChildJobFn(binaryStringFn, depth-1, message + "0")
-        job.addChildJobFn(binaryStringFn, depth-1, message + "1")
+        job.addChildJobFn(binaryStringFn, depth - 1, message + "0")
+        job.addChildJobFn(binaryStringFn, depth - 1, message + "1")
     else:
         job.log(f"Binary string: {message}")
 

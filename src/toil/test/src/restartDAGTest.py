@@ -31,9 +31,10 @@ class RestartDAGTest(ToilTest):
     Tests that restarted job DAGs don't run children of jobs that failed in the first run till the
     parent completes successfully in the restart.
     """
+
     def setUp(self):
         super().setUp()
-        self.tempDir = self._createTempDir(purpose='tempDir')
+        self.tempDir = self._createTempDir(purpose="tempDir")
         self.testJobStore = self._getTestJobStorePath()
 
     def tearDown(self):
@@ -42,11 +43,11 @@ class RestartDAGTest(ToilTest):
 
     @slow
     def testRestartedWorkflowSchedulesCorrectJobsOnFailedParent(self):
-        self._testRestartedWorkflowSchedulesCorrectJobs('raise')
+        self._testRestartedWorkflowSchedulesCorrectJobs("raise")
 
     @slow
     def testRestartedWorkflowSchedulesCorrectJobsOnKilledParent(self):
-        self._testRestartedWorkflowSchedulesCorrectJobs('kill')
+        self._testRestartedWorkflowSchedulesCorrectJobs("kill")
 
     def _testRestartedWorkflowSchedulesCorrectJobs(self, failType):
         """
@@ -63,12 +64,12 @@ class RestartDAGTest(ToilTest):
         """
         # Specify options
         options = Job.Runner.getDefaultOptions(self.testJobStore)
-        options.logLevel = 'DEBUG'
+        options.logLevel = "DEBUG"
         options.retryCount = 0
         options.clean = "never"
 
-        parentFile = os.path.join(self.tempDir, 'parent')
-        childFile = os.path.join(self.tempDir, 'child')
+        parentFile = os.path.join(self.tempDir, "parent")
+        childFile = os.path.join(self.tempDir, "child")
 
         # Make the first job
         root = Job.wrapJobFn(passingFn)
@@ -87,11 +88,11 @@ class RestartDAGTest(ToilTest):
         assert not os.path.exists(childFile)
 
         # Run the test
-        for runMode in 'start', 'restart':
+        for runMode in "start", "restart":
             self.errorRaised = None
             try:
                 with Toil(options) as toil:
-                    if runMode == 'start':
+                    if runMode == "start":
                         toil.start(root)
                     else:
                         toil.restart()
@@ -103,19 +104,27 @@ class RestartDAGTest(ToilTest):
                 # it together in this finally clause.
                 if self.errorRaised is not None:
                     if not os.path.exists(parentFile):
-                        failReasons.append('The failing parent file did not exist on toil "%s".'
-                                           % runMode)
+                        failReasons.append(
+                            'The failing parent file did not exist on toil "%s".'
+                            % runMode
+                        )
                     if os.path.exists(childFile):
-                        failReasons.append('The child file existed.  i.e. the child was run on '
-                                           'toil "%s".' % runMode)
+                        failReasons.append(
+                            "The child file existed.  i.e. the child was run on "
+                            'toil "%s".' % runMode
+                        )
                     if isinstance(self.errorRaised, FailedJobsException):
                         if self.errorRaised.numberOfFailedJobs != 3:
-                            failReasons.append('FailedJobsException was raised on toil "%s" but '
-                                               'the number of failed jobs (%s) was not 3.'
-                                               % (runMode, self.errorRaised.numberOfFailedJobs))
+                            failReasons.append(
+                                'FailedJobsException was raised on toil "%s" but '
+                                "the number of failed jobs (%s) was not 3."
+                                % (runMode, self.errorRaised.numberOfFailedJobs)
+                            )
                     elif isinstance(self.errorRaised, AssertionError):
-                        failReasons.append('Toil raised an AssertionError instead of a '
-                                           'FailedJobsException on toil "%s".' % runMode)
+                        failReasons.append(
+                            "Toil raised an AssertionError instead of a "
+                            'FailedJobsException on toil "%s".' % runMode
+                        )
                     else:
                         failReasons.append("Toil raised error: %s" % self.errorRaised)
                     self.errorRaised = None
@@ -123,8 +132,12 @@ class RestartDAGTest(ToilTest):
                 else:
                     self.fail('No errors were raised on toil "%s".' % runMode)
         if failReasons:
-            self.fail('Test failed for ({}) reasons:\n\t{}'.format(len(failReasons),
-                                                               '\n\t'.join(failReasons)))
+            self.fail(
+                "Test failed for ({}) reasons:\n\t{}".format(
+                    len(failReasons), "\n\t".join(failReasons)
+                )
+            )
+
 
 def passingFn(job, fileName=None):
     """
@@ -135,7 +148,8 @@ def passingFn(job, fileName=None):
     """
     if fileName is not None:
         # Emulates system touch.
-        open(fileName, 'w').close()
+        open(fileName, "w").close()
+
 
 def failingFn(job, failType, fileName):
     """
@@ -145,11 +159,11 @@ def failingFn(job, failType, fileName):
     :param str failType: 'raise' or 'kill
     :param str fileName: The name of a file that must be created.
     """
-    assert failType in ('raise', 'kill')
+    assert failType in ("raise", "kill")
     # Use that function to avoid code redundancy
     passingFn(job, fileName)
 
-    if failType == 'raise':
+    if failType == "raise":
         assert False
     else:
         os.kill(os.getpid(), signal.SIGKILL)

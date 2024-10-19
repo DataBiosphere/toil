@@ -58,16 +58,22 @@ class S3Test(ToilTest):
         self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 
         # Make sure all the bucket location getting strategies work on a bucket we created
-        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {1}), "us-east-1")
-        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {2}), "us-east-1")
-        self.assertEqual(get_bucket_region(bucket_name, only_strategies = {3}), "us-east-1")
+        self.assertEqual(
+            get_bucket_region(bucket_name, only_strategies={1}), "us-east-1"
+        )
+        self.assertEqual(
+            get_bucket_region(bucket_name, only_strategies={2}), "us-east-1"
+        )
+        self.assertEqual(
+            get_bucket_region(bucket_name, only_strategies={3}), "us-east-1"
+        )
 
     def test_get_bucket_location_public_bucket(self) -> None:
         """
         Test getting buket location for a bucket we don't own.
         """
 
-        bucket_name = 'spacenet-dataset'
+        bucket_name = "spacenet-dataset"
         # This bucket happens to live in us-east-1
         self.assertEqual(get_bucket_region(bucket_name), "us-east-1")
 

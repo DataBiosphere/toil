@@ -10,6 +10,7 @@ from toil.lib.threading import ExceptionalThread
 
 log = logging.getLogger(__name__)
 
+
 class WritablePipe(ABC):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
@@ -84,7 +85,7 @@ class WritablePipe(ABC):
         raise NotImplementedError()
 
     def _reader(self):
-        with os.fdopen(self.readable_fh, 'rb') as readable:
+        with os.fdopen(self.readable_fh, "rb") as readable:
             # TODO: If the reader somehow crashes here, both threads might try
             # to close readable_fh.  Fortunately we don't do anything that
             # should be able to fail here.
@@ -112,7 +113,12 @@ class WritablePipe(ABC):
 
     def __enter__(self):
         self.readable_fh, writable_fh = os.pipe()
-        self.writable = os.fdopen(writable_fh, 'wb' if self.encoding == None else 'wt', encoding=self.encoding, errors=self.errors)
+        self.writable = os.fdopen(
+            writable_fh,
+            "wb" if self.encoding == None else "wt",
+            encoding=self.encoding,
+            errors=self.errors,
+        )
         self.thread = ExceptionalThread(target=self._reader)
         self.thread.start()
         return self.writable
@@ -132,7 +138,9 @@ class WritablePipe(ABC):
                 # already an exception in the main thread
                 raise
             else:
-                log.error('Swallowing additional exception in reader thread: %s', str(e))
+                log.error(
+                    "Swallowing additional exception in reader thread: %s", str(e)
+                )
         finally:
             # The responsibility for closing the readable end is generally that of the reader
             # thread. To cover the small window before the reader takes over we also close it here.
@@ -217,7 +225,7 @@ class ReadablePipe(ABC):
 
     def _writer(self):
         try:
-            with os.fdopen(self.writable_fh, 'wb') as writable:
+            with os.fdopen(self.writable_fh, "wb") as writable:
                 self.writeTo(writable)
         except OSError as e:
             # The other side of the pipe may have been closed by the
@@ -244,7 +252,12 @@ class ReadablePipe(ABC):
 
     def __enter__(self):
         readable_fh, self.writable_fh = os.pipe()
-        self.readable = os.fdopen(readable_fh, 'rb' if self.encoding == None else 'rt', encoding=self.encoding, errors=self.errors)
+        self.readable = os.fdopen(
+            readable_fh,
+            "rb" if self.encoding == None else "rt",
+            encoding=self.encoding,
+            errors=self.errors,
+        )
         self.thread = ExceptionalThread(target=self._writer)
         self.thread.start()
         return self.readable
@@ -263,6 +276,7 @@ class ReadablePipe(ABC):
                 # Only raise the child exception if there wasn't
                 # already an exception in the main thread
                 raise
+
 
 class ReadableTransformingPipe(ReadablePipe):
     """
@@ -296,7 +310,6 @@ class ReadableTransformingPipe(ReadablePipe):
 
     """
 
-
     def __init__(self, source, encoding=None, errors=None):
         """
         :param str encoding: the name of the encoding used to encode the file. Encodings are the same
@@ -323,15 +336,17 @@ class ReadableTransformingPipe(ReadablePipe):
     def writeTo(self, writable):
         self.transform(self.source, writable)
 
+
 class JobStoreUnavailableException(RuntimeError):
     """
     Raised when a particular type of job store is requested but can't be used.
     """
 
+
 def generate_locator(
     job_store_type: str,
     local_suggestion: Optional[str] = None,
-    decoration: Optional[str] = None
+    decoration: Optional[str] = None,
 ) -> str:
     """
     Generate a random locator for a job store of the given type. Raises an
@@ -347,7 +362,7 @@ def generate_locator(
     """
 
     # Prepare decoration for splicing into strings
-    decoration = ('-' + decoration) if decoration else ''
+    decoration = ("-" + decoration) if decoration else ""
 
     try:
         if job_store_type == "google":
@@ -363,6 +378,7 @@ def generate_locator(
         elif job_store_type == "aws":
             # Make sure we have AWS
             from toil.jobStores.aws.jobStore import AWSJobStore  # noqa
+
             # Find a region
             from toil.lib.aws import get_current_aws_region
 
@@ -370,7 +386,9 @@ def generate_locator(
 
             if not region:
                 # We can't generate an AWS job store without a region
-                raise JobStoreUnavailableException(f"{job_store_type} job store can't be made without a region")
+                raise JobStoreUnavailableException(
+                    f"{job_store_type} job store can't be made without a region"
+                )
 
             # Roll a random name
             return f"aws:{region}:toil{decoration}-{str(uuid.uuid4())}"
@@ -380,11 +398,14 @@ def generate_locator(
                 return local_suggestion
             else:
                 # Pick a temp path
-                return os.path.join(tempfile.gettempdir(), 'toil-' + str(uuid.uuid4()) + decoration)
+                return os.path.join(
+                    tempfile.gettempdir(), "toil-" + str(uuid.uuid4()) + decoration
+                )
         else:
-            raise JobStoreUnavailableException(f"{job_store_type} job store isn't known")
+            raise JobStoreUnavailableException(
+                f"{job_store_type} job store isn't known"
+            )
     except ImportError:
-        raise JobStoreUnavailableException(f"libraries for {job_store_type} job store are not installed")
-
-
-
+        raise JobStoreUnavailableException(
+            f"libraries for {job_store_type} job store are not installed"
+        )

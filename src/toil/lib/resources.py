@@ -59,7 +59,13 @@ class ResourceMonitor:
         """
         me = resource.getrusage(resource.RUSAGE_SELF)
         children = resource.getrusage(resource.RUSAGE_CHILDREN)
-        total_cpu_time = me.ru_utime + me.ru_stime + children.ru_utime + children.ru_stime + cls._extra_cpu_seconds
+        total_cpu_time = (
+            me.ru_utime
+            + me.ru_stime
+            + children.ru_utime
+            + children.ru_stime
+            + cls._extra_cpu_seconds
+        )
         total_memory_usage = me.ru_maxrss + children.ru_maxrss
         if sys.platform == "darwin":
             # On Linux, getrusage works in "kilobytes" (really kibibytes), but on
@@ -74,7 +80,13 @@ class ResourceMonitor:
         """Gives the total cpu time, including the children."""
         me = resource.getrusage(resource.RUSAGE_SELF)
         childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-        return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime + cls._extra_cpu_seconds
+        return (
+            me.ru_utime
+            + me.ru_stime
+            + childs.ru_utime
+            + childs.ru_stime
+            + cls._extra_cpu_seconds
+        )
 
 
 def glob(glob_pattern: str, directoryname: str) -> list[str]:

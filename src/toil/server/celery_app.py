@@ -11,7 +11,9 @@ Also the entrypoint for starting celery workers.
 
 def create_celery_app() -> Celery:
     """ """
-    broker = os.environ.get("TOIL_WES_BROKER_URL", "amqp://guest:guest@localhost:5672//")
+    broker = os.environ.get(
+        "TOIL_WES_BROKER_URL", "amqp://guest:guest@localhost:5672//"
+    )
     app = Celery("toil_wes", broker=broker)
 
     # Celery configurations

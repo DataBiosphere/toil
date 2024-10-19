@@ -17,58 +17,63 @@ from configargparse import ArgumentParser
 from toil.job import Job
 
 
-def touchFile( fileStore ):
+def touchFile(fileStore):
     with fileStore.writeGlobalFileStream() as (f, id):
-        f.write( "This is a triumph" )
+        f.write("This is a triumph")
+
 
 class LongTestJob(Job):
     def __init__(self, numJobs):
-        Job.__init__(self,  memory=100000, cores=0.01)
+        Job.__init__(self, memory=100000, cores=0.01)
         self.numJobs = numJobs
 
     def run(self, fileStore):
-        for i in range(0,self.numJobs):
+        for i in range(0, self.numJobs):
             self.addChild(HelloWorldJob(i))
         self.addFollowOn(LongTestFollowOn())
+
 
 class LongTestFollowOn(Job):
 
     def __init__(self):
-        Job.__init__(self,  memory=1000000, cores=0.01)
+        Job.__init__(self, memory=1000000, cores=0.01)
 
     def run(self, fileStore):
-        touchFile( fileStore )
+        touchFile(fileStore)
+
 
 class HelloWorldJob(Job):
 
-    def __init__(self,i):
-        Job.__init__(self,  memory=100000, cores=0.01)
-        self.i=i
-
-
-    def run(self, fileStore):
-        touchFile( fileStore )
-        self.addFollowOn(HelloWorldFollowOn(self.i))
-
-class HelloWorldFollowOn(Job):
-
-    def __init__(self,i):
-        Job.__init__(self,  memory=200000, cores=0.01)
+    def __init__(self, i):
+        Job.__init__(self, memory=100000, cores=0.01)
         self.i = i
 
     def run(self, fileStore):
-        touchFile( fileStore)
+        touchFile(fileStore)
+        self.addFollowOn(HelloWorldFollowOn(self.i))
+
+
+class HelloWorldFollowOn(Job):
+
+    def __init__(self, i):
+        Job.__init__(self, memory=200000, cores=0.01)
+        self.i = i
+
+    def run(self, fileStore):
+        touchFile(fileStore)
+
 
 def main(numJobs):
     # Boilerplate -- startToil requires options
     parser = ArgumentParser()
     Job.Runner.addToilOptions(parser)
-    options = parser.parse_args( args=['./toilTest'] )
-    options.batchSystem="mesos"
-    options.mesos_endpoint="localhost:5050"
+    options = parser.parse_args(args=["./toilTest"])
+    options.batchSystem = "mesos"
+    options.mesos_endpoint = "localhost:5050"
     # Launch first toil Job
-    i = LongTestJob( numJobs )
-    Job.Runner.startToil(i,  options )
+    i = LongTestJob(numJobs)
+    Job.Runner.startToil(i, options)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main(numJobs=5)

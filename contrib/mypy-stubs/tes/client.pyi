@@ -1,13 +1,15 @@
 from typing import Any, Optional, Union
 
-from tes.models import (CancelTaskRequest,
-                        CreateTaskResponse,
-                        GetTaskRequest,
-                        ListTasksRequest,
-                        ListTasksResponse,
-                        ServiceInfo,
-                        Task,
-                        strconv)
+from tes.models import (
+    CancelTaskRequest,
+    CreateTaskResponse,
+    GetTaskRequest,
+    ListTasksRequest,
+    ListTasksResponse,
+    ServiceInfo,
+    Task,
+    strconv,
+)
 from tes.utils import TimeoutError, raise_for_status, unmarshal
 
 def process_url(value: str) -> str: ...

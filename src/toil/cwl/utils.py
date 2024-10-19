@@ -122,7 +122,10 @@ def visit_cwl_class_and_reduce(
 
 DirectoryStructure = dict[str, Union[str, "DirectoryStructure"]]
 
-def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, DirectoryStructure, None]:
+
+def get_from_structure(
+    dir_dict: DirectoryStructure, path: str
+) -> Union[str, DirectoryStructure, None]:
     """
     Given a relative path, follow it in the given directory structure.
 
@@ -134,7 +137,7 @@ def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, Di
     parts = PurePosixPath(posixpath.normpath(path)).parts
     if len(parts) == 0:
         return dir_dict
-    if parts[0] in ('..', '/'):
+    if parts[0] in ("..", "/"):
         raise RuntimeError(f"Path {path} not resolvable in virtual directory")
     found: Union[str, DirectoryStructure] = dir_dict
     for part in parts:
@@ -205,7 +208,9 @@ def download_structure(
                 )
             else:
                 # We need to download from some other kind of URL.
-                size, executable = AbstractJobStore.read_from_url(value, open(dest_path, 'wb'))
+                size, executable = AbstractJobStore.read_from_url(
+                    value, open(dest_path, "wb")
+                )
                 if executable:
                     # Make the written file executable
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
