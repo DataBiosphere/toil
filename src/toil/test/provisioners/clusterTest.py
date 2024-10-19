@@ -84,7 +84,7 @@ class AbstractClusterTest(ToilTest):
         self.destroyCluster()
         subprocess.check_call(['toil', 'clean', self.jobStore])
 
-    def sshUtil(self, command: List[str]) -> None:
+    def sshUtil(self, command: list[str]) -> None:
         """
         Run the given command on the cluster.
         Raise subprocess.CalledProcessError if it fails.
@@ -160,7 +160,7 @@ class AbstractClusterTest(ToilTest):
         subprocess.check_call(cmd)
 
     @retry(errors=[subprocess.CalledProcessError], intervals=[1, 1])
-    def createClusterUtil(self, args: Optional[List[str]]=None) -> None:
+    def createClusterUtil(self, args: Optional[list[str]]=None) -> None:
         args = [] if args is None else args
 
         command = ['toil', 'launch-cluster', '-p=aws', '-z', self.zone, f'--keyPairName={self.keyName}',

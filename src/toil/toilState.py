@@ -63,47 +63,47 @@ class ToilState:
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
-        self.__job_database: Dict[str, JobDescription] = {}
+        self.__job_database: dict[str, JobDescription] = {}
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
-        self.successor_to_predecessors: Dict[str, Set[str]] = {}
+        self.successor_to_predecessors: dict[str, set[str]] = {}
 
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
-        self.successorCounts: Dict[str, int] = {}
+        self.successorCounts: dict[str, int] = {}
 
         # This is a hash of service jobs, referenced by jobStoreID, to their client's ID
-        self.service_to_client: Dict[str, str] = {}
+        self.service_to_client: dict[str, str] = {}
 
         # Holds, for each client job ID, the job IDs of its services that are
         # possibly currently issued. Includes every service host that has been
         # given to the service manager by the leader, and hasn't been seen by
         # the leader as stopped yet.
-        self.servicesIssued: Dict[str, Set[str]] = {}
+        self.servicesIssued: dict[str, set[str]] = {}
 
         # Holds the IDs of jobs that are currently issued to the batch system
         # and haven't come back yet.
         # TODO: a bit redundant with leader's issued_jobs_by_batch_system_id
-        self.jobs_issued: Set[str] = set()
+        self.jobs_issued: set[str] = set()
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
-        self.totalFailedJobs: Set[str] = set()
+        self.totalFailedJobs: set[str] = set()
 
         # Jobs (as jobStoreIDs) with successors that have totally failed
-        self.hasFailedSuccessors: Set[str] = set()
+        self.hasFailedSuccessors: set[str] = set()
 
         # The set of successors of failed jobs as a set of jobStoreIds
-        self.failedSuccessors: Set[str] = set()
+        self.failedSuccessors: set[str] = set()
 
         # Set of jobs that have multiple predecessors that have one or more predecessors
         # finished, but not all of them.
-        self.jobsToBeScheduledWithMultiplePredecessors: Set[str] = set()
+        self.jobsToBeScheduledWithMultiplePredecessors: set[str] = set()
 
     def load_workflow(
         self,
         rootJob: JobDescription,
-        jobCache: Optional[Dict[str, JobDescription]] = None
+        jobCache: Optional[dict[str, JobDescription]] = None
     ) -> None:
         """
         Load the workflow rooted at the given job.

@@ -27,13 +27,13 @@ from typing import (
     IO,
     TYPE_CHECKING,
     Dict,
-    Generator,
     List,
     Optional,
     Tuple,
     Union,
     cast,
 )
+from collections.abc import Generator
 from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 
 from botocore.exceptions import ClientError
@@ -256,7 +256,7 @@ class AWSJobStore(AbstractJobStore):
                     AttributeNames=["exists"],
                     ConsistentRead=True,
                 )
-                attributes: List["AttributeTypeDef"] = get_result.get(
+                attributes: list["AttributeTypeDef"] = get_result.get(
                     "Attributes", []
                 )  # the documentation says 'Attributes' should always exist, but this is not true
                 exists: Optional[str] = get_item_from_attributes(
@@ -290,7 +290,7 @@ class AWSJobStore(AbstractJobStore):
                                                   ItemName=self.name_prefix)
                     else:
                         if value is True:
-                            attributes: List["ReplaceableAttributeTypeDef"] = [
+                            attributes: list["ReplaceableAttributeTypeDef"] = [
                                 {"Name": "exists", "Value": "True", "Replace": True}
                             ]
                         elif value is None:
@@ -312,7 +312,7 @@ class AWSJobStore(AbstractJobStore):
         self._checkAttributes(item["Attributes"], enforce)
 
     def _checkAttributes(
-        self, attributes: List["AttributeTypeDef"], enforce: bool = True
+        self, attributes: list["AttributeTypeDef"], enforce: bool = True
     ) -> None:
         if get_item_from_attributes(attributes=attributes, name="overlargeID") is None:
             logger.error("overlargeID attribute isn't present: either SimpleDB entry is "
@@ -321,7 +321,7 @@ class AWSJobStore(AbstractJobStore):
                 raise RuntimeError("encountered SimpleDB entry missing required attribute "
                                    "'overlargeID'; is your job store ancient?")
 
-    def _awsJobFromAttributes(self, attributes: List["AttributeTypeDef"]) -> Job:
+    def _awsJobFromAttributes(self, attributes: list["AttributeTypeDef"]) -> Job:
         """
         Get a Toil Job object from attributes that are defined in an item from the DB
         :param attributes: List of attributes
@@ -351,7 +351,7 @@ class AWSJobStore(AbstractJobStore):
         """
         return self._awsJobFromAttributes(item["Attributes"])
 
-    def _awsJobToAttributes(self, job: JobDescription) -> List["AttributeTypeDef"]:
+    def _awsJobToAttributes(self, job: JobDescription) -> list["AttributeTypeDef"]:
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
             # Store as an overlarge job in S3
@@ -377,12 +377,12 @@ class AWSJobStore(AbstractJobStore):
                    range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items: List["ReplaceableItemTypeDef"] = []
+            items: list["ReplaceableItemTypeDef"] = []
             for jobDescription in batch:
-                item_attributes: List["ReplaceableAttributeTypeDef"] = []
+                item_attributes: list["ReplaceableAttributeTypeDef"] = []
                 jobDescription.pre_update_hook()
                 item_name = compat_bytes(jobDescription.jobStoreID)
-                got_job_attributes: List["AttributeTypeDef"] = self._awsJobToAttributes(
+                got_job_attributes: list["AttributeTypeDef"] = self._awsJobToAttributes(
                     jobDescription
                 )
                 for each_attribute in got_job_attributes:
@@ -421,7 +421,7 @@ class AWSJobStore(AbstractJobStore):
                                                   ConsistentRead=True).get("Attributes", [])) > 0
 
     def jobs(self) -> Generator[Job, None, None]:
-        job_items: Optional[List["ItemTypeDef"]] = None
+        job_items: Optional[list["ItemTypeDef"]] = None
         for attempt in retry_sdb():
             with attempt:
                 job_items = boto3_pager(self.db.select,
@@ -451,7 +451,7 @@ class AWSJobStore(AbstractJobStore):
         logger.debug("Updating job %s", job_description.jobStoreID)
         job_description.pre_update_hook()
         job_attributes = self._awsJobToAttributes(job_description)
-        update_attributes: List["ReplaceableAttributeTypeDef"] = [
+        update_attributes: list["ReplaceableAttributeTypeDef"] = [
             {"Name": attribute["Name"], "Value": attribute["Value"], "Replace": True}
             for attribute in job_attributes
         ]
@@ -482,7 +482,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 self.db.delete_attributes(DomainName=self.jobs_domain_name, ItemName=compat_bytes(job_id))
-        items: Optional[List["ItemTypeDef"]] = None
+        items: Optional[list["ItemTypeDef"]] = None
         for attempt in retry_sdb():
             with attempt:
                 items = list(boto3_pager(self.db.select,
@@ -495,7 +495,7 @@ class AWSJobStore(AbstractJobStore):
             n = self.itemsPerBatchDelete
             batches = [items[i:i + n] for i in range(0, len(items), n)]
             for batch in batches:
-                delete_items: List["DeletableItemTypeDef"] = [
+                delete_items: list["DeletableItemTypeDef"] = [
                     {"Name": item["Name"]} for item in batch
                 ]
                 for attempt in retry_sdb():
@@ -605,7 +605,7 @@ class AWSJobStore(AbstractJobStore):
                    partSize=5 * 1000 * 1000)
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> list[str]:
         return list_objects_for_url(url)
 
     @classmethod
@@ -727,7 +727,7 @@ class AWSJobStore(AbstractJobStore):
                 items = boto3_pager(self.db.select,
                                     "Items",
                                     ConsistentRead=True,
-                                    SelectExpression="select * from `{}` where ownerID='{}'".format(self.files_domain_name, str(ownerId)))
+                                    SelectExpression=f"select * from `{self.files_domain_name}` where ownerID='{str(ownerId)}'")
         assert items is not None
         for item in items:
             info = self.FileInfo.fromItem(item)
@@ -1134,7 +1134,7 @@ class AWSJobStore(AbstractJobStore):
                            content=content, numContentChunks=numContentChunks, checksum=checksum)
                 return self
 
-        def toItem(self) -> Tuple[Dict[str, str], int]:
+        def toItem(self) -> tuple[dict[str, str], int]:
             """
             Convert this instance to a dictionary of attribute names to values
 

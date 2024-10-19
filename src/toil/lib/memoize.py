@@ -37,7 +37,7 @@ def sync_memoize(f: Callable[[MAT], MRT]) -> Callable[[MAT], MRT]:
     threads are calling the decorating function with multiple parameters.
     """
     # TODO: Think about an f that is recursive
-    memory: Dict[Tuple[Any, ...], Any] = {}
+    memory: dict[tuple[Any, ...], Any] = {}
     lock = Lock()
 
     @wraps(f)

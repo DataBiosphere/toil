@@ -74,7 +74,7 @@ class ColumnWidths:
         self.categories = CATEGORIES
         self.fields_count = ["count", "min", "med", "ave", "max", "total"]
         self.fields = ["min", "med", "ave", "max", "total"]
-        self.data: Dict[str, int] = {}
+        self.data: dict[str, int] = {}
         for category in self.categories:
             for field in self.fields_count:
                 self.set_width(category, field, 8)
@@ -110,15 +110,15 @@ def pretty_space(k: float, field: Optional[int] = None, alone: bool = False) -> 
     # If we don't have a header to say bytes, include the B.
     trailer = "B" if alone else ""
     if k < 1024:
-        return pad_str("%gKi%s" % (k, trailer), field)
+        return pad_str("{:g}Ki{}".format(k, trailer), field)
     if k < (1024 * 1024):
-        return pad_str("%.1fMi%s" % (k / 1024.0, trailer), field)
+        return pad_str("{:.1f}Mi{}".format(k / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024):
-        return pad_str("%.1fGi%s" % (k / 1024.0 / 1024.0, trailer), field)
+        return pad_str("{:.1f}Gi{}".format(k / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return pad_str("%.1fTi%s" % (k / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str("{:.1f}Ti{}".format(k / 1024.0 / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return pad_str("%.1fPi%s" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str("{:.1f}Pi{}".format(k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
@@ -189,7 +189,7 @@ def report_time(t: float, options: Namespace, field: Optional[int] = None, unit:
     if field is not None:
         assert field >= len(unit_text)
         return "%*.2f%s" % (field - len(unit_text), t, unit_text)
-    return "%.2f%s" % (t, unit_text)
+    return "{:.2f}{}".format(t, unit_text)
 
 
 def report_space(
@@ -365,7 +365,7 @@ def get(tree: Expando, name: str) -> float:
         return float("nan")
 
 
-def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
+def sort_jobs(jobTypes: list[Any], options: Namespace) -> list[Any]:
     """Return a jobTypes all sorted."""
     sortField = LONG_FORMS[options.sortField]
     if (
@@ -373,7 +373,7 @@ def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
     ):
         return sorted(
             jobTypes,
-            key=lambda tag: getattr(tag, "%s_%s" % (sortField, options.sortCategory)),
+            key=lambda tag: getattr(tag, "{}_{}".format(sortField, options.sortCategory)),
             reverse=options.sort == "decending",
         )
     elif options.sortCategory == "alpha":
@@ -397,7 +397,7 @@ def report_pretty_data(
     root: Expando,
     worker: Expando,
     job: Expando,
-    job_types: List[Any],
+    job_types: list[Any],
     options: Namespace,
 ) -> str:
     """Print the important bits out."""
@@ -426,7 +426,7 @@ def report_pretty_data(
 
 
 def compute_column_widths(
-    job_types: List[Any], worker: Expando, job: Expando, options: Namespace
+    job_types: list[Any], worker: Expando, job: Expando, options: Namespace
 ) -> ColumnWidths:
     """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
@@ -451,12 +451,12 @@ def update_column_widths(tag: Expando, cw: ColumnWidths, options: Namespace) -> 
                     cw.set_width(category, field, len(s) + 1)
 
 
-def build_element(element: Expando, items: List[Job], item_name: str, defaults: Dict[str, float]) -> Expando:
+def build_element(element: Expando, items: list[Job], item_name: str, defaults: dict[str, float]) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
-            raise RuntimeError("Negative value %s reported for %s" % (i, name))
+            raise RuntimeError("Negative value {} reported for {}".format(i, name))
         else:
             return float(i)
 
@@ -504,7 +504,7 @@ def build_element(element: Expando, items: List[Job], item_name: str, defaults: 
 
 def create_summary(
     element: Expando,
-    containingItems: List[Expando],
+    containingItems: list[Expando],
     containingItemName: str,
     count_contained: Callable[[Expando], int],
 ) -> None:

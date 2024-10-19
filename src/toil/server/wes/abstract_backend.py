@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Define a type for WES task log entries in responses
 # TODO: make this a typed dict with all the WES task log field names and their types.
-TaskLog = Dict[str, Union[str, int, None]]
+TaskLog = dict[str, Union[str, int, None]]
 
 
 class VersionNotImplementedException(Exception):
@@ -24,7 +24,7 @@ class VersionNotImplementedException(Exception):
     Raised when the requested workflow version is not implemented.
     """
     def __init__(self,
-                 wf_type: str, version: Optional[str] = None, supported_versions: Optional[List[str]] = None) -> None:
+                 wf_type: str, version: Optional[str] = None, supported_versions: Optional[list[str]] = None) -> None:
         if version:
             message = ("workflow_type '{}' requires 'workflow_type_version' to be one of '{}'.  "
                        "Got '{}' instead.".format(wf_type, str(supported_versions), version))
@@ -81,7 +81,7 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
     GA4GH WES spec.
     """
 
-    def error(msg: Any, code: int = 500) -> Tuple[Dict[str, Any], int]:
+    def error(msg: Any, code: int = 500) -> tuple[dict[str, Any], int]:
         logger.warning(f"Exception raised when calling '{func.__name__}()':", exc_info=True)
         return {"msg": str(msg), "status_code": code}, code
 
@@ -114,7 +114,7 @@ class WESBackend:
     to handle user requests when they hit different endpoints.
     """
 
-    def __init__(self, options: List[str]):
+    def __init__(self, options: list[str]):
         """
         :param options: A list of default engine options to use when executing
                         a workflow.  Example options:
@@ -135,7 +135,7 @@ class WESBackend:
         return getattr(self, operation_id.split(".")[-1])
 
     @abstractmethod
-    def get_service_info(self) -> Dict[str, Any]:
+    def get_service_info(self) -> dict[str, Any]:
         """
         Get information about the Workflow Execution Service.
 
@@ -144,7 +144,7 @@ class WESBackend:
         raise NotImplementedError
 
     @abstractmethod
-    def list_runs(self, page_size: Optional[int] = None, page_token: Optional[str] = None) -> Dict[str, Any]:
+    def list_runs(self, page_size: Optional[int] = None, page_token: Optional[str] = None) -> dict[str, Any]:
         """
         List the workflow runs.
 
@@ -153,7 +153,7 @@ class WESBackend:
         raise NotImplementedError
 
     @abstractmethod
-    def run_workflow(self) -> Dict[str, str]:
+    def run_workflow(self) -> dict[str, str]:
         """
         Run a workflow. This endpoint creates a new workflow run and returns
         a `RunId` to monitor its progress.
@@ -163,7 +163,7 @@ class WESBackend:
         raise NotImplementedError
 
     @abstractmethod
-    def get_run_log(self, run_id: str) -> Dict[str, Any]:
+    def get_run_log(self, run_id: str) -> dict[str, Any]:
         """
         Get detailed info about a workflow run.
 
@@ -172,7 +172,7 @@ class WESBackend:
         raise NotImplementedError
 
     @abstractmethod
-    def cancel_run(self, run_id: str) -> Dict[str, str]:
+    def cancel_run(self, run_id: str) -> dict[str, str]:
         """
         Cancel a running workflow.
 
@@ -181,7 +181,7 @@ class WESBackend:
         raise NotImplementedError
 
     @abstractmethod
-    def get_run_status(self, run_id: str) -> Dict[str, str]:
+    def get_run_status(self, run_id: str) -> dict[str, str]:
         """
         Get quick status info about a workflow run, returning a simple result
         with the overall state of the workflow run.
@@ -201,7 +201,7 @@ class WESBackend:
     def secure_path(path: str) -> str:
         return os.path.join(*[str(secure_filename(p)) for p in path.split("/") if p not in ("", ".", "..")])
 
-    def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> Tuple[str, Dict[str, Any]]:
+    def collect_attachments(self, run_id: Optional[str], temp_dir: Optional[str]) -> tuple[str, dict[str, Any]]:
         """
         Collect attachments from the current request by staging uploaded files
         to temp_dir, and return the temp_dir and parsed body of the request.
@@ -212,7 +212,7 @@ class WESBackend:
         """
         if not temp_dir:
             temp_dir = mkdtemp()
-        body: Dict[str, Any] = {}
+        body: dict[str, Any] = {}
         has_attachments = False
         for key, ls in connexion.request.files.lists():
             try:

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class ToilStatus:
     """Tool for reporting on job status."""
 
-    def __init__(self, jobStoreName: str, specifiedJobs: Optional[List[str]] = None):
+    def __init__(self, jobStoreName: str, specifiedJobs: Optional[list[str]] = None):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
@@ -48,7 +48,7 @@ class ToilStatus:
         print("# This graph was created from job-store: %s" % self.jobStoreName)
 
         # Make job IDs to node names map
-        jobsToNodeNames: Dict[str, str] = dict(
+        jobsToNodeNames: dict[str, str] = dict(
             map(lambda job: (str(job.jobStoreID), job.jobName), self.jobsToReport)
         )
 
@@ -94,7 +94,7 @@ class ToilStatus:
                 children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
-    def printAggregateJobStats(self, properties: List[Set[str]], childNumber: List[int]) -> None:
+    def printAggregateJobStats(self, properties: list[set[str]], childNumber: list[int]) -> None:
         """
         Prints each job's ID, log file, remaining tries, and other properties.
 
@@ -121,7 +121,7 @@ class ToilStatus:
 
             print("\t".join(parts))
 
-    def report_on_jobs(self) -> Dict[str, Any]:
+    def report_on_jobs(self) -> dict[str, Any]:
         """
         Gathers information about jobs such as its child jobs and status.
 
@@ -132,20 +132,20 @@ class ToilStatus:
         hasChildren = []
         readyToRun = []
         zombies = []
-        hasLogFile: List[JobDescription] = []
+        hasLogFile: list[JobDescription] = []
         hasServices = []
-        services: List[ServiceJobDescription] = []
+        services: list[ServiceJobDescription] = []
         completely_failed = []
 
         # These are stats for jobs in self.jobsToReport
-        child_number: List[int] = []
-        properties: List[Set[str]] = []
+        child_number: list[int] = []
+        properties: list[set[str]] = []
 
         # TODO: This mix of semantics is confusing and made per-job status be
         # wrong for multiple years because it was not understood. Redesign it!
 
         for job in self.jobsToReport:
-            job_properties: Set[str] = set()
+            job_properties: set[str] = set()
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
@@ -293,7 +293,7 @@ class ToilStatus:
             print('Root job is absent. The workflow has may have completed successfully.')
             raise
 
-    def fetchUserJobs(self, jobs: List[str]) -> List[JobDescription]:
+    def fetchUserJobs(self, jobs: list[str]) -> list[JobDescription]:
         """
         Takes a user input array of jobs, verifies that they are in the jobStore
         and returns the array of jobsToReport.
@@ -313,9 +313,9 @@ class ToilStatus:
     def traverseJobGraph(
         self,
         rootJob: JobDescription,
-        jobsToReport: Optional[List[JobDescription]] = None,
-        foundJobStoreIDs: Optional[Set[str]] = None,
-    ) -> List[JobDescription]:
+        jobsToReport: Optional[list[JobDescription]] = None,
+        foundJobStoreIDs: Optional[set[str]] = None,
+    ) -> list[JobDescription]:
         """
         Find all current jobs in the jobStore and return them as an Array.
 

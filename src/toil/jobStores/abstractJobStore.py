@@ -27,21 +27,16 @@ from typing import (IO,
                     Callable,
                     ContextManager,
                     Dict,
-                    Iterable,
-                    Iterator,
                     List,
                     Optional,
                     Set,
                     Tuple,
                     Union,
-                    ValuesView,
                     cast,
                     overload)
+from collections.abc import Iterable, Iterator, ValuesView
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
@@ -323,7 +318,7 @@ class AbstractJobStore(ABC):
 
     @staticmethod
     @memoize
-    def _get_job_store_classes() -> List['AbstractJobStore']:
+    def _get_job_store_classes() -> list['AbstractJobStore']:
         """
         A list of concrete AbstractJobStore implementations whose dependencies are installed.
 
@@ -583,7 +578,7 @@ class AbstractJobStore(ABC):
         return otherCls._get_is_directory(parseResult)
 
     @classmethod
-    def list_url(cls, src_uri: str) -> List[str]:
+    def list_url(cls, src_uri: str) -> list[str]:
         """
         List the directory at the given URL. Returned path components can be
         joined with '/' onto the passed URL to form new URLs. Those that end in
@@ -608,7 +603,7 @@ class AbstractJobStore(ABC):
         return otherCls._list_url(parseResult)
 
     @classmethod
-    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> Tuple[int, bool]:
+    def read_from_url(cls, src_uri: str, writable: IO[bytes]) -> tuple[int, bool]:
         """
         Read the given URL and write its content into the given writable stream.
 
@@ -668,7 +663,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _read_from_url(cls, url: ParseResult, writable: IO[bytes]) -> Tuple[int, bool]:
+    def _read_from_url(cls, url: ParseResult, writable: IO[bytes]) -> tuple[int, bool]:
         """
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
@@ -688,7 +683,7 @@ class AbstractJobStore(ABC):
 
     @classmethod
     @abstractmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> list[str]:
         """
         List the contents of the given URL, which may or may not end in '/'
 
@@ -768,10 +763,10 @@ class AbstractJobStore(ABC):
         raise NotImplementedError()
 
     @deprecated(new_function_name='get_env')
-    def getEnv(self) -> Dict[str, str]:
+    def getEnv(self) -> dict[str, str]:
         return self.get_env()
 
-    def get_env(self) -> Dict[str, str]:
+    def get_env(self) -> dict[str, str]:
         """
         Returns a dictionary of environment variables that this job store requires to be set in
         order to function properly on a worker.
@@ -782,7 +777,7 @@ class AbstractJobStore(ABC):
 
     # Cleanup functions
     def clean(
-        self, jobCache: Optional[Dict[Union[str, "TemporaryID"], JobDescription]] = None
+        self, jobCache: Optional[dict[Union[str, "TemporaryID"], JobDescription]] = None
     ) -> JobDescription:
         """
         Function to cleanup the state of a job store after a restart.
@@ -836,7 +831,7 @@ class AbstractJobStore(ABC):
             else:
                 return self.jobs()
 
-        def get_jobs_reachable_from_root() -> Set[str]:
+        def get_jobs_reachable_from_root() -> set[str]:
             """
             Traverse the job graph from the root job and return a flattened set of all active jobstore IDs.
 
@@ -846,7 +841,7 @@ class AbstractJobStore(ABC):
             # Iterate from the root JobDescription and collate all jobs
             # that are reachable from it.
             root_job_description = self.load_root_job()
-            reachable_from_root: Set[str] = set()
+            reachable_from_root: set[str] = set()
 
 
             for merged_in in root_job_description.get_chain():
@@ -1276,7 +1271,7 @@ class AbstractJobStore(ABC):
 
     @deprecated(new_function_name='write_file_stream')
     def writeFileStream(self, jobStoreID: Optional[str] = None, cleanup: bool = False, basename: Optional[str] = None,
-                        encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[Tuple[IO[bytes], str]]:
+                        encoding: Optional[str] = None, errors: Optional[str] = None) -> ContextManager[tuple[IO[bytes], str]]:
         return self.write_file_stream(jobStoreID, cleanup, basename, encoding, errors)
 
     @abstractmethod
@@ -1286,7 +1281,7 @@ class AbstractJobStore(ABC):
                           cleanup: bool = False,
                           basename: Optional[str] = None,
                           encoding: Optional[str] = None,
-                          errors: Optional[str] = None) -> Iterator[Tuple[IO[bytes], str]]:
+                          errors: Optional[str] = None) -> Iterator[tuple[IO[bytes], str]]:
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -1783,7 +1778,7 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     @classmethod
     def _read_from_url(
         cls, url: ParseResult, writable: Union[IO[bytes], IO[str]]
-    ) -> Tuple[int, bool]:
+    ) -> tuple[int, bool]:
         # We can't actually retry after we start writing.
         # TODO: Implement retry with byte range requests
         with cls._open_url(url) as readable:
@@ -1833,6 +1828,6 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         return False
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> list[str]:
         # TODO: Implement HTTP index parsing and FTP directory listing
         raise NotImplementedError("HTTP and FTP URLs cannot yet be listed")

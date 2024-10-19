@@ -23,7 +23,7 @@ SYS_MAX_SIZE = 9223372036854775807
 # sys.max_size on 64 bit systems is 9223372036854775807, so that 32-bit systems
 # use the same number
 
-def parse_set_env(l: List[str]) -> Dict[str, Optional[str]]:
+def parse_set_env(l: list[str]) -> dict[str, Optional[str]]:
     """
     Parse a list of strings of the form "NAME=VALUE" or just "NAME" into a dictionary.
 
@@ -65,11 +65,11 @@ def parse_set_env(l: List[str]) -> Dict[str, Optional[str]]:
     return d
 
 
-def parse_str_list(s: str) -> List[str]:
+def parse_str_list(s: str) -> list[str]:
     return [str(x) for x in s.split(",")]
 
 
-def parse_int_list(s: str) -> List[int]:
+def parse_int_list(s: str) -> list[int]:
     return [int(x) for x in s.split(",")]
 
 
@@ -91,7 +91,7 @@ def fC(minValue: float, maxValue: Optional[float] = None) -> Callable[[float], b
     return lambda x: minValue <= x < maxValue
 
 
-def parse_accelerator_list(specs: Optional[str]) -> List['AcceleratorRequirement']:
+def parse_accelerator_list(specs: Optional[str]) -> list['AcceleratorRequirement']:
     """
     Parse a string description of one or more accelerator requirements.
     """
@@ -115,7 +115,7 @@ def parseBool(val: str) -> bool:
 
 
 # This is kept in the outer scope as multiple batchsystem files use this
-def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[Action]:
+def make_open_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> type[Action]:
     """
     Returns an argparse action class to check if the input is within the given half-open interval.
     ex:
@@ -253,7 +253,7 @@ def add_base_toil_options(parser: ArgumentParser, jobstore_as_flag: bool = False
                         f"The path provided to --coordinationDir ({coordination_dir}) does not exist.")
             setattr(namespace, self.dest, coordination_dir)
 
-    def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> Type[Action]:
+    def make_closed_interval_action(min: Union[int, float], max: Optional[Union[int, float]] = None) -> type[Action]:
         """
         Returns an argparse action class to check if the input is within the given half-open interval.
         ex:

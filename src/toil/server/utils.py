@@ -164,7 +164,7 @@ class MemoryStateCache:
         """
 
         super().__init__()
-        self._data: Dict[Tuple[str, str], Optional[str]] = {}
+        self._data: dict[tuple[str, str], Optional[str]] = {}
 
     def get(self, workflow_id: str, key: str) -> Optional[str]:
         """
@@ -340,7 +340,7 @@ if HAVE_S3:
 
             logger.debug("Connected to S3StateStore at %s", url)
 
-        def _get_bucket_and_path(self, workflow_id: str, key: str) -> Tuple[str, str]:
+        def _get_bucket_and_path(self, workflow_id: str, key: str) -> tuple[str, str]:
             """
             Get the bucket and path in the bucket at which a key value belongs.
             """
@@ -380,7 +380,7 @@ if HAVE_S3:
                     return
 
 # We want to memoize state stores so we can cache on them.
-state_store_cache: Dict[str, AbstractStateStore] = {}
+state_store_cache: dict[str, AbstractStateStore] = {}
 
 def connect_to_state_store(url: str) -> AbstractStateStore:
     """

@@ -85,7 +85,7 @@ class Leader:
                  provisioner: Optional[AbstractProvisioner],
                  jobStore: AbstractJobStore,
                  rootJob: JobDescription,
-                 jobCache: Optional[Dict[Union[str, TemporaryID], JobDescription]] = None) -> None:
+                 jobCache: Optional[dict[Union[str, TemporaryID], JobDescription]] = None) -> None:
         """
         Create a Toil Leader object.
 
@@ -142,7 +142,7 @@ class Leader:
         logger.debug("Checked batch system has no running jobs and no updated jobs")
 
         # Map of batch system IDs to job store IDs
-        self.issued_jobs_by_batch_system_id: Dict[int, str] = {}
+        self.issued_jobs_by_batch_system_id: dict[int, str] = {}
 
         # Number of preemptible jobs currently being run by batch system
         self.preemptibleJobsIssued = 0
@@ -150,10 +150,10 @@ class Leader:
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
-        self.serviceJobsToBeIssued: List[str] = [] # A queue of IDs of service jobs that await scheduling
+        self.serviceJobsToBeIssued: list[str] = [] # A queue of IDs of service jobs that await scheduling
         # Equivalents for service jobs to be run on preemptible nodes
         self.preemptibleServiceJobsIssued = 0
-        self.preemptibleServiceJobsToBeIssued: List[str] = []
+        self.preemptibleServiceJobsToBeIssued: list[str] = []
 
         # Timing of the rescuing method
         self.timeSinceJobsLastRescued = None
@@ -161,7 +161,7 @@ class Leader:
         # For each issued job's batch system ID, how many times did we not see
         # it when we should have? If this hits a threshold, the job is declared
         # missing and killed and possibly retried.
-        self.reissueMissingJobs_missingHash: Dict[int, int] = {}
+        self.reissueMissingJobs_missingHash: dict[int, int] = {}
 
         # Class used to create/destroy nodes in the cluster, may be None if
         # using a statically defined cluster
@@ -179,7 +179,7 @@ class Leader:
         self.statsAndLogging = StatsAndLogging(self.jobStore, self.config)
 
         # Set used to monitor deadlocked jobs
-        self.potentialDeadlockedJobs: Set[str] = set()
+        self.potentialDeadlockedJobs: set[str] = set()
         self.potentialDeadlockTime = 0
 
         # A dashboard that runs on the leader node in AWS clusters to track the state
@@ -819,7 +819,7 @@ class Leader:
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
             # Collect all running service job store IDs into a set to compare with the deadlock set
-            running_service_ids: Set[str] = set()
+            running_service_ids: set[str] = set()
             for js_id in self.issued_jobs_by_batch_system_id.values():
                 job = self.toilState.get_job(js_id)
                 if isinstance(job, ServiceJobDescription) and self.serviceManager.is_running(js_id):
@@ -1033,7 +1033,7 @@ class Leader:
 
         return issuedDesc
 
-    def getJobs(self, preemptible: Optional[bool] = None) -> List[JobDescription]:
+    def getJobs(self, preemptible: Optional[bool] = None) -> list[JobDescription]:
         """
         Get all issued jobs.
 
@@ -1312,7 +1312,7 @@ class Leader:
             # Being done, it won't run again.
             return False
 
-    def getSuccessors(self, job_id: str, alreadySeenSuccessors: Set[str]) -> Set[str]:
+    def getSuccessors(self, job_id: str, alreadySeenSuccessors: set[str]) -> set[str]:
         """
         Get successors of the given job by walking the job graph recursively.
 

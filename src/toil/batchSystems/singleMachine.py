@@ -22,7 +22,8 @@ import traceback
 from argparse import ArgumentParser, _ArgumentGroup
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
-from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
+from collections.abc import Sequence
 
 import toil
 from toil import worker as toil_worker
@@ -143,7 +144,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobIndexLock = Lock()
 
         # A dictionary mapping batch system IDs of submitted jobs to the command line
-        self.jobs: Dict[int, JobDescription] = {}
+        self.jobs: dict[int, JobDescription] = {}
 
         # A queue of jobs waiting to be executed. Consumed by the daddy thread.
         self.inputQueue = Queue()
@@ -152,15 +153,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.outputQueue = Queue()
 
         # A dictionary mapping batch system IDs of currently running jobs to their Info objects
-        self.runningJobs: Dict[int, Info] = {}
+        self.runningJobs: dict[int, Info] = {}
 
         # These next two are only used outside debug-worker mode
 
         # A dict mapping PIDs to Popen objects for running jobs.
         # Jobs that don't fork are executed one at a time in the main thread.
-        self.children: Dict[int, subprocess.Popen] = {}
+        self.children: dict[int, subprocess.Popen] = {}
         # A dict mapping child PIDs to the Job IDs they are supposed to be running.
-        self.childToJob: Dict[int, str] = {}
+        self.childToJob: dict[int, str] = {}
 
         # For accelerators, we need a collection of what each accelerator is, and an acquirable set of them.
         self.accelerator_identities = get_individual_local_accelerators()
@@ -292,7 +293,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             else:
                 raise TypeError(f'Daddy thread failed with non-exception: {exc}')
 
-    def _stop_now(self, popens: Sequence[subprocess.Popen]) -> List[int]:
+    def _stop_now(self, popens: Sequence[subprocess.Popen]) -> list[int]:
         """
         Stop the given child processes and all their children. Does not reap them.
 
@@ -360,7 +361,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Make sure all child processes have received their kill signal
         self._wait_for_death(pgids, timeout)
 
-    def _wait_for_death(self, pgids: List[int], timeout: int = 5):
+    def _wait_for_death(self, pgids: list[int], timeout: int = 5):
         """
         Wait for the process groups to be killed. Blocks until the processes
         are gone or timeout is passed.
@@ -374,7 +375,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         start = datetime.datetime.now()
         while len(pgids) > 0 and (datetime.datetime.now() - start).total_seconds() < timeout:
-            new_pgids: List[int] = []
+            new_pgids: list[int] = []
             for pgid in pgids:
                 try:
                     # Send a kill to the group again, to see if anything in it
@@ -517,7 +518,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             ])
 
 
-    def _release_acquired_resources(self, resources: List[Union[int, Set[int]]]) -> None:
+    def _release_acquired_resources(self, resources: list[Union[int, set[int]]]) -> None:
         """
         Release all resources acquired for a job.
         Assumes resources are in the order: core fractions, memory, disk, accelerators.
@@ -530,7 +531,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     (isinstance(resource, ResourceSet) and isinstance(request, set)))
             resource.release(request)
 
-    def _identify_sufficient_accelerators(self, needed_accelerators: List[AcceleratorRequirement], available_accelerator_ids: Set[int]) -> Tuple[Optional[Set[int]], Optional[AcceleratorRequirement]]:
+    def _identify_sufficient_accelerators(self, needed_accelerators: list[AcceleratorRequirement], available_accelerator_ids: set[int]) -> tuple[Optional[set[int]], Optional[AcceleratorRequirement]]:
         """
         Given the accelerator requirements of a job, and the set of available
         accelerators out of our associated collection of accelerators, find a
@@ -547,7 +548,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         Ignores accelerator model constraints.
         """
-        accelerators_needed: Set[int] = set()
+        accelerators_needed: set[int] = set()
         accelerators_still_available = set(available_accelerator_ids)
         for requirement in needed_accelerators:
             for i in range(requirement['count']):
@@ -577,7 +578,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # If we get here we satisfied everything
         return accelerators_needed, None
 
-    def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, job_accelerators: List[AcceleratorRequirement], environment):
+    def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, job_accelerators: list[AcceleratorRequirement], environment):
         """
         Start a child process for the given job.
 
@@ -596,7 +597,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # And what do we want from each resource in self.resource_sources?
         # We know they go job slot, cores, memory, disk, accelerators.
-        resource_requests: List[Union[int, Set[int]]] = [1, coreFractions, jobMemory, jobDisk]
+        resource_requests: list[Union[int, set[int]]] = [1, coreFractions, jobMemory, jobDisk]
 
         # Keep a reference to the accelerators separately
         accelerators_needed = None
@@ -628,7 +629,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 acquired.append(request)
             else:
                 # We can't get everything
-                self._setSchedulingStatusMessage('Not enough {} to run job {}'.format(source.resource_type, jobID))
+                self._setSchedulingStatusMessage(f'Not enough {source.resource_type} to run job {jobID}')
                 self._release_acquired_resources(acquired)
                 return None
 
@@ -639,7 +640,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         # Communicate the accelerator resources, if any, to the child process
         # by modifying the environemnt
-        accelerators_acquired: Set[int] = accelerators_needed if accelerators_needed is not None else set()
+        accelerators_acquired: set[int] = accelerators_needed if accelerators_needed is not None else set()
         child_environment.update(get_restrictive_environment_for_local_accelerators(accelerators_acquired))
 
         # Actually run the job.
@@ -744,7 +745,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         logger.debug('Child %d for job %s succeeded', pid, jobID)
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None) -> int:
         """Adds the command and resources to a queue to be run."""
 
         self._checkOnDaddy()
@@ -778,7 +779,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         return jobID
 
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
         """Kills jobs by ID."""
 
         self._checkOnDaddy()
@@ -786,7 +787,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         logger.debug(f'Killing jobs: {jobIDs}')
 
         # Collect the popen handles for the jobs we have to stop
-        popens: List[subprocess.Popen] = []
+        popens: list[subprocess.Popen] = []
 
         for jobID in jobIDs:
             if jobID in self.runningJobs:
@@ -808,14 +809,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # Wait for the daddy thread to collect them.
                 time.sleep(0.01)
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         """Just returns all the jobs that have been run, but not yet returned as updated."""
 
         self._checkOnDaddy()
 
         return list(self.jobs.keys())
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
 
         self._checkOnDaddy()
 

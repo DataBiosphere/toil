@@ -70,7 +70,7 @@ def apiDockerCall(job,
                   stream=False,
                   demux=False,
                   streamfile=None,
-                  accelerators: Optional[List[int]] = None,
+                  accelerators: Optional[list[int]] = None,
                   timeout=365 * 24 * 60 * 60,
                   **kwargs):
     """

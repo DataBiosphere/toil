@@ -128,7 +128,7 @@ class SDBHelper:
         return cls._maxChunks() * cls.maxValueSize
 
     @classmethod
-    def binaryToAttributes(cls, binary) -> Dict[str, str]:
+    def binaryToAttributes(cls, binary) -> dict[str, str]:
         """
         Turn a bytestring, or None, into SimpleDB attributes.
         """
@@ -152,8 +152,8 @@ class SDBHelper:
 
     @classmethod
     def attributeDictToList(
-        cls, attributes: Dict[str, str]
-    ) -> List["AttributeTypeDef"]:
+        cls, attributes: dict[str, str]
+    ) -> list["AttributeTypeDef"]:
         """
         Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
         to be compatible with boto3 argument syntax
@@ -164,8 +164,8 @@ class SDBHelper:
 
     @classmethod
     def attributeListToDict(
-        cls, attributes: List["AttributeTypeDef"]
-    ) -> Dict[str, str]:
+        cls, attributes: list["AttributeTypeDef"]
+    ) -> dict[str, str]:
         """
         Convert the attribute boto3 representation of list of attribute typed dicts
         back to a dictionary with name, value pairs
@@ -176,10 +176,10 @@ class SDBHelper:
 
     @classmethod
     def get_attributes_from_item(
-        cls, item: "ItemTypeDef", keys: List[str]
-    ) -> List[Optional[str]]:
-        return_values: List[Optional[str]] = [None for _ in keys]
-        mapped_indices: Dict[str, int] = {name: index for index, name in enumerate(keys)}
+        cls, item: "ItemTypeDef", keys: list[str]
+    ) -> list[Optional[str]]:
+        return_values: list[Optional[str]] = [None for _ in keys]
+        mapped_indices: dict[str, int] = {name: index for index, name in enumerate(keys)}
         for attribute in item["Attributes"]:
             name = attribute["Name"]
             value = attribute["Value"]
@@ -206,8 +206,8 @@ class SDBHelper:
 
     @classmethod
     def attributesToBinary(
-        cls, attributes: List["AttributeTypeDef"]
-    ) -> Tuple[bytes, int]:
+        cls, attributes: list["AttributeTypeDef"]
+    ) -> tuple[bytes, int]:
         """
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from

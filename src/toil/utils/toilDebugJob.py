@@ -128,7 +128,7 @@ def main() -> None:
             # And tell the job to just download files
             debug_flags.add("download_only")
         # We might need to reconstruct a container environment.
-        host_and_job_paths: Optional[List[Tuple[str, str]]] = None
+        host_and_job_paths: Optional[list[tuple[str, str]]] = None
         # Track if the run succeeded without error
         run_succeeded = False
 

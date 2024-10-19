@@ -23,13 +23,13 @@ from threading import Condition
 from typing import (Any,
                     ContextManager,
                     Dict,
-                    Iterator,
                     List,
                     NamedTuple,
                     Optional,
                     Set,
                     Union,
                     cast)
+from collections.abc import Iterator
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
@@ -163,7 +163,7 @@ class AbstractBatchSystem(ABC):
         """
 
     @abstractmethod
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None) -> int:
         """
         Issues a job with the specified command to the batch system and returns
         a unique job ID number.
@@ -180,7 +180,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
         """
         Kills the given job IDs. After returning, the killed jobs will not
         appear in the results of getRunningBatchJobIDs. The killed job will not
@@ -193,7 +193,7 @@ class AbstractBatchSystem(ABC):
     # FIXME: Return value should be a set (then also fix the tests)
 
     @abstractmethod
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         """
         Gets all currently issued jobs
 
@@ -204,7 +204,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         """
         Gets a map of jobs as job ID numbers that are currently running (not
         just waiting) and how long they have been running, in seconds.
@@ -292,7 +292,7 @@ class AbstractBatchSystem(ABC):
             returning nothing, used to update run configuration as a side effect.
         """
 
-    def getWorkerContexts(self) -> List[ContextManager[Any]]:
+    def getWorkerContexts(self) -> list[ContextManager[Any]]:
         """
         Get a list of picklable context manager objects to wrap worker work in,
         in order.
@@ -330,7 +330,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         self.maxCores = maxCores
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
-        self.environment: Dict[str, str] = {}
+        self.environment: dict[str, str] = {}
         if config.workflowID is None:
             raise Exception("config.workflowID must be set")
         else:
@@ -539,7 +539,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptible: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
+    def getNodes(self, preemptible: Optional[bool] = None, timeout: int = 600) -> dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
@@ -584,7 +584,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
+    def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: list[str] = []) -> None:
         """
         Make a new exception about how we couldn't get enough of something.
 
@@ -641,7 +641,7 @@ class InsufficientSystemResources(Exception):
 
 class AcquisitionTimeoutException(Exception):
     """To be raised when a resource request times out."""
-    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]) -> None:
+    def __init__(self, resource: str, requested: Union[int, float, set[int]], available: Union[int, float, set[int]]) -> None:
         """
         Creates an instance of this exception that indicates which resource is insufficient for
         current demands, as well as the resources requested and actually available.
@@ -737,7 +737,7 @@ class ResourceSet:
     Provides a context manager to do something with a set of of resources
     acquired.
     """
-    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5) -> None:
+    def __init__(self, initial_value: set[int], resource_type: str, timeout: float = 5) -> None:
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
@@ -747,7 +747,7 @@ class ResourceSet:
         self.resource_type = resource_type
         self.timeout = timeout
 
-    def acquireNow(self, subset: Set[int]) -> bool:
+    def acquireNow(self, subset: set[int]) -> bool:
         """
         Reserve the given amount of the given resource.
         Returns True if successful and False if this is not possible immediately.
@@ -759,7 +759,7 @@ class ResourceSet:
             self.value -= subset
             return True
 
-    def acquire(self, subset: Set[int]) -> None:
+    def acquire(self, subset: set[int]) -> None:
         """
         Reserve the given amount of the given resource.
         Raises AcquisitionTimeoutException if this is not possible in under
@@ -780,12 +780,12 @@ class ResourceSet:
                 self.condition.wait(timeout=self.timeout)
             self.value -= subset
 
-    def release(self, subset: Set[int]) -> None:
+    def release(self, subset: set[int]) -> None:
         with self.condition:
             self.value |= subset
             self.condition.notify_all()
 
-    def get_free_snapshot(self) -> Set[int]:
+    def get_free_snapshot(self) -> set[int]:
         """
         Get a snapshot of what items are free right now.
         May be stale as soon as you get it, but you will need some kind of hint
@@ -800,7 +800,7 @@ class ResourceSet:
         return "ResourceSet(%s)" % self.value
 
     @contextmanager
-    def acquisitionOf(self, subset: Set[int]) -> Iterator[None]:
+    def acquisitionOf(self, subset: set[int]) -> Iterator[None]:
         self.acquire(subset)
         try:
             yield

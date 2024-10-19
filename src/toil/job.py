@@ -31,38 +31,30 @@ from typing import (TYPE_CHECKING,
                     Any,
                     Callable,
                     Dict,
-                    Iterator,
                     List,
-                    Mapping,
                     NamedTuple,
                     Optional,
-                    Sequence,
                     Set,
                     Tuple,
                     TypeVar,
                     Union,
                     cast,
                     overload)
+from collections.abc import Iterator, Mapping, Sequence
 
 from configargparse import ArgParser
 
 from toil.bus import Names
 from toil.lib.compatibility import deprecated
 
-if sys.version_info >= (3, 8):
-    from typing import TypedDict
-else:
-    from typing_extensions import TypedDict
+from typing import TypedDict
 
 import dill
 # TODO: When this gets into the standard library, get it from there and drop
 # typing-extensions dependency on Pythons that are new enough.
 from typing_extensions import NotRequired
 
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from typing import Literal
 
 from toil.common import Config, Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
@@ -133,7 +125,7 @@ class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
     Raised when a job stops because it was asked to download its files, and the files are downloaded.
     """
 
-    def __init__(self, message, host_and_job_paths: Optional[List[Tuple[str, str]]] = None):
+    def __init__(self, message, host_and_job_paths: Optional[list[tuple[str, str]]] = None):
         super().__init__(message)
 
         # Save the host and user-code-visible paths of files, in case we're
@@ -210,7 +202,7 @@ class AcceleratorRequirement(TypedDict):
 
     # TODO: support requesting any GPU with X amount of vram
 
-def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> AcceleratorRequirement:
+def parse_accelerator(spec: Union[int, str, dict[str, Union[str, int]]]) -> AcceleratorRequirement:
     """
     Parse an AcceleratorRequirement specified by user code.
 
@@ -320,7 +312,7 @@ def parse_accelerator(spec: Union[int, str, Dict[str, Union[str, int]]]) -> Acce
 
     return parsed
 
-def accelerator_satisfies(candidate: AcceleratorRequirement, requirement: AcceleratorRequirement, ignore: List[str] = []) -> bool:
+def accelerator_satisfies(candidate: AcceleratorRequirement, requirement: AcceleratorRequirement, ignore: list[str] = []) -> bool:
     """
     Test if candidate partially satisfies the given requirement.
 
@@ -341,7 +333,7 @@ def accelerator_satisfies(candidate: AcceleratorRequirement, requirement: Accele
     # If all these match or are more specific than required, we match!
     return True
 
-def accelerators_fully_satisfy(candidates: Optional[List[AcceleratorRequirement]], requirement: AcceleratorRequirement, ignore: List[str] = []) -> bool:
+def accelerators_fully_satisfy(candidates: Optional[list[AcceleratorRequirement]], requirement: AcceleratorRequirement, ignore: list[str] = []) -> bool:
     """
     Determine if a set of accelerators satisfy a requirement.
 
@@ -377,14 +369,14 @@ class RequirementsDict(TypedDict):
     cores: NotRequired[Union[int, float]]
     memory: NotRequired[int]
     disk: NotRequired[int]
-    accelerators: NotRequired[List[AcceleratorRequirement]]
+    accelerators: NotRequired[list[AcceleratorRequirement]]
     preemptible: NotRequired[bool]
 
 # These must be all the key names in RequirementsDict
 REQUIREMENT_NAMES = ["disk", "memory", "cores", "accelerators", "preemptible"]
 
 # This is the supertype of all value types in RequirementsDict
-ParsedRequirement = Union[int, float, bool, List[AcceleratorRequirement]]
+ParsedRequirement = Union[int, float, bool, list[AcceleratorRequirement]]
 
 # We define some types for things we can parse into different kind of requirements
 ParseableIndivisibleResource = Union[str, int]
@@ -447,7 +439,7 @@ class Requirer:
         self._config = config
 
 
-    def __getstate__(self) -> Dict[str, Any]:
+    def __getstate__(self) -> dict[str, Any]:
         """Return the dict to use as the instance's __dict__ when pickling."""
         # We want to exclude the config from pickling.
         state = self.__dict__.copy()
@@ -507,7 +499,7 @@ class Requirer:
     @staticmethod
     def _parseResource(
         name: Literal["accelerators"], value: ParseableAcceleratorRequirement
-    ) -> List[AcceleratorRequirement]:
+    ) -> list[AcceleratorRequirement]:
         ...
 
     @overload
@@ -680,9 +672,9 @@ class Requirer:
             "preemptible", val
         )
     @property
-    def accelerators(self) -> List[AcceleratorRequirement]:
+    def accelerators(self) -> list[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
-        return cast(List[AcceleratorRequirement], self._fetchRequirement("accelerators"))
+        return cast(list[AcceleratorRequirement], self._fetchRequirement("accelerators"))
 
     @accelerators.setter
     def accelerators(self, val: ParseableAcceleratorRequirement) -> None:
@@ -762,7 +754,7 @@ class JobDescription(Requirer):
         unitName: Optional[str] = "",
         displayName: Optional[str] = "",        
         local: Optional[bool] = None,
-        files: Optional[Set[FileID]] = None
+        files: Optional[set[FileID]] = None
     ) -> None:
         """
         Create a new JobDescription.
@@ -846,7 +838,7 @@ class JobDescription(Requirer):
         # chained-in job with its original ID, and also this job's ID with its
         # original names, or is empty if no chaining has happened.
         # The first job in the chain comes first in the list.
-        self._merged_job_names: List[Names] = []
+        self._merged_job_names: list[Names] = []
 
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -869,17 +861,17 @@ class JobDescription(Requirer):
 
         # The IDs of all child jobs of the described job.
         # Children which are done must be removed with filterSuccessors.
-        self.childIDs: Set[str] = set()
+        self.childIDs: set[str] = set()
 
         # The IDs of all follow-on jobs of the described job.
         # Follow-ons which are done must be removed with filterSuccessors.
-        self.followOnIDs: Set[str] = set()
+        self.followOnIDs: set[str] = set()
 
         # We keep our own children and follow-ons in a list of successor
         # phases, along with any successors adopted from jobs we have chained
         # from. When we finish our own children and follow-ons, we may have to
         # go back and finish successors for those jobs.
-        self.successor_phases: List[Set[str]] = [self.followOnIDs, self.childIDs]
+        self.successor_phases: list[set[str]] = [self.followOnIDs, self.childIDs]
 
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
         # All services must have an entry, if only to an empty list.
@@ -906,7 +898,7 @@ class JobDescription(Requirer):
         """
         return Names(self.jobName, self.unitName, self.displayName, self.displayName, str(self.jobStoreID))
 
-    def get_chain(self) -> List[Names]:
+    def get_chain(self) -> list[Names]:
         """
         Get all the jobs that executed in this job's chain, in order.
 
@@ -921,7 +913,7 @@ class JobDescription(Requirer):
         else:
             return list(self._merged_job_names)
 
-    def serviceHostIDsInBatches(self) -> Iterator[List[str]]:
+    def serviceHostIDsInBatches(self) -> Iterator[list[str]]:
         """
         Find all batches of service host job IDs that can be started at the same time.
 
@@ -962,10 +954,9 @@ class JobDescription(Requirer):
         """
 
         for phase in self.successor_phases:
-            for successor in phase:
-                yield successor
+            yield from phase
 
-    def successors_by_phase(self) -> Iterator[Tuple[int, str]]:
+    def successors_by_phase(self) -> Iterator[tuple[int, str]]:
         """
         Get an iterator over all child/follow-on/chained inherited successor job IDs, along with their phase numbere on the stack.
 
@@ -1010,7 +1001,7 @@ class JobDescription(Requirer):
         """
         self._body = None
 
-    def get_body(self) -> Tuple[str, ModuleDescriptor]:
+    def get_body(self) -> tuple[str, ModuleDescriptor]:
         """
         Get the information needed to load the job body.
 
@@ -1025,7 +1016,7 @@ class JobDescription(Requirer):
 
         return self._body.file_store_id, ModuleDescriptor.fromCommand(self._body.module_string)
 
-    def nextSuccessors(self) -> Optional[Set[str]]:
+    def nextSuccessors(self) -> Optional[set[str]]:
         """
         Return the collection of job IDs for the successors of this job that are ready to run.
 
@@ -1236,7 +1227,7 @@ class JobDescription(Requirer):
         """Test if the ServiceHostJob is a service of the described job."""
         return serviceID in self.serviceTree
 
-    def renameReferences(self, renames: Dict[TemporaryID, str]) -> None:
+    def renameReferences(self, renames: dict[TemporaryID, str]) -> None:
         """
         Apply the given dict of ID renames to all references to jobs.
 
@@ -1471,7 +1462,7 @@ class CheckpointJobDescription(JobDescription):
             raise RuntimeError(f"Cannot restore an empty checkpoint for a job {self}")
         self._body = self.checkpoint
 
-    def restartCheckpoint(self, jobStore: "AbstractJobStore") -> List[str]:
+    def restartCheckpoint(self, jobStore: "AbstractJobStore") -> list[str]:
         """
         Restart a checkpoint after the total failure of jobs in its subtree.
 
@@ -1543,7 +1534,7 @@ class Job:
         displayName: Optional[str] = "",
         descriptionClass: Optional[type] = None,
         local: Optional[bool] = None,
-        files: Optional[Set[FileID]] = None
+        files: Optional[set[FileID]] = None
     ) -> None:
         """
         Job initializer.
@@ -1640,7 +1631,7 @@ class Job:
         self._tempDir = None
 
         # Holds flags set by set_debug_flag()
-        self._debug_flags: Set[str] = set()
+        self._debug_flags: set[str] = set()
 
     def __str__(self):
         """
@@ -1704,11 +1695,11 @@ class Job:
          self.description.cores = val
 
     @property
-    def accelerators(self) -> List[AcceleratorRequirement]:
+    def accelerators(self) -> list[AcceleratorRequirement]:
         """Any accelerators, such as GPUs, that are needed."""
         return self.description.accelerators
     @accelerators.setter
-    def accelerators(self, val: List[ParseableAcceleratorRequirement]) -> None:
+    def accelerators(self, val: list[ParseableAcceleratorRequirement]) -> None:
          self.description.accelerators = val
 
     @property
@@ -1729,11 +1720,11 @@ class Job:
         return isinstance(self._description, CheckpointJobDescription)
 
     @property
-    def files_to_use(self) -> Set[FileID]:
+    def files_to_use(self) -> set[FileID]:
         return self.description.files_to_use
 
     @files_to_use.setter
-    def files_to_use(self, val: Set[FileID]):
+    def files_to_use(self, val: set[FileID]):
         self.description.files_to_use = val
 
     def add_to_files_to_use(self, val: FileID):
@@ -2134,7 +2125,7 @@ class Job:
         self.checkJobGraphAcylic()
         self.checkNewCheckpointsAreLeafVertices()
 
-    def getRootJobs(self) -> Set['Job']:
+    def getRootJobs(self) -> set['Job']:
         """
         Return the set of root job objects that contain this job.
 
@@ -2215,7 +2206,7 @@ class Job:
             raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
 
     @staticmethod
-    def _getImpliedEdges(roots) -> Dict["Job", List["Job"]]:
+    def _getImpliedEdges(roots) -> dict["Job", list["Job"]]:
         """
         Gets the set of implied edges (between children and follow-ons of a common job).
 
@@ -2575,7 +2566,7 @@ class Job:
                         # We added this successor locally
                         todo.append(self._registry[successorID])
 
-    def getTopologicalOrderingOfJobs(self) -> List["Job"]:
+    def getTopologicalOrderingOfJobs(self) -> list["Job"]:
         """
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
         the job at index i can be run before the job at index j.
@@ -2623,7 +2614,7 @@ class Job:
     # Storing Jobs into the JobStore
     ####################################################
 
-    def _register(self, jobStore) -> List[Tuple[TemporaryID, str]]:
+    def _register(self, jobStore) -> list[tuple[TemporaryID, str]]:
         """
         If this job lacks a JobStore-assigned ID, assign this job an ID.
         Must be called for each job before it is saved to the JobStore for the first time.
@@ -2652,7 +2643,7 @@ class Job:
             # We already have an ID. No assignment or reference rewrite necessary.
             return []
 
-    def _renameReferences(self, renames: Dict[TemporaryID, str]) -> None:
+    def _renameReferences(self, renames: dict[TemporaryID, str]) -> None:
         """
         Apply the given dict of ID renames to all references to other jobs.
 
@@ -3040,7 +3031,7 @@ class Job:
 
         return flag in self._debug_flags
 
-    def files_downloaded_hook(self, host_and_job_paths: Optional[List[Tuple[str, str]]] = None) -> None:
+    def files_downloaded_hook(self, host_and_job_paths: Optional[list[tuple[str, str]]] = None) -> None:
         """
         Function that subclasses can call when they have downloaded their input files.
 
@@ -3646,7 +3637,7 @@ class PromisedRequirement:
         return func(*self._args)
 
     @staticmethod
-    def convertPromises(kwargs: Dict[str, Any]) -> bool:
+    def convertPromises(kwargs: dict[str, Any]) -> bool:
         """
         Return True if reserved resource keyword is a Promise or PromisedRequirement instance.
 
@@ -3675,7 +3666,7 @@ class UnfulfilledPromiseSentinel:
         self.file_id = file_id
 
     @staticmethod
-    def __setstate__(stateDict: Dict[str, Any]) -> None:
+    def __setstate__(stateDict: dict[str, Any]) -> None:
         """
         Only called when unpickling.
 

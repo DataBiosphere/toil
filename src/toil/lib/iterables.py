@@ -13,7 +13,8 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-from typing import Any, Iterable, Iterator, TypeVar
+from typing import Any, TypeVar
+from collections.abc import Iterable, Iterator
 
 IT = TypeVar("IT")
 

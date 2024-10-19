@@ -17,7 +17,8 @@ import os
 import re
 import socket
 from http.client import HTTPException
-from typing import TYPE_CHECKING, Dict, Literal, MutableMapping, Optional, Union
+from typing import TYPE_CHECKING, Dict, Literal, Optional, Union
+from collections.abc import MutableMapping
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -183,7 +184,7 @@ def running_on_ecs() -> bool:
     # We only care about relatively current ECS
     return 'ECS_CONTAINER_METADATA_URI_V4' in os.environ
 
-def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> Dict[str, str]:
+def build_tag_dict_from_env(environment: MutableMapping[str, str] = os.environ) -> dict[str, str]:
     tags = dict()
     owner_tag = environment.get('TOIL_OWNER_TAG')
     if owner_tag:

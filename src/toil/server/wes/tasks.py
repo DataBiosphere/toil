@@ -53,7 +53,7 @@ class ToilWorkflowRunner:
     that command, and collecting the outputs of the resulting workflow run.
     """
 
-    def __init__(self, base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]):
+    def __init__(self, base_scratch_dir: str, state_store_url: str, workflow_id: str, request: dict[str, Any], engine_options: list[str]):
         """
         Make a new ToilWorkflowRunner to actually run a workflow leader based
         on a WES request.
@@ -127,7 +127,7 @@ class ToilWorkflowRunner:
 
         return dest
 
-    def sort_options(self, workflow_engine_parameters: Optional[Dict[str, Optional[str]]] = None) -> List[str]:
+    def sort_options(self, workflow_engine_parameters: Optional[dict[str, Optional[str]]] = None) -> list[str]:
         """
         Sort the command line arguments in the order that can be recognized by
         the workflow execution engine.
@@ -188,7 +188,7 @@ class ToilWorkflowRunner:
 
         return options
 
-    def initialize_run(self) -> List[str]:
+    def initialize_run(self) -> list[str]:
         """
         Write workflow and input files and construct a list of shell commands
         to be executed. Return that list of shell commands that should be
@@ -290,7 +290,7 @@ class ToilWorkflowRunner:
 
         return command_args
 
-    def call_cmd(self, cmd: Union[List[str], str], cwd: str) -> "subprocess.Popen[bytes]":
+    def call_cmd(self, cmd: Union[list[str], str], cwd: str) -> "subprocess.Popen[bytes]":
         """
         Calls a command with Popen. Writes stdout, stderr, and the command to
         separate files.
@@ -387,7 +387,7 @@ class ToilWorkflowRunner:
 
         self.write_scratch_file("outputs.json", json.dumps(output_obj))
 
-def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: Dict[str, Any], engine_options: List[str]) -> str:
+def run_wes_task(base_scratch_dir: str, state_store_url: str, workflow_id: str, request: dict[str, Any], engine_options: list[str]) -> str:
     """
     Run a requested workflow.
 
@@ -443,7 +443,7 @@ class TaskRunner:
     """
 
     @staticmethod
-    def run(args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+    def run(args: tuple[str, str, str, dict[str, Any], list[str]], task_id: str) -> None:
         """
         Run the given task args with the given ID on Celery.
         """
@@ -478,11 +478,11 @@ class MultiprocessingTaskRunner(TaskRunner):
     ToilWorkflowRunner) don't poll for it.
     """
 
-    _id_to_process: Dict[str, multiprocessing.Process] = {}
-    _id_to_log: Dict[str, str] = {}
+    _id_to_process: dict[str, multiprocessing.Process] = {}
+    _id_to_log: dict[str, str] = {}
 
     @staticmethod
-    def set_up_and_run_task(output_path: str, args: Tuple[str, str, str, Dict[str, Any], List[str]]) -> None:
+    def set_up_and_run_task(output_path: str, args: tuple[str, str, str, dict[str, Any], list[str]]) -> None:
         """
         Set up logging for the process into the given file and then call
         run_wes_task with the given arguments.
@@ -538,7 +538,7 @@ class MultiprocessingTaskRunner(TaskRunner):
             output_file.close()
 
     @classmethod
-    def run(cls, args: Tuple[str, str, str, Dict[str, Any], List[str]], task_id: str) -> None:
+    def run(cls, args: tuple[str, str, str, dict[str, Any], list[str]], task_id: str) -> None:
         """
         Run the given task args with the given ID.
         """

@@ -115,16 +115,16 @@ class AWSConnectionManager:
         """
         # This stores Boto3 sessions in .item of a thread-local storage, by
         # region.
-        self.sessions_by_region: Dict[Optional[str], threading.local] = collections.defaultdict(threading.local)
+        self.sessions_by_region: dict[Optional[str], threading.local] = collections.defaultdict(threading.local)
         # This stores Boto3 resources in .item of a thread-local storage, by
         # (region, service name, endpoint URL) tuples
-        self.resource_cache: Dict[Tuple[Optional[str], str, Optional[str]], threading.local] = collections.defaultdict(threading.local)
+        self.resource_cache: dict[tuple[Optional[str], str, Optional[str]], threading.local] = collections.defaultdict(threading.local)
         # This stores Boto3 clients in .item of a thread-local storage, by
         # (region, service name, endpoint URL) tuples
-        self.client_cache: Dict[Tuple[Optional[str], str, Optional[str]], threading.local] = collections.defaultdict(threading.local)
+        self.client_cache: dict[tuple[Optional[str], str, Optional[str]], threading.local] = collections.defaultdict(threading.local)
         # This stores Boto 2 connections in .item of a thread-local storage, by
         # (region, service name) tuples.
-        self.boto2_cache: Dict[Tuple[Optional[str], str], threading.local] = collections.defaultdict(threading.local)
+        self.boto2_cache: dict[tuple[Optional[str], str], threading.local] = collections.defaultdict(threading.local)
 
     def session(self, region: Optional[str]) -> boto3.session.Session:
         """

@@ -148,7 +148,7 @@ class GoogleJobStore(AbstractJobStore):
         try:
             # See if Google can work out how to authenticate.
             return storage.Client()
-        except (DefaultCredentialsError, EnvironmentError):
+        except (DefaultCredentialsError, OSError):
             # Depending on which Google codepath or module version (???)
             # realizes we have no credentials, we can get an EnvironemntError,
             # or the new DefaultCredentialsError we are supposedly specced to
@@ -421,7 +421,7 @@ class GoogleJobStore(AbstractJobStore):
         blob.upload_from_file(readable)
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> List[str]:
+    def _list_url(cls, url: ParseResult) -> list[str]:
         raise NotImplementedError("Listing files in Google buckets is not yet implemented!")
 
     @classmethod

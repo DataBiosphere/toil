@@ -40,7 +40,7 @@ def have_working_nvidia_smi() -> bool:
     return True
 
 @memoize
-def get_host_accelerator_numbers() -> List[int]:
+def get_host_accelerator_numbers() -> list[int]:
     """
     Work out what accelerator is what.
 
@@ -118,7 +118,7 @@ def count_amd_gpus() -> int:
         # we believe this is the expected output for amd-smi, but we don't actually have and amd gpu to test against
         # so we assume the output from the amd-smi documentation:
         # https://rocm.docs.amd.com/projects/amdsmi/en/latest/how-to/using-AMD-SMI-CLI-tool.html
-        out = subprocess.check_output((["amd-smi", "static"]))
+        out = subprocess.check_output(["amd-smi", "static"])
         gpu_count = len([line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")])
         return gpu_count
     except (FileNotFoundError, PermissionError, subprocess.SubprocessError, OSError, UnicodeDecodeError):
@@ -137,7 +137,7 @@ def count_amd_gpus() -> int:
 
 
 @memoize
-def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
+def get_individual_local_accelerators() -> list[AcceleratorRequirement]:
     """
     Determine all the local accelerators available. Report each with count 1,
     in the order of the number that can be used to assign them.
@@ -146,11 +146,11 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     accelerator assignment API.
     """
 
-    gpus: List[AcceleratorRequirement] = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
+    gpus: list[AcceleratorRequirement] = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
     gpus.extend([{'kind': 'gpu', 'brand': 'amd', 'api': 'rocm', 'count': 1} for _ in range(count_amd_gpus())])
     return gpus
 
-def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Union[Set[int], List[int]]) -> Dict[str, str]:
+def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Union[set[int], list[int]]) -> dict[str, str]:
     """
     Get environment variables which can be applied to a process to restrict it
     to using only the given accelerator numbers.

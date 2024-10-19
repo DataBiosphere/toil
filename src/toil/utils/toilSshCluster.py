@@ -46,7 +46,7 @@ def main() -> None:
                               clusterName=options.clusterName,
                               zone=options.zone)
     command = options.args if options.args else ['bash']
-    sshOptions: List[str] = options.sshOptions
+    sshOptions: list[str] = options.sshOptions
 
     # Forward ports:
     # 3000 for Grafana dashboard

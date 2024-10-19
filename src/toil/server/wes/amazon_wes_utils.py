@@ -25,10 +25,7 @@ import zipfile
 from os import path
 from typing import IO, List, Optional, cast
 
-if sys.version_info >= (3, 8):
-    from typing import TypedDict
-else:
-    from typing_extensions import TypedDict
+from typing import TypedDict
 
 from urllib.parse import ParseResult, urlparse
 
@@ -76,7 +73,7 @@ class FilesDict(TypedDict, total=False):
     * `workflowDependencies`: Open binary-mode file for the zip the workflow came in, if any.
     """
     workflowSource: IO[bytes]
-    workflowInputFiles: List[IO[bytes]]
+    workflowInputFiles: list[IO[bytes]]
     workflowOptions: IO[bytes]
     workflowDependencies: IO[bytes]
 

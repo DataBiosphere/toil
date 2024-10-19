@@ -131,7 +131,7 @@ class UtilsTest(ToilTest):
         # make sure that toil can read from the generated config file
         try:
             parser.parse_args(["random_jobstore", "--config", config_file])
-            with open(config_file, mode="r") as cm:
+            with open(config_file) as cm:
                 payload = cm.read()
                 expected = "workDir batchSystem symlinkImports defaultMemory retryCount"
                 assert all(

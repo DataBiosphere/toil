@@ -33,7 +33,7 @@ class ToilDocumentationTest(ToilTest):
         unittest.TestCase.tearDown(self)
 
     """Just check the exit code"""
-    def checkExitCode(self, script, extra_args: List[str] = []):
+    def checkExitCode(self, script, extra_args: list[str] = []):
         program = os.path.join(self.directory, "scripts", script)
         process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"] + extra_args,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)

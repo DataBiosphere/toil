@@ -53,7 +53,7 @@ def convert_units(num: float,
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
-def parse_memory_string(string: str) -> Tuple[float, str]:
+def parse_memory_string(string: str) -> tuple[float, str]:
     """
     Given a string representation of some memory (i.e. '1024 Mib'), return the
     number and unit.

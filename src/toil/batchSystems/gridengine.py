@@ -57,7 +57,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                               jobID: int,
                               command: str,
                               jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None,
+                              job_environment: Optional[dict[str, str]] = None,
                               gpus: Optional[int] = None):
             # POSIX qsub
             # <https://pubs.opengroup.org/onlinepubs/9699919799.2008edition/utilities/qsub.html>
@@ -116,7 +116,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                         cpu: int,
                         mem: int,
                         jobID: int,
-                        job_environment: Optional[Dict[str, str]] = None) -> List[str]:
+                        job_environment: Optional[dict[str, str]] = None) -> list[str]:
             qsubline = ['qsub', '-V', '-b', 'y', '-terse', '-j', 'y', '-cwd',
                         '-N', 'toil_job_' + str(jobID)]
 

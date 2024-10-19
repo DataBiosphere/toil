@@ -31,16 +31,16 @@ class FakeBatchSystem(BatchSystemCleanupSupport):
     def supportsAutoDeployment(cls) -> bool:
         pass
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None) -> int:
         pass
 
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
         pass
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         pass
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         pass
 
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
@@ -63,7 +63,7 @@ class BatchSystemPluginTest(ToilTest):
         Test that installing a batch system plugin works.
         :return:
         """
-        def fake_batch_system_factory() -> Type[AbstractBatchSystem]:
+        def fake_batch_system_factory() -> type[AbstractBatchSystem]:
             return FakeBatchSystem
 
         add_batch_system_factory("fake", fake_batch_system_factory)

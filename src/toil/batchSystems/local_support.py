@@ -55,7 +55,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         else:
             return None
 
-    def killLocalJobs(self, jobIDs: List[int]) -> None:
+    def killLocalJobs(self, jobIDs: list[int]) -> None:
         """
         Will kill all local jobs that match the provided jobIDs.
 
@@ -63,14 +63,14 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         """
         self.localBatch.killBatchJobs(jobIDs)
 
-    def getIssuedLocalJobIDs(self) -> List[int]:
+    def getIssuedLocalJobIDs(self) -> list[int]:
         """To be called by getIssuedBatchJobIDs."""
-        local_ids: List[int] = self.localBatch.getIssuedBatchJobIDs()
+        local_ids: list[int] = self.localBatch.getIssuedBatchJobIDs()
         return local_ids
 
-    def getRunningLocalJobIDs(self) -> Dict[int, float]:
+    def getRunningLocalJobIDs(self) -> dict[int, float]:
         """To be called by getRunningBatchJobIDs()."""
-        local_running: Dict[int, float] = self.localBatch.getRunningBatchJobIDs()
+        local_running: dict[int, float] = self.localBatch.getRunningBatchJobIDs()
         return local_running
 
     def getUpdatedLocalJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:

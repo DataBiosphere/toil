@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 EVICTION_THRESHOLD = human2bytes('100MiB')
 RESERVE_SMALL_LIMIT = human2bytes('1GiB')
 RESERVE_SMALL_AMOUNT = human2bytes('255MiB')
-RESERVE_BREAKPOINTS: List[Union[int, float]] = [human2bytes('4GiB'), human2bytes('8GiB'), human2bytes('16GiB'), human2bytes('128GiB'), math.inf]
+RESERVE_BREAKPOINTS: list[Union[int, float]] = [human2bytes('4GiB'), human2bytes('8GiB'), human2bytes('16GiB'), human2bytes('128GiB'), math.inf]
 RESERVE_FRACTIONS = [0.25, 0.2, 0.1, 0.06, 0.02]
 
 # Guess of how much disk space on the root volume is used for the OS and essential container images
@@ -59,7 +59,7 @@ OS_SIZE = human2bytes('5G')
 
 # Define a type for an explanation of why a job can't fit on a node.
 # Consists of a resource name and a constraining value for that resource.
-FailedConstraint = Tuple[str, Union[int, float, bool]]
+FailedConstraint = tuple[str, Union[int, float, bool]]
 
 class BinPackedFit:
     """
@@ -80,14 +80,14 @@ class BinPackedFit:
     :returns: The minimum number of minimal node allocations estimated to be required to run all
               the jobs in jobShapes.
     """
-    nodeReservations: Dict[Shape, List['NodeReservation']]
+    nodeReservations: dict[Shape, list['NodeReservation']]
 
-    def __init__(self, nodeShapes: List[Shape], targetTime: float = defaultTargetTime) -> None:
+    def __init__(self, nodeShapes: list[Shape], targetTime: float = defaultTargetTime) -> None:
         self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
         self.nodeReservations = {nodeShape: [] for nodeShape in nodeShapes}
 
-    def binPack(self, jobShapes: List[Shape]) -> Dict[Shape, List[FailedConstraint]]:
+    def binPack(self, jobShapes: list[Shape]) -> dict[Shape, list[FailedConstraint]]:
         """
         Pack a list of jobShapes into the fewest nodes reasonable.
         
@@ -111,7 +111,7 @@ class BinPackedFit:
                 could_not_fit[rejection[0]] = rejection[1]
         return could_not_fit
 
-    def addJobShape(self, jobShape: Shape) -> Optional[Tuple[Shape, List[FailedConstraint]]]:
+    def addJobShape(self, jobShape: Shape) -> Optional[tuple[Shape, list[FailedConstraint]]]:
         """
         Add the job to the first node reservation in which it will fit. (This
         is the bin-packing aspect).
@@ -129,7 +129,7 @@ class BinPackedFit:
             logger.debug("Couldn't fit job with requirements %s into any nodes in the nodeTypes "
                          "list.", jobShape)
             # Go back and debug why this happened.
-            fewest_constraints: Optional[List[FailedConstraint]] = None
+            fewest_constraints: Optional[list[FailedConstraint]] = None
             for shape in self.nodeShapes:
                 failures = NodeReservation(nodeShape).get_failed_constraints(jobShape)
                 if fewest_constraints is None or len(failures) < len(fewest_constraints):
@@ -160,7 +160,7 @@ class BinPackedFit:
             reservation = extendThisReservation
         return None
 
-    def getRequiredNodes(self) -> Dict[Shape, int]:
+    def getRequiredNodes(self) -> dict[Shape, int]:
         """Return a dict from node shape to number of nodes required to run the packed jobs."""
         return {
             nodeShape: len(self.nodeReservations[nodeShape])
@@ -213,7 +213,7 @@ class NodeReservation:
                 self.nReservation.shape.preemptible if self.nReservation is not None else str(None),
                 str(len(self.shapes())))
 
-    def get_failed_constraints(self, job_shape: Shape) -> List[FailedConstraint]:
+    def get_failed_constraints(self, job_shape: Shape) -> list[FailedConstraint]:
         """
         Check if a job shape's resource requirements will fit within this allocation.
         
@@ -225,7 +225,7 @@ class NodeReservation:
         Must always agree with fits()! This codepath is slower and used for diagnosis.
         """
         
-        failures: List[FailedConstraint] = []
+        failures: list[FailedConstraint] = []
         if job_shape.memory > self.shape.memory:
             failures.append(("memory", self.shape.memory))
         if job_shape.cores > self.shape.cores:
@@ -243,7 +243,7 @@ class NodeReservation:
                jobShape.disk <= self.shape.disk and \
                (jobShape.preemptible or not self.shape.preemptible)
 
-    def shapes(self) -> List[Shape]:
+    def shapes(self) -> list[Shape]:
         """Get all time-slice shapes, in order, from this reservation on."""
         shapes = []
         curRes: Optional[NodeReservation] = self
@@ -342,7 +342,7 @@ def adjustEndingReservationForJob(
 
 def split(
     nodeShape: Shape, jobShape: Shape, wallTime: float
-) -> Tuple[Shape, NodeReservation]:
+) -> tuple[Shape, NodeReservation]:
     """
     Partition a node allocation into two to fit the job.
 
@@ -361,7 +361,7 @@ def split(
                                   nodeShape.preemptible)))
 
 
-def binPacking(nodeShapes: List[Shape], jobShapes: List[Shape], goalTime: float) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
+def binPacking(nodeShapes: list[Shape], jobShapes: list[Shape], goalTime: float) -> tuple[dict[Shape, int], dict[Shape, list[FailedConstraint]]]:
     """
     Using the given node shape bins, pack the given job shapes into nodes to
     get them done in the given amount of time.
@@ -388,17 +388,17 @@ class ClusterScaler:
         self.provisioner = provisioner
         self.leader = leader
         self.config = config
-        self.static: Dict[bool, Dict[str, "Node"]] = {}
+        self.static: dict[bool, dict[str, "Node"]] = {}
         
         # If we encounter a Shape of job that we don't think we can run, call
         # these callbacks with the Shape that didn't fit and the Shapes that
         # were available.
-        self.on_too_big: List[Callable[[Shape, List[Shape]], Any]] = []
+        self.on_too_big: list[Callable[[Shape, list[Shape]], Any]] = []
 
         # Dictionary of job names to their average runtime, used to estimate wall time of queued
         # jobs for bin-packing
-        self.jobNameToAvgRuntime: Dict[str, float] = {}
-        self.jobNameToNumCompleted: Dict[str, int] = {}
+        self.jobNameToAvgRuntime: dict[str, float] = {}
+        self.jobNameToNumCompleted: dict[str, int] = {}
         self.totalAvgRuntime = 0.0
         self.totalJobsCompleted = 0
 
@@ -415,7 +415,7 @@ class ClusterScaler:
         self.instance_types = list(self.nodeShapeToType.values())
         self.nodeShapes = list(self.nodeShapeToType.keys())
 
-        self.ignoredNodes: Set[str] = set()
+        self.ignoredNodes: set[str] = set()
 
         # A *deficit* exists when we have more jobs that can run on preemptible
         # nodes than we have preemptible nodes. In order to not block these jobs,
@@ -458,10 +458,10 @@ class ClusterScaler:
         self.without_overhead = {k: v for k, v in zip(self.node_shapes_after_overhead, self.nodeShapes)}
 
         #Node shape to number of currently provisioned nodes
-        totalNodes: Dict[Shape, int] = defaultdict(int)
+        totalNodes: dict[Shape, int] = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem) and leader.provisioner:
             for preemptible in (True, False):
-                nodes: List["Node"] = []
+                nodes: list["Node"] = []
                 for nodeShape, instance_type in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(instance_type=instance_type,
                                                                               preemptible=preemptible)
@@ -632,7 +632,7 @@ class ClusterScaler:
         self.totalAvgRuntime = float(self.totalAvgRuntime * (self.totalJobsCompleted - 1) + \
                                      wallTime)/self.totalJobsCompleted
 
-    def setStaticNodes(self, nodes: List["Node"], preemptible: bool) -> None:
+    def setStaticNodes(self, nodes: list["Node"], preemptible: bool) -> None:
         """
         Used to track statically provisioned nodes. This method must be called
         before any auto-scaled nodes are provisioned.
@@ -647,7 +647,7 @@ class ClusterScaler:
         if nodes is not None:
             self.static[preemptible] = {node.privateIP : node for node in nodes}
 
-    def getStaticNodes(self, preemptible: bool) -> Dict[str, "Node"]:
+    def getStaticNodes(self, preemptible: bool) -> dict[str, "Node"]:
         """
         Returns nodes set in setStaticNodes().
 
@@ -668,8 +668,8 @@ class ClusterScaler:
         return self._round(weightedEstimate)
 
     def getEstimatedNodeCounts(
-        self, queuedJobShapes: List[Shape], currentNodeCounts: Dict[Shape, int]
-    ) -> Tuple[Dict[Shape, int], Dict[Shape, List[FailedConstraint]]]:
+        self, queuedJobShapes: list[Shape], currentNodeCounts: dict[Shape, int]
+    ) -> tuple[dict[Shape, int], dict[Shape, list[FailedConstraint]]]:
         """
         Given the resource requirements of queued jobs and the current size of the cluster.
 
@@ -740,7 +740,7 @@ class ClusterScaler:
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
         return estimatedNodeCounts, could_not_fit
 
-    def updateClusterSize(self, estimatedNodeCounts: Dict[Shape, int]) -> Dict[Shape, int]:
+    def updateClusterSize(self, estimatedNodeCounts: dict[Shape, int]) -> dict[Shape, int]:
         """
         Given the desired and current size of the cluster, attempts to launch/remove instances to get to the desired size.
 
@@ -850,7 +850,7 @@ class ClusterScaler:
 
     def _removeNodes(
         self,
-        nodes: Dict["Node", NodeInfo],
+        nodes: dict["Node", NodeInfo],
         instance_type: str,
         num_nodes: int,
         preemptible: bool = False,
@@ -939,8 +939,8 @@ class ClusterScaler:
 
     def filter_out_static_nodes(
             self,
-            nodes: Dict["Node", NodeInfo],
-            preemptible: bool = False) -> List[Tuple["Node", NodeInfo]]:
+            nodes: dict["Node", NodeInfo],
+            preemptible: bool = False) -> list[tuple["Node", NodeInfo]]:
         filtered_nodes = []
         for node, nodeInfo in nodes.items():
             if node:
@@ -956,7 +956,7 @@ class ClusterScaler:
             node_nodeInfo[1].workers if node_nodeInfo[1] else 1, node_nodeInfo[0].remainingBillingInterval()))
         return filtered_nodes
 
-    def getNodes(self, preemptible: Optional[bool] = None) -> Dict["Node", NodeInfo]:
+    def getNodes(self, preemptible: Optional[bool] = None) -> dict["Node", NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
@@ -979,7 +979,7 @@ class ClusterScaler:
         if len(recent_nodes) != len(provisioned_nodes):
             logger.debug("Consolidating state between mesos and provisioner")
 
-        nodeToInfo: Dict["Node", NodeInfo] = {}
+        nodeToInfo: dict["Node", NodeInfo] = {}
         # fixme: what happens if awsFilterImpairedNodes is used?
         # if this assertion is false it means that user-managed nodes are being
         # used that are outside the provisioner's control
@@ -1032,7 +1032,7 @@ class JobTooBigError(Exception):
     type and is likely to lock up the workflow.
     """
     
-    def __init__(self, job: Optional[JobDescription] = None, shape: Optional[Shape] = None, constraints: Optional[List[FailedConstraint]] = None):
+    def __init__(self, job: Optional[JobDescription] = None, shape: Optional[Shape] = None, constraints: Optional[list[FailedConstraint]] = None):
         """
         Make a JobTooBigError.
         
@@ -1181,8 +1181,8 @@ class ClusterStats:
         self, path: str, batchSystem: AbstractBatchSystem, clusterName: Optional[str]
     ) -> None:
         logger.debug("Initializing cluster statistics")
-        self.stats: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
-        self.statsThreads: List[ExceptionalThread] = []
+        self.stats: dict[str, dict[str, list[dict[str, Any]]]] = {}
+        self.statsThreads: list[ExceptionalThread] = []
         self.statsPath = path
         self.stop = False
         self.clusterName = clusterName
@@ -1223,7 +1223,7 @@ class ClusterStats:
             thread.join(timeout=0)
 
     def _gatherStats(self, preemptible: bool) -> None:
-        def toDict(nodeInfo: NodeInfo) -> Dict[str, Any]:
+        def toDict(nodeInfo: NodeInfo) -> dict[str, Any]:
             # convert NodeInfo object to dict to improve JSON output
             return dict(memory=nodeInfo.memoryUsed,
                         cores=nodeInfo.coresUsed,
@@ -1236,7 +1236,7 @@ class ClusterStats:
                         )
         if self.scaleable:
             logger.debug("Starting to gather statistics")
-            stats: Dict[str, List[Dict[str, Any]]] = {}
+            stats: dict[str, list[dict[str, Any]]] = {}
             if not isinstance(self.batchSystem, AbstractScalableBatchSystem):
                 raise RuntimeError('Non-scalable batch system abusing a scalable-only function.')
             try:

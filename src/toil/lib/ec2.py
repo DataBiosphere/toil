@@ -7,13 +7,11 @@ from typing import (
     Any,
     Callable,
     Dict,
-    Generator,
-    Iterable,
     List,
-    Mapping,
     Optional,
     Union,
 )
+from collections.abc import Generator, Iterable, Mapping
 
 import botocore.client
 from boto3.resources.base import ServiceResource
@@ -165,7 +163,7 @@ def wait_spot_requests_active(
     requests: Iterable["SpotInstanceRequestTypeDef"],
     timeout: float = None,
     tentative: bool = False,
-) -> Iterable[List["SpotInstanceRequestTypeDef"]]:
+) -> Iterable[list["SpotInstanceRequestTypeDef"]]:
     """
     Wait until no spot request in the given iterator is in the 'open' state or, optionally,
     a timeout occurs. Yield spot requests as soon as they leave the 'open' state.
@@ -320,7 +318,7 @@ def create_ondemand_instances(
     image_id: str,
     spec: Mapping[str, Any],
     num_instances: int = 1,
-) -> List["InstanceTypeDef"]:
+) -> list["InstanceTypeDef"]:
     """
     Requests the RunInstances EC2 API call but accounts for the race between recently created
     instance profiles, IAM roles and an instance creation that refers to them.
@@ -331,7 +329,7 @@ def create_ondemand_instances(
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
         with attempt:
-            boto_instance_list: List["InstanceTypeDef"] = boto3_ec2.run_instances(
+            boto_instance_list: list["InstanceTypeDef"] = boto3_ec2.run_instances(
                 ImageId=image_id, MinCount=num_instances, MaxCount=num_instances, **spec
             )["Instances"]
 
@@ -339,7 +337,7 @@ def create_ondemand_instances(
 
 
 def increase_instance_hop_limit(
-    boto3_ec2: "EC2Client", boto_instance_list: List["InstanceTypeDef"]
+    boto3_ec2: "EC2Client", boto_instance_list: list["InstanceTypeDef"]
 ) -> None:
     """
     Increase the default HTTP hop limit, as we are running Toil and Kubernetes inside a Docker container, so the default
@@ -393,14 +391,14 @@ def create_instances(
     key_name: str,
     instance_type: str,
     num_instances: int = 1,
-    security_group_ids: Optional[List] = None,
+    security_group_ids: Optional[list] = None,
     user_data: Optional[Union[str, bytes]] = None,
-    block_device_map: Optional[List[Dict]] = None,
+    block_device_map: Optional[list[dict]] = None,
     instance_profile_arn: Optional[str] = None,
     placement_az: Optional[str] = None,
     subnet_id: str = None,
-    tags: Optional[Dict[str, str]] = None,
-) -> List["Instance"]:
+    tags: Optional[dict[str, str]] = None,
+) -> list["Instance"]:
     """
     Replaces create_ondemand_instances.  Uses boto3 and returns a list of Boto3 instance dicts.
 
@@ -456,13 +454,13 @@ def create_launch_template(
     image_id: str,
     key_name: str,
     instance_type: str,
-    security_group_ids: Optional[List] = None,
+    security_group_ids: Optional[list] = None,
     user_data: Optional[Union[str, bytes]] = None,
-    block_device_map: Optional[List[Dict]] = None,
+    block_device_map: Optional[list[dict]] = None,
     instance_profile_arn: Optional[str] = None,
     placement_az: Optional[str] = None,
     subnet_id: Optional[str] = None,
-    tags: Optional[Dict[str, str]] = None,
+    tags: Optional[dict[str, str]] = None,
 ) -> str:
     """
     Creates a launch template with the given name for launching instances with the given parameters.
@@ -530,14 +528,14 @@ def create_launch_template(
 def create_auto_scaling_group(
     autoscaling_client: "AutoScalingClient",
     asg_name: str,
-    launch_template_ids: Dict[str, str],
-    vpc_subnets: List[str],
+    launch_template_ids: dict[str, str],
+    vpc_subnets: list[str],
     min_size: int,
     max_size: int,
     instance_types: Optional[Iterable[str]] = None,
     spot_bid: Optional[float] = None,
     spot_cheapest: bool = False,
-    tags: Optional[Dict[str, str]] = None,
+    tags: Optional[dict[str, str]] = None,
 ) -> None:
     """
     Create a new Auto Scaling Group with the given name (which is also its
@@ -571,7 +569,7 @@ def create_auto_scaling_group(
     """
 
     if instance_types is None:
-        instance_types: List[str] = []
+        instance_types: list[str] = []
 
     if instance_types is not None and len(instance_types) > 20:
         raise RuntimeError(f"Too many instance types ({len(instance_types)}) in group; AWS supports only 20.")

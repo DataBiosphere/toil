@@ -136,7 +136,7 @@ class AbstractProvisioner(ABC):
         clusterType: Optional[str] = "mesos",
         zone: Optional[str] = None,
         nodeStorage: int = 50,
-        nodeStorageOverrides: Optional[List[str]] = None,
+        nodeStorageOverrides: Optional[list[str]] = None,
         enable_fuse: bool = False
     ) -> None:
         """
@@ -179,7 +179,7 @@ class AbstractProvisioner(ABC):
             self.readClusterSettings()
 
     @abstractmethod
-    def supportedClusterTypes(self) -> Set[str]:
+    def supportedClusterTypes(self) -> set[str]:
         """
         Get all the cluster types that this provisioner implementation
         supports.
@@ -307,7 +307,7 @@ class AbstractProvisioner(ABC):
         assert leaderPublicKey.startswith('AAAAB3NzaC1yc2E'), leaderPublicKey
         return leaderPublicKey
 
-    def _getKubernetesJoiningInfo(self, leader: Node = None) -> Dict[str, str]:
+    def _getKubernetesJoiningInfo(self, leader: Node = None) -> dict[str, str]:
         """
         Get the Kubernetes joining info created when Kubernetes was set up on
         this node, which is the leader, or on a different specified Node.
@@ -342,7 +342,7 @@ class AbstractProvisioner(ABC):
         # it.
         return dict(config['DEFAULT'])
 
-    def setAutoscaledNodeTypes(self, nodeTypes: List[Tuple[Set[str], Optional[float]]]):
+    def setAutoscaledNodeTypes(self, nodeTypes: list[tuple[set[str], Optional[float]]]):
         """
         Set node types, shapes and spot bids for Toil-managed autoscaling.
         :param nodeTypes: A list of node types, as parsed with parse_node_types.
@@ -375,7 +375,7 @@ class AbstractProvisioner(ABC):
         """
         return len(self.getAutoscaledInstanceShapes()) > 0
 
-    def getAutoscaledInstanceShapes(self) -> Dict[Shape, str]:
+    def getAutoscaledInstanceShapes(self) -> dict[Shape, str]:
         """
         Get all the node shapes and their named instance types that the Toil
         autoscaler should manage.
@@ -418,7 +418,7 @@ class AbstractProvisioner(ABC):
     @abstractmethod
     def addNodes(
         self,
-        nodeTypes: Set[str],
+        nodeTypes: set[str],
         numNodes: int,
         preemptible: bool,
         spotBid: Optional[float] = None,
@@ -433,7 +433,7 @@ class AbstractProvisioner(ABC):
         """
         raise NotImplementedError
 
-    def addManagedNodes(self, nodeTypes: Set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
+    def addManagedNodes(self, nodeTypes: set[str], minNodes, maxNodes, preemptible, spotBid=None) -> None:
         """
         Add a group of managed nodes of the given type, up to the given maximum.
         The nodes will automatically be launched and terminated depending on cluster load.
@@ -451,7 +451,7 @@ class AbstractProvisioner(ABC):
         raise ManagedNodesNotSupportedException("Managed nodes not supported by this provisioner")
 
     @abstractmethod
-    def terminateNodes(self, nodes: List[Node]) -> None:
+    def terminateNodes(self, nodes: list[Node]) -> None:
         """
         Terminate the nodes represented by given Node objects
 
@@ -467,7 +467,7 @@ class AbstractProvisioner(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> List[Node]:
+    def getProvisionedWorkers(self, instance_type: Optional[str] = None, preemptible: Optional[bool] = None) -> list[Node]:
         """
         Gets all nodes, optionally of the given instance type or
         preemptability, from the provisioner. Includes both static and
@@ -962,7 +962,7 @@ class AbstractProvisioner(ABC):
         # Now we should have the kubeadm command, and the bootlooping kubelet
         # waiting for kubeadm to configure it.
 
-    def getKubernetesAutoscalerSetupCommands(self, values: Dict[str, str]) -> str:
+    def getKubernetesAutoscalerSetupCommands(self, values: dict[str, str]) -> str:
         """
         Return Bash commands that set up the Kubernetes cluster autoscaler for
         provisioning from the environment supported by this provisioner.
@@ -1157,7 +1157,7 @@ class AbstractProvisioner(ABC):
             WantedBy=multi-user.target
             '''))
 
-    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: Dict[str, str], preemptible: bool = False):
+    def addKubernetesWorker(self, config: InstanceConfiguration, authVars: dict[str, str], preemptible: bool = False):
         """
         Add services to configure as a Kubernetes worker, if Kubernetes is
         already set to be installed.

@@ -16,7 +16,7 @@ class FailedJobsException(Exception):
     def __init__(
         self,
         job_store: "AbstractJobStore",
-        failed_jobs: List["JobDescription"],
+        failed_jobs: list["JobDescription"],
         exit_code: int = 1,
     ):
         """

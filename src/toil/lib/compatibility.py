@@ -28,10 +28,10 @@ def compat_bytes_recursive(data: Any) -> Any:
     """
     if isinstance(data, dict):
         # Keyed collection
-        return type(data)((compat_bytes_recursive(i) for i in data.items()))
+        return type(data)(compat_bytes_recursive(i) for i in data.items())
     elif isinstance(data, (tuple, list, set)):
         # Flat collection
-        return type(data)((compat_bytes_recursive(i) for i in data))
+        return type(data)(compat_bytes_recursive(i) for i in data)
     elif isinstance(data, bytes):
         # Leaf bytes
         return data.decode('utf-8')

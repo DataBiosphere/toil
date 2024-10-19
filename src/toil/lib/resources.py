@@ -52,7 +52,7 @@ class ResourceMonitor:
         cls._extra_cpu_seconds += seconds
 
     @classmethod
-    def get_total_cpu_time_and_memory_usage(cls) -> Tuple[float, int]:
+    def get_total_cpu_time_and_memory_usage(cls) -> tuple[float, int]:
         """
         Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
         itself and its single largest child (in kibibytes).
@@ -77,7 +77,7 @@ class ResourceMonitor:
         return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime + cls._extra_cpu_seconds
 
 
-def glob(glob_pattern: str, directoryname: str) -> List[str]:
+def glob(glob_pattern: str, directoryname: str) -> list[str]:
     """
     Walks through a directory and its subdirectories looking for files matching
     the glob_pattern and returns a list=[].

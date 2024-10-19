@@ -91,7 +91,7 @@ class StatsAndLogging:
         method(cls.formatLogStream(jobLogs, stream_name))
 
     @classmethod
-    def writeLogFiles(cls, jobNames: List[str], jobLogList: List[str], config: 'Config', failed: bool = False) -> None:
+    def writeLogFiles(cls, jobNames: list[str], jobLogList: list[str], config: 'Config', failed: bool = False) -> None:
         def createName(logPath: str, jobName: str, logExtension: str, failed: bool = False) -> str:
             logName = jobName.replace('-', '--')
             logName = logName.replace('/', '-')
@@ -365,7 +365,7 @@ def suppress_exotic_logging(local_logger: str) -> None:
     never_suppress = ['toil', '__init__', '__main__', 'toil-rt', 'cwltool']
     always_suppress = ['boto3', 'boto', 'botocore']  # ensure we suppress even before instantiated
 
-    top_level_loggers: List[str] = []
+    top_level_loggers: list[str] = []
 
     # Due to https://stackoverflow.com/questions/61683713
     for pkg_logger in list(logging.Logger.manager.loggerDict.keys()) + always_suppress:

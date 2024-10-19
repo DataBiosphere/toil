@@ -285,7 +285,7 @@ def checkDockerImageExists(appliance: str) -> str:
                                          tag=tag)
 
 
-def parseDockerAppliance(appliance: str) -> Tuple[str, str, str]:
+def parseDockerAppliance(appliance: str) -> tuple[str, str, str]:
     """
     Derive parsed registry, image reference, and tag from a docker image string.
 

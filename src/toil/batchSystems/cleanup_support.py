@@ -33,7 +33,7 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
     def supportsWorkerCleanup(cls) -> bool:
         return True
 
-    def getWorkerContexts(self) -> List[ContextManager[Any]]:
+    def getWorkerContexts(self) -> list[ContextManager[Any]]:
         # Tell worker to register for and invoke cleanup
 
         # Create a context manager that has a copy of our cleanup info
@@ -85,7 +85,7 @@ class WorkerCleanupContext:
     # always, because it can be smarter about reachability if it knows what
     # context managers never eat exceptions. So it decides any context manager
     # that is always falsey but claims to return a bool is an error.
-    def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
+    def __exit__(self, type: Optional[type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
         logger.debug('Leaving cleanup arena')
         for _ in self.arena.leave():
             # We are the last concurrent worker to finish.

@@ -22,10 +22,10 @@ class Runner:
         else:
             self.indata = sys.stdin.read().encode(sys.stdin.encoding)
 
-    def run_once(self, args: List[str]):
+    def run_once(self, args: list[str]):
         subprocess.run(args, input=self.indata, stdout=sys.stdout, stderr=sys.stderr).check_returncode()
 
-    def run_many(self, n: int, args: List[str]):
+    def run_many(self, n: int, args: list[str]):
         for i in range(n):
             self.run_once(args)
 

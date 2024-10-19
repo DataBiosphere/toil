@@ -26,7 +26,8 @@ import sys
 import time
 import traceback
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, List, Set, Optional
+from typing import Any, Callable, List, Set, Optional
+from collections.abc import Iterator
 
 from configargparse import ArgParser
 
@@ -49,7 +50,7 @@ logger = logging.getLogger(__name__)
 class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
-    jobs: List[MagicExpando]
+    jobs: list[MagicExpando]
 
 
 def nextChainable(predecessor: JobDescription, job_store: AbstractJobStore, config: Config) -> Optional[JobDescription]:
@@ -135,7 +136,7 @@ def workerScript(
     job_store_id: str,
     redirect_output_to_log_file: bool = True,
     local_worker_temp_dir: Optional[str] = None,
-    debug_flags: Optional[Set[str]] = None
+    debug_flags: Optional[set[str]] = None
 ) -> int:
     """
     Worker process script, runs a job.
@@ -699,7 +700,7 @@ def workerScript(
     else:
         return 0
 
-def parse_args(args: List[str]) -> Any:
+def parse_args(args: list[str]) -> Any:
     """
     Parse command-line arguments to the worker.
     """
@@ -732,7 +733,7 @@ def parse_args(args: List[str]) -> Any:
 
 
 @contextmanager
-def in_contexts(contexts: List[str]) -> Iterator[None]:
+def in_contexts(contexts: list[str]) -> Iterator[None]:
     """
     Unpickle and enter all the pickled, base64-encoded context managers in the
     given list. Then do the body, then leave them all.
@@ -759,7 +760,7 @@ def in_contexts(contexts: List[str]) -> Iterator[None]:
                 yield
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: Optional[list[str]] = None) -> None:
     if argv is None:
         argv = sys.argv
     # Parse our command line

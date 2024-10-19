@@ -292,7 +292,7 @@ class WDLTests(BaseWDLTest):
         subprocess.check_call(self.base_command + [wdl, json_file, '-o', os.path.join(self.output_dir, "does", "not", "exist"), '--logDebug', '--retryCount=0'])
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self, extra_args: Optional[List[str]] = None) -> None:
+    def test_miniwdl_self_test(self, extra_args: Optional[list[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/self_test.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/miniwdl_self_test/inputs.json')
@@ -456,9 +456,9 @@ class WDLToilBenchTests(ToilTest):
 
         # Set up data structures for our fake workflow graph to pull from.
         # This has all decl-type nodes
-        all_decls: Set[str] = set()
+        all_decls: set[str] = set()
         # And this has all transitive dependencies for all nodes.
-        all_deps: Dict[str, Set[str]] = {}
+        all_deps: dict[str, set[str]] = {}
 
         def mock_is_decl(self: Any, node_id: str) -> bool:
             """
@@ -466,7 +466,7 @@ class WDLToilBenchTests(ToilTest):
             """
             return node_id in all_decls
 
-        def mock_get_transitive_dependencies(self: Any, node_id: str) -> Set[str]:
+        def mock_get_transitive_dependencies(self: Any, node_id: str) -> set[str]:
             """
             Replacement function to get all the transitive dependencies of a node.
             """
@@ -559,7 +559,7 @@ class WDLToilBenchTests(ToilTest):
 
         pos = WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0)
 
-        parts: List[Union[str, WDL.Expr.Placeholder]] = re.split("(~{[^}]*})", to_parse)
+        parts: list[Union[str, WDL.Expr.Placeholder]] = re.split("(~{[^}]*})", to_parse)
         for i in range(1, len(parts), 2):
             parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
 

@@ -6,7 +6,8 @@ import sys
 import time
 from base64 import b64encode
 from io import BytesIO
-from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
+from collections.abc import Iterable
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests
@@ -56,7 +57,7 @@ cwltest --verbose \
 logger = logging.getLogger(__name__)
 
 
-def generate_attachment_path_names(paths: List[str]) -> Tuple[str, List[str]]:
+def generate_attachment_path_names(paths: list[str]) -> tuple[str, list[str]]:
     """
     Take in a list of path names and return a list of names with the common path
     name stripped out, while preserving the input order. This guarantees that
@@ -105,7 +106,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
     TODO: Propose a PR in wes-service to include workflow_engine_params.
     """
-    def __init__(self, endpoint: str, auth: Optional[Tuple[str, str]] = None) -> None:
+    def __init__(self, endpoint: str, auth: Optional[tuple[str, str]] = None) -> None:
         """
         :param endpoint: The http(s) URL of the WES server. Must include the
                          protocol.
@@ -140,7 +141,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         else:
             raise RuntimeError(f"Invalid workflow extension: {extension}.")
 
-    def parse_params(self, workflow_params_file: str) -> Dict[str, Any]:
+    def parse_params(self, workflow_params_file: str) -> dict[str, Any]:
         """
         Parse the CWL input file into a dictionary to be attached to the body of
         the WES run request.
@@ -155,9 +156,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         workflow_params: Any
         workflow_params, _ = loader.resolve_ref(workflow_params_file, checklinks=False)
 
-        return cast(Dict[str, Any], workflow_params)
+        return cast(dict[str, Any], workflow_params)
 
-    def modify_param_paths(self, base_dir: str, workflow_params: Dict[str, Any]) -> None:
+    def modify_param_paths(self, base_dir: str, workflow_params: dict[str, Any]) -> None:
         """
         Modify the file paths in the input workflow parameters to be relative
         to base_dir.
@@ -168,7 +169,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         :param workflow_params: A dict containing the workflow parameters.
         """
 
-        def replace(field: str, file_obj: Dict[str, str]) -> None:
+        def replace(field: str, file_obj: dict[str, str]) -> None:
             """
             Given a file object with the "location" or "path" field, replace it
             to be relative to base_dir.
@@ -198,9 +199,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             self,
             workflow_file: str,
             workflow_params_file: Optional[str],
-            attachments: Optional[List[str]],
-            workflow_engine_parameters: Optional[List[str]] = None
-    ) -> Tuple[Dict[str, str], Iterable[Tuple[str, Tuple[str, BytesIO]]]]:
+            attachments: Optional[list[str]],
+            workflow_engine_parameters: Optional[list[str]] = None
+    ) -> tuple[dict[str, str], Iterable[tuple[str, tuple[str, BytesIO]]]]:
         """
         Build the workflow run request to submit to WES.
 
@@ -233,7 +234,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
 
         workflow_type = wf_url.lower().split(".")[-1]  # Grab the file extension
         workflow_type_version = self.get_version(workflow_type, wf_url)
-        data: Dict[str, str] = {
+        data: dict[str, str] = {
             "workflow_url": workflow_file,
             "workflow_params": "",  # to be set after attachments are processed
             "workflow_type": workflow_type,
@@ -281,9 +282,9 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             self,
             workflow_file: str,
             workflow_params_file: Optional[str],
-            attachments: Optional[List[str]],
-            workflow_engine_parameters: Optional[List[str]]
-    ) -> Dict[str, Any]:
+            attachments: Optional[list[str]],
+            workflow_engine_parameters: Optional[list[str]]
+    ) -> dict[str, Any]:
         """
         Composes and sends a post request that signals the WES server to run a
         workflow.
@@ -308,10 +309,10 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             headers=self.auth,
         )
 
-        return cast(Dict[str, Any], wes_response(post_result))
+        return cast(dict[str, Any], wes_response(post_result))
 
 
-def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> List[str]:
+def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> list[str]:
     """
     Return a list of dependencies of the given workflow from cwltool.
 
@@ -332,7 +333,7 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
     if not result:
         return []
 
-    json_result: Dict[str, Any] = json.loads(result)
+    json_result: dict[str, Any] = json.loads(result)
     deps = []
 
     def get_deps(obj: Any) -> None:
@@ -371,7 +372,7 @@ def get_deps_from_cwltool(cwl_file: str, input_file: Optional[str] = None) -> Li
 def submit_run(client: WESClientWithWorkflowEngineParameters,
                cwl_file: str,
                input_file: Optional[str] = None,
-               engine_options: Optional[List[str]] = None) -> str:
+               engine_options: Optional[list[str]] = None) -> str:
     """
     Given a CWL file, its input files, and an optional list of engine options,
     submit the CWL workflow to the WES server via the WES client.
@@ -391,7 +392,7 @@ def submit_run(client: WESClientWithWorkflowEngineParameters,
     if input_file:
         attachments.extend(get_deps_from_cwltool(cwl_file, input_file))
 
-    run_result: Dict[str, Any] = client.run_with_engine_options(
+    run_result: dict[str, Any] = client.run_with_engine_options(
         cwl_file,
         input_file,
         attachments=attachments,

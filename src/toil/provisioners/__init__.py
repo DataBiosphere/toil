@@ -30,7 +30,7 @@ def cluster_factory(
     clusterType: str = "mesos",
     zone: Optional[str] = None,
     nodeStorage: int = 50,
-    nodeStorageOverrides: Optional[List[str]] = None,
+    nodeStorageOverrides: Optional[list[str]] = None,
     sseKey: Optional[str] = None,
     enable_fuse: bool = False
 ) -> Union["AWSProvisioner", "GCEProvisioner"]:
@@ -82,7 +82,7 @@ def add_provisioner_options(parser: argparse.ArgumentParser) -> None:
                                            "Must be lowercase and may not contain the '_' character.")
 
 
-def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Optional[float]]]:
+def parse_node_types(node_type_specs: Optional[str]) -> list[tuple[set[str], Optional[float]]]:
     """
     Parse a specification for zero or more node types.
 
@@ -137,7 +137,7 @@ def parse_node_types(node_type_specs: Optional[str]) -> List[Tuple[Set[str], Opt
     return parsed
 
 
-def check_valid_node_types(provisioner, node_types: List[Tuple[Set[str], Optional[float]]]):
+def check_valid_node_types(provisioner, node_types: list[tuple[set[str], Optional[float]]]):
     """
     Raises if an invalid nodeType is specified for aws or gce.
 
@@ -191,7 +191,7 @@ class ClusterTypeNotSupportedException(Exception):
 
 class ClusterCombinationNotSupportedException(Exception):
     """Indicates that a provisioner does not support making a given type of cluster with a given architecture."""
-    def __init__(self, provisioner_class: Type, cluster_type: str, architecture: str, reason: Optional[str] = None):
+    def __init__(self, provisioner_class: type, cluster_type: str, architecture: str, reason: Optional[str] = None):
         message = (f"The {provisioner_class} provisioner does not support making {cluster_type} clusters "
                    f"using nodes with the {architecture} architecture.")
         if reason is not None:

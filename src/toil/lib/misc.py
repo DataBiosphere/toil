@@ -9,7 +9,8 @@ import sys
 import time
 import typing
 from contextlib import closing
-from typing import Iterator, List, Optional
+from typing import List, Optional
+from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +123,8 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
             return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
 
 
-def call_command(cmd: List[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
-                useCLocale: bool = True, env: Optional[typing.Dict[str, str]] = None, quiet: Optional[bool] = False) -> str:
+def call_command(cmd: list[str], *args: str, input: Optional[str] = None, timeout: Optional[float] = None,
+                useCLocale: bool = True, env: Optional[dict[str, str]] = None, quiet: Optional[bool] = False) -> str:
     """
     Simplified calling of external commands.
 

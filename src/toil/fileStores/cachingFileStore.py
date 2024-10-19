@@ -26,11 +26,9 @@ from contextlib import contextmanager
 from tempfile import mkstemp
 from typing import (Any,
                     Callable,
-                    Generator,
-                    Iterator,
                     Optional,
-                    Sequence,
                     Tuple)
+from collections.abc import Generator, Iterator, Sequence
 
 from toil.common import cacheDirName, getFileSystemSize
 from toil.fileStores import FileID
@@ -1908,7 +1906,7 @@ class CachingFileStore(AbstractFileStore):
 
 
     @classmethod
-    def shutdown(cls, shutdown_info: Tuple[str, str]) -> None:
+    def shutdown(cls, shutdown_info: tuple[str, str]) -> None:
         """
         :param shutdown_info: Tuple of the coordination directory (where the
                cache database is) and the cache directory (where the cached data is).

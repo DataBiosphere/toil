@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # *Command to run* (swapped with unit name)
 # Environment dict for the job
 # Accelerator requirements for the job
-JobTuple = Tuple[int, int, int, int, str, str, Dict[str, str], List[AcceleratorRequirement]]
+JobTuple = tuple[int, int, int, int, str, str, dict[str, str], list[AcceleratorRequirement]]
 
 # We have one global lock to control access to the HTCondor scheduler
 schedd_lock = Lock()
@@ -85,7 +85,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             return activity
 
-        def prepareSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str, environment: Dict[str, str]) -> htcondor.Submit:
+        def prepareSubmission(self, cpu: int, memory: int, disk: int, jobID: int, jobName: str, command: str, environment: dict[str, str]) -> htcondor.Submit:
             # Note that we don't yet take the accelerators here.
 
             # Convert resource requests
@@ -359,7 +359,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             """
             return value.replace("'", "''").replace('"', '""')
 
-        def getEnvString(self, overrides: Dict[str, str]) -> str:
+        def getEnvString(self, overrides: dict[str, str]) -> str:
             """
             Build an environment string that a HTCondor Submit object can use.
 
@@ -387,7 +387,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             return '"' + ' '.join(env_items) + '"'
 
     # Override the issueBatchJob method so HTCondor can be given the disk request
-    def issueBatchJob(self, command: str, jobNode, job_environment: Optional[Dict[str, str]] = None):
+    def issueBatchJob(self, command: str, jobNode, job_environment: Optional[dict[str, str]] = None):
         # Avoid submitting internal jobs to the batch queue, handle locally
         localID = self.handleLocalJob(command, jobNode)
         if localID is not None:

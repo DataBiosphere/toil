@@ -34,7 +34,8 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Dict, Iterator, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union
+from collections.abc import Iterator
 
 from botocore.exceptions import ClientError
 
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 # Map from AWS Batch terminal states to Toil batch job exit reasons
-STATE_TO_EXIT_REASON: Dict[str, BatchJobExitReason] = {
+STATE_TO_EXIT_REASON: dict[str, BatchJobExitReason] = {
     'SUCCEEDED': BatchJobExitReason.FINISHED,
     'FAILED': BatchJobExitReason.FAILED
 }
@@ -136,10 +137,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.job_definition: Optional[str] = None
 
         # We need a way to map between our batch system ID numbers, and AWS Batch job IDs from the server.
-        self.bs_id_to_aws_id: Dict[int, str] = {}
-        self.aws_id_to_bs_id: Dict[str, int] = {}
+        self.bs_id_to_aws_id: dict[int, str] = {}
+        self.aws_id_to_bs_id: dict[str, int] = {}
         # We need to track if jobs were killed so they don't come out as updated
-        self.killed_job_aws_ids: Set[str] = set()
+        self.killed_job_aws_ids: set[str] = set()
 
     def setUserScript(self, user_script: Resource) -> None:
         logger.debug(f'Setting user script for deployment: {user_script}')
@@ -156,7 +157,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                     'AWS Batch can only provide nvidia gpu accelerators.'
                 ])
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None) -> int:
         # Try the job as local
         local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
@@ -259,7 +260,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # And re-compose them into a string
         return ''.join(kept_chars)
 
-    def _get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
+    def _get_runtime(self, job_detail: dict[str, Any]) -> Optional[float]:
         """
         Internal function. Should not be called outside this class.
 
@@ -291,7 +292,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Return the time it has been running for.
         return runtime
 
-    def _get_exit_code(self, job_detail: Dict[str, Any]) -> int:
+    def _get_exit_code(self, job_detail: dict[str, Any]) -> int:
         """
         Internal function. Should not be called outside this class.
 
@@ -429,8 +430,8 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         if self.job_definition is None:
             # First work out what volume mounts to make, because the type
             # system is happiest this way
-            volumes: List[Dict[str, Union[str, Dict[str, str]]]] = []
-            mount_points: List[Dict[str, str]] = []
+            volumes: list[dict[str, Union[str, dict[str, str]]]] = []
+            mount_points: list[dict[str, str]] = []
             for i, shared_path in enumerate({
                 '/var/lib/toil',
                 '/var/lib/docker',
@@ -494,10 +495,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # TODO: How do we tolerate it not existing anymore?
             self.job_definition = None
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         return self.getIssuedLocalJobIDs() + list(self.bs_id_to_aws_id.keys())
 
-    def _describe_jobs_in_batches(self) -> Iterator[Dict[str, Any]]:
+    def _describe_jobs_in_batches(self) -> Iterator[dict[str, Any]]:
         """
         Internal function. Should not be called outside this class.
 
@@ -520,7 +521,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # Yield each returned JobDetail
             yield from response.get('jobs', [])
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
 
@@ -540,7 +541,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Give back the times all our running jobs have been running for.
         return bs_id_to_runtime
 
-    def killBatchJobs(self, job_ids: List[int]) -> None:
+    def killBatchJobs(self, job_ids: list[int]) -> None:
         # Kill all the ones that are local
         self.killLocalJobs(job_ids)
 

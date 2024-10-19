@@ -36,12 +36,8 @@ from tempfile import mkstemp, gettempdir
 from typing import (Any,
                     Callable,
                     Dict,
-                    Generator,
-                    Iterable,
-                    Iterator,
                     List,
                     Optional,
-                    Sequence,
                     Set,
                     Tuple,
                     Type,
@@ -49,6 +45,7 @@ from typing import (Any,
                     Union,
                     cast,
                     TypedDict, IO)
+from collections.abc import Generator, Iterable, Iterator, Sequence
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -105,17 +102,21 @@ logger = logging.getLogger(__name__)
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 #   all_call_outputs: whether a job should include all calls outputs
-WDLContext = TypedDict('WDLContext', {"execution_dir": NotRequired[str], "container": NotRequired[str],
-                                      "task_path": str, "namespace": str, "all_call_outputs": bool})
+class WDLContext(TypedDict):
+    execution_dir: NotRequired[str]
+    container: NotRequired[str]
+    task_path: str
+    namespace: str
+    all_call_outputs: bool
 
 
 class InsufficientMountDiskSpace(Exception):
-    def __init__(self, mount_targets: List[str], desired_bytes: int, available_bytes: int) -> None:
+    def __init__(self, mount_targets: list[str], desired_bytes: int, available_bytes: int) -> None:
         super().__init__("Not enough available disk space for the target mount points %s. Needed %d bytes but there is only %d available."
                          % (", ".join(mount_targets), desired_bytes, available_bytes))
 
 @contextmanager
-def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None, None, None]:
+def wdl_error_reporter(task: str, exit: bool = False, log: Callable[[str], None] = logger.critical) -> Generator[None]:
     """
     Run code in a context where WDL errors will be reported with pretty formatting.
     """
@@ -212,7 +213,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
 
     # We split the parts list into lines, which are also interleaved string
     # literals and placeholder expressions.
-    lines: List[List[Union[str, WDL.Expr.Placeholder]]] = [[]]
+    lines: list[list[str | WDL.Expr.Placeholder]] = [[]]
     for part in expression.parts:
         if isinstance(part, str):
             # It's a string. Split it into lines.
@@ -232,7 +233,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     # Then we compute the common amount of leading whitespace on all the lines,
     # looking at the first string literal.
     # This will be the longest common whitespace prefix, or None if not yet detected.
-    common_whitespace_prefix: Optional[str] = None
+    common_whitespace_prefix: str | None = None
     for line in lines:
         if len(line) == 0:
             # TODO: how should totally empty lines be handled? Not in the spec!
@@ -306,7 +307,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
         (
             (
                 cast(
-                    List[Union[str, WDL.Expr.Placeholder]],
+                    list[Union[str, WDL.Expr.Placeholder]],
                     [line[0][first_mismatch(common_whitespace_prefix, line[0]):]]
                 ) + line[1:]
             )
@@ -320,7 +321,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
 
     # Then we reassemble the parts and make a new expression.
     # Build lists and turn the lists into strings later
-    new_parts: List[Union[List[str], WDL.Expr.Placeholder]] = []
+    new_parts: list[list[str] | WDL.Expr.Placeholder] = []
     for i, line in enumerate(stripped_lines):
         if i > 0:
             # This is a second line, so we need to tack on a newline.
@@ -346,7 +347,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
         logger.debug("New Parts: %s", new_parts)
 
     # Now go back to the alternating strings and placeholders that MiniWDL wants
-    new_parts_merged: List[Union[str, WDL.Expr.Placeholder]] = [("".join(x) if isinstance(x, list) else x) for x in new_parts]
+    new_parts_merged: list[str | WDL.Expr.Placeholder] = [("".join(x) if isinstance(x, list) else x) for x in new_parts]
 
     if debug:
         logger.debug("New Parts Merged: %s", new_parts_merged)
@@ -358,7 +359,7 @@ def remove_common_leading_whitespace(expression: WDL.Expr.String, tolerate_blank
     return modified
 
 
-def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tree.Document] = None, execution_dir: Optional[str] = None) -> Iterator[str]:
+def potential_absolute_uris(uri: str, path: list[str], importer: WDL.Tree.Document | None = None, execution_dir: str | None = None) -> Iterator[str]:
     """
     Get potential absolute URIs to check for an imported file.
 
@@ -410,7 +411,7 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
     full_path_list += [Toil.normalize_uri(p) for p in path]
 
     # This holds all the URIs we tried and failed with.
-    failures: Set[str] = set()
+    failures: set[str] = set()
 
     for candidate_base in full_path_list:
         # Try fetching based off each base URI
@@ -425,7 +426,7 @@ def potential_absolute_uris(uri: str, path: List[str], importer: Optional[WDL.Tr
         # If we come back it didn't work
         failures.add(candidate_uri)
 
-async def toil_read_source(uri: str, path: List[str], importer: Optional[WDL.Tree.Document]) -> ReadSourceResult:
+async def toil_read_source(uri: str, path: list[str], importer: WDL.Tree.Document | None) -> ReadSourceResult:
     """
     Implementation of a MiniWDL read_source function that can use any
     filename or URL supported by Toil.
@@ -576,10 +577,9 @@ def for_each_node(root: WDL.Tree.WorkflowNode) -> Iterator[WDL.Tree.WorkflowNode
     yield root
     for child_node in root.children:
         if isinstance(child_node, WDL.Tree.WorkflowNode):
-            for result in for_each_node(child_node):
-                yield result
+            yield from for_each_node(child_node)
 
-def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
+def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> set[str]:
     """
     Get the combined workflow_node_dependencies of root and everything under
     it, which are not on anything in that subtree.
@@ -589,9 +589,9 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
     """
 
     # What are all dependencies?
-    needed: Set[str] = set()
+    needed: set[str] = set()
     # And what dependencies are provided internally?
-    provided: Set[str] = set()
+    provided: set[str] = set()
 
     for node in for_each_node(root):
         # Record everything each node needs
@@ -603,7 +603,7 @@ def recursive_dependencies(root: WDL.Tree.WorkflowNode) -> Set[str]:
     return needed - provided
 
 
-def parse_disks(spec: str, disks_spec: Union[List[WDL.Value.String], str]) -> Tuple[Optional[str], float, str]:
+def parse_disks(spec: str, disks_spec: list[WDL.Value.String] | str) -> tuple[str | None, float, str]:
     """
     Parse a WDL disk spec into a disk mount specification.
     :param spec: Disks spec to parse
@@ -690,7 +690,7 @@ def pack_toil_uri(file_id: FileID, task_path: str, dir_id: uuid.UUID, file_basen
         quote(file_basename, safe='')
     ])
 
-def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
+def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
     """
     Unpack a URI made by make_toil_uri to retrieve the FileID and the basename
     (no path prefix) that the file is supposed to have.
@@ -714,7 +714,7 @@ def unpack_toil_uri(toil_uri: str) -> Tuple[FileID, str, str, str]:
     return file_id, task_path, parent_id, file_basename
 
 
-DirectoryNamingStateDict = Dict[str, Tuple[Dict[str, str], Set[str]]]
+DirectoryNamingStateDict = dict[str, tuple[dict[str, str], set[str]]]
 def choose_human_readable_directory(root_dir: str, source_task_path: str, parent_id: str, state: DirectoryNamingStateDict) -> str:
     """
     Select a good directory to save files from a task and source directory in.
@@ -766,7 +766,7 @@ def choose_human_readable_directory(root_dir: str, source_task_path: str, parent
     return result
 
 
-def evaluate_decls_to_bindings(decls: List[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: ToilWDLStdLibBase,
+def evaluate_decls_to_bindings(decls: list[WDL.Tree.Decl], all_bindings: WDL.Env.Bindings[WDL.Value.Base], standard_library: ToilWDLStdLibBase,
                                include_previous: bool = False, drop_missing_files: bool = False) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
     Evaluate decls with a given bindings environment and standard library.
@@ -809,13 +809,13 @@ class NonDownloadingSize(WDL.StdLib._Size):
     using the FileID's stored size info.
     """
 
-    def _call_eager(self, expr: "WDL.Expr.Apply", arguments: List[WDL.Value.Base]) -> WDL.Value.Base:
+    def _call_eager(self, expr: WDL.Expr.Apply, arguments: list[WDL.Value.Base]) -> WDL.Value.Base:
         """
         Replacement evaluation implementation that avoids downloads.
         """
 
         # Get all the URIs of files that actually are set.
-        file_objects: List[WDL.Value.File] = [f for f in arguments[0].coerce(WDL.Type.Array(WDL.Type.File(optional=True))).value if not isinstance(f, WDL.Value.Null)]
+        file_objects: list[WDL.Value.File] = [f for f in arguments[0].coerce(WDL.Type.Array(WDL.Type.File(optional=True))).value if not isinstance(f, WDL.Value.Null)]
 
         total_size = 0.0
         for file in file_objects:
@@ -861,7 +861,7 @@ def is_standard_url(filename: str) -> bool:
     return is_url(filename, ['http:', 'https:', 's3:', 'gs:', 'ftp:'])
 
 
-def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', 'ftp:', TOIL_URI_SCHEME]) -> bool:
+def is_url(filename: str, schemes: list[str]=['http:', 'https:', 's3:', 'gs:', 'ftp:', TOIL_URI_SCHEME]) -> bool:
         """
         Decide if a filename is a known kind of URL
         """
@@ -870,8 +870,8 @@ def is_url(filename: str, schemes: List[str]=['http:', 'https:', 's3:', 'gs:', '
                 return True
         return False
 
-def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: Optional[List[str]] = None, import_remote_files: bool = True,
-                         execution_dir: Optional[str] = None) -> None:
+def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore, task_path: str, search_paths: list[str] | None = None, import_remote_files: bool = True,
+                         execution_dir: str | None = None) -> None:
     """
     Resolve relative-URI files in the given environment and import all files.
 
@@ -885,9 +885,9 @@ def convert_remote_files(environment: WDLBindings, file_source: AbstractJobStore
         directories in this list.
     :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
     """
-    path_to_id: Dict[str, uuid.UUID] = {}
+    path_to_id: dict[str, uuid.UUID] = {}
     @memoize
-    def import_filename(filename: str) -> Tuple[Optional[str], Optional[str]]:
+    def import_filename(filename: str) -> tuple[str | None, str | None]:
         """
         Detect if any potential URI exists. Will convert a file's value to a URI and import it.
 
@@ -1020,7 +1020,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     """
     Standard library implementation for WDL as run on Toil.
     """
-    def __init__(self, file_store: AbstractFileStore, wdl_options: WDLContext, share_files_with: Optional["ToilWDLStdLibBase"] = None):
+    def __init__(self, file_store: AbstractFileStore, wdl_options: WDLContext, share_files_with: ToilWDLStdLibBase | None = None):
         """
         Set up the standard library.
         :param wdl_options: Options to pass into the standard library to use.
@@ -1045,14 +1045,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # We get fresh file download/upload state
 
             # Map forward from virtualized files to absolute devirtualized ones.
-            self._virtualized_to_devirtualized: Dict[str, str] = {}
+            self._virtualized_to_devirtualized: dict[str, str] = {}
             # Allow mapping back from absolute devirtualized files to virtualized
             # paths, to save re-uploads.
-            self._devirtualized_to_virtualized: Dict[str, str] = {}
+            self._devirtualized_to_virtualized: dict[str, str] = {}
             # State we need for choosing good names for devirtualized files
             self._devirtualization_state: DirectoryNamingStateDict = {}
             # UUID to differentiate which node files are virtualized from
-            self._parent_dir_to_ids: Dict[str, uuid.UUID] = dict()
+            self._parent_dir_to_ids: dict[str, uuid.UUID] = dict()
         else:
             # Share file download/upload state
             self._virtualized_to_devirtualized = share_files_with._virtualized_to_devirtualized
@@ -1061,8 +1061,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             self._parent_dir_to_ids = share_files_with._parent_dir_to_ids
 
     @property
-    def execution_dir(self) -> Optional[str]:
-        execution_dir: Optional[str] = self._wdl_options.get("execution_dir")
+    def execution_dir(self) -> str | None:
+        execution_dir: str | None = self._wdl_options.get("execution_dir")
         return execution_dir
 
     @property
@@ -1070,7 +1070,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         task_path: str = self._wdl_options["task_path"]
         return task_path
 
-    def get_local_paths(self) -> List[str]:
+    def get_local_paths(self) -> list[str]:
         """
         Get all the local paths of files devirtualized (or virtualized) through the stdlib.
         """
@@ -1089,7 +1089,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         def _f(file: WDL.Value.File) -> WDL.Value.Base:
             if getattr(file, "virtualized_value", None) is None:
                 setattr(file, "virtualized_value", self._virtualize_filename(file.value))
-            with open(self._devirtualize_filename(getattr(file, "virtualized_value")), "r") as infile:
+            with open(self._devirtualize_filename(getattr(file, "virtualized_value"))) as infile:
                 return parse(infile.read())
 
         return _f
@@ -1159,7 +1159,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return result
 
     @staticmethod
-    def _devirtualize_uri(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], state: DirectoryNamingStateDict) -> str:
+    def _devirtualize_uri(filename: str, dest_dir: str, file_source: AbstractFileStore | Toil, state: DirectoryNamingStateDict) -> str:
         """
         Given a filename, either return the devirtualized path or the filename itself if not a virtualized URI.
         """
@@ -1213,8 +1213,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         return result
 
     @staticmethod
-    def devirtualize_to(filename: str, dest_dir: str, file_source: Union[AbstractFileStore, Toil], state: DirectoryNamingStateDict, wdl_options: WDLContext,
-                        devirtualized_to_virtualized: Optional[Dict[str, str]] = None, virtualized_to_devirtualized: Optional[Dict[str, str]] = None) -> str:
+    def devirtualize_to(filename: str, dest_dir: str, file_source: AbstractFileStore | Toil, state: DirectoryNamingStateDict, wdl_options: WDLContext,
+                        devirtualized_to_virtualized: dict[str, str] | None = None, virtualized_to_devirtualized: dict[str, str] | None = None) -> str:
         """
         Download or export a WDL virtualized filename/URL to the given directory.
 
@@ -1374,7 +1374,7 @@ class ToilWDLStdLibTaskCommand(ToilWDLStdLibBase):
     def _read(self, parse: Callable[[str], WDL.Value.Base]) -> Callable[[WDL.Value.File], WDL.Value.Base]:
         # todo: figure out better way than reoverriding overridden function
         def _f(file: WDL.Value.File) -> WDL.Value.Base:
-            with open(self._devirtualize_filename(file.value), "r") as infile:
+            with open(self._devirtualize_filename(file.value)) as infile:
                 return parse(infile.read())
 
         return _f
@@ -1446,9 +1446,9 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         file_store: AbstractFileStore,
         stdout_path: str,
         stderr_path: str,
-        file_to_mountpoint: Dict[str, str],
+        file_to_mountpoint: dict[str, str],
         wdl_options: WDLContext,
-        share_files_with: Optional["ToilWDLStdLibBase"] = None
+        share_files_with: ToilWDLStdLibBase | None = None
     ):
         """
         Set up the standard library for a task output section. Needs to know
@@ -1646,7 +1646,7 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
 
         return super()._virtualize_filename(filename)
 
-def evaluate_named_expression(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], name: str, expected_type: Optional[WDL.Type.Base], expression: Optional[WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
+def evaluate_named_expression(context: WDL.Error.SourceNode | WDL.Error.SourcePosition, name: str, expected_type: WDL.Type.Base | None, expression: WDL.Expr.Base | None, environment: WDLBindings, stdlib: WDL.StdLib.Base) -> WDL.Value.Base:
     """
     Evaluate an expression when we know the name of it.
     """
@@ -1686,7 +1686,7 @@ def evaluate_decl(node: WDL.Tree.Decl, environment: WDLBindings, stdlib: WDL.Std
 
     return evaluate_named_expression(node, node.name, node.type, node.expr, environment, stdlib)
 
-def evaluate_call_inputs(context: Union[WDL.Error.SourceNode, WDL.Error.SourcePosition], expressions: Dict[str, WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base, inputs_dict: Optional[Dict[str, WDL.Type.Base]] = None) -> WDLBindings:
+def evaluate_call_inputs(context: WDL.Error.SourceNode | WDL.Error.SourcePosition, expressions: dict[str, WDL.Expr.Base], environment: WDLBindings, stdlib: WDL.StdLib.Base, inputs_dict: dict[str, WDL.Type.Base] | None = None) -> WDLBindings:
     """
     Evaluate a bunch of expressions with names, and make them into a fresh set of bindings. `inputs_dict` is a mapping of
     variable names to their expected type for the input decls in a task.
@@ -1754,7 +1754,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     Maps the host path to the container paths
     """
     # partition the files by host directory
-    host_paths_by_dir: Dict[str, Set[str]] = {}
+    host_paths_by_dir: dict[str, set[str]] = {}
     for host_path in host_paths:
         host_path_strip = host_path.rstrip("/")
         if host_path not in task_container.input_path_map and host_path_strip not in task_container.input_path_map:
@@ -1765,7 +1765,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     # - if there are no basename collisions under input subdirectory 0, then mount them there.
     # - otherwise, mount them in a fresh subdirectory
     subd = 0
-    id_to_subd: Dict[str, str] = {}
+    id_to_subd: dict[str, str] = {}
     for paths in host_paths_by_dir.values():
         based = os.path.join(task_container.container_dir, "work/_miniwdl_inputs")
         for host_path in paths:
@@ -1782,7 +1782,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map_rev[container_path] = host_path
 
 
-def drop_if_missing(file: WDL.Value.File, standard_library: ToilWDLStdLibBase) -> Optional[WDL.Value.File]:
+def drop_if_missing(file: WDL.Value.File, standard_library: ToilWDLStdLibBase) -> WDL.Value.File | None:
     """
     Return None if a file doesn't exist, or its path if it does.
 
@@ -1831,7 +1831,7 @@ def drop_missing_files(environment: WDLBindings, standard_library: ToilWDLStdLib
     drop_if_missing_with_workdir = partial(drop_if_missing, standard_library=standard_library)
     return map_over_files_in_bindings(environment, drop_if_missing_with_workdir)
 
-def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
+def get_file_paths_in_bindings(environment: WDLBindings) -> list[str]:
     """
     Get the paths of all files in the bindings. Doesn't guarantee that
     duplicates are removed.
@@ -1842,7 +1842,7 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
 
     paths = []
 
-    def append_to_paths(file: WDL.Value.File) -> Optional[WDL.Value.File]:
+    def append_to_paths(file: WDL.Value.File) -> WDL.Value.File | None:
         # Append element and return the element. This is to avoid a logger warning inside map_over_typed_files_in_value()
         # But don't process nonexistent files
         if getattr(file, "nonexistent", False) is False:
@@ -1852,7 +1852,7 @@ def get_file_paths_in_bindings(environment: WDLBindings) -> List[str]:
     map_over_files_in_bindings(environment, append_to_paths)
     return paths
 
-def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[WDL.Value.File], Optional[WDL.Value.File]]) -> WDLBindings:
+def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[WDL.Value.File], WDL.Value.File | None]) -> WDLBindings:
     """
     Run all File values embedded in the given bindings through the given
     transformation function.
@@ -1863,7 +1863,7 @@ def map_over_files_in_bindings(environment: WDLBindings, transform: Callable[[WD
     return environment.map(lambda b: map_over_files_in_binding(b, transform))
 
 
-def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[WDL.Value.File], Optional[WDL.Value.File]]) -> WDL.Env.Binding[WDL.Value.Base]:
+def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transform: Callable[[WDL.Value.File], WDL.Value.File | None]) -> WDL.Env.Binding[WDL.Value.Base]:
     """
     Run all File values' types and values embedded in the given binding's value through the given
     transformation function.
@@ -1878,7 +1878,7 @@ def map_over_files_in_binding(binding: WDL.Env.Binding[WDL.Value.Base], transfor
 #
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
-def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WDL.Value.File], Optional[WDL.Value.File]]) -> WDL.Value.Base:
+def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WDL.Value.File], WDL.Value.File | None]) -> WDL.Value.Base:
     """
     Run all File values embedded in the given value through the given
     transformation function.
@@ -1910,10 +1910,10 @@ def map_over_typed_files_in_value(value: WDL.Value.Base, transform: Callable[[WD
     elif isinstance(value, WDL.Value.Map):
         # This is a map, so recurse on the members of the items, which are tuples (but not wrapped as WDL Pair objects)
         # TODO: Can we avoid a cast in a comprehension if we get MyPy to know that each pair is always a 2-element tuple?
-        return WDL.Value.Map(value.type.item_type, [cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_typed_files_in_value(v, transform) for v in pair))) for pair in value.value], value.expr)
+        return WDL.Value.Map(value.type.item_type, [cast(tuple[WDL.Value.Base, WDL.Value.Base], tuple(map_over_typed_files_in_value(v, transform) for v in pair)) for pair in value.value], value.expr)
     elif isinstance(value, WDL.Value.Pair):
         # This is a pair, so recurse on the left and right items
-        return WDL.Value.Pair(value.type.left_type, value.type.right_type, cast(Tuple[WDL.Value.Base, WDL.Value.Base], tuple((map_over_typed_files_in_value(v, transform) for v in value.value))), value.expr)
+        return WDL.Value.Pair(value.type.left_type, value.type.right_type, cast(tuple[WDL.Value.Base, WDL.Value.Base], tuple(map_over_typed_files_in_value(v, transform) for v in value.value)), value.expr)
     elif isinstance(value, WDL.Value.Struct):
         # This is a struct, so recurse on the values in the backing dict
         return WDL.Value.Struct(cast(Union[WDL.Type.StructInstance, WDL.Type.Object], value.type), {k: map_over_typed_files_in_value(v, transform) for k, v in value.value.items()}, value.expr)
@@ -1998,7 +1998,7 @@ class WDLBaseJob(Job):
         # We need an ordered list of postprocessing steps to apply, because we
         # may have coalesced postprocessing steps deferred by several levels of
         # jobs returning other jobs' promised RVs.
-        self._postprocessing_steps: List[Tuple[str, Union[str, Promised[WDLBindings]]]] = []
+        self._postprocessing_steps: list[tuple[str, str | Promised[WDLBindings]]] = []
 
         self._wdl_options = wdl_options
 
@@ -2084,7 +2084,7 @@ class WDLBaseJob(Job):
 
         return bindings
 
-    def defer_postprocessing(self, other: "WDLBaseJob") -> None:
+    def defer_postprocessing(self, other: WDLBaseJob) -> None:
         """
         Give our postprocessing steps to a different job.
 
@@ -2107,7 +2107,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, prev_node_results: Sequence[Promised[WDLBindings]], task_id: list[str], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to determine resources and run a task.
 
@@ -2152,10 +2152,10 @@ class WDLTaskWrapperJob(WDLBaseJob):
         runtime_bindings = evaluate_call_inputs(self._task, self._task.runtime, bindings, standard_library)
 
         # Fill these in with not-None if the workflow asks for each resource.
-        runtime_memory: Optional[int] = None
-        runtime_cores: Optional[float] = None
-        runtime_disk: Optional[int] = None
-        runtime_accelerators: Optional[List[AcceleratorRequirement]] = None
+        runtime_memory: int | None = None
+        runtime_cores: float | None = None
+        runtime_disk: int | None = None
+        runtime_accelerators: list[AcceleratorRequirement] | None = None
 
         if runtime_bindings.has_binding('cpu'):
             cpu_spec: int = runtime_bindings.resolve('cpu').value
@@ -2163,18 +2163,18 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
         if runtime_bindings.has_binding('memory'):
             # Get the memory requirement and convert to bytes
-            memory_spec: Union[int, str] = runtime_bindings.resolve('memory').value
+            memory_spec: int | str = runtime_bindings.resolve('memory').value
             if isinstance(memory_spec, str):
                 memory_spec = human2bytes(memory_spec)
             runtime_memory = memory_spec
 
-        mount_spec: Dict[Optional[str], int] = dict()
+        mount_spec: dict[str | None, int] = dict()
         if runtime_bindings.has_binding('disks'):
             # Miniwdl doesn't have this, but we need to be able to parse things like:
             # local-disk 5 SSD
             # which would mean we need 5 GB space. Cromwell docs for this are at https://cromwell.readthedocs.io/en/stable/RuntimeAttributes/#disks
             # We ignore all disk types, and complain if the mount point is not `local-disk`.
-            disks_spec: Union[List[WDL.Value.String], str] = runtime_bindings.resolve('disks').value
+            disks_spec: list[WDL.Value.String] | str = runtime_bindings.resolve('disks').value
             if isinstance(disks_spec, list):
                 # SPEC says to use the first one
                 # the parser gives an array of WDL string objects
@@ -2216,12 +2216,12 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # Get the GPU count if set, or 1 if not,
             gpu_count: int = cast(WDL.Value.Int, runtime_bindings.get('gpuCount', WDL.Value.Int(1))).value
             # Get the GPU model constraint if set, or None if not
-            gpu_model: Optional[str] = cast(Union[WDL.Value.String, WDL.Value.Null], runtime_bindings.get('gpuType', WDL.Value.Null())).value
+            gpu_model: str | None = cast(Union[WDL.Value.String, WDL.Value.Null], runtime_bindings.get('gpuType', WDL.Value.Null())).value
             # We can't enforce a driver version, but if an nvidia driver
             # version is set, manually set nvidia brand
-            gpu_brand: Optional[str] = 'nvidia' if runtime_bindings.has_binding('nvidiaDriverVersion') else None
+            gpu_brand: str | None = 'nvidia' if runtime_bindings.has_binding('nvidiaDriverVersion') else None
             # Make a dict from this
-            accelerator_spec: Dict[str, Union[str, int]] = {'kind': 'gpu', 'count': gpu_count}
+            accelerator_spec: dict[str, str | int] = {'kind': 'gpu', 'count': gpu_count}
             if gpu_model is not None:
                 accelerator_spec['model'] = gpu_model
             if gpu_brand is not None:
@@ -2261,8 +2261,8 @@ class WDLTaskJob(WDLBaseJob):
     All bindings are in terms of task-internal names.
     """
 
-    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: List[str],
-                 mount_spec: Dict[Optional[str], int], wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, task: WDL.Tree.Task, task_internal_bindings: Promised[WDLBindings], runtime_bindings: Promised[WDLBindings], task_id: list[str],
+                 mount_spec: dict[str | None, int], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a task.
 
@@ -2391,9 +2391,9 @@ class WDLTaskJob(WDLBaseJob):
         """
         if os.path.basename(file_path) == "resources.tsv":
             # This is a TSV of resource usage info.
-            first_cpu_usec: Optional[int] = None
-            last_cpu_usec: Optional[int] = None
-            max_memory_bytes: Optional[int] = None
+            first_cpu_usec: int | None = None
+            last_cpu_usec: int | None = None
+            max_memory_bytes: int | None = None
 
             for line in open(file_path):
                 if not line.endswith("\n"):
@@ -2463,7 +2463,7 @@ class WDLTaskJob(WDLBaseJob):
         """
         return "KUBERNETES_SERVICE_HOST" not in os.environ
 
-    def ensure_mount_point(self, file_store: AbstractFileStore, mount_spec: Dict[Optional[str], int]) -> Dict[str, str]:
+    def ensure_mount_point(self, file_store: AbstractFileStore, mount_spec: dict[str | None, int]) -> dict[str, str]:
         """
         Ensure the mount point sources are available.
 
@@ -2564,7 +2564,7 @@ class WDLTaskJob(WDLBaseJob):
             os.makedirs(os.environ['MINIWDL__SINGULARITY__IMAGE_CACHE'], exist_ok=True)
 
             # Run containers with Singularity
-            TaskContainerImplementation: Type[TaskContainer] = SingularityContainer
+            TaskContainerImplementation: type[TaskContainer] = SingularityContainer
         elif self._wdl_options.get("container") in ["docker", "auto"]:
             # Run containers with Docker
             # TODO: Poll if it is available and don't just try and fail.
@@ -2601,7 +2601,7 @@ class WDLTaskJob(WDLBaseJob):
         # Records, if we use a container, where its workdir is on our
         # filesystem, so we can interpret file anmes and globs relative to
         # there.
-        workdir_in_container: Optional[str] = None
+        workdir_in_container: str | None = None
         task_path = self._wdl_options["task_path"]
 
         if self._task.command:
@@ -2639,13 +2639,13 @@ class WDLTaskJob(WDLBaseJob):
                 # --fakeroot if we lack sub-UIDs. So we sneakily monkey patch it
                 # here.
                 original_run_invocation = task_container._run_invocation
-                def patched_run_invocation(*args: Any, **kwargs: Any) -> List[str]:
+                def patched_run_invocation(*args: Any, **kwargs: Any) -> list[str]:
                     """
                     Invoke the original _run_invocation to get a base Singularity
                     command line, and then adjust the result to pass GPUs and not
                     fake root if needed.
                     """
-                    command_line: List[str] = original_run_invocation(*args, **kwargs)
+                    command_line: list[str] = original_run_invocation(*args, **kwargs)
 
                     logger.debug('MiniWDL wants to run command line: %s', command_line)
 
@@ -2660,8 +2660,8 @@ class WDLTaskJob(WDLBaseJob):
                     if '--containall' in command_line and not self.can_mount_proc():
                         command_line.remove('--containall')
 
-                    extra_flags: Set[str] = set()
-                    accelerators_needed: Optional[List[AcceleratorRequirement]] = self.accelerators
+                    extra_flags: set[str] = set()
+                    accelerators_needed: list[AcceleratorRequirement] | None = self.accelerators
                     local_accelerators = get_individual_local_accelerators()
                     if accelerators_needed is not None:
                         for accelerator in accelerators_needed:
@@ -2671,7 +2671,7 @@ class WDLTaskJob(WDLBaseJob):
                             # This shouldn't cause issues unless a user has a very odd machine setup, which should be rare
                             if accelerator['kind'] == 'gpu':
                                 # Grab detected GPUs
-                                local_gpus: List[Optional[str]] = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
+                                local_gpus: list[str | None] = [accel['brand'] for accel in local_accelerators if accel['kind'] == 'gpu'] or [None]
                                 # Tell singularity the GPU type
                                 gpu_brand = accelerator.get('brand') or local_gpus[0]
                                 if gpu_brand == 'nvidia':
@@ -2697,13 +2697,13 @@ class WDLTaskJob(WDLBaseJob):
 
                 singularity_original_prepare_mounts = task_container.prepare_mounts
 
-                def patch_prepare_mounts_singularity() -> List[Tuple[str, str, bool]]:
+                def patch_prepare_mounts_singularity() -> list[tuple[str, str, bool]]:
                     """
                     Mount the mount points specified from the disk requirements.
 
                     The singularity and docker patch are separate as they have different function signatures
                     """
-                    mounts: List[Tuple[str, str, bool]] = singularity_original_prepare_mounts()
+                    mounts: list[tuple[str, str, bool]] = singularity_original_prepare_mounts()
                     # todo: support AWS EBS/Kubernetes persistent volumes
                     # this logic likely only works for local clusters as we don't deal with the size of each mount point
                     for mount_point, source_location in mount_mapping.items():
@@ -2719,11 +2719,11 @@ class WDLTaskJob(WDLBaseJob):
                     # docker stubs are still WIP: https://github.com/docker/docker-py/issues/2796
                     from docker.types import Mount  # type: ignore[import-untyped]
 
-                    def patch_prepare_mounts_docker(logger: logging.Logger) -> List[Mount]:
+                    def patch_prepare_mounts_docker(logger: logging.Logger) -> list[Mount]:
                         """
                         Same as the singularity patch but for docker
                         """
-                        mounts: List[Mount] = docker_original_prepare_mounts(logger)
+                        mounts: list[Mount] = docker_original_prepare_mounts(logger)
                         for mount_point, source_location in mount_mapping.items():
                             mounts.append(
                                 Mount(
@@ -2748,7 +2748,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Replace everything with in-container paths for the command.
             # TODO: MiniWDL deals with directory paths specially here.
-            def get_path_in_container(file: WDL.Value.File) -> Optional[WDL.Value.File]:
+            def get_path_in_container(file: WDL.Value.File) -> WDL.Value.File | None:
                 if getattr(file, "nonexistent", False) is False:
                     return WDL.Value.File(task_container.input_path_map[file.value])
             contained_bindings = map_over_files_in_bindings(bindings, get_path_in_container)
@@ -2789,7 +2789,7 @@ class WDLTaskJob(WDLBaseJob):
 
             # Now our inputs are all downloaded. Let debugging break in (after command is logged).
             # But we need to hint which host paths are meant to be which container paths
-            host_and_job_paths: List[Tuple[str, str]] = [(k, v) for k, v in task_container.input_path_map.items()]
+            host_and_job_paths: list[tuple[str, str]] = [(k, v) for k, v in task_container.input_path_map.items()]
             self.files_downloaded_hook(host_and_job_paths)
 
             # TODO: Really we might want to set up a fake container working directory, to actually help the user.
@@ -2812,7 +2812,7 @@ class WDLTaskJob(WDLBaseJob):
                             # gets printed at the end of the workflow. So log
                             # the error log ourselves.
                             logger.error("====TASK ERROR LOG====")
-                            for line in open(host_stderr_txt, 'r', errors="replace"):
+                            for line in open(host_stderr_txt, errors="replace"):
                                 logger.error("> %s", line.rstrip('\n'))
                             logger.error("====TASK ERROR LOG====")
 
@@ -2984,7 +2984,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
     workflows or tasks or sections.
     """
 
-    def __init__(self, nodes: List[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, nodes: list[WDL.Tree.WorkflowNode], prev_node_results: Sequence[Promised[WDLBindings]], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Make a new job to run a list of workflow nodes to completion.
         """
@@ -3072,14 +3072,14 @@ class WDLWorkflowGraph:
         # For Gather nodes, the Toil interpreter handles them as part of their
         # associated section. So make a map from gather ID to the section node
         # ID.
-        self._gather_to_section: Dict[str, str] = {}
+        self._gather_to_section: dict[str, str] = {}
         for node in nodes:
             if isinstance(node, WDL.Tree.WorkflowSection):
                 for gather_node in node.gathers.values():
                     self._gather_to_section[gather_node.workflow_node_id] = node.workflow_node_id
 
         # Store all the nodes by ID, except the gathers which we elide.
-        self._nodes: Dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if not isinstance(node, WDL.Tree.Gather)}
+        self._nodes: dict[str, WDL.Tree.WorkflowNode] = {node.workflow_node_id: node for node in nodes if not isinstance(node, WDL.Tree.Gather)}
 
     def real_id(self, node_id: str) -> str:
         """
@@ -3102,7 +3102,7 @@ class WDLWorkflowGraph:
         """
         return self._nodes[self.real_id(node_id)]
 
-    def get_dependencies(self, node_id: str) -> Set[str]:
+    def get_dependencies(self, node_id: str) -> set[str]:
         """
         Get all the nodes that a node depends on, recursively (into the node if
         it has a body) but not transitively.
@@ -3132,13 +3132,13 @@ class WDLWorkflowGraph:
 
         return dependencies
 
-    def get_transitive_dependencies(self, node_id: str) -> Set[str]:
+    def get_transitive_dependencies(self, node_id: str) -> set[str]:
         """
         Get all the nodes that a node depends on, transitively.
         """
 
-        dependencies: Set[str] = set()
-        visited: Set[str] = set()
+        dependencies: set[str] = set()
+        visited: set[str] = set()
         queue = [node_id]
 
         while len(queue) > 0:
@@ -3160,7 +3160,7 @@ class WDLWorkflowGraph:
 
         return dependencies
 
-    def topological_order(self) -> List[str]:
+    def topological_order(self) -> list[str]:
         """
         Get a topological order of the nodes, based on their dependencies.
         """
@@ -3171,7 +3171,7 @@ class WDLWorkflowGraph:
             sorter.add(node_id, *self.get_dependencies(node_id))
         return list(sorter.static_order())
 
-    def leaves(self) -> List[str]:
+    def leaves(self) -> list[str]:
         """
         Get all the workflow node IDs that have no dependents in the graph.
         """
@@ -3198,7 +3198,7 @@ class WDLSectionJob(WDLBaseJob):
         super().__init__(wdl_options=wdl_options, **kwargs)
 
     @staticmethod
-    def coalesce_nodes(order: List[str], section_graph: WDLWorkflowGraph) -> List[List[str]]:
+    def coalesce_nodes(order: list[str], section_graph: WDLWorkflowGraph) -> list[list[str]]:
         """
         Given a topological order of WDL workflow node IDs, produce a list of
         lists of IDs, still in topological order, where each list of IDs can be
@@ -3206,11 +3206,11 @@ class WDLSectionJob(WDLBaseJob):
         """
 
         # All the buckets of merged nodes
-        to_return: List[List[str]] = []
+        to_return: list[list[str]] = []
         # The nodes we are currently merging, in topological order
-        current_bucket: List[str] = []
+        current_bucket: list[str] = []
         # All the non-decl transitive dependencies of nodes in the bucket
-        current_bucket_dependencies: Set[str] = set()
+        current_bucket_dependencies: set[str] = set()
 
         for next_id in order:
             # Consider adding each node to the bucket
@@ -3263,7 +3263,7 @@ class WDLSectionJob(WDLBaseJob):
 
 
 
-    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: Optional[WDLBindings] = None, subscript: Optional[int] = None) -> WDLBaseJob:
+    def create_subgraph(self, nodes: Sequence[WDL.Tree.WorkflowNode], gather_nodes: Sequence[WDL.Tree.Gather], environment: WDLBindings, local_environment: WDLBindings | None = None, subscript: int | None = None) -> WDLBaseJob:
         """
         Make a Toil job to evaluate a subgraph inside a workflow or workflow
         section.
@@ -3301,12 +3301,12 @@ class WDLSectionJob(WDLBaseJob):
         # properly.
 
         # When a WDL node depends on another, we need to be able to find the Toil job we need an rv from.
-        wdl_id_to_toil_job: Dict[str, WDLBaseJob] = {}
+        wdl_id_to_toil_job: dict[str, WDLBaseJob] = {}
         # We need the set of Toil jobs not depended on so we can wire them up to the sink.
         # This maps from Toil job store ID to job.
-        toil_leaves: Dict[Union[str, TemporaryID], WDLBaseJob] = {}
+        toil_leaves: dict[str | TemporaryID, WDLBaseJob] = {}
 
-        def get_job_set_any(wdl_ids: Set[str]) -> List[WDLBaseJob]:
+        def get_job_set_any(wdl_ids: set[str]) -> list[WDLBaseJob]:
             """
             Get the distinct Toil jobs executing any of the given WDL nodes.
             """
@@ -3342,7 +3342,7 @@ class WDLSectionJob(WDLBaseJob):
                     del toil_leaves[prev_job.jobStoreID]
 
             # Get their return values to feed into the new job
-            rvs: List[Union[WDLBindings, Promise]] = [prev_job.rv() for prev_job in prev_jobs]
+            rvs: list[WDLBindings | Promise] = [prev_job.rv() for prev_job in prev_jobs]
             # We also need access to section-level bindings like inputs
             rvs.append(environment)
 
@@ -3376,7 +3376,7 @@ class WDLSectionJob(WDLBaseJob):
         else:
             # We need to bring together with a new sink
             # Make the sink job to collect all their results.
-            leaf_rvs: List[Union[WDLBindings, Promise]] = [leaf_job.rv() for leaf_job in toil_leaves.values()]
+            leaf_rvs: list[WDLBindings | Promise] = [leaf_job.rv() for leaf_job in toil_leaves.values()]
             # Make sure to also send the section-level bindings
             leaf_rvs.append(environment)
             # And to fill in bindings from code not executed in this instantiation
@@ -3645,7 +3645,7 @@ class WDLWorkflowJob(WDLSectionJob):
     Job that evaluates an entire WDL workflow.
     """
 
-    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: List[str], wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, workflow: WDL.Tree.Workflow, prev_node_results: Sequence[Promised[WDLBindings]], workflow_id: list[str], wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
@@ -3797,7 +3797,7 @@ class WDLStartJob(WDLSectionJob):
     the workflow name; both forms are accepted.
     """
 
-    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext, **kwargs: Any) -> None:
+    def __init__(self, target: WDL.Tree.Workflow | WDL.Tree.Task, inputs: WDLBindings, wdl_options: WDLContext, **kwargs: Any) -> None:
         """
         Create a subtree to run the workflow and namespace the outputs.
         """
@@ -3827,8 +3827,8 @@ class WDLStartJob(WDLSectionJob):
         return job.rv()
 
 class WDLImportJob(WDLSectionJob):
-    def __init__(self, target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, wdl_options: WDLContext, path: Optional[List[str]] = None, skip_remote: bool = False,
-                 disk_size: Optional[ParseableIndivisibleResource] = None, **kwargs: Any):
+    def __init__(self, target: WDL.Tree.Workflow | WDL.Tree.Task, inputs: WDLBindings, wdl_options: WDLContext, path: list[str] | None = None, skip_remote: bool = False,
+                 disk_size: ParseableIndivisibleResource | None = None, **kwargs: Any):
         """
         Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
 
@@ -3852,7 +3852,7 @@ class WDLImportJob(WDLSectionJob):
         return root_job.rv()
 
 
-def make_root_job(target: Union[WDL.Tree.Workflow, WDL.Tree.Task], inputs: WDLBindings, inputs_search_path: List[str], toil: Toil, wdl_options: WDLContext, options: Namespace) -> WDLSectionJob:
+def make_root_job(target: WDL.Tree.Workflow | WDL.Tree.Task, inputs: WDLBindings, inputs_search_path: list[str], toil: Toil, wdl_options: WDLContext, options: Namespace) -> WDLSectionJob:
     if options.run_imports_on_workers:
         # Run WDL imports on a worker instead
         root_job: WDLSectionJob = WDLImportJob(target, inputs, wdl_options=wdl_options, path=inputs_search_path, skip_remote=options.reference_inputs, disk_size=options.import_workers_disk)
@@ -3900,7 +3900,7 @@ def main() -> None:
                 document: WDL.Tree.Document = WDL.load(options.wdl_uri, read_source=toil_read_source)
 
                 # See if we're going to run a workflow or a task
-                target: Union[WDL.Tree.Workflow, WDL.Tree.Task]
+                target: WDL.Tree.Workflow | WDL.Tree.Task
                 if document.workflow:
                     target = document.workflow
                 elif len(document.tasks) == 1:
@@ -3995,8 +3995,8 @@ def main() -> None:
                 raise RuntimeError("The output of the WDL job is not a binding.")
 
             devirtualization_state: DirectoryNamingStateDict = {}
-            devirtualized_to_virtualized: Dict[str, str] = dict()
-            virtualized_to_devirtualized: Dict[str, str] = dict()
+            devirtualized_to_virtualized: dict[str, str] = dict()
+            virtualized_to_devirtualized: dict[str, str] = dict()
 
             # Fetch all the output files
             def devirtualize_output(file: WDL.Value.File) -> WDL.Value.File:

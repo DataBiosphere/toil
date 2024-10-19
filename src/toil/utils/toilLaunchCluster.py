@@ -22,7 +22,7 @@ from toil.common import parser_with_common_options
 try:
     from toil.lib.aws import build_tag_dict_from_env
 except ModuleNotFoundError:
-    build_tag_dict_from_env: Dict[str, str] = lambda _: {}  # type: ignore[no-redef]
+    build_tag_dict_from_env: dict[str, str] = lambda _: {}  # type: ignore[no-redef]
 from toil.lib.conversions import opt_strtobool
 from toil.provisioners import (check_valid_node_types,
                                cluster_factory,
@@ -32,7 +32,7 @@ from toil.statsAndLogging import set_logging_from_options
 logger = logging.getLogger(__name__)
 
 
-def create_tags_dict(tags: List[str]) -> Dict[str, str]:
+def create_tags_dict(tags: list[str]) -> dict[str, str]:
     tags_dict = dict()
     for tag in tags:
         try:
@@ -144,7 +144,7 @@ def main() -> None:
 
     # This holds either ints to launch static nodes, or tuples of ints
     # specifying ranges to launch managed auto-scaling nodes, for each type.
-    nodeCounts: List[Union[int, Tuple[int, int]]] = []
+    nodeCounts: list[Union[int, tuple[int, int]]] = []
 
     if ((worker_node_types != [] or worker_node_ranges != []) and not
         (worker_node_types != [] and worker_node_ranges != [])):

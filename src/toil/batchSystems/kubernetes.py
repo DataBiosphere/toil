@@ -35,7 +35,6 @@ from threading import Condition, Event, RLock, Thread
 from typing import (Any,
                     Callable,
                     Dict,
-                    Iterator,
                     List,
                     Literal,
                     Optional,
@@ -46,6 +45,7 @@ from typing import (Any,
                     Union,
                     cast,
                     overload)
+from collections.abc import Iterator
 
 from toil.lib.conversions import opt_strtobool
 
@@ -53,10 +53,7 @@ if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
 else:
     from typing import ParamSpec
-if sys.version_info >= (3, 8):
-    from typing import Protocol, TypedDict, runtime_checkable
-else:
-    from typing_extensions import Protocol, TypedDict, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 # TODO: When this gets into the standard library, get it from there and drop
 import urllib3
 import yaml
@@ -115,7 +112,7 @@ from toil.lib.retry import ErrorCondition, retry
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors: List[Union[Type[Exception], ErrorCondition]] = [
+retryable_kubernetes_errors: list[Union[type[Exception], ErrorCondition]] = [
     urllib3.exceptions.MaxRetryError,
     urllib3.exceptions.ProtocolError,
     ApiException
@@ -133,7 +130,7 @@ def is_retryable_kubernetes_error(e: Exception) -> bool:
     return False
 
 # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
-KeyValuesList = List[Tuple[str, List[str]]]
+KeyValuesList = list[tuple[str, list[str]]]
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
@@ -240,7 +237,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Keep track of available resources.
         maxMillicores = int(SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000)
-        self.resource_sources: List[ResourcePool] = [
+        self.resource_sources: list[ResourcePool] = [
             # A pool representing available job slots
             ResourcePool(self.config.max_jobs, 'job slots'),
             # A pool representing available CPU in units of millicores (1 CPU
@@ -253,16 +250,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         ]
 
         # A set of job IDs that are queued (useful for getIssuedBatchJobIDs())
-        self._queued_job_ids: Set[int] = set()
+        self._queued_job_ids: set[int] = set()
 
         # Keep track of the acquired resources for each job
-        self._acquired_resources: Dict[str, List[int]] = {}
+        self._acquired_resources: dict[str, list[int]] = {}
 
         # Queue for jobs to be submitted to the Kubernetes cluster
-        self._jobs_queue: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
+        self._jobs_queue: Queue[tuple[int, JobDescription, V1PodSpec]] = Queue()
 
         # A set of job IDs that should be killed
-        self._killed_queue_jobs: Set[int] = set()
+        self._killed_queue_jobs: set[int] = set()
 
         # We use this event to signal shutdown
         self._shutting_down: Event = Event()
@@ -296,7 +293,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Convert to a dict
         root_dict = api_client.sanitize_for_serialization(kubernetes_object)
 
-        def drop_boring(here: Dict[str, Any]) -> None:
+        def drop_boring(here: dict[str, Any]) -> None:
             """
             Drop boring fields recursively.
             """
@@ -314,19 +311,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @overload
     def _api(
-        self, kind: Literal['batch'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
+        self, kind: Literal['batch'], max_age_seconds: float = 5 * 60, errors: Optional[list[int]] = None
     ) -> BatchV1Api:
         ...
 
     @overload
     def _api(
-        self, kind: Literal['core'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
+        self, kind: Literal['core'], max_age_seconds: float = 5 * 60, errors: Optional[list[int]] = None
     ) -> CoreV1Api:
         ...
 
     @overload
     def _api(
-        self, kind: Literal['customObjects'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
+        self, kind: Literal['customObjects'], max_age_seconds: float = 5 * 60, errors: Optional[list[int]] = None
     ) -> CustomObjectsApi:
         ...
 
@@ -340,7 +337,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self,
         kind: Union[Literal['batch'], Literal['core'], Literal['customObjects'], Literal['namespace']],
         max_age_seconds: float = 5 * 60,
-        errors: Optional[List[int]] = None
+        errors: Optional[list[int]] = None
     ) -> Union[BatchV1Api, CoreV1Api, CustomObjectsApi, str]:
         """
         The Kubernetes module isn't clever enough to renew its credentials when
@@ -476,7 +473,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # KubernetesBatchSystem isn't defined until the class executes, so any
         # up-references to types from there that are in signatures (and not
         # method code) need to be quoted
-        items: List["KubernetesBatchSystem.ItemT"]
+        items: list["KubernetesBatchSystem.ItemT"]
 
     CovItemT = TypeVar("CovItemT", covariant=True)
     class _WatchEvent(Protocol[CovItemT]):
@@ -498,7 +495,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             ...
 
         @overload
-        def __getitem__(self, name: Literal['raw_object']) -> Dict[str, Any]:
+        def __getitem__(self, name: Literal['raw_object']) -> dict[str, Any]:
             ...
 
         def __getitem__(self, name: Union[Literal['type'], Literal['object'], Literal['raw_object']]) -> Any:
@@ -572,7 +569,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Loop through all jobs inside the queue and see if any of them
                 # could be launched.
-                jobs: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
+                jobs: Queue[tuple[int, JobDescription, V1PodSpec]] = Queue()
                 while True:
                     try:
                         job = self._jobs_queue.get_nowait()
@@ -679,11 +676,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Convert our collections to Kubernetes expressions.
 
             # REQUIRE that ALL of these requirements be satisfied
-            required_selector_requirements: List[V1NodeSelectorRequirement] = []
+            required_selector_requirements: list[V1NodeSelectorRequirement] = []
             # PREFER that EACH of these terms be satisfied
-            preferred_scheduling_terms: List[V1PreferredSchedulingTerm] = []
+            preferred_scheduling_terms: list[V1PreferredSchedulingTerm] = []
             # And this list of tolerations to apply
-            tolerations: List[V1Toleration] = []
+            tolerations: list[V1Toleration] = []
 
             for label, values in self.required_labels:
                 # Collect requirements for the required labels
@@ -762,7 +759,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self,
             command: str,
             job_desc: JobDescription,
-            job_environment: Optional[Dict[str, str]] = None
+            job_environment: Optional[dict[str, str]] = None
     ) -> V1PodSpec:
         """
         Make the specification for a pod that can execute the given job.
@@ -903,7 +900,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
-    def _release_acquired_resources(self, resources: List[int], notify: bool = False) -> None:
+    def _release_acquired_resources(self, resources: list[int], notify: bool = False) -> None:
         """
         Release all resources acquired for a job.
 
@@ -933,12 +930,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         # Limit the amount of resources requested at a time.
-        resource_requests: List[int] = [1, int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
+        resource_requests: list[int] = [1, int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
 
         acquired = []
         for source, request in zip(self.resource_sources, resource_requests):
             # For each kind of resource we want, go get it
-            assert ((isinstance(source, ResourcePool) and isinstance(request, int)))
+            assert (isinstance(source, ResourcePool) and isinstance(request, int))
             if source.acquireNow(request):
                 acquired.append(request)
             else:
@@ -1014,7 +1011,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self._release_acquired_resources(resources, notify=resource_notify)
             del self._acquired_resources[job_name]
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[dict[str, str]] = None) -> int:
         # Try the job as local
         localID = self.handleLocalJob(command, job_desc)
         if localID is not None:
@@ -1419,7 +1416,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         if condition is not None:
                             logger.warning("Failed Job Message: %s", condition.message)
                         pod = self._getPodForJob(jobObject)
-                        statuses: List[V1ContainerStatus] = getattr(getattr(pod, 'status', None), 'container_statuses', [])
+                        statuses: list[V1ContainerStatus] = getattr(getattr(pod, 'status', None), 'container_statuses', [])
                         if len(statuses) > 0 and statuses[0].state is not None and statuses[0].state.terminated is not None:
                             exitCode = statuses[0].state.terminated.exit_code
 
@@ -1737,7 +1734,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
 
 
-    def _getIssuedNonLocalBatchJobIDs(self) -> List[int]:
+    def _getIssuedNonLocalBatchJobIDs(self) -> list[int]:
         """
         Get the issued batch job IDs that are not for local jobs.
         """
@@ -1749,7 +1746,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 jobIDs.append(self._getIDForOurJob(job))
         return jobIDs
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         # Make sure to send the local jobs and queued jobs also
         with self._mutex:
             queued_jobs = list(self._queued_job_ids)
@@ -1771,7 +1768,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             start_time = utc_now()
         return start_time
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObject():
@@ -1794,7 +1791,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
 
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
 
         # Kill all the ones that are local
         self.killLocalJobs(jobIDs)
@@ -1803,7 +1800,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # First get the jobs we even issued non-locally
         issued_on_kubernetes = set(self._getIssuedNonLocalBatchJobIDs())
-        deleted_jobs: List[str] = []
+        deleted_jobs: list[str] = []
 
         for job_id in jobIDs:
             # For each job we are supposed to kill
