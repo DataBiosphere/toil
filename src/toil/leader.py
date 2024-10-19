@@ -27,9 +27,9 @@ import enlighten
 
 from toil import resolveEntryPoint
 from toil.batchSystems import DeadlockException
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchJobExitReason,
-                                                   EXIT_STATUS_UNAVAILABLE_VALUE)
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   AbstractBatchSystem,
+                                                   BatchJobExitReason)
 from toil.bus import (JobCompletedMessage,
                       JobFailedMessage,
                       JobIssuedMessage,

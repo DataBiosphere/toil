@@ -20,10 +20,10 @@ import subprocess
 import time
 import traceback
 from argparse import ArgumentParser, _ArgumentGroup
+from collections.abc import Sequence
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from typing import Optional, Union
-from collections.abc import Sequence
 
 import toil
 from toil import worker as toil_worker
@@ -36,7 +36,6 @@ from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE
 from toil.batchSystems.options import OptionSetter
 from toil.bus import ExternalBatchIdMessage
 from toil.common import Config, Toil
-from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
 from toil.job import (AcceleratorRequirement,
                       JobDescription,
                       Requirer,
@@ -44,6 +43,7 @@ from toil.job import (AcceleratorRequirement,
 from toil.lib.accelerators import (get_individual_local_accelerators,
                                    get_restrictive_environment_for_local_accelerators)
 from toil.lib.threading import cpu_count
+from toil.options.common import SYS_MAX_SIZE, make_open_interval_action
 
 logger = logging.getLogger(__name__)
 

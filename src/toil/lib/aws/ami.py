@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import urllib.request
-from typing import Optional, cast
 from collections.abc import Iterator
+from typing import Optional, cast
 from urllib.error import HTTPError, URLError
 
 from botocore.client import BaseClient

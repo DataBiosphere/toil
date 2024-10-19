@@ -3,7 +3,8 @@ from typing import Any, Iterator, List, Sequence, TextIO, Tuple, Union
 from _typeshed import Incomplete
 
 from .topicargspec import ArgsDocs, ArgSpecGiven, topicArgsFromCallable
-from .topicexc import UnrecognizedSourceFormatError as UnrecognizedSourceFormatError
+from .topicexc import \
+    UnrecognizedSourceFormatError as UnrecognizedSourceFormatError
 from .topicobj import Topic
 from .topictreetraverser import TopicTreeTraverser
 

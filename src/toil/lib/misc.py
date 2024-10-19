@@ -7,9 +7,9 @@ import socket
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from contextlib import closing
 from typing import Optional
-from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 

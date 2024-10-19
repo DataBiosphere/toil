@@ -67,15 +67,9 @@ import os
 import queue
 import tempfile
 import threading
-from dataclasses import dataclass
-from typing import (IO,
-                    Any,
-                    Callable,
-                    NamedTuple,
-                    Optional,
-                    TypeVar,
-                    cast)
 from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import IO, Any, Callable, NamedTuple, Optional, TypeVar, cast
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener

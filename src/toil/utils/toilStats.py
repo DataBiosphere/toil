@@ -22,7 +22,8 @@ from typing import Any, Callable, Optional, TextIO, Union
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job
-from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobStoreException
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             NoSuchJobStoreException)
 from toil.lib.expando import Expando
 from toil.options.common import SYS_MAX_SIZE
 from toil.statsAndLogging import set_logging_from_options

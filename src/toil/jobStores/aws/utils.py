@@ -26,15 +26,13 @@ from botocore.exceptions import ClientError
 from toil.lib.aws import AWSServerErrors, session
 from toil.lib.aws.utils import connection_error, get_bucket_region
 from toil.lib.compatibility import compat_bytes
-from toil.lib.retry import (
-    DEFAULT_DELAYS,
-    DEFAULT_TIMEOUT,
-    get_error_code,
-    get_error_message,
-    get_error_status,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (DEFAULT_DELAYS,
+                            DEFAULT_TIMEOUT,
+                            get_error_code,
+                            get_error_message,
+                            get_error_status,
+                            old_retry,
+                            retry)
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource

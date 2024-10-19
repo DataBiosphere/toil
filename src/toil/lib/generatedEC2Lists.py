@@ -16,7 +16,6 @@
 # limitations under the License.
 from toil.lib.ec2nodes import InstanceType
 
-
 # 772 Instance Types.  Generated 2024-02-23 13:20:11.748439.
 E2Instances = {
     'a1.2xlarge': InstanceType(name='a1.2xlarge', cores=8, memory=16.0, disks=0, disk_capacity=0, architecture='amd64'),

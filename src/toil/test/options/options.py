@@ -1,6 +1,6 @@
 from configargparse import ArgParser
 
-from toil.common import addOptions, Toil
+from toil.common import Toil, addOptions
 from toil.test import ToilTest
 
 

@@ -22,66 +22,50 @@ import string
 import textwrap
 import time
 import uuid
+from collections.abc import Collection, Iterable
 from functools import wraps
 from shlex import quote
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    TypeVar,
-    cast,
-)
-from collections.abc import Collection, Iterable
+from typing import TYPE_CHECKING, Any, Callable, TypeVar, cast
 
 # We need these to exist as attributes we can get off of the boto object
 from botocore.exceptions import ClientError
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, zone_to_region
 from toil.lib.aws.ami import get_flatcar_ami
-from toil.lib.aws.iam import (
-    CLUSTER_LAUNCHING_PERMISSIONS,
-    get_policy_permissions,
-    policy_permissions_allow,
-    create_iam_role
-)
+from toil.lib.aws.iam import (CLUSTER_LAUNCHING_PERMISSIONS,
+                              create_iam_role,
+                              get_policy_permissions,
+                              policy_permissions_allow)
 from toil.lib.aws.session import AWSConnectionManager
 from toil.lib.aws.session import client as get_client
 from toil.lib.aws.utils import boto3_pager, create_s3_bucket
 from toil.lib.conversions import human2bytes
-from toil.lib.ec2 import (
-    a_short_time,
-    create_auto_scaling_group,
-    create_instances,
-    create_launch_template,
-    create_ondemand_instances,
-    create_spot_instances,
-    increase_instance_hop_limit,
-    wait_instances_running,
-    wait_transition,
-    wait_until_instance_profile_arn_exists,
-)
+from toil.lib.ec2 import (a_short_time,
+                          create_auto_scaling_group,
+                          create_instances,
+                          create_launch_template,
+                          create_ondemand_instances,
+                          create_spot_instances,
+                          increase_instance_hop_limit,
+                          wait_instances_running,
+                          wait_transition,
+                          wait_until_instance_profile_arn_exists)
 from toil.lib.ec2nodes import InstanceType
 from toil.lib.generatedEC2Lists import E2Instances
 from toil.lib.memoize import memoize
 from toil.lib.misc import truncExpBackoff
-from toil.lib.retry import (
-    get_error_body,
-    get_error_code,
-    get_error_message,
-    get_error_status,
-    old_retry,
-    retry,
-)
-from toil.provisioners import (
-    ClusterCombinationNotSupportedException,
-    NoSuchClusterException,
-    NoSuchZoneException,
-)
-from toil.provisioners.abstractProvisioner import (
-    AbstractProvisioner,
-    ManagedNodesNotSupportedException,
-    Shape,
-)
+from toil.lib.retry import (get_error_body,
+                            get_error_code,
+                            get_error_message,
+                            get_error_status,
+                            old_retry,
+                            retry)
+from toil.provisioners import (ClusterCombinationNotSupportedException,
+                               NoSuchClusterException,
+                               NoSuchZoneException)
+from toil.provisioners.abstractProvisioner import (AbstractProvisioner,
+                                                   ManagedNodesNotSupportedException,
+                                                   Shape)
 from toil.provisioners.aws import get_best_aws_zone
 from toil.provisioners.node import Node
 
@@ -89,20 +73,18 @@ if TYPE_CHECKING:
     from mypy_boto3_autoscaling.client import AutoScalingClient
     from mypy_boto3_ec2.client import EC2Client
     from mypy_boto3_ec2.service_resource import Instance
-    from mypy_boto3_ec2.type_defs import (
-        BlockDeviceMappingTypeDef,
-        CreateSecurityGroupResultTypeDef,
-        DescribeInstancesResultTypeDef,
-        EbsBlockDeviceTypeDef,
-        FilterTypeDef,
-        InstanceTypeDef,
-        IpPermissionTypeDef,
-        ReservationTypeDef,
-        SecurityGroupTypeDef,
-        SpotInstanceRequestTypeDef,
-        TagDescriptionTypeDef,
-        TagTypeDef,
-    )
+    from mypy_boto3_ec2.type_defs import (BlockDeviceMappingTypeDef,
+                                          CreateSecurityGroupResultTypeDef,
+                                          DescribeInstancesResultTypeDef,
+                                          EbsBlockDeviceTypeDef,
+                                          FilterTypeDef,
+                                          InstanceTypeDef,
+                                          IpPermissionTypeDef,
+                                          ReservationTypeDef,
+                                          SecurityGroupTypeDef,
+                                          SpotInstanceRequestTypeDef,
+                                          TagDescriptionTypeDef,
+                                          TagTypeDef)
     from mypy_boto3_iam.client import IAMClient
     from mypy_boto3_iam.type_defs import InstanceProfileTypeDef, RoleTypeDef
 

@@ -1483,7 +1483,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.jobStore import establish_boto3_session
-        from toil.lib.aws.utils import retry_s3, create_s3_bucket
+        from toil.lib.aws.utils import create_s3_bucket, retry_s3
 
         resource = establish_boto3_session().resource(
             "s3", region_name=self.awsRegion()

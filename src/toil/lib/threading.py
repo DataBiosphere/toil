@@ -25,12 +25,12 @@ import platform
 import subprocess
 import sys
 import tempfile
-import time
 import threading
+import time
 import traceback
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Optional, Union, cast
-from collections.abc import Iterator
 
 import psutil
 

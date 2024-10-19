@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterable, Iterator
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 from typing import Any, TypeVar
-from collections.abc import Iterable, Iterator
 
 IT = TypeVar("IT")
 

@@ -1,24 +1,22 @@
 import fnmatch
 import json
 import logging
-import boto3
-
-from botocore.exceptions import ClientError
 from collections import defaultdict
 from functools import lru_cache
-from typing import TYPE_CHECKING, Optional, Union, Any
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+import boto3
+from botocore.exceptions import ClientError
 
 from toil.lib.aws import AWSServerErrors, session
-from toil.lib.misc import printq
-from toil.lib.retry import retry, get_error_status, get_error_code
 from toil.lib.aws.session import client as get_client
+from toil.lib.misc import printq
+from toil.lib.retry import get_error_code, get_error_status, retry
 
 if TYPE_CHECKING:
     from mypy_boto3_iam import IAMClient
-    from mypy_boto3_iam.type_defs import (
-        AttachedPolicyTypeDef,
-        PolicyDocumentDictTypeDef,
-    )
+    from mypy_boto3_iam.type_defs import (AttachedPolicyTypeDef,
+                                          PolicyDocumentDictTypeDef)
     from mypy_boto3_sts import STSClient
 
 logger = logging.getLogger(__name__)

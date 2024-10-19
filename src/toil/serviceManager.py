@@ -15,10 +15,10 @@
 
 import logging
 import time
+from collections.abc import Iterable
 from queue import Empty, Queue
 from threading import Event, Thread
 from typing import Optional
-from collections.abc import Iterable
 
 from toil.job import ServiceJobDescription
 from toil.jobStores.abstractJobStore import AbstractJobStore

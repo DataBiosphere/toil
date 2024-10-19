@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import fnmatch
-import os
 import math
-import sys
+import os
 import resource
+import sys
+
 
 class ResourceMonitor:
     """

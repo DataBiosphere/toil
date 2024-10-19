@@ -30,38 +30,32 @@ import sys
 import tempfile
 import textwrap
 import uuid
+from collections.abc import Generator, Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from tempfile import mkstemp
-from typing import (Any,
-                    Callable,
-                    Optional,
-                    TypeVar,
-                    Union,
-                    cast,
-                    TypedDict,
-                    IO)
-from collections.abc import Generator, Iterable, Iterator, Sequence
+from typing import IO, Any, Callable, Optional, TypedDict, TypeVar, Union, cast
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
 else:
     # NotRequired is recommended for TypedDicts over Optional but was introduced in Python 3.11
     from typing import NotRequired
+
+from functools import partial
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urljoin, urlsplit
-from functools import partial
 
 import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser, Namespace
 from WDL._util import byte_size_units, chmod_R_plus
-from WDL.Tree import ReadSourceResult
 from WDL.CLI import print_error
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
-from WDL.runtime.task_container import TaskContainer
 from WDL.runtime.error import DownloadFailed
+from WDL.runtime.task_container import TaskContainer
+from WDL.Tree import ReadSourceResult
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.common import Toil, addOptions
@@ -70,24 +64,25 @@ from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (AcceleratorRequirement,
                       Job,
+                      ParseableIndivisibleResource,
                       Promise,
                       Promised,
                       TemporaryID,
                       parse_accelerator,
                       unwrap,
-                      unwrap_all,
-                      ParseableIndivisibleResource)
-from toil.jobStores.abstractJobStore import (AbstractJobStore, UnimplementedURLException,
-                                             InvalidImportExportUrlException, LocatorException)
+                      unwrap_all)
+from toil.jobStores.abstractJobStore import (AbstractJobStore,
+                                             InvalidImportExportUrlException,
+                                             LocatorException,
+                                             UnimplementedURLException)
 from toil.lib.accelerators import get_individual_local_accelerators
-from toil.lib.conversions import convert_units, human2bytes, VALID_PREFIXES
+from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
 from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
-
 
 logger = logging.getLogger(__name__)
 
@@ -2712,7 +2707,8 @@ class WDLTaskJob(WDLBaseJob):
                     # miniwdl depends on docker so this should be available but check just in case
                     pass
                     # docker stubs are still WIP: https://github.com/docker/docker-py/issues/2796
-                    from docker.types import Mount  # type: ignore[import-untyped]
+                    from docker.types import \
+                        Mount  # type: ignore[import-untyped]
 
                     def patch_prepare_mounts_docker(logger: logging.Logger) -> list[Mount]:
                         """

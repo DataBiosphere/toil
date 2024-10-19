@@ -19,14 +19,14 @@ from queue import Empty, Queue
 from threading import Lock, Thread
 from typing import Optional, Union
 
-from toil.common import Config
 from toil.batchSystems.abstractBatchSystem import (BatchJobExitReason,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.bus import ExternalBatchIdMessage, get_job_kind
-from toil.job import JobDescription, AcceleratorRequirement
+from toil.common import Config
+from toil.job import AcceleratorRequirement, JobDescription
 from toil.lib.misc import CalledProcessErrorStderr
-from toil.lib.retry import old_retry, DEFAULT_DELAYS
+from toil.lib.retry import DEFAULT_DELAYS, old_retry
 
 logger = logging.getLogger(__name__)
 

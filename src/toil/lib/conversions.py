@@ -4,7 +4,7 @@ Also contains general conversion functions
 """
 
 import math
-from typing import SupportsInt, Union, Optional
+from typing import Optional, SupportsInt, Union
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
 BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']

@@ -5,9 +5,9 @@ import subprocess
 import sys
 import time
 from base64 import b64encode
+from collections.abc import Iterable
 from io import BytesIO
 from typing import Any, Optional, cast
-from collections.abc import Iterable
 from urllib.parse import urldefrag, urljoin, urlparse
 
 import requests

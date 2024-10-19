@@ -23,15 +23,13 @@ import tempfile
 import time
 import uuid
 import warnings
-
-from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
-from configargparse import ArgParser, YAMLConfigFileParser
 from argparse import (SUPPRESS,
                       ArgumentDefaultsHelpFormatter,
                       ArgumentParser,
                       Namespace,
-                      _ArgumentGroup, _StoreFalseAction, _StoreTrueAction)
+                      _ArgumentGroup,
+                      _StoreFalseAction,
+                      _StoreTrueAction)
 from functools import lru_cache
 from types import TracebackType
 from typing import (IO,
@@ -39,21 +37,18 @@ from typing import (IO,
                     Any,
                     Callable,
                     ContextManager,
+                    Literal,
                     Optional,
                     TypeVar,
                     Union,
                     cast,
                     overload)
-from urllib.parse import urlparse, unquote, quote
+from urllib.parse import quote, unquote, urlparse
 
 import requests
-
-from toil.options.common import add_base_toil_options, JOBSTORE_HELP
-from toil.options.cwl import add_cwl_options
-from toil.options.runner import add_runner_options
-from toil.options.wdl import add_wdl_options
-
-from typing import Literal
+from configargparse import ArgParser, YAMLConfigFileParser
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import set_batchsystem_options
@@ -64,17 +59,20 @@ from toil.bus import (ClusterDesiredSizeMessage,
                       JobIssuedMessage,
                       JobMissingMessage,
                       MessageBus,
-                      QueueSizeMessage, gen_message_bus_path)
+                      QueueSizeMessage,
+                      gen_message_bus_path)
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.io import try_path, AtomicFileCreate
+from toil.lib.io import AtomicFileCreate, try_path
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
-from toil.provisioners import (add_provisioner_options,
-                               cluster_factory)
+from toil.options.common import JOBSTORE_HELP, add_base_toil_options
+from toil.options.cwl import add_cwl_options
+from toil.options.runner import add_runner_options
+from toil.options.wdl import add_wdl_options
+from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (add_logging_options,
-                                  set_logging_from_options)
+from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
@@ -1055,7 +1053,8 @@ class Toil(ContextManager["Toil"]):
                       maxMemory=config.maxMemory,
                       maxDisk=config.maxDisk)
 
-        from toil.batchSystems.registry import get_batch_system, get_batch_systems
+        from toil.batchSystems.registry import (get_batch_system,
+                                                get_batch_systems)
 
         try:
             batch_system = get_batch_system(config.batchSystem)
@@ -1475,6 +1474,7 @@ class ToilMetrics:
                 if provisioner.cloud == 'aws':
                     # lazy import to avoid AWS dependency if the aws extra is not installed
                     from toil.lib.aws import zone_to_region
+
                     # Remove AZ name
                     region = zone_to_region(provisioner._zone)
                 else:

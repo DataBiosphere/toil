@@ -3,9 +3,8 @@ import re
 import sys
 import textwrap
 import types
-from typing import Any
-
 from importlib.metadata import version as metadata_version
+from typing import Any
 
 from toil.version import version
 

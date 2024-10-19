@@ -13,9 +13,7 @@
 
 import logging
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Optional, TypeVar, Union
-
-from typing import Protocol
+from typing import Any, Callable, Optional, Protocol, TypeVar, Union
 
 from toil.batchSystems.registry import (DEFAULT_BATCH_SYSTEM,
                                         get_batch_system,

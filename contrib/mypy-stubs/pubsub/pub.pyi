@@ -1,20 +1,18 @@
 from _typeshed import Incomplete
 
-from .core import (
-    ALL_TOPICS,
-    AUTO_TOPIC,
-    TOPIC_TREE_FROM_CLASS,
-    TOPIC_TREE_FROM_MODULE,
-    TOPIC_TREE_FROM_STRING,
-    ExcHandlerError,
-    IListenerExcHandler,
-    ListenerMismatchError,
-    Topic,
-    TopicManager,
-    TopicNameError,
-    TopicTreeTraverser,
-    exportTopicTreeSpec,
-)
+from .core import (ALL_TOPICS,
+                   AUTO_TOPIC,
+                   TOPIC_TREE_FROM_CLASS,
+                   TOPIC_TREE_FROM_MODULE,
+                   TOPIC_TREE_FROM_STRING,
+                   ExcHandlerError,
+                   IListenerExcHandler,
+                   ListenerMismatchError,
+                   Topic,
+                   TopicManager,
+                   TopicNameError,
+                   TopicTreeTraverser,
+                   exportTopicTreeSpec)
 
 subscribe: Incomplete
 unsubscribe: Incomplete

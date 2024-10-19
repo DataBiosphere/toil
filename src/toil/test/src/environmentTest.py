@@ -14,15 +14,14 @@
 import logging
 import os
 import time
-
 from argparse import Namespace
 from threading import Thread
 from typing import Optional
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
 

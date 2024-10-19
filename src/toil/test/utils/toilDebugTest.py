@@ -16,11 +16,8 @@ import os
 import subprocess
 import tempfile
 
-
-from toil.test import ToilTest
-
 from toil.lib.resources import glob
-from toil.test import slow, needs_wdl
+from toil.test import ToilTest, needs_wdl, slow
 from toil.version import python
 
 logger = logging.getLogger(__name__)

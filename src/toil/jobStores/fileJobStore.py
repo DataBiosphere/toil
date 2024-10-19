@@ -21,12 +21,10 @@ import shutil
 import stat
 import time
 import uuid
-from contextlib import contextmanager
-from typing import IO, Optional, Union, overload
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from typing import IO, Literal, Optional, Union, overload
 from urllib.parse import ParseResult, quote, unquote
-
-from typing import Literal
 
 from toil.fileStores import FileID
 from toil.job import TemporaryID

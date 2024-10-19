@@ -26,28 +26,24 @@ import pytest
 
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.test import (
-    ToilTest,
-    integrative,
-    needs_aws_ec2,
-    needs_fetchable_appliance,
-    needs_mesos,
-    slow,
-    timeLimit,
-)
+from toil.test import (ToilTest,
+                       integrative,
+                       needs_aws_ec2,
+                       needs_fetchable_appliance,
+                       needs_mesos,
+                       slow,
+                       timeLimit)
 from toil.test.provisioners.clusterTest import AbstractClusterTest
 from toil.version import exactPython
 
 if TYPE_CHECKING:
     from mypy_boto3_ec2 import EC2Client
-    from mypy_boto3_ec2.type_defs import (
-        DescribeVolumesResultTypeDef,
-        EbsInstanceBlockDeviceTypeDef,
-        FilterTypeDef,
-        InstanceBlockDeviceMappingTypeDef,
-        InstanceTypeDef,
-        VolumeTypeDef,
-    )
+    from mypy_boto3_ec2.type_defs import (DescribeVolumesResultTypeDef,
+                                          EbsInstanceBlockDeviceTypeDef,
+                                          FilterTypeDef,
+                                          InstanceBlockDeviceMappingTypeDef,
+                                          InstanceTypeDef,
+                                          VolumeTypeDef)
 
 
 log = logging.getLogger(__name__)

@@ -24,26 +24,18 @@ import threading
 import time
 import unittest
 import uuid
+import zoneinfo
 from abc import ABCMeta, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
 from tempfile import mkstemp
 from textwrap import dedent
-from typing import (Any,
-                    Callable,
-                    Literal,
-                    Optional,
-                    TypeVar,
-                    Union,
-                    cast)
-from collections.abc import Generator
+from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
 from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
-
-
-import zoneinfo
 
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (have_working_nvidia_docker_runtime,

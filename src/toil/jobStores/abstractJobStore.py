@@ -17,6 +17,7 @@ import pickle
 import re
 import shutil
 from abc import ABC, ABCMeta, abstractmethod
+from collections.abc import Iterator, ValuesView
 from contextlib import closing, contextmanager
 from datetime import timedelta
 from http.client import BadStatusLine
@@ -25,14 +26,11 @@ from typing import (IO,
                     Any,
                     Callable,
                     ContextManager,
+                    Literal,
                     Optional,
                     Union,
                     cast,
                     overload)
-from collections.abc import Iterator, ValuesView
-
-from typing import Literal
-
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
 from urllib.request import urlopen

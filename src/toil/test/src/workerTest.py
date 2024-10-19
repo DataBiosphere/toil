@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
 from toil.common import Config
 from toil.job import CheckpointJobDescription, JobDescription
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest
 from toil.worker import nextChainable
-
-from typing import Optional
 
 
 class WorkerTests(ToilTest):

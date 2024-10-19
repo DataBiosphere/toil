@@ -15,16 +15,19 @@ import logging
 import os
 import subprocess
 import time
-
-from uuid import uuid4
 from typing import Optional
+from uuid import uuid4
 
-from toil.lib.retry import retry
-from toil.test import ToilTest, needs_aws_ec2, needs_fetchable_appliance, slow, needs_env_var
 from toil.lib.aws import zone_to_region
 from toil.lib.aws.session import AWSConnectionManager
+from toil.lib.retry import retry
 from toil.provisioners import cluster_factory
 from toil.provisioners.aws import get_best_aws_zone
+from toil.test import (ToilTest,
+                       needs_aws_ec2,
+                       needs_env_var,
+                       needs_fetchable_appliance,
+                       slow)
 
 log = logging.getLogger(__name__)
 

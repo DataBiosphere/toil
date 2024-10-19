@@ -16,6 +16,7 @@ import logging
 import os
 import tempfile
 from collections import defaultdict
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from typing import (IO,
                     Any,
@@ -27,7 +28,6 @@ from typing import (IO,
                     Union,
                     cast,
                     overload)
-from collections.abc import Generator, Iterator
 
 import dill
 
@@ -39,7 +39,10 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.io import make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
-from toil.lib.threading import get_process_name, process_name_exists, safe_lock, safe_unlock_and_close
+from toil.lib.threading import (get_process_name,
+                                process_name_exists,
+                                safe_lock,
+                                safe_unlock_and_close)
 
 logger: logging.Logger = logging.getLogger(__name__)
 

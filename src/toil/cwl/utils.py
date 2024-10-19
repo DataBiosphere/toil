@@ -16,16 +16,11 @@
 
 import logging
 import os
-from pathlib import PurePosixPath
 import posixpath
 import stat
-from typing import (
-    Any,
-    Callable,
-    TypeVar,
-    Union,
-)
 from collections.abc import Iterable, MutableMapping, MutableSequence
+from pathlib import PurePosixPath
+from typing import Any, Callable, TypeVar, Union
 
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore

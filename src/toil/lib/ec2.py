@@ -1,36 +1,25 @@
 import logging
 import time
 from base64 import b64encode
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Optional,
-    Union,
-)
 from collections.abc import Generator, Iterable, Mapping
-
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.aws.session import establish_boto3_session
 from toil.lib.aws.utils import flatten_tags
 from toil.lib.exceptions import panic
-from toil.lib.retry import (
-    ErrorCondition,
-    get_error_code,
-    get_error_message,
-    old_retry,
-    retry,
-)
+from toil.lib.retry import (ErrorCondition,
+                            get_error_code,
+                            get_error_message,
+                            old_retry,
+                            retry)
 
 if TYPE_CHECKING:
     from mypy_boto3_autoscaling.client import AutoScalingClient
     from mypy_boto3_ec2.client import EC2Client
     from mypy_boto3_ec2.service_resource import EC2ServiceResource, Instance
-    from mypy_boto3_ec2.type_defs import (
-        DescribeInstancesResultTypeDef,
-        InstanceTypeDef,
-        SpotInstanceRequestTypeDef,
-    )
+    from mypy_boto3_ec2.type_defs import (DescribeInstancesResultTypeDef,
+                                          InstanceTypeDef,
+                                          SpotInstanceRequestTypeDef)
 
 a_short_time = 5
 a_long_time = 60 * 60

@@ -22,12 +22,10 @@ import sqlite3
 import stat
 import threading
 import time
+from collections.abc import Generator, Iterator, Sequence
 from contextlib import contextmanager
 from tempfile import mkstemp
-from typing import (Any,
-                    Callable,
-                    Optional)
-from collections.abc import Generator, Iterator, Sequence
+from typing import Any, Callable, Optional
 
 from toil.common import cacheDirName, getFileSystemSize
 from toil.fileStores import FileID

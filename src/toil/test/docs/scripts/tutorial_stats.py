@@ -1,11 +1,11 @@
 
+import math
+import time
+from multiprocessing import Process
+
 from toil.common import Toil
 from toil.job import Job
 
-import math
-import time
-
-from multiprocessing import Process
 
 def think(seconds):
     start = time.time()

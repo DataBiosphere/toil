@@ -30,7 +30,8 @@ from typing import Optional, Union
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
 
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
+from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
+                                                   BatchJobExitReason)
 from toil.batchSystems.abstractGridEngineBatchSystem import \
     AbstractGridEngineBatchSystem
 from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
