@@ -1599,7 +1599,7 @@ class ToilFsAccess(StdFsAccess):
                 for entry in AbstractJobStore.list_url(fn)
             ]
 
-    def join(self, path, *paths):  # type: (str, *str) -> str
+    def join(self, path: str, *paths: str) -> str:
         # This falls back on os.path.join
         return super().join(path, *paths)
 
@@ -2142,7 +2142,7 @@ def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> FileI
 
 def remove_empty_listings(rec: CWLObjectType) -> None:
     if rec.get("class") != "Directory":
-        finddirs = []  # type: List[CWLObjectType]
+        finddirs: list[CWLObjectType] = []
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
             remove_empty_listings(f)
