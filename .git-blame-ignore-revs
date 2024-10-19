@@ -1,0 +1,8 @@
+# make format with black 24.10.0 on 2024-10-19
+818d1ab964356ef66f0321ce3bf7a55da91726db
+# make sort_imports
+38fc7f40646dfd3def3ded2d50c14f0a36cbeba1
+# make remove_unused_import
+4429d76638bef0ff0567ce3d850eb3402d068c91
+# make pyupgrade (3.9+)
+b59fddb3df3e11f376fbeedeafc3ce7188d5dda2
