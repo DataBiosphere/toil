@@ -1448,8 +1448,7 @@ class Toil(ContextManager["Toil"]):
         """
         logProcessContext(self.config)
 
-        with RealtimeLogger(self._batchSystem,
-                            level=self.options.logLevel if self.options.realTimeLogging else None):
+        with RealtimeLogger(self._batchSystem, level=self.options.logLevel if self.options.realTimeLogging else 'INFO'):
             # FIXME: common should not import from leader
             from toil.leader import Leader
             return Leader(config=self.config,
