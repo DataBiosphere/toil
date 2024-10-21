@@ -506,8 +506,10 @@ class AbstractJobStore(ABC):
         :param str file_id: The id of the file in the job store that should be exported.
 
         :param str dst_uri: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an AWS s3 bucket.
+                supported URL scheme e.g. a blob in an AWS s3 bucket. May also be a local path.
         """
+        from toil.common import Toil
+        dst_uri = Toil.normalize_uri(dst_uri)
         parseResult = urlparse(dst_uri)
         otherCls = self._findJobStoreForUrl(parseResult, export=True)
         self._export_file(otherCls, file_id, parseResult)
