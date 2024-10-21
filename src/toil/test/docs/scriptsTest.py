@@ -4,19 +4,19 @@ import shutil
 import subprocess
 import sys
 import unittest
+
 import pytest
 
-from typing import List
-
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil.test import ToilTest, needs_cwl, needs_docker
+from toil.test import ToilTest, needs_docker
 from toil.version import python
 
 
 class ToilDocumentationTest(ToilTest):
     """Tests for scripts in the toil tutorials."""
+
     @classmethod
     def setUpClass(cls):
         super(ToilTest, cls).setUpClass()
@@ -25,7 +25,7 @@ class ToilDocumentationTest(ToilTest):
     def tearDown(self) -> None:
         super(ToilTest, self).tearDown()
 
-        jobstores = ['/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        jobstores = ["/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun"]
         for jobstore in jobstores:
             if os.path.exists(jobstore):
                 shutil.rmtree(jobstore)
@@ -33,19 +33,24 @@ class ToilDocumentationTest(ToilTest):
         unittest.TestCase.tearDown(self)
 
     """Just check the exit code"""
-    def checkExitCode(self, script, extra_args: List[str] = []):
+
+    def checkExitCode(self, script, extra_args: list[str] = []):
         program = os.path.join(self.directory, "scripts", script)
-        process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"] + extra_args,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        process = subprocess.Popen(
+            [python, program, "file:my-jobstore", "--clean=always"] + extra_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         stdout, stderr = process.communicate()
         if isinstance(stdout, bytes):
-            stdout = stdout.decode('utf-8')
-            stderr = stderr.decode('utf-8')
+            stdout = stdout.decode("utf-8")
+            stderr = stderr.decode("utf-8")
         if not process.returncode == 0:
             raise RuntimeError(stderr)
-        return stdout + ' ' + stderr
+        return stdout + " " + stderr
 
     """Check the exit code and the output"""
+
     def checkExpectedOut(self, script, expectedOutput):
         outerr = self.checkExitCode(script)
 
@@ -54,6 +59,7 @@ class ToilDocumentationTest(ToilTest):
         self.assertGreater(index, -1, f"Expected:\n{expectedOutput}\nOutput:\n{outerr}")
 
     """Check the exit code and look for a pattern"""
+
     def checkExpectedPattern(self, script, expectedPattern):
         outerr = self.checkExitCode(script)
 
@@ -77,16 +83,24 @@ class ToilDocumentationTest(ToilTest):
         self.checkExitCode("tutorial_encapsulation2.py")
 
     def testHelloworld(self):
-        self.checkExpectedOut("tutorial_helloworld.py", "Hello, world!, here's a message: You did it!\n")
+        self.checkExpectedOut(
+            "tutorial_helloworld.py", "Hello, world!, here's a message: You did it!\n"
+        )
 
     def testInvokeworkflow(self):
-        self.checkExpectedOut("tutorial_invokeworkflow.py", "Hello, world!, here's a message: Woot\n")
+        self.checkExpectedOut(
+            "tutorial_invokeworkflow.py", "Hello, world!, here's a message: Woot\n"
+        )
 
     def testInvokeworkflow2(self):
-        self.checkExpectedOut("tutorial_invokeworkflow2.py", "Hello, world!, I have a message: Woot!\n")
+        self.checkExpectedOut(
+            "tutorial_invokeworkflow2.py", "Hello, world!, I have a message: Woot!\n"
+        )
 
     def testJobFunctions(self):
-        self.checkExpectedOut("tutorial_jobfunctions.py", "Hello world, I have a message: Woot!\n")
+        self.checkExpectedOut(
+            "tutorial_jobfunctions.py", "Hello world, I have a message: Woot!\n"
+        )
 
     def testManaging(self):
         self.checkExitCode("tutorial_managing.py")
@@ -95,39 +109,51 @@ class ToilDocumentationTest(ToilTest):
         self.checkExitCode("tutorial_managing2.py")
 
     def testMultiplejobs(self):
-        self.checkExpectedPattern("tutorial_multiplejobs.py",
-                                  "Hello world, I have a message: first.*Hello world, I have a message: "
-                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                  " I have a message: last")
+        self.checkExpectedPattern(
+            "tutorial_multiplejobs.py",
+            "Hello world, I have a message: first.*Hello world, I have a message: "
+            "second or third.*Hello world, I have a message: second or third.*Hello world,"
+            " I have a message: last",
+        )
 
     def testMultiplejobs2(self):
-        self.checkExpectedPattern("tutorial_multiplejobs2.py",
-                                  "Hello world, I have a message: first.*Hello world, I have a message: "
-                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                  " I have a message: last")
+        self.checkExpectedPattern(
+            "tutorial_multiplejobs2.py",
+            "Hello world, I have a message: first.*Hello world, I have a message: "
+            "second or third.*Hello world, I have a message: second or third.*Hello world,"
+            " I have a message: last",
+        )
 
     def testMultiplejobs3(self):
-        self.checkExpectedPattern("tutorial_multiplejobs3.py",
-                                  "Hello world, I have a message: first.*Hello world, I have a message: "
-                                  "second or third.*Hello world, I have a message: second or third.*Hello world,"
-                                  " I have a message: last")
+        self.checkExpectedPattern(
+            "tutorial_multiplejobs3.py",
+            "Hello world, I have a message: first.*Hello world, I have a message: "
+            "second or third.*Hello world, I have a message: second or third.*Hello world,"
+            " I have a message: last",
+        )
 
     @pytest.mark.timeout(1200)
     def testPromises2(self):
-        self.checkExpectedOut("tutorial_promises2.py",
-                              "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111',"
-                              " '01000', '01001', '01010', '01011', '01100', '01101', '01110', '01111',"
-                              " '10000', '10001', '10010', '10011', '10100', '10101', '10110', '10111',"
-                              " '11000', '11001', '11010', '11011', '11100', '11101', '11110', '11111']")
+        self.checkExpectedOut(
+            "tutorial_promises2.py",
+            "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111',"
+            " '01000', '01001', '01010', '01011', '01100', '01101', '01110', '01111',"
+            " '10000', '10001', '10010', '10011', '10100', '10101', '10110', '10111',"
+            " '11000', '11001', '11010', '11011', '11100', '11101', '11110', '11111']",
+        )
 
     def testQuickstart(self):
-        self.checkExpectedOut("tutorial_quickstart.py", "Hello, world!, here's a message: Woot\n")
+        self.checkExpectedOut(
+            "tutorial_quickstart.py", "Hello, world!, here's a message: Woot\n"
+        )
 
     def testRequirements(self):
         self.checkExitCode("tutorial_requirements.py")
 
     def testArguments(self):
-        self.checkExpectedOut("tutorial_arguments.py", "Hello, world!, here's a message: Woot")
+        self.checkExpectedOut(
+            "tutorial_arguments.py", "Hello, world!, here's a message: Woot"
+        )
 
     @needs_docker
     def testDocker(self):

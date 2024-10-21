@@ -26,11 +26,20 @@ logger = logging.getLogger(__name__)
 def main() -> None:
     parser = ArgParser()
 
-    parser.add_argument("output", default="config.yaml", help="Filepath to write the config file too. Default=%("
-                                                              "default)s")
+    parser.add_argument(
+        "output",
+        default="config.yaml",
+        help="Filepath to write the config file too. Default=%(" "default)s",
+    )
     add_logging_options(parser)
     options = parser.parse_args()
     set_logging_from_options(options)
-    logger.debug("Attempting to write a default config file to %s.", os.path.abspath(options.output))
+    logger.debug(
+        "Attempting to write a default config file to %s.",
+        os.path.abspath(options.output),
+    )
     generate_config(os.path.abspath(options.output))
-    logger.info("Successfully wrote a default config file to %s.", os.path.abspath(options.output))
+    logger.info(
+        "Successfully wrote a default config file to %s.",
+        os.path.abspath(options.output),
+    )

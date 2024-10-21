@@ -18,18 +18,10 @@ import shutil
 import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, _ArgumentGroup
+from collections.abc import Iterator
 from contextlib import contextmanager
 from threading import Condition
-from typing import (Any,
-                    ContextManager,
-                    Dict,
-                    Iterator,
-                    List,
-                    NamedTuple,
-                    Optional,
-                    Set,
-                    Union,
-                    cast)
+from typing import Any, ContextManager, NamedTuple, Optional, Union, cast
 
 from toil.batchSystems.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
@@ -44,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255
+
 
 class BatchJobExitReason(enum.IntEnum):
     FINISHED: int = 1
@@ -65,7 +58,6 @@ class BatchJobExitReason(enum.IntEnum):
     PARTITION: int = 9
     """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
 
-
     @classmethod
     def to_string(cls, value: int) -> str:
         """
@@ -80,6 +72,7 @@ class BatchJobExitReason(enum.IntEnum):
         except ValueError:
             return str(value)
 
+
 class UpdatedBatchJobInfo(NamedTuple):
     jobID: int
     exitStatus: int
@@ -92,6 +85,7 @@ class UpdatedBatchJobInfo(NamedTuple):
 
     exitReason: Optional[BatchJobExitReason]
     wallTime: Union[float, int, None]
+
 
 # Information required for worker cleanup on shutdown of the batch system.
 class WorkerCleanupInfo(NamedTuple):
@@ -110,8 +104,10 @@ class WorkerCleanupInfo(NamedTuple):
     'onSuccess', 'onError', 'never')
     """
 
+
 class AbstractBatchSystem(ABC):
     """An abstract base class to represent the interface the batch system must provide to Toil."""
+
     @classmethod
     @abstractmethod
     def supportsAutoDeployment(cls) -> bool:
@@ -163,7 +159,12 @@ class AbstractBatchSystem(ABC):
         """
 
     @abstractmethod
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(
+        self,
+        command: str,
+        job_desc: JobDescription,
+        job_environment: Optional[dict[str, str]] = None,
+    ) -> int:
         """
         Issues a job with the specified command to the batch system and returns
         a unique job ID number.
@@ -180,7 +181,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
         """
         Kills the given job IDs. After returning, the killed jobs will not
         appear in the results of getRunningBatchJobIDs. The killed job will not
@@ -193,7 +194,7 @@ class AbstractBatchSystem(ABC):
     # FIXME: Return value should be a set (then also fix the tests)
 
     @abstractmethod
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         """
         Gets all currently issued jobs
 
@@ -204,7 +205,7 @@ class AbstractBatchSystem(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         """
         Gets a map of jobs as job ID numbers that are currently running (not
         just waiting) and how long they have been running, in seconds.
@@ -292,7 +293,7 @@ class AbstractBatchSystem(ABC):
             returning nothing, used to update run configuration as a side effect.
         """
 
-    def getWorkerContexts(self) -> List[ContextManager[Any]]:
+    def getWorkerContexts(self) -> list[ContextManager[Any]]:
         """
         Get a list of picklable context manager objects to wrap worker work in,
         in order.
@@ -308,7 +309,9 @@ class AbstractBatchSystem(ABC):
 class BatchSystemSupport(AbstractBatchSystem):
     """Partial implementation of AbstractBatchSystem, support methods."""
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         """
         Initialize initial state of the object.
 
@@ -330,7 +333,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         self.maxCores = maxCores
         self.maxMemory = maxMemory
         self.maxDisk = maxDisk
-        self.environment: Dict[str, str] = {}
+        self.environment: dict[str, str] = {}
         if config.workflowID is None:
             raise Exception("config.workflowID must be set")
         else:
@@ -356,9 +359,11 @@ class BatchSystemSupport(AbstractBatchSystem):
                greater than allowed
         """
         try:
-            for resource, requested, available in [('cores', requirer.cores, self.maxCores),
-                                                   ('memory', requirer.memory, self.maxMemory),
-                                                   ('disk', requirer.disk, self.maxDisk)]:
+            for resource, requested, available in [
+                ("cores", requirer.cores, self.maxCores),
+                ("memory", requirer.memory, self.maxMemory),
+                ("disk", requirer.disk, self.maxDisk),
+            ]:
                 assert requested is not None
                 if requested > available:
                     raise InsufficientSystemResources(requirer, resource, available)
@@ -367,7 +372,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         except InsufficientSystemResources as e:
             # Add more annotation info to the error
             e.batch_system = self.__class__.__name__ or None
-            e.source = self.config.workDir if e.resource == 'disk' else None
+            e.source = self.config.workDir if e.resource == "disk" else None
             raise e
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
@@ -380,9 +385,12 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         if len(requirer.accelerators) > 0:
             # By default we assume we can't fulfill any of these
-            raise InsufficientSystemResources(requirer, 'accelerators', [], details=[
-                'The batch system does not support any accelerators.'
-            ])
+            raise InsufficientSystemResources(
+                requirer,
+                "accelerators",
+                [],
+                details=["The batch system does not support any accelerators."],
+            )
 
     def setEnv(self, name: str, value: Optional[str] = None) -> None:
         """
@@ -439,7 +447,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         # And if nothing is specified use the workDir.
         return Toil.getToilWorkDir(self.config.workDir)
 
-    def format_std_out_err_path(self, toil_job_id: int, cluster_job_id: str, std: str) -> str:
+    def format_std_out_err_path(
+        self, toil_job_id: int, cluster_job_id: str, std: str
+    ) -> str:
         """
         Format path for batch system standard output/error and other files
         generated by the batch system itself.
@@ -458,7 +468,9 @@ class BatchSystemSupport(AbstractBatchSystem):
         if self.config.noStdOutErr:
             return os.devnull
 
-        file_name: str = f'toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log'
+        file_name: str = (
+            f"toil_{self.config.workflowID}.{toil_job_id}.{cluster_job_id}.{std}.log"
+        )
         logs_dir: str = self.get_batch_logs_dir()
         return os.path.join(logs_dir, file_name)
 
@@ -466,7 +478,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         Get a glob string that will match all file paths generated by format_std_out_err_path for a job.
         """
-        file_glob: str = f'toil_{self.config.workflowID}.{toil_job_id}.*.log'
+        file_glob: str = f"toil_{self.config.workflowID}.{toil_job_id}.*.log"
         logs_dir: str = self.get_batch_logs_dir()
         return os.path.join(logs_dir, file_glob)
 
@@ -480,22 +492,27 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param WorkerCleanupInfo info: A named tuple consisting of all the relevant information
                for cleaning up the worker.
         """
-        logger.debug('Attempting worker cleanup')
+        logger.debug("Attempting worker cleanup")
         assert isinstance(info, WorkerCleanupInfo)
         assert info.workflow_id is not None
         workflowDir = Toil.getLocalWorkflowDir(info.workflow_id, info.work_dir)
-        coordination_dir = Toil.get_local_workflow_coordination_dir(info.workflow_id, info.work_dir, info.coordination_dir)
+        coordination_dir = Toil.get_local_workflow_coordination_dir(
+            info.workflow_id, info.work_dir, info.coordination_dir
+        )
         DeferredFunctionManager.cleanupWorker(coordination_dir)
         workflowDirContents = os.listdir(workflowDir)
-        AbstractFileStore.shutdownFileStore(info.workflow_id, info.work_dir, info.coordination_dir)
-        if info.clean_work_dir in ('always', 'onSuccess', 'onError'):
+        AbstractFileStore.shutdownFileStore(
+            info.workflow_id, info.work_dir, info.coordination_dir
+        )
+        if info.clean_work_dir in ("always", "onSuccess", "onError"):
             if workflowDirContents in ([], [cacheDirName(info.workflow_id)]):
-                logger.debug('Deleting workflow directory %s', workflowDir)
+                logger.debug("Deleting workflow directory %s", workflowDir)
                 shutil.rmtree(workflowDir, ignore_errors=True)
             if coordination_dir != workflowDir:
                 # No more coordination to do here either.
-                logger.debug('Deleting coordination directory %s', coordination_dir)
+                logger.debug("Deleting coordination directory %s", coordination_dir)
                 shutil.rmtree(coordination_dir, ignore_errors=True)
+
 
 class NodeInfo:
     """
@@ -513,10 +530,17 @@ class NodeInfo:
     The workers attribute is an integer reflecting the number of workers currently active workers
     on the node.
     """
-    def __init__(self, coresUsed: float, memoryUsed: float,
-                 coresTotal: float, memoryTotal: int,
-                 requestedCores: float, requestedMemory: int,
-                 workers: int) -> None:
+
+    def __init__(
+        self,
+        coresUsed: float,
+        memoryUsed: float,
+        coresTotal: float,
+        memoryTotal: int,
+        requestedCores: float,
+        requestedMemory: int,
+        workers: int,
+    ) -> None:
         self.coresUsed = coresUsed
         self.memoryUsed = memoryUsed
 
@@ -539,7 +563,9 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     """
 
     @abstractmethod
-    def getNodes(self, preemptible: Optional[bool] = None, timeout: int = 600) -> Dict[str, NodeInfo]:
+    def getNodes(
+        self, preemptible: Optional[bool] = None, timeout: int = 600
+    ) -> dict[str, NodeInfo]:
         """
         Returns a dictionary mapping node identifiers of preemptible or non-preemptible nodes to
         NodeInfo objects, one for each node.
@@ -584,7 +610,15 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
 
 
 class InsufficientSystemResources(Exception):
-    def __init__(self, requirer: Requirer, resource: str, available: Optional[ParsedRequirement] = None, batch_system: Optional[str] = None, source: Optional[str] = None, details: List[str] = []) -> None:
+    def __init__(
+        self,
+        requirer: Requirer,
+        resource: str,
+        available: Optional[ParsedRequirement] = None,
+        batch_system: Optional[str] = None,
+        source: Optional[str] = None,
+        details: list[str] = [],
+    ) -> None:
         """
         Make a new exception about how we couldn't get enough of something.
 
@@ -597,7 +631,7 @@ class InsufficientSystemResources(Exception):
         :param details: Any extra details about the problem that can be attached to the error.
         """
 
-        self.job_name : Optional[str] = str(requirer)
+        self.job_name: Optional[str] = str(requirer)
         self.resource = resource
         self.requested = cast(ParsedRequirement, getattr(requirer, resource))
         self.available = available
@@ -610,38 +644,52 @@ class InsufficientSystemResources(Exception):
         Explain the exception.
         """
 
-        unit = 'bytes of ' if self.resource in ('disk', 'memory') else ''
-        purpose = ' for temporary space' if self.resource == 'disk' else ''
-        qualifier = ' free on {self.source}' if self.resource == 'disk' and self.source is not None else ''
+        unit = "bytes of " if self.resource in ("disk", "memory") else ""
+        purpose = " for temporary space" if self.resource == "disk" else ""
+        qualifier = (
+            " free on {self.source}"
+            if self.resource == "disk" and self.source is not None
+            else ""
+        )
 
         msg = []
         if self.job_name is not None:
-            msg.append(f'The job {self.job_name} is requesting ')
+            msg.append(f"The job {self.job_name} is requesting ")
         else:
-            msg.append(f'Requesting ')
-        msg.append(f'{self.requested} {unit}{self.resource}')
+            msg.append(f"Requesting ")
+        msg.append(f"{self.requested} {unit}{self.resource}")
         msg.append(purpose)
         if self.available is not None:
-            msg.append(f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with')
-            if self.resource in ('cores', 'memory', 'disk'):
-                msg.append(f', or enforced by --max{self.resource.capitalize()}')
+            msg.append(
+                f', more than the maximum of {self.available} {unit}{self.resource}{qualifier} that {self.batch_system or "this batch system"} was configured with'
+            )
+            if self.resource in ("cores", "memory", "disk"):
+                msg.append(f", or enforced by --max{self.resource.capitalize()}")
         else:
-            msg.append(', but that is not available')
-        msg.append('.')
+            msg.append(", but that is not available")
+        msg.append(".")
 
-        if self.resource == 'disk':
-            msg.append(' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.')
+        if self.resource == "disk":
+            msg.append(
+                ' Try setting/changing the toil option "--workDir" or changing the base temporary directory by setting TMPDIR.'
+            )
 
         for detail in self.details:
-            msg.append(' ')
+            msg.append(" ")
             msg.append(detail)
 
-        return ''.join(msg)
+        return "".join(msg)
 
 
 class AcquisitionTimeoutException(Exception):
     """To be raised when a resource request times out."""
-    def __init__(self, resource: str, requested: Union[int, float, Set[int]], available: Union[int, float, Set[int]]) -> None:
+
+    def __init__(
+        self,
+        resource: str,
+        requested: Union[int, float, set[int]],
+        available: Union[int, float, set[int]],
+    ) -> None:
         """
         Creates an instance of this exception that indicates which resource is insufficient for
         current demands, as well as the resources requested and actually available.
@@ -661,7 +709,10 @@ class ResourcePool:
     Provides a context manager to do something with an amount of resource
     acquired.
     """
-    def __init__(self, initial_value: int, resource_type: str, timeout: float = 5) -> None:
+
+    def __init__(
+        self, initial_value: int, resource_type: str, timeout: float = 5
+    ) -> None:
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
@@ -695,8 +746,11 @@ class ResourcePool:
             while amount > self.value:
                 if time.time() - startTime >= self.timeout:
                     # This means the thread timed out waiting for the resource.
-                    raise AcquisitionTimeoutException(resource=self.resource_type,
-                                                      requested=amount, available=self.value)
+                    raise AcquisitionTimeoutException(
+                        resource=self.resource_type,
+                        requested=amount,
+                        available=self.value,
+                    )
                 # Allow self.timeout seconds to get the resource, else quit
                 # through the above if condition. This wait + timeout is the
                 # last thing in the loop such that a request that takes longer
@@ -737,7 +791,10 @@ class ResourceSet:
     Provides a context manager to do something with a set of of resources
     acquired.
     """
-    def __init__(self, initial_value: Set[int], resource_type: str, timeout: float = 5) -> None:
+
+    def __init__(
+        self, initial_value: set[int], resource_type: str, timeout: float = 5
+    ) -> None:
         super().__init__()
         # We use this condition to signal everyone whenever some resource is released.
         # We use its associated lock to guard value.
@@ -747,7 +804,7 @@ class ResourceSet:
         self.resource_type = resource_type
         self.timeout = timeout
 
-    def acquireNow(self, subset: Set[int]) -> bool:
+    def acquireNow(self, subset: set[int]) -> bool:
         """
         Reserve the given amount of the given resource.
         Returns True if successful and False if this is not possible immediately.
@@ -759,7 +816,7 @@ class ResourceSet:
             self.value -= subset
             return True
 
-    def acquire(self, subset: Set[int]) -> None:
+    def acquire(self, subset: set[int]) -> None:
         """
         Reserve the given amount of the given resource.
         Raises AcquisitionTimeoutException if this is not possible in under
@@ -770,8 +827,11 @@ class ResourceSet:
             while subset > self.value:
                 if time.time() - startTime >= self.timeout:
                     # This means the thread timed out waiting for the resource.
-                    raise AcquisitionTimeoutException(resource=self.resource_type,
-                                                      requested=subset, available=self.value)
+                    raise AcquisitionTimeoutException(
+                        resource=self.resource_type,
+                        requested=subset,
+                        available=self.value,
+                    )
                 # Allow self.timeout seconds to get the resource, else quit
                 # through the above if condition. This wait + timeout is the
                 # last thing in the loop such that a request that takes longer
@@ -780,12 +840,12 @@ class ResourceSet:
                 self.condition.wait(timeout=self.timeout)
             self.value -= subset
 
-    def release(self, subset: Set[int]) -> None:
+    def release(self, subset: set[int]) -> None:
         with self.condition:
             self.value |= subset
             self.condition.notify_all()
 
-    def get_free_snapshot(self) -> Set[int]:
+    def get_free_snapshot(self) -> set[int]:
         """
         Get a snapshot of what items are free right now.
         May be stale as soon as you get it, but you will need some kind of hint
@@ -800,7 +860,7 @@ class ResourceSet:
         return "ResourceSet(%s)" % self.value
 
     @contextmanager
-    def acquisitionOf(self, subset: Set[int]) -> Iterator[None]:
+    def acquisitionOf(self, subset: set[int]) -> Iterator[None]:
         self.acquire(subset)
         try:
             yield

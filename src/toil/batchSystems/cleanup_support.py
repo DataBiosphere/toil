@@ -13,15 +13,15 @@
 # limitations under the License.
 import logging
 from types import TracebackType
-from typing import Any, ContextManager, List, Optional, Type
+from typing import Any, ContextManager, Optional
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
-                                                   WorkerCleanupInfo)
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, WorkerCleanupInfo
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.common import Config, Toil
 from toil.lib.threading import LastProcessStandingArena
 
 logger = logging.getLogger(__name__)
+
 
 class BatchSystemCleanupSupport(BatchSystemLocalSupport):
     """
@@ -33,7 +33,7 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
     def supportsWorkerCleanup(cls) -> bool:
         return True
 
-    def getWorkerContexts(self) -> List[ContextManager[Any]]:
+    def getWorkerContexts(self) -> list[ContextManager[Any]]:
         # Tell worker to register for and invoke cleanup
 
         # Create a context manager that has a copy of our cleanup info
@@ -44,8 +44,11 @@ class BatchSystemCleanupSupport(BatchSystemLocalSupport):
         contexts.append(context)
         return contexts
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
+
 
 class WorkerCleanupContext:
     """
@@ -63,7 +66,6 @@ class WorkerCleanupContext:
                                   the last to exit the context manager.
         """
 
-
         self.workerCleanupInfo = workerCleanupInfo
         # Don't set self.arena or MyPy will be upset that sometimes it doesn't have the right type.
 
@@ -71,27 +73,31 @@ class WorkerCleanupContext:
         # Set up an arena so we know who is the last worker to leave
         self.arena = LastProcessStandingArena(
             Toil.get_toil_coordination_dir(
-                self.workerCleanupInfo.work_dir,
-                self.workerCleanupInfo.coordination_dir
+                self.workerCleanupInfo.work_dir, self.workerCleanupInfo.coordination_dir
             ),
-            Toil.get_workflow_path_component(self.workerCleanupInfo.workflow_id) + "-cleanup"
+            Toil.get_workflow_path_component(self.workerCleanupInfo.workflow_id)
+            + "-cleanup",
         )
-        logger.debug('Entering cleanup arena')
+        logger.debug("Entering cleanup arena")
         self.arena.enter()
-        logger.debug('Cleanup arena entered')
+        logger.debug("Cleanup arena entered")
 
     # This is exactly the signature MyPy demands.
     # Also, it demands we not say we can return a bool if we return False
     # always, because it can be smarter about reachability if it knows what
     # context managers never eat exceptions. So it decides any context manager
     # that is always falsey but claims to return a bool is an error.
-    def __exit__(self, type: Optional[Type[BaseException]], value: Optional[BaseException], traceback: Optional[TracebackType]) -> None:
-        logger.debug('Leaving cleanup arena')
+    def __exit__(
+        self,
+        type: Optional[type[BaseException]],
+        value: Optional[BaseException],
+        traceback: Optional[TracebackType],
+    ) -> None:
+        logger.debug("Leaving cleanup arena")
         for _ in self.arena.leave():
             # We are the last concurrent worker to finish.
             # Do batch system cleanup.
-            logger.debug('Cleaning up worker')
+            logger.debug("Cleaning up worker")
             BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
             # Now the coordination_dir is allowed to no longer exist on the node.
-        logger.debug('Cleanup arena left')
-
+        logger.debug("Cleanup arena left")

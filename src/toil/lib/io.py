@@ -4,13 +4,19 @@ import shutil
 import stat
 import tempfile
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
-from typing import IO, Any, Callable, Iterator, Optional, Union
+from typing import IO, Any, Callable, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Optional[str] = None) -> str:
+
+def mkdtemp(
+    suffix: Optional[str] = None,
+    prefix: Optional[str] = None,
+    dir: Optional[str] = None,
+) -> str:
     """
     Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
 
@@ -27,9 +33,12 @@ def mkdtemp(suffix: Optional[str] = None, prefix: Optional[str] = None, dir: Opt
     # Make the directory
     result = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
     # Grant all the permissions: full control for user, and execute for group and other
-    os.chmod(result, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    os.chmod(
+        result, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    )
     # Return the path created
     return result
+
 
 def robust_rmtree(path: Union[str, bytes]) -> None:
     """
@@ -45,7 +54,7 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
     if not isinstance(path, bytes):
         # Internally we must work in bytes, in case we find an undecodeable
         # filename.
-        path = path.encode('utf-8')
+        path = path.encode("utf-8")
 
     if not os.path.exists(path):
         # Nothing to do!
@@ -107,7 +116,7 @@ def atomic_tmp_file(final_path: str) -> str:
     as finalPath.  It the final path is in /dev (/dev/null, /dev/stdout), it is
     returned unchanged and atomic_tmp_install will do nothing."""
     final_dir = os.path.dirname(os.path.normpath(final_path))  # can be empty
-    if final_dir == '/dev':
+    if final_dir == "/dev":
         return final_path
     final_basename = os.path.basename(final_path)
     final_ext = os.path.splitext(final_path)[1]
@@ -117,8 +126,9 @@ def atomic_tmp_file(final_path: str) -> str:
 
 def atomic_install(tmp_path, final_path) -> None:
     """atomic install of tmp_path as final_path"""
-    if os.path.dirname(os.path.normpath(final_path)) != '/dev':
+    if os.path.dirname(os.path.normpath(final_path)) != "/dev":
         os.rename(tmp_path, final_path)
+
 
 @contextmanager
 def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
@@ -140,7 +150,9 @@ def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
         raise
 
 
-def atomic_copy(src_path: str, dest_path: str, executable: Optional[bool] = None) -> None:
+def atomic_copy(
+    src_path: str, dest_path: str, executable: Optional[bool] = None
+) -> None:
     """Copy a file using posix atomic creations semantics."""
     if executable is None:
         executable = os.stat(src_path).st_mode & stat.S_IXUSR != 0
@@ -150,10 +162,12 @@ def atomic_copy(src_path: str, dest_path: str, executable: Optional[bool] = None
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
 
 
-def atomic_copyobj(src_fh: BytesIO, dest_path: str, length: int = 16384, executable: bool = False) -> None:
+def atomic_copyobj(
+    src_fh: BytesIO, dest_path: str, length: int = 16384, executable: bool = False
+) -> None:
     """Copy an open file using posix atomic creations semantics."""
     with AtomicFileCreate(dest_path) as dest_path_tmp:
-        with open(dest_path_tmp, 'wb') as dest_path_fh:
+        with open(dest_path_tmp, "wb") as dest_path_fh:
             shutil.copyfileobj(src_fh, dest_path_fh, length=length)
         if executable:
             os.chmod(dest_path_tmp, os.stat(dest_path_tmp).st_mode | stat.S_IXUSR)
@@ -179,9 +193,11 @@ def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> 
             return generated_dir_path
         except FileExistsError:
             pass
-    for i in range(4, 32 + 1):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
+    for i in range(
+        4, 32 + 1
+    ):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
         for _ in range(10):  # make 10 attempts for each length
-            truncated_uuid: str = str(uuid.uuid4()).replace('-', '')[:i]
+            truncated_uuid: str = str(uuid.uuid4()).replace("-", "")[:i]
             generated_dir_path: str = os.path.join(in_directory, truncated_uuid)
             try:
                 os.mkdir(generated_dir_path)
@@ -193,6 +209,7 @@ def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> 
     os.mkdir(this_should_never_happen)
     os.chmod(this_should_never_happen, 0o777)
     return this_should_never_happen
+
 
 def try_path(path: str, min_size: int = 100 * 1024 * 1024) -> Optional[str]:
     """

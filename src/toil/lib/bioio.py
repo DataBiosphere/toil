@@ -27,15 +27,19 @@ def system(command):
     will be passed to subprocess.check_call.
     :type command: str | sequence[string]
     """
-    logger.warning('Deprecated toil method that will be moved/replaced in a future release."')
-    logger.debug(f'Running: {command}')
+    logger.warning(
+        'Deprecated toil method that will be moved/replaced in a future release."'
+    )
+    logger.debug(f"Running: {command}")
     subprocess.check_call(command, shell=isinstance(command, str), bufsize=-1)
 
 
 # Used by cactus; now a wrapper and not used in Toil.
 # TODO: Remove from cactus and then remove from Toil.
 def getLogLevelString(logger=None):
-    root_logger.warning('Deprecated toil method.  Please call "logging.getLevelName" directly.')
+    root_logger.warning(
+        'Deprecated toil method.  Please call "logging.getLevelName" directly.'
+    )
     if logger is None:
         logger = root_logger
     return logging.getLevelName(logger.getEffectiveLevel())
@@ -44,12 +48,16 @@ def getLogLevelString(logger=None):
 # Used by cactus; now a wrapper and not used in Toil.
 # TODO: Remove from cactus and then remove from Toil.
 def setLoggingFromOptions(options):
-    logger.warning('Deprecated toil method.  Please use "toil.statsAndLogging.set_logging_from_options()" instead."')
+    logger.warning(
+        'Deprecated toil method.  Please use "toil.statsAndLogging.set_logging_from_options()" instead."'
+    )
     set_logging_from_options(options)
 
 
 # Used by cactus; now a wrapper and not used in Toil.
 # TODO: Remove from cactus and then remove from Toil.
 def getTempFile(suffix="", rootDir=None):
-    logger.warning('Deprecated toil method.  Please use "toil.test.get_temp_file()" instead."')
+    logger.warning(
+        'Deprecated toil method.  Please use "toil.test.get_temp_file()" instead."'
+    )
     return get_temp_file(suffix, rootDir)

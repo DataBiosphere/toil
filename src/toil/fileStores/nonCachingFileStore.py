@@ -16,21 +16,20 @@ import logging
 import os
 import tempfile
 from collections import defaultdict
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from typing import (IO,
-                    Any,
-                    Callable,
-                    ContextManager,
-                    DefaultDict,
-                    Dict,
-                    Generator,
-                    Iterator,
-                    List,
-                    Literal,
-                    Optional,
-                    Union,
-                    cast,
-                    overload)
+from typing import (
+    IO,
+    Any,
+    Callable,
+    ContextManager,
+    DefaultDict,
+    Literal,
+    Optional,
+    Union,
+    cast,
+    overload,
+)
 
 import dill
 
@@ -42,7 +41,12 @@ from toil.jobStores.abstractJobStore import AbstractJobStore
 from toil.lib.compatibility import deprecated
 from toil.lib.io import make_public_dir, robust_rmtree
 from toil.lib.retry import ErrorCondition, retry
-from toil.lib.threading import get_process_name, process_name_exists, safe_lock, safe_unlock_and_close
+from toil.lib.threading import (
+    get_process_name,
+    process_name_exists,
+    safe_lock,
+    safe_unlock_and_close,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -58,7 +62,7 @@ class NonCachingFileStore(AbstractFileStore):
         super().__init__(jobStore, jobDesc, file_store_dir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile: Optional[str] = None
-        self.localFileMap: DefaultDict[str, List[str]] = defaultdict(list)
+        self.localFileMap: DefaultDict[str, list[str]] = defaultdict(list)
 
         self.check_for_state_corruption()
 
@@ -77,10 +81,10 @@ class NonCachingFileStore(AbstractFileStore):
 
         if coordination_dir and not os.path.exists(coordination_dir):
             raise RuntimeError(
-                f'The Toil coordination directory at {coordination_dir} '
-                f'was removed while the workflow was running! Please provide a '
-                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
-                f'is safe from automated cleanup during the workflow run.'
+                f"The Toil coordination directory at {coordination_dir} "
+                f"was removed while the workflow was running! Please provide a "
+                f"TOIL_COORDINATION_DIR or --coordinationDir at a location that "
+                f"is safe from automated cleanup during the workflow run."
             )
 
     def check_for_state_corruption(self) -> None:
@@ -92,22 +96,26 @@ class NonCachingFileStore(AbstractFileStore):
 
         if self.jobStateFile and not os.path.exists(self.jobStateFile):
             raise RuntimeError(
-                f'The job state file {self.jobStateFile} '
-                f'was removed while the workflow was running! Please provide a '
-                f'TOIL_COORDINATION_DIR or --coordinationDir at a location that '
-                f'is safe from automated cleanup during the workflow run.'
+                f"The job state file {self.jobStateFile} "
+                f"was removed while the workflow was running! Please provide a "
+                f"TOIL_COORDINATION_DIR or --coordinationDir at a location that "
+                f"is safe from automated cleanup during the workflow run."
             )
 
     @contextmanager
     def open(self, job: Job) -> Generator[None, None, None]:
         startingDir = os.getcwd()
-        self.localTempDir: str = make_public_dir(self.localTempDir, suggested_name="job")
+        self.localTempDir: str = make_public_dir(
+            self.localTempDir, suggested_name="job"
+        )
         self._removeDeadJobs(self.coordination_dir)
         self.jobStateFile = self._createJobStateFile()
         self.check_for_state_corruption()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
-            logger.warning(f'Starting job {self.jobName} with less than 10%% of disk space remaining.')
+            logger.warning(
+                f"Starting job {self.jobName} with less than 10%% of disk space remaining."
+            )
         try:
             os.chdir(self.localTempDir)
             with super().open(job):
@@ -119,10 +127,12 @@ class NonCachingFileStore(AbstractFileStore):
             try:
                 os.remove(self.jobStateFile)
             except FileNotFoundError:
-                logger.exception('Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!', self.jobStateFile)
-                pass
+                logger.exception(
+                    "Job state file %s has gone missing unexpectedly; some cleanup for failed jobs may be getting skipped!",
+                    self.jobStateFile,
+                )
 
-    def writeGlobalFile(self, localFileName: str, cleanup: bool=False) -> FileID:
+    def writeGlobalFile(self, localFileName: str, cleanup: bool = False) -> FileID:
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = str(self.jobDesc.jobStoreID)
         fileStoreID = self.jobStore.write_file(absLocalFileName, creatorID, cleanup)
@@ -132,12 +142,20 @@ class NonCachingFileStore(AbstractFileStore):
             self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
-    def readGlobalFile(self, fileStoreID: str, userPath: Optional[str] = None, cache: bool=True, mutable: bool=False,
-                            symlink: bool=False) -> str:
+    def readGlobalFile(
+        self,
+        fileStoreID: str,
+        userPath: Optional[str] = None,
+        cache: bool = True,
+        mutable: bool = False,
+        symlink: bool = False,
+    ) -> str:
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
-                raise RuntimeError(' File %s ' % localFilePath + ' exists. Cannot Overwrite.')
+                raise RuntimeError(
+                    " File %s " % localFilePath + " exists. Cannot Overwrite."
+                )
         else:
             localFilePath = self.getLocalTempFileName()
 
@@ -152,25 +170,30 @@ class NonCachingFileStore(AbstractFileStore):
         fileStoreID: str,
         encoding: Literal[None] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[IO[bytes]]:
-        ...
+    ) -> ContextManager[IO[bytes]]: ...
 
     @overload
     def readGlobalFileStream(
         self, fileStoreID: str, encoding: str, errors: Optional[str] = None
-    ) -> ContextManager[IO[str]]:
-        ...
+    ) -> ContextManager[IO[str]]: ...
 
     # TODO: This seems to hit https://github.com/python/mypy/issues/11373
     # But that is supposedly fixed.
 
-    @contextmanager # type: ignore
-    def readGlobalFileStream(self, fileStoreID: str, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[Union[IO[bytes], IO[str]]]:
-        with self.jobStore.read_file_stream(fileStoreID, encoding=encoding, errors=errors) as f:
+    @contextmanager  # type: ignore
+    def readGlobalFileStream(
+        self,
+        fileStoreID: str,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[Union[IO[bytes], IO[str]]]:
+        with self.jobStore.read_file_stream(
+            fileStoreID, encoding=encoding, errors=errors
+        ) as f:
             self.logAccess(fileStoreID)
             yield f
 
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
@@ -181,7 +204,9 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
-            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
+            raise OSError(
+                errno.ENOENT, "Attempting to delete local copies of a file with none"
+            )
         else:
             for localFilePath in localFilePaths:
                 os.remove(localFilePath)
@@ -232,7 +257,6 @@ class NonCachingFileStore(AbstractFileStore):
             self._terminateEvent.set()
             raise
 
-
     def __del__(self) -> None:
         """
         Cleanup function that is run when destroying the class instance.  Nothing to do since there
@@ -240,7 +264,9 @@ class NonCachingFileStore(AbstractFileStore):
         """
 
     @classmethod
-    def _removeDeadJobs(cls, coordination_dir: str, batchSystemShutdown: bool=False) -> None:
+    def _removeDeadJobs(
+        cls, coordination_dir: str, batchSystemShutdown: bool = False
+    ) -> None:
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
@@ -253,13 +279,13 @@ class NonCachingFileStore(AbstractFileStore):
         cls.check_for_coordination_corruption(coordination_dir)
 
         for jobState in cls._getAllJobStates(coordination_dir):
-            if not process_name_exists(coordination_dir, jobState['jobProcessName']):
+            if not process_name_exists(coordination_dir, jobState["jobProcessName"]):
                 # We need to have a race to pick someone to clean up.
 
                 try:
                     # Open the directory.
                     # We can't open a directory for write, only for read.
-                    dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
+                    dirFD = os.open(jobState["jobDir"], os.O_RDONLY)
                 except FileNotFoundError:
                     # The cleanup has happened and we can't contest for it
                     continue
@@ -276,8 +302,11 @@ class NonCachingFileStore(AbstractFileStore):
                     # has it locked. So loop around again.
                 else:
                     # We got it
-                    logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                   'state of the job on disk.', jobState['jobName'])
+                    logger.warning(
+                        "Detected that job (%s) prematurely terminated.  Fixing the "
+                        "state of the job on disk.",
+                        jobState["jobName"],
+                    )
 
                     try:
                         if not batchSystemShutdown:
@@ -285,12 +314,12 @@ class NonCachingFileStore(AbstractFileStore):
                             # Delete the old work directory if it still exists.  Do this only during
                             # the life of the program and dont' do it during the batch system
                             # cleanup. Leave that to the batch system cleanup code.
-                            robust_rmtree(jobState['jobDir'])
+                            robust_rmtree(jobState["jobDir"])
                     finally:
                         safe_unlock_and_close(dirFD)
 
     @classmethod
-    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[Dict[str, str]]:
+    def _getAllJobStates(cls, coordination_dir: str) -> Iterator[dict[str, str]]:
         """
         Generator function that deserializes and yields the job state for every job on the node,
         one at a time.
@@ -307,7 +336,7 @@ class NonCachingFileStore(AbstractFileStore):
         # So we need to work in bytes.
         for entry in os.scandir(os.fsencode(coordination_dir)):
             # For each job state file in the coordination directory
-            if entry.name.endswith(b'.jobState'):
+            if entry.name.endswith(b".jobState"):
                 # This is the state of a job
                 jobStateFiles.append(os.fsdecode(entry.path))
 
@@ -320,7 +349,7 @@ class NonCachingFileStore(AbstractFileStore):
                     # job finished & deleted its jobState file since the jobState files were discovered
                     continue
                 elif e.errno == 5:
-                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear 
+                    # This is a OSError: [Errno 5] Input/output error (jobStatefile seems to disappear
                     # on network file system sometimes)
                     continue
                 else:
@@ -328,16 +357,16 @@ class NonCachingFileStore(AbstractFileStore):
 
     @staticmethod
     # Retry on any OSError except FileNotFoundError, which we throw immediately
-    @retry(errors=[
-        OSError,
-        ErrorCondition(
-            error=FileNotFoundError,
-            retry_on_this_condition=False
-        )])
-    def _readJobState(jobStateFileName: str) -> Dict[str, str]:
-        with open(jobStateFileName, 'rb') as fH:
+    @retry(
+        errors=[
+            OSError,
+            ErrorCondition(error=FileNotFoundError, retry_on_this_condition=False),
+        ]
+    )
+    def _readJobState(jobStateFileName: str) -> dict[str, str]:
+        with open(jobStateFileName, "rb") as fH:
             state = dill.load(fH)
-        return cast(Dict[str, str], state)
+        return cast(dict[str, str], state)
 
     def _createJobStateFile(self) -> str:
         """
@@ -350,20 +379,26 @@ class NonCachingFileStore(AbstractFileStore):
         :rtype: str
         """
         self.check_for_state_corruption()
-        jobState = {'jobProcessName': get_process_name(self.coordination_dir),
-                    'jobName': self.jobName,
-                    'jobDir': self.localTempDir}
+        jobState = {
+            "jobProcessName": get_process_name(self.coordination_dir),
+            "jobName": self.jobName,
+            "jobDir": self.localTempDir,
+        }
         try:
-            (fd, jobStateFile) = tempfile.mkstemp(suffix='.jobState.tmp', dir=self.coordination_dir)
+            (fd, jobStateFile) = tempfile.mkstemp(
+                suffix=".jobState.tmp", dir=self.coordination_dir
+            )
         except Exception as e:
-            raise RuntimeError("Could not make state file in " + self.coordination_dir) from e
-        with open(fd, 'wb') as fH:
+            raise RuntimeError(
+                "Could not make state file in " + self.coordination_dir
+            ) from e
+        with open(fd, "wb") as fH:
             # Write data
             dill.dump(jobState, fH)
         # Drop suffix
-        jobStateFile = jobStateFile[:-len('.tmp')]
+        jobStateFile = jobStateFile[: -len(".tmp")]
         # Put in place
-        os.rename(jobStateFile + '.tmp', jobStateFile)
+        os.rename(jobStateFile + ".tmp", jobStateFile)
         return jobStateFile
 
     @classmethod

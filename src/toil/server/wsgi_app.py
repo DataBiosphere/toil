@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from gunicorn.app.base import BaseApplication  # type: ignore
 
@@ -29,7 +29,8 @@ class GunicornApplication(BaseApplication):  # type: ignore
 
     For more details, see: https://docs.gunicorn.org/en/latest/custom.html
     """
-    def __init__(self, app: object, options: Optional[Dict[str, Any]] = None):
+
+    def __init__(self, app: object, options: Optional[dict[str, Any]] = None):
         self.options = options or {}
         self.application = app
         super().__init__()
@@ -51,7 +52,7 @@ class GunicornApplication(BaseApplication):  # type: ignore
         return self.application
 
 
-def run_app(app: object, options: Optional[Dict[str, Any]] = None) -> None:
+def run_app(app: object, options: Optional[dict[str, Any]] = None) -> None:
     """
     Run a Gunicorn WSGI server.
     """

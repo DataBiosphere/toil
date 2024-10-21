@@ -16,12 +16,8 @@ import os
 import subprocess
 import tempfile
 
-import pytest
-
-from toil.test import ToilTest
-
 from toil.lib.resources import glob
-from toil.test import slow, needs_wdl
+from toil.test import ToilTest, needs_wdl, slow
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -121,6 +117,7 @@ def testFetchJobStoreFiles() -> None:
     for symlink in (True, False):
         fetchFiles(symLink=symlink, jobStoreDir=job_store_dir, outputDir=output_dir)
 
+
 class DebugJobTest(ToilTest):
     """
     Test the toil debug-job command.
@@ -137,23 +134,28 @@ class DebugJobTest(ToilTest):
         logger.info("Running workflow that always fails")
         try:
             # Run an always-failing workflow
-            subprocess.check_call([
-                python,
-                os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
-                "--retryCount=0",
-                "--logCritical",
-                "--disableProgress",
-                job_store
-            ], stderr=subprocess.DEVNULL)
+            subprocess.check_call(
+                [
+                    python,
+                    os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
+                    "--retryCount=0",
+                    "--logCritical",
+                    "--disableProgress",
+                    job_store,
+                ],
+                stderr=subprocess.DEVNULL,
+            )
             raise RuntimeError("Failing workflow succeeded!")
         except subprocess.CalledProcessError:
             # Should fail to run
             logger.info("Task failed successfully")
-            pass
-        
+
         # Get the job ID.
         # TODO: This assumes a lot about the FileJobStore. Use the MessageBus instead?
-        job_id = "kind-explode/" + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
+        job_id = (
+            "kind-explode/"
+            + os.listdir(os.path.join(job_store, "jobs/kind-explode"))[0]
+        )
 
         return job_store, job_id
 
@@ -161,7 +163,7 @@ class DebugJobTest(ToilTest):
         """
         Get a job store and the name of a failed job in it that actually wanted to use some files.
         """
-        
+
         # First make a job store.
         job_store = os.path.join(self._createTempDir(), "tree")
 
@@ -170,12 +172,14 @@ class DebugJobTest(ToilTest):
         wf_result = subprocess.run(
             [
                 "toil-wdl-runner",
-                os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"),
+                os.path.abspath(
+                    "src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"
+                ),
                 "--retryCount=0",
                 "--logDebug",
                 "--disableProgress",
                 "--jobStore",
-                job_store
+                job_store,
             ],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -191,7 +195,9 @@ class DebugJobTest(ToilTest):
         # Make sure that the job store we created actually has its job store
         # root job ID file. If it doesn't, we failed during workflow setup and
         # not because of a real failing job.
-        assert os.path.exists(os.path.join(job_store, "files/shared/rootJobStoreID")), "Failed workflow still needs a root job"
+        assert os.path.exists(
+            os.path.join(job_store, "files/shared/rootJobStoreID")
+        ), "Failed workflow still needs a root job"
 
         # Get a job name for a job that fails
         job_name = "WDLTaskJob"
@@ -208,17 +214,13 @@ class DebugJobTest(ToilTest):
         logger.info("Trying to rerun job %s", job_id)
 
         # Rerun the job, which should fail again
-        output = subprocess.check_output([
-            "toil",
-            "debug-job",
-            "--logDebug",
-            job_store,
-            job_id
-        ], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(
+            ["toil", "debug-job", "--logDebug", job_store, job_id],
+            stderr=subprocess.STDOUT,
+        )
         # Even if the job fails, the attempt to run it will succeed.
-        log = output.decode('utf-8')
+        log = output.decode("utf-8")
         assert "Boom!" in log, f"Did not find the expected exception message in: {log}"
-
 
     def test_print_job_info(self):
         """
@@ -230,14 +232,9 @@ class DebugJobTest(ToilTest):
         logger.info("Trying to print job info for job %s", job_id)
 
         # Print the job info and make sure that doesn't crash.
-        subprocess.check_call([
-            "toil",
-            "debug-job",
-            "--logDebug",
-            job_store,
-            "--printJobInfo",
-            job_id
-        ])
+        subprocess.check_call(
+            ["toil", "debug-job", "--logDebug", job_store, "--printJobInfo", job_id]
+        )
 
     @needs_wdl
     def test_retrieve_task_directory(self):
@@ -252,18 +249,23 @@ class DebugJobTest(ToilTest):
         dest_dir = os.path.join(self._createTempDir(), "dump")
 
         # Print the job info and make sure that doesn't crash.
-        subprocess.check_call([
-            "toil",
-            "debug-job",
-            "--logDebug",
-            job_store,
-            job_name,
-            "--retrieveTaskDirectory",
-            dest_dir
-        ])
-        
-        first_file = os.path.join(dest_dir, "inside/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/test.txt")
-        assert os.path.exists(first_file), "Input file not found in fake container environment"
+        subprocess.check_call(
+            [
+                "toil",
+                "debug-job",
+                "--logDebug",
+                job_store,
+                job_name,
+                "--retrieveTaskDirectory",
+                dest_dir,
+            ]
+        )
+
+        first_file = os.path.join(
+            dest_dir,
+            "inside/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/test.txt",
+        )
+        assert os.path.exists(
+            first_file
+        ), "Input file not found in fake container environment"
         self.assertEqual(open(first_file).read(), "These are the contents\n")
-
-

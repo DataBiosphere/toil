@@ -13,12 +13,11 @@
 # limitations under the License.
 import logging
 import time
-from typing import Dict, Optional, Set
+from typing import Optional
 
 from toil.bus import JobUpdatedMessage, MessageBus
 from toil.job import CheckpointJobDescription, JobDescription
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException)
+from toil.jobStores.abstractJobStore import AbstractJobStore, NoSuchJobException
 
 logger = logging.getLogger(__name__)
 
@@ -63,47 +62,47 @@ class ToilState:
         # This holds the one true copy of every JobDescription in the leader.
         # TODO: Do in-place update instead of assignment when we load so we
         # can't let any non-true copies escape.
-        self.__job_database: Dict[str, JobDescription] = {}
+        self.__job_database: dict[str, JobDescription] = {}
 
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreIDs
-        self.successor_to_predecessors: Dict[str, Set[str]] = {}
+        self.successor_to_predecessors: dict[str, set[str]] = {}
 
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
-        self.successorCounts: Dict[str, int] = {}
+        self.successorCounts: dict[str, int] = {}
 
         # This is a hash of service jobs, referenced by jobStoreID, to their client's ID
-        self.service_to_client: Dict[str, str] = {}
+        self.service_to_client: dict[str, str] = {}
 
         # Holds, for each client job ID, the job IDs of its services that are
         # possibly currently issued. Includes every service host that has been
         # given to the service manager by the leader, and hasn't been seen by
         # the leader as stopped yet.
-        self.servicesIssued: Dict[str, Set[str]] = {}
+        self.servicesIssued: dict[str, set[str]] = {}
 
         # Holds the IDs of jobs that are currently issued to the batch system
         # and haven't come back yet.
         # TODO: a bit redundant with leader's issued_jobs_by_batch_system_id
-        self.jobs_issued: Set[str] = set()
+        self.jobs_issued: set[str] = set()
 
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
-        self.totalFailedJobs: Set[str] = set()
+        self.totalFailedJobs: set[str] = set()
 
         # Jobs (as jobStoreIDs) with successors that have totally failed
-        self.hasFailedSuccessors: Set[str] = set()
+        self.hasFailedSuccessors: set[str] = set()
 
         # The set of successors of failed jobs as a set of jobStoreIds
-        self.failedSuccessors: Set[str] = set()
+        self.failedSuccessors: set[str] = set()
 
         # Set of jobs that have multiple predecessors that have one or more predecessors
         # finished, but not all of them.
-        self.jobsToBeScheduledWithMultiplePredecessors: Set[str] = set()
+        self.jobsToBeScheduledWithMultiplePredecessors: set[str] = set()
 
     def load_workflow(
         self,
         rootJob: JobDescription,
-        jobCache: Optional[Dict[str, JobDescription]] = None
+        jobCache: Optional[dict[str, JobDescription]] = None,
     ) -> None:
         """
         Load the workflow rooted at the given job.
@@ -281,7 +280,11 @@ class ToilState:
             )
         else:
             self.successorCounts[predecessor_id] -= 1
-            logger.debug("Successors: one fewer for %s, now have %d", predecessor_id, self.successorCounts[predecessor_id])
+            logger.debug(
+                "Successors: one fewer for %s, now have %d",
+                predecessor_id,
+                self.successorCounts[predecessor_id],
+            )
             if self.successorCounts[predecessor_id] == 0:
                 del self.successorCounts[predecessor_id]
 
@@ -295,7 +298,6 @@ class ToilState:
             return 0
         else:
             return self.successorCounts[predecessor_id]
-
 
     def _buildToilState(self, jobDesc: JobDescription) -> None:
         """
@@ -330,7 +332,10 @@ class ToilState:
             # Set the job updated because we should be able to make progress on it.
             self.bus.publish(JobUpdatedMessage(str(jobDesc.jobStoreID), 0))
 
-            if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
+            if (
+                isinstance(jobDesc, CheckpointJobDescription)
+                and jobDesc.checkpoint is not None
+            ):
                 jobDesc.restore_checkpoint()
 
         else:  # There exist successors
@@ -345,7 +350,9 @@ class ToilState:
                 jobDesc.nextSuccessors() or set()
             )
 
-            def processSuccessorWithMultiplePredecessors(successor: JobDescription) -> None:
+            def processSuccessorWithMultiplePredecessors(
+                successor: JobDescription,
+            ) -> None:
                 # If jobDesc is not reported as complete by the successor
                 if jobDesc.jobStoreID not in successor.predecessorsFinished:
 
@@ -354,11 +361,15 @@ class ToilState:
 
                 # If the successor has no predecessors to finish
                 if len(successor.predecessorsFinished) > successor.predecessorNumber:
-                    raise RuntimeError("There are more finished predecessors than possible.")
+                    raise RuntimeError(
+                        "There are more finished predecessors than possible."
+                    )
                 if len(successor.predecessorsFinished) == successor.predecessorNumber:
 
                     # It is ready to be run, so remove it from the set of waiting jobs
-                    self.jobsToBeScheduledWithMultiplePredecessors.remove(successorJobStoreID)
+                    self.jobsToBeScheduledWithMultiplePredecessors.remove(
+                        successorJobStoreID
+                    )
 
                     # Recursively consider the successor
                     self._buildToilState(successor)
@@ -383,9 +394,16 @@ class ToilState:
 
                         # We put the successor job in the set of waiting successor
                         # jobs with multiple predecessors
-                        if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
-                            raise RuntimeError("Failed to schedule the successor job. The successor job is already scheduled.")
-                        self.jobsToBeScheduledWithMultiplePredecessors.add(successorJobStoreID)
+                        if (
+                            successorJobStoreID
+                            in self.jobsToBeScheduledWithMultiplePredecessors
+                        ):
+                            raise RuntimeError(
+                                "Failed to schedule the successor job. The successor job is already scheduled."
+                            )
+                        self.jobsToBeScheduledWithMultiplePredecessors.add(
+                            successorJobStoreID
+                        )
 
                         # Process successor
                         processSuccessorWithMultiplePredecessors(successor)
@@ -399,14 +417,22 @@ class ToilState:
                     # We've already seen the successor
 
                     # Add the job as a predecessor
-                    if jobDesc.jobStoreID in self.successor_to_predecessors[successorJobStoreID]:
-                        raise RuntimeError("Failed to add the job as a predecessor. The job is already added as a predecessor.")
+                    if (
+                        jobDesc.jobStoreID
+                        in self.successor_to_predecessors[successorJobStoreID]
+                    ):
+                        raise RuntimeError(
+                            "Failed to add the job as a predecessor. The job is already added as a predecessor."
+                        )
                     self.successor_to_predecessors[successorJobStoreID].add(
                         str(jobDesc.jobStoreID)
                     )
 
                     # If the successor has multiple predecessors
-                    if successorJobStoreID in self.jobsToBeScheduledWithMultiplePredecessors:
+                    if (
+                        successorJobStoreID
+                        in self.jobsToBeScheduledWithMultiplePredecessors
+                    ):
 
                         # Get the successor from cache
                         successor = self.get_job(successorJobStoreID)

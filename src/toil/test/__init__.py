@@ -1,4 +1,5 @@
 """Base testing class for Toil."""
+
 # Copyright (C) 2015-2021 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,42 +21,28 @@ import re
 import shutil
 import signal
 import subprocess
-import sys
 import threading
 import time
 import unittest
 import uuid
+import zoneinfo
 from abc import ABCMeta, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from inspect import getsource
 from shutil import which
 from tempfile import mkstemp
 from textwrap import dedent
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Generator,
-                    List,
-                    Literal,
-                    Optional,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    cast)
+from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
 from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-
-if sys.version_info >= (3, 9):
-    import zoneinfo
-else:
-    from backports import zoneinfo
-
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
-from toil.lib.accelerators import (have_working_nvidia_docker_runtime,
-                                   have_working_nvidia_smi)
+from toil.lib.accelerators import (
+    have_working_nvidia_docker_runtime,
+    have_working_nvidia_smi,
+)
 from toil.lib.io import mkdtemp
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
@@ -82,20 +69,24 @@ class ToilTest(unittest.TestCase):
     """
 
     _tempBaseDir: Optional[str] = None
-    _tempDirs: List[str] = []
+    _tempDirs: list[str] = []
 
     def setup_method(self, method: Any) -> None:
         western = zoneinfo.ZoneInfo("America/Los_Angeles")
         california_time = datetime.datetime.now(tz=western)
         timestamp = california_time.strftime("%b %d %Y %H:%M:%S:%f %Z")
-        print(f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n")
+        print(
+            f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n"
+        )
 
     @classmethod
     def setUpClass(cls) -> None:
         super().setUpClass()
-        tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
+        tempBaseDir = os.environ.get("TOIL_TEST_TEMP", None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
-            tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
+            tempBaseDir = os.path.abspath(
+                os.path.join(cls._projectRootPath(), tempBaseDir)
+            )
             os.makedirs(tempBaseDir, exist_ok=True)
         cls._tempBaseDir = tempBaseDir
 
@@ -127,7 +118,8 @@ class ToilTest(unittest.TestCase):
         the instance is located
         """
         from toil.lib.aws import running_on_ec2
-        return cls._region() if running_on_ec2() else 'us-west-2'
+
+        return cls._region() if running_on_ec2() else "us-west-2"
 
     @classmethod
     def _availabilityZone(cls) -> str:
@@ -151,13 +143,15 @@ class ToilTest(unittest.TestCase):
         The region will not change over the life of the instance so the result
         is memoized to avoid unnecessary work.
         """
-        region = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
+        region = re.match(
+            r"^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$", cls._availabilityZone()
+        )
         assert region
         return region.group(1)
 
     @classmethod
     def _getUtilScriptPath(cls, script_name: str) -> str:
-        return os.path.join(toilPackageDirPath(), 'utils', script_name + '.py')
+        return os.path.join(toilPackageDirPath(), "utils", script_name + ".py")
 
     @classmethod
     def _projectRootPath(cls) -> str:
@@ -169,12 +163,12 @@ class ToilTest(unittest.TestCase):
         mode, since it assumes the existence of a src subdirectory which, in a regular install
         wouldn't exist. Then again, in that mode project root has no meaning anyways.
         """
-        assert re.search(r'__init__\.pyc?$', __file__)
+        assert re.search(r"__init__\.pyc?$", __file__)
         projectRootPath = os.path.dirname(os.path.abspath(__file__))
-        packageComponents = __name__.split('.')
-        expectedSuffix = os.path.join('src', *packageComponents)
+        packageComponents = __name__.split(".")
+        expectedSuffix = os.path.join("src", *packageComponents)
         assert projectRootPath.endswith(expectedSuffix)
-        projectRootPath = projectRootPath[:-len(expectedSuffix)]
+        projectRootPath = projectRootPath[: -len(expectedSuffix)]
         return projectRootPath
 
     def _createTempDir(self, purpose: Optional[str] = None) -> str:
@@ -187,7 +181,7 @@ class ToilTest(unittest.TestCase):
             classname = classname[len("toil.test.") :]
         prefix = ["toil", "test", classname]
         prefix.extend([_f for _f in names if _f])
-        prefix.append('')
+        prefix.append("")
         temp_dir_path = os.path.realpath(
             mkdtemp(dir=cls._tempBaseDir, prefix="-".join(prefix))
         )
@@ -277,9 +271,9 @@ class ToilTest(unittest.TestCase):
         capture = kwargs.pop("capture", False)
         _input = kwargs.pop("input", None)
         if capture:
-            kwargs['stdout'] = subprocess.PIPE
+            kwargs["stdout"] = subprocess.PIPE
         if _input is not None:
-            kwargs['stdin'] = subprocess.PIPE
+            kwargs["stdin"] = subprocess.PIPE
         popen = subprocess.Popen(args, universal_newlines=True, **kwargs)
         stdout, stderr = popen.communicate(input=_input)
         assert stderr is None
@@ -295,7 +289,8 @@ class ToilTest(unittest.TestCase):
         This is a naughty but incredibly useful trick that lets you embed user scripts
         as nested functions and expose them to the syntax checker of your IDE.
         """
-        return dedent('\n'.join(getsource(callable_).split('\n')[1:]))
+        return dedent("\n".join(getsource(callable_).split("\n")[1:]))
+
 
 MT = TypeVar("MT", bound=Callable[..., Any])
 
@@ -306,6 +301,7 @@ except ImportError:
     # noinspection PyUnusedLocal
     def _mark_test(name: str, test_item: MT) -> MT:
         return test_item
+
 else:
 
     def _mark_test(name: str, test_item: MT) -> MT:
@@ -319,7 +315,7 @@ def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
         os.close(handle)
         return tmp_file
     else:
-        alphanumerics = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        alphanumerics = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
         tmp_file = os.path.join(
             rootDir,
             f"tmp_{''.join([random.choice(alphanumerics) for _ in range(0, 10)])}{suffix}",
@@ -328,17 +324,23 @@ def get_temp_file(suffix: str = "", rootDir: Optional[str] = None) -> str:
         os.chmod(tmp_file, 0o777)  # Ensure everyone has access to the file.
         return tmp_file
 
+
 def needs_env_var(var_name: str, comment: Optional[str] = None) -> Callable[[MT], MT]:
     """
     Use as a decorator before test classes or methods to run only if the given
     environment variable is set.
     Can include a comment saying what the variable should be set to.
     """
+
     def decorator(test_item: MT) -> MT:
         if not os.getenv(var_name):
-            return unittest.skip(f"Set {var_name}{' to ' + comment if comment else ''} to include this test.")(test_item)
+            return unittest.skip(
+                f"Set {var_name}{' to ' + comment if comment else ''} to include this test."
+            )(test_item)
         return test_item
+
     return decorator
+
 
 def needs_rsync3(test_item: MT) -> MT:
     """
@@ -347,32 +349,34 @@ def needs_rsync3(test_item: MT) -> MT:
     Necessary because :meth:`utilsTest.testAWSProvisionerUtils` uses option `--protect-args`
     which is only available in rsync 3
     """
-    test_item = _mark_test('rsync', test_item)
+    test_item = _mark_test("rsync", test_item)
     try:
-        versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
+        versionInfo = subprocess.check_output(["rsync", "--version"]).decode("utf-8")
         # output looks like: 'rsync  version 2.6.9 ...'
         if int(versionInfo.split()[2].split(".")[0]) < 3:
             return unittest.skip("This test depends on rsync version 3.0.0+.")(
                 test_item
             )
     except subprocess.CalledProcessError:
-        return unittest.skip('rsync needs to be installed to run this test.')(test_item)
+        return unittest.skip("rsync needs to be installed to run this test.")(test_item)
     return test_item
 
 
 def needs_online(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if we are meant to talk to the Internet."""
-    test_item = _mark_test('online', test_item)
-    if os.getenv('TOIL_SKIP_ONLINE', '').lower() == 'true':
-        return unittest.skip('Skipping online test.')(test_item)
+    test_item = _mark_test("online", test_item)
+    if os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true":
+        return unittest.skip("Skipping online test.")(test_item)
     return test_item
+
 
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
-    test_item = _mark_test('aws-s3', needs_online(test_item))
+    test_item = _mark_test("aws-s3", needs_online(test_item))
     try:
         from boto3 import Session
+
         session = Session()
         boto3_credentials = session.get_credentials()
     except ImportError:
@@ -380,18 +384,25 @@ def needs_aws_s3(test_item: MT) -> MT:
             test_item
         )
     from toil.lib.aws import running_on_ec2
-    if not (boto3_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or running_on_ec2()):
-        return unittest.skip("Configure AWS credentials to include this test.")(test_item)
+
+    if not (
+        boto3_credentials
+        or os.path.exists(os.path.expanduser("~/.aws/credentials"))
+        or running_on_ec2()
+    ):
+        return unittest.skip("Configure AWS credentials to include this test.")(
+            test_item
+        )
     return test_item
 
 
 def needs_aws_ec2(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
     # Assume we need S3 as well as EC2
-    test_item = _mark_test('aws-ec2', needs_aws_s3(test_item))
+    test_item = _mark_test("aws-ec2", needs_aws_s3(test_item))
     # In addition to S3 we also need an SSH key to deploy with.
     # TODO: We assume that if this is set we have EC2 access.
-    test_item = needs_env_var('TOIL_AWS_KEYNAME', 'an AWS-stored SSH key')(test_item)
+    test_item = needs_env_var("TOIL_AWS_KEYNAME", "an AWS-stored SSH key")(test_item)
     return test_item
 
 
@@ -401,16 +412,23 @@ def needs_aws_batch(test_item: MT) -> MT:
     is usable.
     """
     # Assume we need S3 as well as Batch
-    test_item = _mark_test('aws-batch', needs_aws_s3(test_item))
+    test_item = _mark_test("aws-batch", needs_aws_s3(test_item))
     # Assume we have Batch if the user has set these variables.
-    test_item = needs_env_var('TOIL_AWS_BATCH_QUEUE', 'an AWS Batch queue name or ARN')(test_item)
-    test_item = needs_env_var('TOIL_AWS_BATCH_JOB_ROLE_ARN', 'an IAM role ARN that grants S3 and SDB access')(test_item)
+    test_item = needs_env_var("TOIL_AWS_BATCH_QUEUE", "an AWS Batch queue name or ARN")(
+        test_item
+    )
+    test_item = needs_env_var(
+        "TOIL_AWS_BATCH_JOB_ROLE_ARN", "an IAM role ARN that grants S3 and SDB access"
+    )(test_item)
     try:
         from toil.lib.aws import get_current_aws_region
+
         if get_current_aws_region() is None:
             # We don't know a region so we need one set.
             # TODO: It always won't be set if we get here.
-            test_item = needs_env_var('TOIL_AWS_REGION', 'an AWS region to use with AWS batch')(test_item)
+            test_item = needs_env_var(
+                "TOIL_AWS_REGION", "an AWS region to use with AWS batch"
+            )(test_item)
 
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
@@ -418,67 +436,79 @@ def needs_aws_batch(test_item: MT) -> MT:
         )
     return test_item
 
+
 def needs_google_storage(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if Google
     Cloud is installed and we ought to be able to access public Google Storage
     URIs.
     """
-    test_item = _mark_test('google-storage', needs_online(test_item))
+    test_item = _mark_test("google-storage", needs_online(test_item))
     try:
         from google.cloud import storage  # noqa
     except ImportError:
-        return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
+        return unittest.skip(
+            "Install Toil with the 'google' extra to include this test."
+        )(test_item)
 
     return test_item
+
 
 def needs_google_project(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
     """
-    test_item = _mark_test('google-project', needs_online(test_item))
-    test_item = needs_env_var('TOIL_GOOGLE_PROJECTID', "a Google project ID")(test_item)
+    test_item = _mark_test("google-project", needs_online(test_item))
+    test_item = needs_env_var("TOIL_GOOGLE_PROJECTID", "a Google project ID")(test_item)
     return test_item
 
 
 def needs_gridengine(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
-    test_item = _mark_test('gridengine', test_item)
-    if which('qhost'):
+    test_item = _mark_test("gridengine", test_item)
+    if which("qhost"):
         return test_item
     return unittest.skip("Install GridEngine to include this test.")(test_item)
 
 
 def needs_torque(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if PBS/Torque is installed."""
-    test_item = _mark_test('torque', test_item)
-    if which('pbsnodes'):
+    test_item = _mark_test("torque", test_item)
+    if which("pbsnodes"):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
+
 def needs_kubernetes_installed(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
-    test_item = _mark_test('kubernetes', test_item)
+    test_item = _mark_test("kubernetes", test_item)
     try:
         import kubernetes
+
         str(kubernetes)  # to prevent removal of this import
     except ImportError:
-        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+        return unittest.skip(
+            "Install Toil with the 'kubernetes' extra to include this test."
+        )(test_item)
     return test_item
+
 
 def needs_kubernetes(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
     test_item = needs_kubernetes_installed(needs_online(test_item))
     try:
         import kubernetes
+
         try:
             kubernetes.config.load_kube_config()
         except kubernetes.config.ConfigException:
             try:
                 kubernetes.config.load_incluster_config()
             except kubernetes.config.ConfigException:
-                return unittest.skip("Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
-                                     "or current pod) to include this test.")(test_item)
+                return unittest.skip(
+                    "Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
+                    "or current pod) to include this test."
+                )(test_item)
     except ImportError:
         # We should already be skipping this test
         pass
@@ -487,37 +517,50 @@ def needs_kubernetes(test_item: MT) -> MT:
 
 def needs_mesos(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""
-    test_item = _mark_test('mesos', test_item)
-    if not (which('mesos-master') or which('mesos-agent')):
-        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+    test_item = _mark_test("mesos", test_item)
+    if not (which("mesos-master") or which("mesos-agent")):
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test."
+        )(test_item)
     try:
         import psutil  # noqa
         import pymesos  # noqa
     except ImportError:
-        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test."
+        )(test_item)
     return test_item
 
 
 def needs_slurm(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Slurm is installed."""
-    test_item = _mark_test('slurm', test_item)
-    if which('squeue'):
+    test_item = _mark_test("slurm", test_item)
+    if which("squeue"):
         return test_item
     return unittest.skip("Install Slurm to include this test.")(test_item)
 
 
 def needs_htcondor(test_item: MT) -> MT:
     """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
-    test_item = _mark_test('htcondor', test_item)
+    test_item = _mark_test("htcondor", test_item)
     try:
         import htcondor
-        htcondor.Collector(os.getenv('TOIL_HTCONDOR_COLLECTOR')).query(constraint='False')
+
+        htcondor.Collector(os.getenv("TOIL_HTCONDOR_COLLECTOR")).query(
+            constraint="False"
+        )
     except ImportError:
-        return unittest.skip("Install the HTCondor Python bindings to include this test.")(test_item)
+        return unittest.skip(
+            "Install the HTCondor Python bindings to include this test."
+        )(test_item)
     except OSError:
-        return unittest.skip("HTCondor must be running to include this test.")(test_item)
+        return unittest.skip("HTCondor must be running to include this test.")(
+            test_item
+        )
     except RuntimeError:
-        return unittest.skip("HTCondor must be installed and configured to include this test.")(test_item)
+        return unittest.skip(
+            "HTCondor must be installed and configured to include this test."
+        )(test_item)
     else:
         return test_item
 
@@ -526,8 +569,8 @@ def needs_lsf(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if LSF is installed.
     """
-    test_item = _mark_test('lsf', test_item)
-    if which('bsub'):
+    test_item = _mark_test("lsf", test_item)
+    if which("bsub"):
         return test_item
     else:
         return unittest.skip("Install LSF to include this test.")(test_item)
@@ -535,8 +578,8 @@ def needs_lsf(test_item: MT) -> MT:
 
 def needs_java(test_item: MT) -> MT:
     """Use as a test decorator to run only if java is installed."""
-    test_item = _mark_test('java', test_item)
-    if which('java'):
+    test_item = _mark_test("java", test_item)
+    if which("java"):
         return test_item
     else:
         return unittest.skip("Install java to include this test.")(test_item)
@@ -547,24 +590,26 @@ def needs_docker(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     docker is installed and docker-based tests are enabled.
     """
-    test_item = _mark_test('docker', needs_online(test_item))
-    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
-        return unittest.skip('Skipping docker test.')(test_item)
-    if which('docker'):
+    test_item = _mark_test("docker", needs_online(test_item))
+    if os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true":
+        return unittest.skip("Skipping docker test.")(test_item)
+    if which("docker"):
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
+
 
 def needs_singularity(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
     singularity is installed.
     """
-    test_item = _mark_test('singularity', needs_online(test_item))
-    if which('singularity'):
+    test_item = _mark_test("singularity", needs_online(test_item))
+    if which("singularity"):
         return test_item
     else:
         return unittest.skip("Install singularity to include this test.")(test_item)
+
 
 def needs_singularity_or_docker(test_item: MT) -> MT:
     """
@@ -572,49 +617,57 @@ def needs_singularity_or_docker(test_item: MT) -> MT:
     docker is installed and docker-based tests are enabled, or if Singularity
     is installed.
     """
-    
+
     # TODO: Is there a good way to OR decorators?
-    if which('singularity'):
+    if which("singularity"):
         # Singularity is here, say it's a Singularity test
         return needs_singularity(test_item)
     else:
         # Otherwise say it's a Docker test.
         return needs_docker(test_item)
-        
+
+
 def needs_local_cuda(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
     a CUDA setup legible to cwltool (i.e. providing userspace nvidia-smi) is present.
     """
-    test_item = _mark_test('local_cuda', test_item)
+    test_item = _mark_test("local_cuda", test_item)
     if have_working_nvidia_smi():
         return test_item
     else:
-        return unittest.skip("Install nvidia-smi, an nvidia proprietary driver, and a CUDA-capable nvidia GPU to include this test.")(test_item)
+        return unittest.skip(
+            "Install nvidia-smi, an nvidia proprietary driver, and a CUDA-capable nvidia GPU to include this test."
+        )(test_item)
+
 
 def needs_docker_cuda(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
     a CUDA setup is available through Docker.
     """
-    test_item = _mark_test('docker_cuda', needs_online(test_item))
+    test_item = _mark_test("docker_cuda", needs_online(test_item))
     if have_working_nvidia_docker_runtime():
         return test_item
     else:
-        return unittest.skip("Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test.")(test_item)
+        return unittest.skip(
+            "Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test."
+        )(test_item)
+
 
 def needs_encryption(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
     and configured.
     """
-    test_item = _mark_test('encryption', test_item)
+    test_item = _mark_test("encryption", test_item)
     try:
         # noinspection PyUnresolvedReferences
         import nacl  # noqa
     except ImportError:
         return unittest.skip(
-            "Install Toil with the 'encryption' extra to include this test.")(test_item)
+            "Install Toil with the 'encryption' extra to include this test."
+        )(test_item)
     else:
         return test_item
 
@@ -624,26 +677,31 @@ def needs_cwl(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if CWLTool is installed
     and configured.
     """
-    test_item = _mark_test('cwl', test_item)
+    test_item = _mark_test("cwl", test_item)
     try:
         # noinspection PyUnresolvedReferences
         import cwltool  # noqa
     except ImportError:
-        return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(
+            test_item
+        )
     else:
         return test_item
+
 
 def needs_wdl(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if miniwdl is installed
     and configured.
     """
-    test_item = _mark_test('wdl', test_item)
+    test_item = _mark_test("wdl", test_item)
     try:
         # noinspection PyUnresolvedReferences
         import WDL  # noqa
     except ImportError:
-        return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(
+            test_item
+        )
     else:
         return test_item
 
@@ -652,40 +710,48 @@ def needs_server(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if Connexion is installed.
     """
-    test_item = _mark_test('server_mode', test_item)
+    test_item = _mark_test("server_mode", test_item)
     try:
         # noinspection PyUnresolvedReferences
         import connexion
+
         print(connexion.__file__)  # keep this import from being removed.
     except ImportError:
         return unittest.skip(
-            "Install Toil with the 'server' extra to include this test.")(test_item)
+            "Install Toil with the 'server' extra to include this test."
+        )(test_item)
     else:
         return test_item
+
 
 def needs_celery_broker(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if RabbitMQ is set up to take Celery jobs.
     """
-    test_item = _mark_test('celery', needs_online(test_item))
-    test_item = needs_env_var('TOIL_WES_BROKER_URL', "a URL to a RabbitMQ broker for Celery")(test_item)
+    test_item = _mark_test("celery", needs_online(test_item))
+    test_item = needs_env_var(
+        "TOIL_WES_BROKER_URL", "a URL to a RabbitMQ broker for Celery"
+    )(test_item)
     return test_item
+
 
 def needs_wes_server(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if a WES
     server is available to run against.
     """
-    test_item = _mark_test('wes_server', needs_online(test_item))
+    test_item = _mark_test("wes_server", needs_online(test_item))
 
-    wes_url = os.environ.get('TOIL_WES_ENDPOINT')
+    wes_url = os.environ.get("TOIL_WES_ENDPOINT")
     if not wes_url:
         return unittest.skip(f"Set TOIL_WES_ENDPOINT to include this test")(test_item)
 
     try:
         urlopen(f"{wes_url}/ga4gh/wes/v1/service-info")
     except (HTTPError, URLError) as e:
-        return unittest.skip(f"Run a WES server on {wes_url} to include this test")(test_item)
+        return unittest.skip(f"Run a WES server on {wes_url} to include this test")(
+            test_item
+        )
 
     return test_item
 
@@ -695,10 +761,10 @@ def needs_local_appliance(test_item: MT) -> MT:
     Use as a decorator before test classes or methods to only run them if
     the Toil appliance Docker image is downloaded.
     """
-    test_item = _mark_test('appliance', test_item)
-    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
-        return unittest.skip('Skipping docker test.')(test_item)
-    if not which('docker'):
+    test_item = _mark_test("appliance", test_item)
+    if os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true":
+        return unittest.skip("Skipping docker test.")(test_item)
+    if not which("docker"):
         return unittest.skip("Install docker to include this test.")(test_item)
 
     try:
@@ -734,9 +800,9 @@ def needs_fetchable_appliance(test_item: MT) -> MT:
     the Toil appliance Docker image is able to be downloaded from the Internet.
     """
 
-    test_item = _mark_test('fetchable_appliance', needs_online(test_item))
-    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
-        return unittest.skip('Skipping docker test.')(test_item)
+    test_item = _mark_test("fetchable_appliance", needs_online(test_item))
+    if os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true":
+        return unittest.skip("Skipping docker test.")(test_item)
     try:
         applianceSelf()
     except ApplianceImageNotFound:
@@ -757,12 +823,12 @@ def integrative(test_item: MT) -> MT:
     We define integration tests as A) involving other, non-Toil software components
     that we develop and/or B) having a higher cost (time or money).
     """
-    test_item = _mark_test('integrative', test_item)
-    if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':
+    test_item = _mark_test("integrative", test_item)
+    if os.getenv("TOIL_TEST_INTEGRATIVE", "").lower() == "true":
         return test_item
     else:
         return unittest.skip(
-            'Set TOIL_TEST_INTEGRATIVE=True to include this integration test, '
+            "Set TOIL_TEST_INTEGRATIVE=True to include this integration test, "
             "or run `make integration_test_local` to run all integration tests."
         )(test_item)
 
@@ -772,14 +838,14 @@ def slow(test_item: MT) -> MT:
     Use this decorator to identify tests that are slow and not critical.
     Skip if TOIL_TEST_QUICK is true.
     """
-    test_item = _mark_test('slow', test_item)
-    if os.environ.get('TOIL_TEST_QUICK', '').lower() != 'true':
+    test_item = _mark_test("slow", test_item)
+    if os.environ.get("TOIL_TEST_QUICK", "").lower() != "true":
         return test_item
     else:
         return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
 
 
-methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
+methodNamePartRegex = re.compile("^[a-zA-Z_0-9]+$")
 
 
 @contextmanager
@@ -791,7 +857,7 @@ def timeLimit(seconds: int) -> Generator[None, None, None]:
     specified amount of time. See <http://stackoverflow.com/a/601168>.
 
     :param seconds: maximum allowable time, in seconds
-    
+
     >>> import time
     >>> with timeLimit(2):
     ...    time.sleep(1)
@@ -802,9 +868,10 @@ def timeLimit(seconds: int) -> Generator[None, None, None]:
         ...
     RuntimeError: Timed out
     """
+
     # noinspection PyUnusedLocal
     def signal_handler(signum: int, frame: Any) -> None:
-        raise RuntimeError('Timed out')
+        raise RuntimeError("Timed out")
 
     signal.signal(signal.SIGALRM, signal_handler)
     signal.alarm(seconds)
@@ -869,6 +936,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
     False
 
     """
+
     def permuteIntoLeft(left, rParamName, right):
         """
         Permutes values in right dictionary into each parameter: value dict pair in the left
@@ -894,9 +962,11 @@ def make_tests(generalMethod, targetClass, **kwargs):
         """
         for prmValName, lDict in list(left.items()):
             for rValName, rVal in list(right.items()):
-                nextPrmVal = (f'__{rParamName}_{rValName.lower()}')
+                nextPrmVal = f"__{rParamName}_{rValName.lower()}"
                 if methodNamePartRegex.match(nextPrmVal) is None:
-                    raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+                    raise RuntimeError(
+                        "The name '%s' cannot be used in a method name" % pvName
+                    )
                 aggDict = dict(lDict)
                 aggDict[rParamName] = rVal
                 left[prmValName + nextPrmVal] = aggDict
@@ -911,7 +981,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
             else:
                 return generalMethod(self)
 
-        methodName = f'test_{generalMethod.__name__}{prmNames}'
+        methodName = f"test_{generalMethod.__name__}{prmNames}"
 
         setattr(targetClass, methodName, fx)
 
@@ -924,9 +994,11 @@ def make_tests(generalMethod, targetClass, **kwargs):
         left = {}
         prmName, vals = sortedKwargs.pop()
         for valName, val in list(vals.items()):
-            pvName = f'__{prmName}_{valName.lower()}'
+            pvName = f"__{prmName}_{valName.lower()}"
             if methodNamePartRegex.match(pvName) is None:
-                raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+                raise RuntimeError(
+                    "The name '%s' cannot be used in a method name" % pvName
+                )
             left[pvName] = {prmName: val}
 
         # get cartesian product
@@ -952,9 +1024,9 @@ class ApplianceTestSupport(ToilTest):
 
     @contextmanager
     def _applianceCluster(
-        self, mounts: Dict[str, str], numCores: Optional[int] = None
+        self, mounts: dict[str, str], numCores: Optional[int] = None
     ) -> Generator[
-        Tuple["ApplianceTestSupport.LeaderThread", "ApplianceTestSupport.WorkerThread"],
+        tuple["ApplianceTestSupport.LeaderThread", "ApplianceTestSupport.WorkerThread"],
         None,
         None,
     ]:
@@ -984,10 +1056,10 @@ class ApplianceTestSupport(ToilTest):
     class Appliance(ExceptionalThread, metaclass=ABCMeta):
         @abstractmethod
         def _getRole(self) -> str:
-            return 'leader'
+            return "leader"
 
         @abstractmethod
-        def _containerCommand(self) -> List[str]:
+        def _containerCommand(self) -> list[str]:
             pass
 
         @abstractmethod
@@ -1000,7 +1072,7 @@ class ApplianceTestSupport(ToilTest):
         def __init__(
             self,
             outer: "ApplianceTestSupport",
-            mounts: Dict[str, str],
+            mounts: dict[str, str],
             cleanMounts: bool = False,
         ) -> None:
             assert all(
@@ -1017,15 +1089,20 @@ class ApplianceTestSupport(ToilTest):
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
-                args = list(concat('docker', 'run',
-                                   '--entrypoint=' + self._entryPoint(),
-                                   '--net=host',
-                                   '-i',
-                                   '--name=' + self.containerName,
-                                   ['--volume=%s:%s' % mount for mount in self.mounts.items()],
-                                   image,
-                                   self._containerCommand()))
-                logger.info('Running %r', args)
+                args = list(
+                    concat(
+                        "docker",
+                        "run",
+                        "--entrypoint=" + self._entryPoint(),
+                        "--net=host",
+                        "-i",
+                        "--name=" + self.containerName,
+                        ["--volume=%s:%s" % mount for mount in self.mounts.items()],
+                        image,
+                        self._containerCommand(),
+                    )
+                )
+                logger.info("Running %r", args)
                 self.popen = subprocess.Popen(args)
             self.start()
             self.__wait_running()
@@ -1033,17 +1110,17 @@ class ApplianceTestSupport(ToilTest):
 
         # noinspection PyUnusedLocal
         def __exit__(
-            self, exc_type: Type[BaseException], exc_val: Exception, exc_tb: Any
+            self, exc_type: type[BaseException], exc_val: Exception, exc_tb: Any
         ) -> Literal[False]:
             try:
                 try:
-                    self.outer._run('docker', 'stop', self.containerName)
+                    self.outer._run("docker", "stop", self.containerName)
                     self.join()
                 finally:
                     if self.cleanMounts:
                         self.__cleanMounts()
             finally:
-                self.outer._run('docker', 'rm', '-f', self.containerName)
+                self.outer._run("docker", "rm", "-f", self.containerName)
             return False  # don't swallow exception
 
         def __wait_running(self) -> None:
@@ -1070,7 +1147,7 @@ class ApplianceTestSupport(ToilTest):
                 except subprocess.CalledProcessError:
                     pass
                 else:
-                    if 'true' == running:
+                    if "true" == running:
                         break
                 time.sleep(1)
 
@@ -1083,30 +1160,33 @@ class ApplianceTestSupport(ToilTest):
             was stopped, otherwise the running container might still be writing files.
             """
             # Delete all files within each mounted directory, but not the directory itself.
-            cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
-                                                           for k, v in self.mounts.items()
-                                                           if os.path.isdir(k))
-            self.outer._run('docker', 'run',
-                            '--rm',
-                            '--entrypoint=/bin/bash',
-                            applianceSelf(),
-                            '-c',
-                            cmd)
+            cmd = "shopt -s dotglob && rm -rf " + " ".join(
+                v + "/*" for k, v in self.mounts.items() if os.path.isdir(k)
+            )
+            self.outer._run(
+                "docker",
+                "run",
+                "--rm",
+                "--entrypoint=/bin/bash",
+                applianceSelf(),
+                "-c",
+                cmd,
+            )
 
         def tryRun(self) -> None:
             assert self.popen
             self.popen.wait()
-            logger.info('Exiting %s', self.__class__.__name__)
+            logger.info("Exiting %s", self.__class__.__name__)
 
         def runOnAppliance(self, *args: str, **kwargs: Any) -> None:
             # Check if thread is still alive. Note that ExceptionalThread.join raises the
             # exception that occurred in the thread.
             self.join(timeout=0)
             # noinspection PyProtectedMember
-            self.outer._run('docker', 'exec', '-i', self.containerName, *args, **kwargs)
+            self.outer._run("docker", "exec", "-i", self.containerName, *args, **kwargs)
 
         def writeToAppliance(self, path: str, contents: Any) -> None:
-            self.runOnAppliance('tee', path, input=contents)
+            self.runOnAppliance("tee", path, input=contents)
 
         def deployScript(
             self, path: str, packagePath: str, script: Union[str, Callable[..., Any]]
@@ -1129,42 +1209,46 @@ class ApplianceTestSupport(ToilTest):
             packagePath_list = packagePath.split(".")
             packages, module = packagePath_list[:-1], packagePath_list[-1]
             for package in packages:
-                path += '/' + package
-                self.runOnAppliance('mkdir', '-p', path)
-                self.writeToAppliance(path + '/__init__.py', '')
-            self.writeToAppliance(path + '/' + module + '.py', script)
+                path += "/" + package
+                self.runOnAppliance("mkdir", "-p", path)
+                self.writeToAppliance(path + "/__init__.py", "")
+            self.writeToAppliance(path + "/" + module + ".py", script)
 
     class LeaderThread(Appliance):
         def _entryPoint(self) -> str:
-            return 'mesos-master'
+            return "mesos-master"
 
         def _getRole(self) -> str:
-            return 'leader'
+            return "leader"
 
-        def _containerCommand(self) -> List[str]:
-            return ['--registry=in_memory',
-                    '--ip=127.0.0.1',
-                    '--port=5050',
-                    '--allocation_interval=500ms']
+        def _containerCommand(self) -> list[str]:
+            return [
+                "--registry=in_memory",
+                "--ip=127.0.0.1",
+                "--port=5050",
+                "--allocation_interval=500ms",
+            ]
 
     class WorkerThread(Appliance):
         def __init__(
-            self, outer: "ApplianceTestSupport", mounts: Dict[str, str], numCores: int
+            self, outer: "ApplianceTestSupport", mounts: dict[str, str], numCores: int
         ) -> None:
             self.numCores = numCores
             super().__init__(outer, mounts)
 
         def _entryPoint(self) -> str:
-            return 'mesos-agent'
+            return "mesos-agent"
 
         def _getRole(self) -> str:
-            return 'worker'
+            return "worker"
 
-        def _containerCommand(self) -> List[str]:
-            return ['--work_dir=/var/lib/mesos',
-                    '--ip=127.0.0.1',
-                    '--master=127.0.0.1:5050',
-                    '--attributes=preemptible:False',
-                    '--resources=cpus(*):%i' % self.numCores,
-                    '--no-hostname_lookup',
-                    '--no-systemd_enable_support']
+        def _containerCommand(self) -> list[str]:
+            return [
+                "--work_dir=/var/lib/mesos",
+                "--ip=127.0.0.1",
+                "--master=127.0.0.1:5050",
+                "--attributes=preemptible:False",
+                "--resources=cpus(*):%i" % self.numCores,
+                "--no-hostname_lookup",
+                "--no-systemd_enable_support",
+            ]

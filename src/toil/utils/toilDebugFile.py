@@ -20,8 +20,8 @@ from typing import Optional
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.lib.resources import glob
 from toil.lib.conversions import strtobool
+from toil.lib.resources import glob
 from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
@@ -44,17 +44,23 @@ def fetchJobStoreFiles(jobStore: FileJobStore, options: argparse.Namespace) -> N
     # globbing around inside it. Does this even work?
 
     for jobStoreFile in options.fetch:
-        jobStoreHits = glob(directoryname=options.jobStore,
-                            glob_pattern=jobStoreFile)
+        jobStoreHits = glob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            logger.debug(f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}")
-            jobStore.read_file(jobStoreFileID,
-                               os.path.join(options.localFilePath[0],
-                                           os.path.basename(jobStoreFileID)),
-                               symlink=options.useSymlinks)
+            logger.debug(
+                f"Copying job store file: {jobStoreFileID} to {options.localFilePath[0]}"
+            )
+            jobStore.read_file(
+                jobStoreFileID,
+                os.path.join(
+                    options.localFilePath[0], os.path.basename(jobStoreFileID)
+                ),
+                symlink=options.useSymlinks,
+            )
 
 
-def printContentsOfJobStore(job_store: FileJobStore, job_id: Optional[str] = None) -> None:
+def printContentsOfJobStore(
+    job_store: FileJobStore, job_id: Optional[str] = None
+) -> None:
     """
     Fetch a list of all files contained in the job store if nameOfJob is not
     declared, otherwise it only prints out the names of files for that specific
@@ -90,22 +96,33 @@ def printContentsOfJobStore(job_store: FileJobStore, job_id: Optional[str] = Non
 
 def main() -> None:
     parser = parser_with_common_options(jobstore_option=True, prog="toil debug-file")
-    parser.add_argument("--localFilePath",
-                        nargs=1,
-                        help="Location to which to copy job store files.")
-    parser.add_argument("--fetch",
-                        nargs="+",
-                        help="List of job-store files to be copied locally."
-                             "Use either explicit names (i.e. 'data.txt'), or "
-                             "specify glob patterns (i.e. '*.txt')")
-    parser.add_argument("--listFilesInJobStore", type=strtobool,
-                        help="Prints a list of the current files in the jobStore.")
-    parser.add_argument("--fetchEntireJobStore", type=strtobool,
-                        help="Copy all job store files into a local directory.")
-    parser.add_argument("--useSymlinks", type=strtobool,
-                        help="Creates symlink 'shortcuts' of files in the localFilePath"
-                             " instead of hardlinking or copying, where possible.  If this is"
-                             " not possible, it will copy the files (shutil.copyfile()).")
+    parser.add_argument(
+        "--localFilePath", nargs=1, help="Location to which to copy job store files."
+    )
+    parser.add_argument(
+        "--fetch",
+        nargs="+",
+        help="List of job-store files to be copied locally."
+        "Use either explicit names (i.e. 'data.txt'), or "
+        "specify glob patterns (i.e. '*.txt')",
+    )
+    parser.add_argument(
+        "--listFilesInJobStore",
+        type=strtobool,
+        help="Prints a list of the current files in the jobStore.",
+    )
+    parser.add_argument(
+        "--fetchEntireJobStore",
+        type=strtobool,
+        help="Copy all job store files into a local directory.",
+    )
+    parser.add_argument(
+        "--useSymlinks",
+        type=strtobool,
+        help="Creates symlink 'shortcuts' of files in the localFilePath"
+        " instead of hardlinking or copying, where possible.  If this is"
+        " not possible, it will copy the files (shutil.copyfile()).",
+    )
 
     # Load the jobStore
     options = parser.parse_args()

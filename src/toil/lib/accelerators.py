@@ -17,7 +17,7 @@
 import os
 import string
 import subprocess
-from typing import Dict, List, Set, Union, cast
+from typing import Union, cast
 from xml.dom import minidom
 
 from toil.job import AcceleratorRequirement
@@ -34,13 +34,20 @@ def have_working_nvidia_smi() -> bool:
     it can fulfill a CUDARequirement.
     """
     try:
-        subprocess.check_call(['nvidia-smi'])
-    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError, OSError, UnicodeDecodeError):
+        subprocess.check_call(["nvidia-smi"])
+    except (
+        FileNotFoundError,
+        PermissionError,
+        subprocess.CalledProcessError,
+        OSError,
+        UnicodeDecodeError,
+    ):
         return False
     return True
 
+
 @memoize
-def get_host_accelerator_numbers() -> List[int]:
+def get_host_accelerator_numbers() -> list[int]:
     """
     Work out what accelerator is what.
 
@@ -52,7 +59,12 @@ def get_host_accelerator_numbers() -> List[int]:
     right GPUs as seen from a Docker daemon.
     """
 
-    for number_list_var in ['SLURM_STEP_GPUS', 'SLURM_JOB_GPUS', 'CUDA_VISIBLE_DEVICES', 'NVIDIA_VISIBLE_DEVICES']:
+    for number_list_var in [
+        "SLURM_STEP_GPUS",
+        "SLURM_JOB_GPUS",
+        "CUDA_VISIBLE_DEVICES",
+        "NVIDIA_VISIBLE_DEVICES",
+    ]:
         # Any of these can have a list of GPU numbers, but the CUDA/NVIDIA ones
         # also support a system of GPU GUIDs that we don't support.
         # TODO: If Slurm confinement is set we ignore any attempt to further
@@ -62,13 +74,16 @@ def get_host_accelerator_numbers() -> List[int]:
         if number_list_var in os.environ:
             device_string = os.environ[number_list_var]
             # Parse all the numbers we have
-            device_numbers = [int(part) for part in device_string.split(',') if part.isnumeric()]
+            device_numbers = [
+                int(part) for part in device_string.split(",") if part.isnumeric()
+            ]
             if len(device_numbers) > 0:
                 # We found some numbers, so use those
                 return device_numbers
 
     # If we don't see a set of limits we understand, say we have all nvidia GPUs
     return list(range(count_nvidia_gpus()))
+
 
 @memoize
 def have_working_nvidia_docker_runtime() -> bool:
@@ -77,10 +92,29 @@ def have_working_nvidia_docker_runtime() -> bool:
     """
     try:
         # The runtime injects nvidia-smi; it doesn't seem to have to be in the image we use here
-        subprocess.check_call(['docker', 'run', '--rm', '--runtime', 'nvidia', '--gpus', 'all', 'ubuntu:20.04', 'nvidia-smi'])
-    except (FileNotFoundError, PermissionError, subprocess.CalledProcessError, OSError, UnicodeDecodeError):
+        subprocess.check_call(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--runtime",
+                "nvidia",
+                "--gpus",
+                "all",
+                "ubuntu:20.04",
+                "nvidia-smi",
+            ]
+        )
+    except (
+        FileNotFoundError,
+        PermissionError,
+        subprocess.CalledProcessError,
+        OSError,
+        UnicodeDecodeError,
+    ):
         return False
     return True
+
 
 @memoize
 def count_nvidia_gpus() -> int:
@@ -101,11 +135,12 @@ def count_nvidia_gpus() -> int:
                 .firstChild,
             ).data
         )
-    except: 
+    except:
         return 0
 
     # TODO: Parse each gpu > product_name > text content and convert to some
     # kind of "model" that agrees with e.g. Kubernetes naming.
+
 
 @memoize
 def count_amd_gpus() -> int:
@@ -118,10 +153,18 @@ def count_amd_gpus() -> int:
         # we believe this is the expected output for amd-smi, but we don't actually have and amd gpu to test against
         # so we assume the output from the amd-smi documentation:
         # https://rocm.docs.amd.com/projects/amdsmi/en/latest/how-to/using-AMD-SMI-CLI-tool.html
-        out = subprocess.check_output((["amd-smi", "static"]))
-        gpu_count = len([line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")])
+        out = subprocess.check_output(["amd-smi", "static"])
+        gpu_count = len(
+            [line for line in out.decode("utf-8").split("\n") if line.startswith("gpu")]
+        )
         return gpu_count
-    except (FileNotFoundError, PermissionError, subprocess.SubprocessError, OSError, UnicodeDecodeError):
+    except (
+        FileNotFoundError,
+        PermissionError,
+        subprocess.SubprocessError,
+        OSError,
+        UnicodeDecodeError,
+    ):
         # if the amd-smi command fails, try rocm-smi
         # if a different exception is raised, something other than the subprocess call is wrong
         pass
@@ -129,15 +172,27 @@ def count_amd_gpus() -> int:
         # similarly, since we don't have an AMD gpu to test against, assume the output from the rocm-smi documentation:
         # https://rocm.blogs.amd.com/software-tools-optimization/affinity/part-2/README.html#gpu-numa-configuration-rocm-smi-showtoponuma
         out = subprocess.check_output(["rocm-smi"])
-        gpu_count = len([line for line in out.decode("utf-8").split("\n") if len(line)> 0 and line[0] in string.digits])
+        gpu_count = len(
+            [
+                line
+                for line in out.decode("utf-8").split("\n")
+                if len(line) > 0 and line[0] in string.digits
+            ]
+        )
         return gpu_count
-    except (FileNotFoundError, PermissionError, subprocess.SubprocessError, OSError, UnicodeDecodeError):
+    except (
+        FileNotFoundError,
+        PermissionError,
+        subprocess.SubprocessError,
+        OSError,
+        UnicodeDecodeError,
+    ):
         pass
     return 0
 
 
 @memoize
-def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
+def get_individual_local_accelerators() -> list[AcceleratorRequirement]:
     """
     Determine all the local accelerators available. Report each with count 1,
     in the order of the number that can be used to assign them.
@@ -146,11 +201,22 @@ def get_individual_local_accelerators() -> List[AcceleratorRequirement]:
     accelerator assignment API.
     """
 
-    gpus: List[AcceleratorRequirement] = [{'kind': 'gpu', 'brand': 'nvidia', 'api': 'cuda', 'count': 1} for _ in range(count_nvidia_gpus())]
-    gpus.extend([{'kind': 'gpu', 'brand': 'amd', 'api': 'rocm', 'count': 1} for _ in range(count_amd_gpus())])
+    gpus: list[AcceleratorRequirement] = [
+        {"kind": "gpu", "brand": "nvidia", "api": "cuda", "count": 1}
+        for _ in range(count_nvidia_gpus())
+    ]
+    gpus.extend(
+        [
+            {"kind": "gpu", "brand": "amd", "api": "rocm", "count": 1}
+            for _ in range(count_amd_gpus())
+        ]
+    )
     return gpus
 
-def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Union[Set[int], List[int]]) -> Dict[str, str]:
+
+def get_restrictive_environment_for_local_accelerators(
+    accelerator_numbers: Union[set[int], list[int]]
+) -> dict[str, str]:
     """
     Get environment variables which can be applied to a process to restrict it
     to using only the given accelerator numbers.
@@ -161,11 +227,12 @@ def get_restrictive_environment_for_local_accelerators(accelerator_numbers : Uni
 
     # Since we only know about nvidia GPUs right now, we can just say our
     # accelerator numbering space is the same as nvidia's GPU numbering space.
-    gpu_list = ','.join(str(i) for i in accelerator_numbers)
+    gpu_list = ",".join(str(i) for i in accelerator_numbers)
 
     # Put this in several places: CUDA_VISIBLE_DEVICES for controlling
     # processes right here, and SINGULARITYENV_CUDA_VISIBLE_DEVICES for
     # propagating to Singularity containers.
-    return {'CUDA_VISIBLE_DEVICES': gpu_list, 'SINGULARITYENV_CUDA_VISIBLE_DEVICES': gpu_list}
-
-
+    return {
+        "CUDA_VISIBLE_DEVICES": gpu_list,
+        "SINGULARITYENV_CUDA_VISIBLE_DEVICES": gpu_list,
+    }

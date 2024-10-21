@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import fnmatch
-import os
 import math
-import sys
+import os
 import resource
-from typing import List, Tuple
+import sys
+
 
 class ResourceMonitor:
     """
@@ -52,14 +52,20 @@ class ResourceMonitor:
         cls._extra_cpu_seconds += seconds
 
     @classmethod
-    def get_total_cpu_time_and_memory_usage(cls) -> Tuple[float, int]:
+    def get_total_cpu_time_and_memory_usage(cls) -> tuple[float, int]:
         """
         Gives the total cpu time of itself and all its children, and the maximum RSS memory usage of
         itself and its single largest child (in kibibytes).
         """
         me = resource.getrusage(resource.RUSAGE_SELF)
         children = resource.getrusage(resource.RUSAGE_CHILDREN)
-        total_cpu_time = me.ru_utime + me.ru_stime + children.ru_utime + children.ru_stime + cls._extra_cpu_seconds
+        total_cpu_time = (
+            me.ru_utime
+            + me.ru_stime
+            + children.ru_utime
+            + children.ru_stime
+            + cls._extra_cpu_seconds
+        )
         total_memory_usage = me.ru_maxrss + children.ru_maxrss
         if sys.platform == "darwin":
             # On Linux, getrusage works in "kilobytes" (really kibibytes), but on
@@ -74,10 +80,16 @@ class ResourceMonitor:
         """Gives the total cpu time, including the children."""
         me = resource.getrusage(resource.RUSAGE_SELF)
         childs = resource.getrusage(resource.RUSAGE_CHILDREN)
-        return me.ru_utime + me.ru_stime + childs.ru_utime + childs.ru_stime + cls._extra_cpu_seconds
+        return (
+            me.ru_utime
+            + me.ru_stime
+            + childs.ru_utime
+            + childs.ru_stime
+            + cls._extra_cpu_seconds
+        )
 
 
-def glob(glob_pattern: str, directoryname: str) -> List[str]:
+def glob(glob_pattern: str, directoryname: str) -> list[str]:
     """
     Walks through a directory and its subdirectories looking for files matching
     the glob_pattern and returns a list=[].

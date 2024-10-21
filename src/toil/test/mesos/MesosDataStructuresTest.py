@@ -21,15 +21,19 @@ class DataStructuresTest(ToilTest):
     def _getJob(self, cores=1, memory=1000, disk=5000, preemptible=True):
         from toil.batchSystems.mesos import MesosShape, ToilJob
 
-        resources = MesosShape(wallTime=0, cores=cores, memory=memory, disk=disk, preemptible=preemptible)
+        resources = MesosShape(
+            wallTime=0, cores=cores, memory=memory, disk=disk, preemptible=preemptible
+        )
 
-        job = ToilJob(jobID=str(uuid.uuid4()),
-                      name=str(uuid.uuid4()),
-                      resources=resources,
-                      command="do nothing",
-                      userScript=None,
-                      environment=None,
-                      workerCleanupInfo=None)
+        job = ToilJob(
+            jobID=str(uuid.uuid4()),
+            name=str(uuid.uuid4()),
+            resources=resources,
+            command="do nothing",
+            userScript=None,
+            environment=None,
+            workerCleanupInfo=None,
+        )
         return job
 
     def testJobQueue(self, testJobs=1000):
@@ -39,15 +43,24 @@ class DataStructuresTest(ToilTest):
         non-preemptible jobs groups first, with priority given to large jobs.
         """
         from toil.batchSystems.mesos import JobQueue
+
         jobQueue = JobQueue()
 
         for jobNum in range(0, testJobs):
-            testJob = self._getJob(cores=random.choice(list(range(10))), preemptible=random.choice([True, False]))
+            testJob = self._getJob(
+                cores=random.choice(list(range(10))),
+                preemptible=random.choice([True, False]),
+            )
             jobQueue.insertJob(testJob, testJob.resources)
 
         sortedTypes = jobQueue.sortedTypes
         self.assertGreaterEqual(20, len(sortedTypes))
-        self.assertTrue(all(sortedTypes[i] <= sortedTypes[i + 1] for i in range(len(sortedTypes) - 1)))
+        self.assertTrue(
+            all(
+                sortedTypes[i] <= sortedTypes[i + 1]
+                for i in range(len(sortedTypes) - 1)
+            )
+        )
 
         preemptible = sortedTypes.pop(0).preemptible
         for jtype in sortedTypes:

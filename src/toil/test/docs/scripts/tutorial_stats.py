@@ -1,18 +1,17 @@
-import os
+import math
+import time
+from multiprocessing import Process
 
 from toil.common import Toil
 from toil.job import Job
 
-import math
-import time
-
-from multiprocessing import Process
 
 def think(seconds):
     start = time.time()
     while time.time() - start < seconds:
         # Use CPU
         math.sqrt(123456)
+
 
 class TimeWaster(Job):
     def __init__(self, time_to_think, time_to_waste, space_to_waste, *args, **kwargs):
@@ -24,10 +23,10 @@ class TimeWaster(Job):
     def run(self, fileStore):
         # Waste some space
         file_path = fileStore.getLocalTempFile()
-        with open(file_path, 'w') as stream:
+        with open(file_path, "w") as stream:
             for i in range(self.space_to_waste):
                 stream.write("X")
-        
+
         # Do some "useful" compute
         processes = []
         for core_number in range(max(1, self.cores)):
@@ -45,11 +44,10 @@ class TimeWaster(Job):
 def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
 
-    job1 = TimeWaster(0, 0, 0, displayName='doNothing')
-    job2 = TimeWaster(10, 0, 4096, displayName='efficientJob')
-    job3 = TimeWaster(10, 0, 1024, cores=4, displayName='multithreadedJob')
-    job4 = TimeWaster(1, 9, 65536, displayName='inefficientJob')
-    
+    job1 = TimeWaster(0, 0, 0, displayName="doNothing")
+    job2 = TimeWaster(10, 0, 4096, displayName="efficientJob")
+    job3 = TimeWaster(10, 0, 1024, cores=4, displayName="multithreadedJob")
+    job4 = TimeWaster(1, 9, 65536, displayName="inefficientJob")
 
     job1.addChild(job2)
     job1.addChild(job3)
@@ -62,5 +60,5 @@ def main():
             toil.restart()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

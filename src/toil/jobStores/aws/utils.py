@@ -17,7 +17,7 @@ import logging
 import os
 import types
 from ssl import SSLError
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 from boto3.s3.transfer import TransferConfig
 from botocore.client import Config
@@ -49,10 +49,10 @@ logger = logging.getLogger(__name__)
 # also need to set a special flag to make sure we don't use the generic
 # s3.amazonaws.com for us-east-1, or else we might not actually end up talking
 # to us-east-1 when a bucket is there.
-DIAL_SPECIFIC_REGION_CONFIG = Config(s3={
-    'addressing_style': 'path',
-    'us_east_1_regional_endpoint': 'regional'
-})
+DIAL_SPECIFIC_REGION_CONFIG = Config(
+    s3={"addressing_style": "path", "us_east_1_regional_endpoint": "regional"}
+)
+
 
 class SDBHelper:
     """
@@ -92,6 +92,7 @@ class SDBHelper:
     True
 
     """
+
     # The SDB documentation is not clear as to whether the attribute value size limit of 1024
     # applies to the base64-encoded value or the raw value. It suggests that responses are
     # automatically encoded from which I conclude that the limit should apply to the raw,
@@ -104,8 +105,8 @@ class SDBHelper:
     maxValueSize = 1024
     maxRawValueSize = maxValueSize * 3 // 4
     # Just make sure we don't have a problem with padding or integer truncation:
-    assert len(base64.b64encode(b' ' * maxRawValueSize)) == 1024
-    assert len(base64.b64encode(b' ' * (1 + maxRawValueSize))) > 1024
+    assert len(base64.b64encode(b" " * maxRawValueSize)) == 1024
+    assert len(base64.b64encode(b" " * (1 + maxRawValueSize))) > 1024
 
     @classmethod
     def _reservedAttributes(cls):
@@ -121,39 +122,44 @@ class SDBHelper:
 
     @classmethod
     def maxBinarySize(cls, extraReservedChunks=0):
-        return (cls._maxChunks() - extraReservedChunks) * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
+        return (
+            cls._maxChunks() - extraReservedChunks
+        ) * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
 
     @classmethod
     def _maxEncodedSize(cls):
         return cls._maxChunks() * cls.maxValueSize
 
     @classmethod
-    def binaryToAttributes(cls, binary) -> Dict[str, str]:
+    def binaryToAttributes(cls, binary) -> dict[str, str]:
         """
         Turn a bytestring, or None, into SimpleDB attributes.
         """
-        if binary is None: return {'numChunks': '0'}
+        if binary is None:
+            return {"numChunks": "0"}
         assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
         # computation because the compression ratio depends on the input.
         compressed = bz2.compress(binary)
         if len(compressed) > len(binary):
-            compressed = b'U' + binary
+            compressed = b"U" + binary
         else:
-            compressed = b'C' + compressed
+            compressed = b"C" + compressed
         encoded = base64.b64encode(compressed)
         assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
-        chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
-        attributes = {cls._chunkName(i): chunk.decode("utf-8") for i, chunk in enumerate(chunks)}
-        attributes.update({'numChunks': str(len(attributes))})
+        chunks = (encoded[i : i + n] for i in range(0, len(encoded), n))
+        attributes = {
+            cls._chunkName(i): chunk.decode("utf-8") for i, chunk in enumerate(chunks)
+        }
+        attributes.update({"numChunks": str(len(attributes))})
         return attributes
 
     @classmethod
     def attributeDictToList(
-        cls, attributes: Dict[str, str]
-    ) -> List["AttributeTypeDef"]:
+        cls, attributes: dict[str, str]
+    ) -> list["AttributeTypeDef"]:
         """
         Convert the attribute dict (ex: from binaryToAttributes) into a list of attribute typed dicts
         to be compatible with boto3 argument syntax
@@ -164,8 +170,8 @@ class SDBHelper:
 
     @classmethod
     def attributeListToDict(
-        cls, attributes: List["AttributeTypeDef"]
-    ) -> Dict[str, str]:
+        cls, attributes: list["AttributeTypeDef"]
+    ) -> dict[str, str]:
         """
         Convert the attribute boto3 representation of list of attribute typed dicts
         back to a dictionary with name, value pairs
@@ -176,10 +182,12 @@ class SDBHelper:
 
     @classmethod
     def get_attributes_from_item(
-        cls, item: "ItemTypeDef", keys: List[str]
-    ) -> List[Optional[str]]:
-        return_values: List[Optional[str]] = [None for _ in keys]
-        mapped_indices: Dict[str, int] = {name: index for index, name in enumerate(keys)}
+        cls, item: "ItemTypeDef", keys: list[str]
+    ) -> list[Optional[str]]:
+        return_values: list[Optional[str]] = [None for _ in keys]
+        mapped_indices: dict[str, int] = {
+            name: index for index, name in enumerate(keys)
+        }
         for attribute in item["Attributes"]:
             name = attribute["Name"]
             value = attribute["Value"]
@@ -202,12 +210,12 @@ class SDBHelper:
         Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
         this method could be used to detect the presence/absence of an item in SDB.
         """
-        return 'numChunks'
+        return "numChunks"
 
     @classmethod
     def attributesToBinary(
-        cls, attributes: List["AttributeTypeDef"]
-    ) -> Tuple[bytes, int]:
+        cls, attributes: list["AttributeTypeDef"]
+    ) -> tuple[bytes, int]:
         """
         :rtype: (str|None,int)
         :return: the binary data and the number of chunks it was composed from
@@ -223,14 +231,14 @@ class SDBHelper:
                 numChunks = int(value)
         chunks.sort()
         if numChunks:
-            serializedJob = b''.join(v.encode() for k, v in chunks)
+            serializedJob = b"".join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
-            if compressed[0] == b'C'[0]:
+            if compressed[0] == b"C"[0]:
                 binary = bz2.decompress(compressed[1:])
-            elif compressed[0] == b'U'[0]:
+            elif compressed[0] == b"U"[0]:
                 binary = compressed[1:]
             else:
-                raise RuntimeError(f'Unexpected prefix {compressed[0]}')
+                raise RuntimeError(f"Unexpected prefix {compressed[0]}")
         else:
             binary = None
         return binary, numChunks
@@ -242,12 +250,14 @@ def fileSizeAndTime(localFilePath):
 
 
 @retry(errors=[AWSServerErrors])
-def uploadFromPath(localFilePath: str,
-                   resource,
-                   bucketName: str,
-                   fileID: str,
-                   headerArgs: Optional[dict] = None,
-                   partSize: int = 50 << 20):
+def uploadFromPath(
+    localFilePath: str,
+    resource,
+    bucketName: str,
+    fileID: str,
+    headerArgs: Optional[dict] = None,
+    partSize: int = 50 << 20,
+):
     """
     Uploads a file to s3, using multipart uploading if applicable
 
@@ -266,9 +276,13 @@ def uploadFromPath(localFilePath: str,
     client = resource.meta.client
     file_size, file_time = fileSizeAndTime(localFilePath)
 
-    version = uploadFile(localFilePath, resource, bucketName, fileID, headerArgs, partSize)
-    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs)
-    size = info.get('ContentLength')
+    version = uploadFile(
+        localFilePath, resource, bucketName, fileID, headerArgs, partSize
+    )
+    info = client.head_object(
+        Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs
+    )
+    size = info.get("ContentLength")
 
     assert size == file_size
 
@@ -278,12 +292,14 @@ def uploadFromPath(localFilePath: str,
 
 
 @retry(errors=[AWSServerErrors])
-def uploadFile(readable,
-               resource,
-               bucketName: str,
-               fileID: str,
-               headerArgs: Optional[dict] = None,
-               partSize: int = 50 << 20):
+def uploadFile(
+    readable,
+    resource,
+    bucketName: str,
+    fileID: str,
+    headerArgs: Optional[dict] = None,
+    partSize: int = 50 << 20,
+):
     """
     Upload a readable object to s3, using multipart uploading if applicable.
     :param readable: a readable stream or a file path to upload to s3
@@ -299,29 +315,32 @@ def uploadFile(readable,
 
     client = resource.meta.client
     config = TransferConfig(
-        multipart_threshold=partSize,
-        multipart_chunksize=partSize,
-        use_threads=True
+        multipart_threshold=partSize, multipart_chunksize=partSize, use_threads=True
     )
     if isinstance(readable, str):
-        client.upload_file(Filename=readable,
-                           Bucket=bucketName,
-                           Key=compat_bytes(fileID),
-                           ExtraArgs=headerArgs,
-                           Config=config)
+        client.upload_file(
+            Filename=readable,
+            Bucket=bucketName,
+            Key=compat_bytes(fileID),
+            ExtraArgs=headerArgs,
+            Config=config,
+        )
     else:
-        client.upload_fileobj(Fileobj=readable,
-                              Bucket=bucketName,
-                              Key=compat_bytes(fileID),
-                              ExtraArgs=headerArgs,
-                              Config=config)
+        client.upload_fileobj(
+            Fileobj=readable,
+            Bucket=bucketName,
+            Key=compat_bytes(fileID),
+            ExtraArgs=headerArgs,
+            Config=config,
+        )
 
         # Wait until the object exists before calling head_object
         object_summary = resource.ObjectSummary(bucketName, compat_bytes(fileID))
         object_summary.wait_until_exists(**headerArgs)
 
     info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
-    return info.get('VersionId', None)
+    return info.get("VersionId", None)
+
 
 class ServerSideCopyProhibitedError(RuntimeError):
     """
@@ -329,17 +348,20 @@ class ServerSideCopyProhibitedError(RuntimeError):
     insists that you pay to download and upload the data yourself instead.
     """
 
+
 @retry(errors=[AWSServerErrors])
-def copyKeyMultipart(resource: "S3ServiceResource",
-                     srcBucketName: str,
-                     srcKeyName: str,
-                     srcKeyVersion: str,
-                     dstBucketName: str,
-                     dstKeyName: str,
-                     sseAlgorithm: Optional[str] = None,
-                     sseKey: Optional[str] = None,
-                     copySourceSseAlgorithm: Optional[str] = None,
-                     copySourceSseKey: Optional[str] = None):
+def copyKeyMultipart(
+    resource: "S3ServiceResource",
+    srcBucketName: str,
+    srcKeyName: str,
+    srcKeyVersion: str,
+    dstBucketName: str,
+    dstKeyName: str,
+    sseAlgorithm: Optional[str] = None,
+    sseKey: Optional[str] = None,
+    copySourceSseAlgorithm: Optional[str] = None,
+    copySourceSseKey: Optional[str] = None,
+):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
@@ -376,9 +398,12 @@ def copyKeyMultipart(resource: "S3ServiceResource",
     """
     dstBucket = resource.Bucket(compat_bytes(dstBucketName))
     dstObject = dstBucket.Object(compat_bytes(dstKeyName))
-    copySource = {'Bucket': compat_bytes(srcBucketName), 'Key': compat_bytes(srcKeyName)}
+    copySource = {
+        "Bucket": compat_bytes(srcBucketName),
+        "Key": compat_bytes(srcKeyName),
+    }
     if srcKeyVersion is not None:
-        copySource['VersionId'] = compat_bytes(srcKeyVersion)
+        copySource["VersionId"] = compat_bytes(srcKeyVersion)
 
     # Get a client to the source region, which may not be the same as the one
     # this resource is connected to. We should probably talk to it for source
@@ -388,10 +413,8 @@ def copyKeyMultipart(resource: "S3ServiceResource",
     source_client = cast(
         "S3Client",
         session.client(
-            's3',
-            region_name=source_region,
-            config=DIAL_SPECIFIC_REGION_CONFIG
-        )
+            "s3", region_name=source_region, config=DIAL_SPECIFIC_REGION_CONFIG
+        ),
     )
 
     # The boto3 functions don't allow passing parameters as None to
@@ -400,19 +423,28 @@ def copyKeyMultipart(resource: "S3ServiceResource",
     # required.
     destEncryptionArgs = {}
     if sseKey is not None:
-        destEncryptionArgs.update({'SSECustomerAlgorithm': sseAlgorithm,
-                                   'SSECustomerKey': sseKey})
+        destEncryptionArgs.update(
+            {"SSECustomerAlgorithm": sseAlgorithm, "SSECustomerKey": sseKey}
+        )
     copyEncryptionArgs = {}
     if copySourceSseKey is not None:
-        copyEncryptionArgs.update({'CopySourceSSECustomerAlgorithm': copySourceSseAlgorithm,
-                                   'CopySourceSSECustomerKey': copySourceSseKey})
+        copyEncryptionArgs.update(
+            {
+                "CopySourceSSECustomerAlgorithm": copySourceSseAlgorithm,
+                "CopySourceSSECustomerKey": copySourceSseKey,
+            }
+        )
     copyEncryptionArgs.update(destEncryptionArgs)
 
     try:
         # Kick off a server-side copy operation
-        dstObject.copy(copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs)
+        dstObject.copy(
+            copySource, SourceClient=source_client, ExtraArgs=copyEncryptionArgs
+        )
     except ClientError as e:
-        if get_error_code(e) == 'AccessDenied' and 'cross-region' in get_error_message(e):
+        if get_error_code(e) == "AccessDenied" and "cross-region" in get_error_message(
+            e
+        ):
             # We have this problem: <https://aws.amazon.com/premiumsupport/knowledge-center/s3-troubleshoot-copy-between-buckets/#Cross-Region_request_issues_with_VPC_endpoints_for_Amazon_S3>
             # The Internet and AWS docs say that we just can't do a
             # cross-region CopyObject from inside a VPC with an endpoint. The
@@ -422,12 +454,15 @@ def copyKeyMultipart(resource: "S3ServiceResource",
             # the source region's API servers, they reject it and tell us to
             # talk to the destination region's API servers instead. Which we
             # can't reach.
-            logger.error('Amazon is refusing to perform a server-side copy of %s: %s', copySource, e)
+            logger.error(
+                "Amazon is refusing to perform a server-side copy of %s: %s",
+                copySource,
+                e,
+            )
             raise ServerSideCopyProhibitedError()
         else:
             # Some other ClientError happened
             raise
-
 
     # Wait until the object exists before calling head_object
     object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
@@ -438,14 +473,15 @@ def copyKeyMultipart(resource: "S3ServiceResource",
     # after, leaving open the possibility that it may have been
     # modified again in the few seconds since the copy finished. There
     # isn't much we can do about it.
-    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name,
-                                            Key=dstObject.key,
-                                            **destEncryptionArgs)
-    return info.get('VersionId', None)
+    info = resource.meta.client.head_object(
+        Bucket=dstObject.bucket_name, Key=dstObject.key, **destEncryptionArgs
+    )
+    return info.get("VersionId", None)
 
 
-def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
-                               replace=True, expected_value=None):
+def _put_attributes_using_post(
+    self, domain_or_name, item_name, attributes, replace=True, expected_value=None
+):
     """
     Monkey-patched version of SDBConnection.put_attributes that uses POST instead of GET
 
@@ -455,13 +491,12 @@ def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
     https://github.com/BD2KGenomics/toil/issues/502
     """
     domain, domain_name = self.get_domain_and_name(domain_or_name)
-    params = {'DomainName': domain_name,
-              'ItemName': item_name}
+    params = {"DomainName": domain_name, "ItemName": item_name}
     self._build_name_value_list(params, attributes, replace)
     if expected_value:
         self._build_expected_value(params, expected_value)
     # The addition of the verb keyword argument is the only difference to put_attributes (Hannes)
-    return self.get_status('PutAttributes', params, verb='POST')
+    return self.get_status("PutAttributes", params, verb="POST")
 
 
 def monkeyPatchSdbConnection(sdb):
@@ -469,6 +504,7 @@ def monkeyPatchSdbConnection(sdb):
     :type sdb: SDBConnection
     """
     sdb.put_attributes = types.MethodType(_put_attributes_using_post, sdb)
+
 
 def sdb_unavailable(e):
     # Since we're checking against a collection here we absolutely need an
@@ -478,23 +514,28 @@ def sdb_unavailable(e):
 
 
 def no_such_sdb_domain(e):
-    return (isinstance(e, ClientError)
-            and get_error_code(e)
-            and get_error_code(e).endswith('NoSuchDomain'))
+    return (
+        isinstance(e, ClientError)
+        and get_error_code(e)
+        and get_error_code(e).endswith("NoSuchDomain")
+    )
 
 
 def retryable_ssl_error(e):
     # https://github.com/BD2KGenomics/toil/issues/978
-    return isinstance(e, SSLError) and e.reason == 'DECRYPTION_FAILED_OR_BAD_RECORD_MAC'
+    return isinstance(e, SSLError) and e.reason == "DECRYPTION_FAILED_OR_BAD_RECORD_MAC"
 
 
 def retryable_sdb_errors(e):
-    return (sdb_unavailable(e)
-            or no_such_sdb_domain(e)
-            or connection_error(e)
-            or retryable_ssl_error(e))
+    return (
+        sdb_unavailable(e)
+        or no_such_sdb_domain(e)
+        or connection_error(e)
+        or retryable_ssl_error(e)
+    )
 
 
-def retry_sdb(delays=DEFAULT_DELAYS, timeout=DEFAULT_TIMEOUT, predicate=retryable_sdb_errors):
+def retry_sdb(
+    delays=DEFAULT_DELAYS, timeout=DEFAULT_TIMEOUT, predicate=retryable_sdb_errors
+):
     return old_retry(delays=delays, timeout=timeout, predicate=predicate)
-

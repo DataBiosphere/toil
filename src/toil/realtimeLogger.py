@@ -20,7 +20,7 @@ import os.path
 import socketserver as SocketServer
 import threading
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Optional, Type
+from typing import TYPE_CHECKING, Any, Optional
 
 from toil.lib.misc import get_public_ip
 from toil.statsAndLogging import set_log_level
@@ -49,7 +49,7 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
 
         try:
             # Parse it as JSON
-            message_attrs = json.loads(data.decode('utf-8'))
+            message_attrs = json.loads(data.decode("utf-8"))
             # Fluff it up into a proper logging record
             record = logging.makeLogRecord(message_attrs)
             if isinstance(record.args, list):
@@ -81,7 +81,7 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
 
     def makePickle(self, record: logging.LogRecord) -> bytes:
         """Actually, encode the record as bare JSON instead."""
-        return json.dumps(record.__dict__).encode('utf-8')
+        return json.dumps(record.__dict__).encode("utf-8")
 
 
 class RealtimeLoggerMetaclass(type):
@@ -113,7 +113,7 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     envPrefix = "TOIL_RT_LOGGING_"
 
     # Avoid duplicating the default level everywhere
-    defaultLevel = 'INFO'
+    defaultLevel = "INFO"
 
     # State maintained on server and client
 
@@ -131,19 +131,24 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
     logger = None
 
     @classmethod
-    def _startLeader(cls, batchSystem: 'AbstractBatchSystem', level: str = defaultLevel) -> None:
+    def _startLeader(
+        cls, batchSystem: "AbstractBatchSystem", level: str = defaultLevel
+    ) -> None:
         with cls.lock:
             if cls.initialized == 0:
                 cls.initialized += 1
                 if level:
-                    logger.info('Starting real-time logging.')
+                    logger.info("Starting real-time logging.")
                     # Start up the logging server
                     cls.loggingServer = SocketServer.ThreadingUDPServer(
-                            server_address=('0.0.0.0', 0),
-                            RequestHandlerClass=LoggingDatagramHandler)
+                        server_address=("0.0.0.0", 0),
+                        RequestHandlerClass=LoggingDatagramHandler,
+                    )
 
                     # Set up a thread to do all the serving in the background and exit when we do
-                    cls.serverThread = threading.Thread(target=cls.loggingServer.serve_forever)
+                    cls.serverThread = threading.Thread(
+                        target=cls.loggingServer.serve_forever
+                    )
                     cls.serverThread.daemon = True
                     cls.serverThread.start()
 
@@ -156,28 +161,30 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         os.environ[name] = value
                         batchSystem.setEnv(name)
 
-                    _setEnv('ADDRESS', '%s:%i' % (ip, port))
-                    _setEnv('LEVEL', level)
+                    _setEnv("ADDRESS", "%s:%i" % (ip, port))
+                    _setEnv("LEVEL", level)
                 else:
-                    logger.debug('Real-time logging disabled')
+                    logger.debug("Real-time logging disabled")
             else:
                 if level:
-                    logger.warning('Ignoring nested request to start real-time logging')
+                    logger.warning("Ignoring nested request to start real-time logging")
 
     @classmethod
     def _stopLeader(cls) -> None:
         """Stop the server on the leader."""
         with cls.lock:
             if cls.initialized == 0:
-                raise RuntimeError("Can't stop the server on the leader as the leader was never initialized.")
+                raise RuntimeError(
+                    "Can't stop the server on the leader as the leader was never initialized."
+                )
             cls.initialized -= 1
             if cls.initialized == 0:
                 if cls.loggingServer:
-                    logger.info('Stopping real-time logging server.')
+                    logger.info("Stopping real-time logging server.")
                     cls.loggingServer.shutdown()
                     cls.loggingServer = None
                 if cls.serverThread:
-                    logger.info('Joining real-time logging server thread.')
+                    logger.info("Joining real-time logging server thread.")
                     cls.serverThread.join()
                     cls.serverThread = None
                 for k in list(os.environ.keys()):
@@ -198,9 +205,9 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
         if cls.logger is None:
             with cls.lock:
                 if cls.logger is None:
-                    cls.logger = logging.getLogger('toil-rt')
+                    cls.logger = logging.getLogger("toil-rt")
                     try:
-                        level = os.environ[cls.envPrefix + 'LEVEL']
+                        level = os.environ[cls.envPrefix + "LEVEL"]
                     except KeyError:
                         # There is no server running on the leader, so suppress most log messages
                         # and skip the UDP stuff.
@@ -209,16 +216,16 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
                         # Adopt the logging level set on the leader.
                         set_log_level(level, cls.logger)
                         try:
-                            address = os.environ[cls.envPrefix + 'ADDRESS']
+                            address = os.environ[cls.envPrefix + "ADDRESS"]
                         except KeyError:
                             pass
                         else:
                             # We know where to send messages to, so send them.
-                            host, port = address.split(':')
+                            host, port = address.split(":")
                             cls.logger.addHandler(JSONDatagramHandler(host, int(port)))
         return cls.logger
 
-    def __init__(self, batchSystem: 'AbstractBatchSystem', level: str = defaultLevel):
+    def __init__(self, batchSystem: "AbstractBatchSystem", level: str = defaultLevel):
         """
         Create a context manager that starts up the UDP server.
 
@@ -237,5 +244,10 @@ class RealtimeLogger(metaclass=RealtimeLoggerMetaclass):
         RealtimeLogger._startLeader(self.__batchSystem, level=self.__level)
 
     # noinspection PyUnusedLocal
-    def __exit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+    def __exit__(
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         RealtimeLogger._stopLeader()

@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Iterable, Iterator
+
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-from typing import Any, Iterable, Iterator, TypeVar
+from typing import Any, TypeVar
 
 IT = TypeVar("IT")
 
@@ -102,7 +104,7 @@ class concat:
                 try:
                     i = x.__iter__()
                 except AttributeError:
-                    i = x,
+                    i = (x,)
             else:
                 i = x
             return i

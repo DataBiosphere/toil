@@ -341,7 +341,7 @@ diff_mypy:
 	diff-cover --fail-under=100 --compare-branch origin/master cobertura.xml
 
 pyupgrade: $(PYSOURCES)
-	pyupgrade --exit-zero-even-if-changed --py37-plus $^
+	pyupgrade --exit-zero-even-if-changed --py39-plus $^
 
 flake8: $(PYSOURCES)
 	flake8 --ignore=E501,W293,W291,E265,E302,E722,E126,E303,E261,E201,E202,W503,W504,W391,E128,E301,E127,E502,E129,E262,E111,E117,E306,E203,E231,E226,E741,E122,E251,E305,E701,E222,E225,E241,E305,E123,E121,E703,E704,E125,E402 $^

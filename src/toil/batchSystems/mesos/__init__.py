@@ -19,19 +19,23 @@ from threading import Lock
 
 from toil.provisioners.abstractProvisioner import Shape
 
-TaskData = namedtuple('TaskData', (
-    # Time when the task was started
-    'startTime',
-    # Mesos' ID of the agent where task is being run
-    'agentID',
-    # IP of agent where task is being run
-    'agentIP',
-    # Mesos' ID of the executor running the task
-    'executorID',
-    # Memory requirement of the task
-    'memory',
-    # CPU requirement of the task
-    'cores'))
+TaskData = namedtuple(
+    "TaskData",
+    (
+        # Time when the task was started
+        "startTime",
+        # Mesos' ID of the agent where task is being run
+        "agentID",
+        # IP of agent where task is being run
+        "agentIP",
+        # Mesos' ID of the executor running the task
+        "executorID",
+        # Memory requirement of the task
+        "memory",
+        # CPU requirement of the task
+        "cores",
+    ),
+)
 
 
 class JobQueue:
@@ -52,7 +56,11 @@ class JobQueue:
 
     def jobIDs(self):
         with self.jobLock:
-            return [job.jobID for queue in list(self.queues.values()) for job in list(queue.queue)]
+            return [
+                job.jobID
+                for queue in list(self.queues.values())
+                for job in list(queue.queue)
+            ]
 
     def nextJobOfType(self, jobType):
         with self.jobLock:
@@ -80,18 +88,22 @@ class MesosShape(Shape):
         return not self.greater_than(other)
 
 
-ToilJob = namedtuple('ToilJob', (
-    # A job ID specific to this batch system implementation
-    'jobID',
-    # What string to display in the mesos UI
-    'name',
-    # A ResourceRequirement tuple describing the resources needed by this job
-    'resources',
-    # The command to be run on the worker node
-    'command',
-    # The resource object representing the user script
-    'userScript',
-    # A dictionary with additional environment variables to be set on the worker process
-    'environment',
-    # A named tuple containing all the required info for cleaning up the worker node
-    'workerCleanupInfo'))
+ToilJob = namedtuple(
+    "ToilJob",
+    (
+        # A job ID specific to this batch system implementation
+        "jobID",
+        # What string to display in the mesos UI
+        "name",
+        # A ResourceRequirement tuple describing the resources needed by this job
+        "resources",
+        # The command to be run on the worker node
+        "command",
+        # The resource object representing the user script
+        "userScript",
+        # A dictionary with additional environment variables to be set on the worker process
+        "environment",
+        # A named tuple containing all the required info for cleaning up the worker node
+        "workerCleanupInfo",
+    ),
+)

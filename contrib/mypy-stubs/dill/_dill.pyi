@@ -1,8 +1,12 @@
 import sys
-from typing import IO, Any, Callable, Iterable, Protocol, Union
+from typing import Any, Callable, Iterable, Protocol, final
 
 from _typeshed import ReadableBuffer
-from typing_extensions import TypeAlias, final
+
+if sys.version_info < (3, 10):
+    from typing_extensions import TypeAlias
+else:
+    from typing import TypeAlias
 
 class _ReadableFileobj(Protocol):
     def read(self, __n: int) -> bytes: ...
@@ -17,6 +21,7 @@ if sys.version_info >= (3, 8):
         def __init__(self, buffer: ReadableBuffer) -> None: ...
         def raw(self) -> memoryview: ...
         def release(self) -> None: ...
+
     _BufferCallback: TypeAlias = Callable[[PickleBuffer], Any] | None
 
     def dump(

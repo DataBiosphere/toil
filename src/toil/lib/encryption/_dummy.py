@@ -27,6 +27,8 @@ def decrypt(ciphertext: bytes, keyPath: str) -> bytes:
 
 
 def _bail():
-    raise NotImplementedError("Encryption support is not installed. Consider re-installing toil "
-                              "with the 'encryption' extra along with any other extras you might "
-                              "want, e.g. 'pip install toil[encryption,...]'.")
+    raise NotImplementedError(
+        "Encryption support is not installed. Consider re-installing toil "
+        "with the 'encryption' extra along with any other extras you might "
+        "want, e.g. 'pip install toil[encryption,...]'."
+    )

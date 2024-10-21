@@ -28,10 +28,14 @@ class RegularLogTest(ToilTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.tempDir = self._createTempDir(purpose='tempDir')
+        self.tempDir = self._createTempDir(purpose="tempDir")
 
     def _getFiles(self, dir):
-        return [os.path.join(dir, f) for f in os.listdir(dir) if os.path.isfile(os.path.join(dir, f))]
+        return [
+            os.path.join(dir, f)
+            for f in os.listdir(dir)
+            if os.path.isfile(os.path.join(dir, f))
+        ]
 
     def _assertFileTypeExists(self, dir, extension, encoding=None):
         # an encoding of None implies no compression
@@ -45,56 +49,86 @@ class RegularLogTest(ToilTest):
         if encoding is not None:
             for log in onlyLogs:
                 with open(log, "rb") as f:
-                    logger.info("Checking for encoding %s on file %s", str(encoding), log)
+                    logger.info(
+                        "Checking for encoding %s on file %s", str(encoding), log
+                    )
                     if encoding == "gzip":
                         # Check for gzip magic header '\x1f\x8b'
-                        assert f.read().startswith(b'\x1f\x8b')
+                        assert f.read().startswith(b"\x1f\x8b")
                     else:
                         mime = mimetypes.guess_type(log)
                         self.assertEqual(mime[1], encoding)
 
     @slow
     def testLogToMaster(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert helloWorld.childMessage in toilOutput.decode('utf-8')
+        toilOutput = subprocess.check_output(
+            [
+                sys.executable,
+                "-m",
+                helloWorld.__name__,
+                "./toilTest",
+                "--clean=always",
+                "--logLevel=info",
+            ],
+            stderr=subprocess.STDOUT,
+        )
+        assert helloWorld.childMessage in toilOutput.decode("utf-8")
 
     def testWriteLogs(self):
-        subprocess.check_call([sys.executable,
-                               '-m', helloWorld.__name__,
-                               './toilTest',
-                               '--clean=always',
-                               '--logLevel=debug',
-                               '--writeLogs=%s' % self.tempDir])
-        self._assertFileTypeExists(self.tempDir, '.log')
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                helloWorld.__name__,
+                "./toilTest",
+                "--clean=always",
+                "--logLevel=debug",
+                "--writeLogs=%s" % self.tempDir,
+            ]
+        )
+        self._assertFileTypeExists(self.tempDir, ".log")
 
     @slow
     def testWriteGzipLogs(self):
-        subprocess.check_call([sys.executable,
-                               '-m', helloWorld.__name__,
-                               './toilTest',
-                               '--clean=always',
-                               '--logLevel=debug',
-                               '--writeLogsGzip=%s' % self.tempDir])
-        self._assertFileTypeExists(self.tempDir, '.log.gz', 'gzip')
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                helloWorld.__name__,
+                "./toilTest",
+                "--clean=always",
+                "--logLevel=debug",
+                "--writeLogsGzip=%s" % self.tempDir,
+            ]
+        )
+        self._assertFileTypeExists(self.tempDir, ".log.gz", "gzip")
 
     @slow
     def testMultipleLogToMaster(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert helloWorld.parentMessage in toilOutput.decode('utf-8')
+        toilOutput = subprocess.check_output(
+            [
+                sys.executable,
+                "-m",
+                helloWorld.__name__,
+                "./toilTest",
+                "--clean=always",
+                "--logLevel=info",
+            ],
+            stderr=subprocess.STDOUT,
+        )
+        assert helloWorld.parentMessage in toilOutput.decode("utf-8")
 
     def testRegularLog(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--batchSystem=single_machine',
-                                              '--logLevel=debug'], stderr=subprocess.STDOUT)
-        assert "single machine batch system" in toilOutput.decode('utf-8')
+        toilOutput = subprocess.check_output(
+            [
+                sys.executable,
+                "-m",
+                helloWorld.__name__,
+                "./toilTest",
+                "--clean=always",
+                "--batchSystem=single_machine",
+                "--logLevel=debug",
+            ],
+            stderr=subprocess.STDOUT,
+        )
+        assert "single machine batch system" in toilOutput.decode("utf-8")

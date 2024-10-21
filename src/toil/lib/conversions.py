@@ -4,68 +4,99 @@ Also contains general conversion functions
 """
 
 import math
-from typing import SupportsInt, Tuple, Union, Optional
+from typing import Optional, SupportsInt, Union
 
 # See https://en.wikipedia.org/wiki/Binary_prefix
-BINARY_PREFIXES = ['ki', 'mi', 'gi', 'ti', 'pi', 'ei', 'kib', 'mib', 'gib', 'tib', 'pib', 'eib']
-DECIMAL_PREFIXES = ['b', 'k', 'm', 'g', 't', 'p', 'e', 'kb', 'mb', 'gb', 'tb', 'pb', 'eb']
+BINARY_PREFIXES = [
+    "ki",
+    "mi",
+    "gi",
+    "ti",
+    "pi",
+    "ei",
+    "kib",
+    "mib",
+    "gib",
+    "tib",
+    "pib",
+    "eib",
+]
+DECIMAL_PREFIXES = [
+    "b",
+    "k",
+    "m",
+    "g",
+    "t",
+    "p",
+    "e",
+    "kb",
+    "mb",
+    "gb",
+    "tb",
+    "pb",
+    "eb",
+]
 VALID_PREFIXES = BINARY_PREFIXES + DECIMAL_PREFIXES
 
 
-def bytes_in_unit(unit: str = 'B') -> int:
+def bytes_in_unit(unit: str = "B") -> int:
     num_bytes = 1
-    if unit.lower() in ['ki', 'kib']:
+    if unit.lower() in ["ki", "kib"]:
         num_bytes = 1 << 10
-    if unit.lower() in ['mi', 'mib']:
+    if unit.lower() in ["mi", "mib"]:
         num_bytes = 1 << 20
-    if unit.lower() in ['gi', 'gib']:
+    if unit.lower() in ["gi", "gib"]:
         num_bytes = 1 << 30
-    if unit.lower() in ['ti', 'tib']:
+    if unit.lower() in ["ti", "tib"]:
         num_bytes = 1 << 40
-    if unit.lower() in ['pi', 'pib']:
+    if unit.lower() in ["pi", "pib"]:
         num_bytes = 1 << 50
-    if unit.lower() in ['ei', 'eib']:
+    if unit.lower() in ["ei", "eib"]:
         num_bytes = 1 << 60
 
-    if unit.lower() in ['k', 'kb']:
+    if unit.lower() in ["k", "kb"]:
         num_bytes = 1000
-    if unit.lower() in ['m', 'mb']:
-        num_bytes = 1000 ** 2
-    if unit.lower() in ['g', 'gb']:
-        num_bytes = 1000 ** 3
-    if unit.lower() in ['t', 'tb']:
-        num_bytes = 1000 ** 4
-    if unit.lower() in ['p', 'pb']:
-        num_bytes = 1000 ** 5
-    if unit.lower() in ['e', 'eb']:
-        num_bytes = 1000 ** 6
+    if unit.lower() in ["m", "mb"]:
+        num_bytes = 1000**2
+    if unit.lower() in ["g", "gb"]:
+        num_bytes = 1000**3
+    if unit.lower() in ["t", "tb"]:
+        num_bytes = 1000**4
+    if unit.lower() in ["p", "pb"]:
+        num_bytes = 1000**5
+    if unit.lower() in ["e", "eb"]:
+        num_bytes = 1000**6
     return num_bytes
 
 
-def convert_units(num: float,
-                  src_unit: str,
-                  dst_unit: str = 'B') -> float:
+def convert_units(num: float, src_unit: str, dst_unit: str = "B") -> float:
     """Returns a float representing the converted input in dst_units."""
     if not src_unit.lower() in VALID_PREFIXES:
-        raise RuntimeError(f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
+        raise RuntimeError(
+            f"{src_unit} not a valid unit, valid units are {VALID_PREFIXES}."
+        )
     if not dst_unit.lower() in VALID_PREFIXES:
-        raise RuntimeError(f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}.")
+        raise RuntimeError(
+            f"{dst_unit} not a valid unit, valid units are {VALID_PREFIXES}."
+        )
     return (num * bytes_in_unit(src_unit)) / bytes_in_unit(dst_unit)
 
 
-def parse_memory_string(string: str) -> Tuple[float, str]:
+def parse_memory_string(string: str) -> tuple[float, str]:
     """
     Given a string representation of some memory (i.e. '1024 Mib'), return the
     number and unit.
     """
     for i, character in enumerate(string):
         # find the first character of the unit
-        if character not in '0123456789.-_ ':
+        if character not in "0123456789.-_ ":
             units = string[i:].strip()
             if not units.lower() in VALID_PREFIXES:
-                raise RuntimeError(f"{units} not a valid unit, valid units are {VALID_PREFIXES}.")
+                raise RuntimeError(
+                    f"{units} not a valid unit, valid units are {VALID_PREFIXES}."
+                )
             return float(string[:i]), units
-    return float(string), 'b'
+    return float(string), "b"
 
 
 def human2bytes(string: str) -> int:
@@ -75,7 +106,7 @@ def human2bytes(string: str) -> int:
     """
     value, unit = parse_memory_string(string)
 
-    return int(convert_units(value, src_unit=unit, dst_unit='b'))
+    return int(convert_units(value, src_unit=unit, dst_unit="b"))
 
 
 def bytes2human(n: SupportsInt) -> str:
@@ -84,48 +115,51 @@ def bytes2human(n: SupportsInt) -> str:
     if n < 0:
         raise ValueError("n < 0")
     elif n < 1:
-        return '0 b'
+        return "0 b"
 
     power_level = math.floor(math.log(n, 1024))
-    units = ('b', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei')
+    units = ("b", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei")
 
     unit = units[power_level if power_level < len(units) else -1]
     value = convert_units(n, "b", unit)
-    return f'{value:.1f} {unit}'
-    
+    return f"{value:.1f} {unit}"
+
+
 def b_to_mib(n: Union[int, float]) -> float:
     """
     Convert a number from bytes to mibibytes.
     """
-    return convert_units(n, 'b', 'mib')
+    return convert_units(n, "b", "mib")
 
 
 def mib_to_b(n: Union[int, float]) -> float:
     """
     Convert a number from mibibytes to bytes.
     """
-    return convert_units(n, 'mib', 'b')
+    return convert_units(n, "mib", "b")
 
-#General Conversions
 
-def hms_duration_to_seconds(hms: str) -> float: 
+# General Conversions
+
+
+def hms_duration_to_seconds(hms: str) -> float:
     """
-    Parses a given time string in hours:minutes:seconds, 
+    Parses a given time string in hours:minutes:seconds,
     returns an equivalent total seconds value
     """
-    vals_to_convert = hms.split(':')
+    vals_to_convert = hms.split(":")
     seconds = 0.0
-    
+
     for val in vals_to_convert:
-        if(float(val) < 0): 
+        if float(val) < 0:
             raise ValueError("Invalid Time, negative value")
 
-    if(len(vals_to_convert) != 3):
+    if len(vals_to_convert) != 3:
         raise ValueError("Invalid amount of fields, function takes input in 'hh:mm:ss'")
 
-    seconds += float(vals_to_convert[0]) * 60 * 60 
-    seconds += float(vals_to_convert[1]) * 60 
-    seconds += float(vals_to_convert[2]) 
+    seconds += float(vals_to_convert[0]) * 60 * 60
+    seconds += float(vals_to_convert[1]) * 60
+    seconds += float(vals_to_convert[2])
 
     return seconds
 
@@ -133,7 +167,7 @@ def hms_duration_to_seconds(hms: str) -> float:
 def strtobool(val: str) -> bool:
     """
     Make a human-readable string into a bool.
-    
+
     Convert a string along the lines of "y", "1", "ON", "TrUe", or
     "Yes" to True, and the corresponding false-ish values to False.
     """
@@ -145,7 +179,7 @@ def strtobool(val: str) -> bool:
         for prefix in prefixes:
             if lowered.startswith(prefix):
                 return result
-    raise ValueError(f"Cannot convert \"{val}\" to a bool")
+    raise ValueError(f'Cannot convert "{val}" to a bool')
 
 
 def opt_strtobool(b: Optional[str]) -> Optional[bool]:

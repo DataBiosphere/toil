@@ -25,18 +25,24 @@ import re
 import subprocess
 from datetime import datetime
 from random import randint
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
 
-from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, EXIT_STATUS_UNAVAILABLE_VALUE
-from toil.batchSystems.abstractGridEngineBatchSystem import \
-    AbstractGridEngineBatchSystem
-from toil.batchSystems.lsfHelper import (check_lsf_json_output_supported,
-                                         parse_mem_and_cmd_from_output,
-                                         parse_memory,
-                                         per_core_reservation)
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE,
+    BatchJobExitReason,
+)
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+)
+from toil.batchSystems.lsfHelper import (
+    check_lsf_json_output_supported,
+    parse_mem_and_cmd_from_output,
+    parse_memory,
+    per_core_reservation,
+)
 from toil.lib.misc import call_command
 
 logger = logging.getLogger(__name__)
@@ -50,47 +56,58 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
-                currentjobs = {str(self.batchJobIDs[x][0]): x for x in
-                                   self.runningJobs}
+                currentjobs = {str(self.batchJobIDs[x][0]): x for x in self.runningJobs}
 
             if check_lsf_json_output_supported:
-                stdout = call_command(["bjobs","-json","-o", "jobid stat start_time"])
+                stdout = call_command(["bjobs", "-json", "-o", "jobid stat start_time"])
 
                 bjobs_records = self.parseBjobs(stdout)
                 if bjobs_records:
                     for single_item in bjobs_records:
-                        if single_item['STAT'] == 'RUN' and single_item['JOBID'] in currentjobs:
-                            jobstart = parse(single_item['START_TIME'], default=datetime.now(tzlocal()))
-                            times[currentjobs[single_item['JOBID']]] = datetime.now(tzlocal()) \
-                            - jobstart
+                        if (
+                            single_item["STAT"] == "RUN"
+                            and single_item["JOBID"] in currentjobs
+                        ):
+                            jobstart = parse(
+                                single_item["START_TIME"],
+                                default=datetime.now(tzlocal()),
+                            )
+                            times[currentjobs[single_item["JOBID"]]] = (
+                                datetime.now(tzlocal()) - jobstart
+                            )
             else:
                 times = self.fallbackRunningJobIDs(currentjobs)
             return times
 
         def fallbackRunningJobIDs(self, currentjobs):
             times = {}
-            stdout = call_command(["bjobs", "-o", "jobid stat start_time delimiter='|'"])
-            for curline in stdout.split('\n'):
-                items = curline.strip().split('|')
-                if items[0] in currentjobs and items[1] == 'RUN':
+            stdout = call_command(
+                ["bjobs", "-o", "jobid stat start_time delimiter='|'"]
+            )
+            for curline in stdout.split("\n"):
+                items = curline.strip().split("|")
+                if items[0] in currentjobs and items[1] == "RUN":
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
-                    times[currentjobs[items[0]]] = datetime.now(tzlocal()) \
-                        - jobstart
+                    times[currentjobs[items[0]]] = datetime.now(tzlocal()) - jobstart
             return times
 
         def killJob(self, jobID):
-            call_command(['bkill', self.getBatchSystemID(jobID)])
+            call_command(["bkill", self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self,
-                              cpu: int,
-                              memory: int,
-                              jobID: int,
-                              command: str,
-                              jobName: str,
-                              job_environment: Optional[Dict[str, str]] = None,
-                              gpus: Optional[int] = None):
-            return (self.prepareBsub(cpu, memory, jobID) + [command],
-                    job_environment)  # pass job_environment to .submitJob()
+        def prepareSubmission(
+            self,
+            cpu: int,
+            memory: int,
+            jobID: int,
+            command: str,
+            jobName: str,
+            job_environment: Optional[dict[str, str]] = None,
+            gpus: Optional[int] = None,
+        ):
+            return (
+                self.prepareBsub(cpu, memory, jobID) + [command],
+                job_environment,
+            )  # pass job_environment to .submitJob()
 
         def submitJob(self, subLine):
             subLine, job_environment = subLine
@@ -102,7 +119,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             stdout = call_command(subLine, env=combinedEnv)
             # Example success: Job <39605914> is submitted to default queue <general>.
             # Example fail: Service class does not exist. Job not submitted.
-            result_search = re.search('Job <(.*)> is submitted', stdout)
+            result_search = re.search("Job <(.*)> is submitted", stdout)
 
             if result_search:
                 result = int(result_search.group(1))
@@ -138,7 +155,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("Getting coalesced job exit codes via bjobs")
                 bjobs_records = self.parseBjobs(
                     subprocess.run(
-                        args, check=False, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8"
+                        args,
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        encoding="utf-8",
                     ).stdout
                 )
                 if bjobs_records:
@@ -161,23 +182,31 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         status_resonse.append(None)
             return status_resonse
 
-        def getJobExitCode(self, lsfJobID) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def getJobExitCode(
+            self, lsfJobID
+        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             # the task is set as part of the job ID if using getBatchSystemID()
             if "NOT_SUBMITTED" in lsfJobID:
                 logger.error("bjobs detected job failed to submit")
                 return 1
 
             job, task = (lsfJobID, None)
-            if '.' in lsfJobID:
-                job, task = lsfJobID.split('.', 1)
+            if "." in lsfJobID:
+                job, task = lsfJobID.split(".", 1)
 
             self.parseMaxMem(job)
             # first try bjobs to find out job state
             if check_lsf_json_output_supported:
-                args = ["bjobs", "-json", "-o",
-                        "user exit_code stat exit_reason pend_reason", str(job)]
-                logger.debug("Checking job exit code for job via bjobs: "
-                             "{}".format(job))
+                args = [
+                    "bjobs",
+                    "-json",
+                    "-o",
+                    "user exit_code stat exit_reason pend_reason",
+                    str(job),
+                ]
+                logger.debug(
+                    "Checking job exit code for job via bjobs: " "{}".format(job)
+                )
                 stdout = call_command(args)
                 bjobs_records = self.parseBjobs(stdout)
                 if bjobs_records:
@@ -186,7 +215,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             return self.fallbackGetJobExitCode(job)
 
-        def parse_bjobs_record(self, bjobs_record: dict, job: int) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def parse_bjobs_record(
+            self, bjobs_record: dict, job: int
+        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             """
             Helper functions for getJobExitCode and  to parse the bjobs status record
             """
@@ -202,7 +233,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             pending_info = "\n" + bjobs_record["PEND_REASON"]
                     logger.debug(
                         "bjobs detected job pending with: %s\nfor job: %s",
-                        pending_info, job
+                        pending_info,
+                        job,
                     )
                     return None
                 if process_status == "EXIT":
@@ -221,10 +253,18 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         exit_info += f"\nexit reason: {exit_reason}"
                     logger.error(
                         "bjobs detected job failed with: %s\nfor job: %s",
-                        exit_info, job
+                        exit_info,
+                        job,
                     )
                     if "TERM_MEMLIMIT" in exit_reason:
-                        return (exit_code if exit_code != 0 else EXIT_STATUS_UNAVAILABLE_VALUE, BatchJobExitReason.MEMLIMIT)
+                        return (
+                            (
+                                exit_code
+                                if exit_code != 0
+                                else EXIT_STATUS_UNAVAILABLE_VALUE
+                            ),
+                            BatchJobExitReason.MEMLIMIT,
+                        )
                     return exit_code
                 if process_status == "RUN":
                     logger.debug(
@@ -237,46 +277,53 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
                 return self.getJobExitCodeBACCT(job)
 
-        def getJobExitCodeBACCT(self,job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def getJobExitCodeBACCT(
+            self, job
+        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             # if not found in bjobs, then try bacct (slower than bjobs)
-            logger.debug("bjobs failed to detect job - trying bacct: "
-                         "{}".format(job))
+            logger.debug("bjobs failed to detect job - trying bacct: " "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
             stdout = call_command(args)
-            process_output = stdout.split('\n')
+            process_output = stdout.split("\n")
             for line in process_output:
                 if line.find("Completed <done>") > -1 or line.find("<DONE>") > -1:
-                    logger.debug("Detected job completed for job: "
-                                 "{}".format(job))
+                    logger.debug("Detected job completed for job: " "{}".format(job))
                     return 0
                 elif line.find("Completed <exit>") > -1 or line.find("<EXIT>") > -1:
-                    logger.error("Detected job failed for job: "
-                                 "{}".format(job))
+                    logger.error("Detected job failed for job: " "{}".format(job))
                     return 1
-            logger.debug("Can't determine exit code for job or job still "
-                         "running: {}".format(job))
+            logger.debug(
+                "Can't determine exit code for job or job still "
+                "running: {}".format(job)
+            )
             return None
 
-        def fallbackGetJobExitCode(self, job) -> Union[int, Tuple[int, Optional[BatchJobExitReason]], None]:
+        def fallbackGetJobExitCode(
+            self, job
+        ) -> Union[int, tuple[int, Optional[BatchJobExitReason]], None]:
             args = ["bjobs", "-l", str(job)]
             logger.debug(f"Checking job exit code for job via bjobs (fallback): {job}")
             stdout = call_command(args)
             output = stdout.replace("\n                     ", "")
-            process_output = output.split('\n')
+            process_output = output.split("\n")
             started = 0
             for line in process_output:
                 if "Done successfully" in line or "Status <DONE>" in line:
                     logger.debug(f"bjobs detected job completed for job: {job}")
                     return 0
                 elif "New job is waiting for scheduling" in line:
-                    logger.debug(f"bjobs detected job pending scheduling for job: {job}")
+                    logger.debug(
+                        f"bjobs detected job pending scheduling for job: {job}"
+                    )
                     return None
                 elif "PENDING REASONS" in line or "Status <PEND>" in line:
                     logger.debug(f"bjobs detected job pending for job: {job}")
                     return None
                 elif "Exited with exit code" in line:
-                    exit = int(line[line.find("Exited with exit code ")+22:].split('.')[0])
+                    exit = int(
+                        line[line.find("Exited with exit code ") + 22 :].split(".")[0]
+                    )
                     logger.error(f"bjobs detected job exit code {exit} for job {job}")
                     return exit
                 elif "Completed <exit>" in line:
@@ -293,7 +340,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> List[str]:
+
+        def prepareBsub(self, cpu: int, mem: int, jobID: int) -> list[str]:
             """
             Make a bsub commandline to execute.
 
@@ -308,18 +356,15 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 if per_core_reservation() and cpu:
                     mem = mem / math.ceil(cpu)
                 mem = parse_memory(mem)
-                bsubMem = ['-R',
-                           f'select[mem>{mem}] '
-                           f'rusage[mem={mem}]',
-                           '-M', mem]
-            bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
+                bsubMem = ["-R", f"select[mem>{mem}] " f"rusage[mem={mem}]", "-M", mem]
+            bsubCpu = [] if cpu is None else ["-n", str(math.ceil(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-J", f"toil_job_{jobID}"]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
-            stdoutfile: str = self.boss.format_std_out_err_path(jobID, '%J', 'out')
-            stderrfile: str = self.boss.format_std_out_err_path(jobID, '%J', 'err')
-            bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
-            lsfArgs = os.getenv('TOIL_LSF_ARGS')
+            stdoutfile: str = self.boss.format_std_out_err_path(jobID, "%J", "out")
+            stderrfile: str = self.boss.format_std_out_err_path(jobID, "%J", "err")
+            bsubline.extend(["-o", stdoutfile, "-e", stderrfile])
+            lsfArgs = os.getenv("TOIL_LSF_ARGS")
             if lsfArgs:
                 bsubline.extend(lsfArgs.split())
             return bsubline
@@ -333,16 +378,16 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             bjobs_dict = None
             bjobs_records = None
             # Handle Cannot connect to LSF. Please wait ... type messages
-            dict_start = bjobs_output_str.find('{')
-            dict_end = bjobs_output_str.rfind('}')
+            dict_start = bjobs_output_str.find("{")
+            dict_end = bjobs_output_str.rfind("}")
             if dict_start != -1 and dict_end != -1:
-                bjobs_output = bjobs_output_str[dict_start:(dict_end+1)]
+                bjobs_output = bjobs_output_str[dict_start : (dict_end + 1)]
                 try:
                     bjobs_dict = json.loads(bjobs_output)
                 except json.decoder.JSONDecodeError:
                     logger.error(f"Could not parse bjobs output: {bjobs_output_str}")
-                if 'RECORDS' in bjobs_dict:
-                    bjobs_records = bjobs_dict['RECORDS']
+                if "RECORDS" in bjobs_dict:
+                    bjobs_records = bjobs_dict["RECORDS"]
             if bjobs_records is None:
                 logger.error(f"Could not find bjobs output json in: {bjobs_output_str}")
 
@@ -358,16 +403,24 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 output = subprocess.check_output(["bjobs", "-l", str(jobID)], text=True)
                 max_mem, command = parse_mem_and_cmd_from_output(output=output)
                 if not max_mem:
-                    logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {output}")
+                    logger.warning(
+                        f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {output}"
+                    )
                     return
 
                 if not command:
-                    logger.warning(f"[job ID {jobID}] Cannot Parse Max Memory Due to Missing Command String: {output}")
+                    logger.warning(
+                        f"[job ID {jobID}] Cannot Parse Max Memory Due to Missing Command String: {output}"
+                    )
                 else:
-                    logger.info(f"[job ID {jobID}, Command {command.group(1)}] Max Memory Used: {max_mem.group(1)}")
+                    logger.info(
+                        f"[job ID {jobID}, Command {command.group(1)}] Max Memory Used: {max_mem.group(1)}"
+                    )
                 return max_mem
             except subprocess.CalledProcessError as e:
-                logger.warning(f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {e}")
+                logger.warning(
+                    f"[job ID {jobID}] Unable to Collect Maximum Memory Usage: {e}"
+                )
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""

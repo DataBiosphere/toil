@@ -18,10 +18,12 @@ import shlex
 import tempfile
 from queue import Empty
 from shlex import quote
-from typing import Dict, List, Optional
+from typing import Optional
 
-from toil.batchSystems.abstractGridEngineBatchSystem import (AbstractGridEngineBatchSystem,
-                                                             UpdatedBatchJobInfo)
+from toil.batchSystems.abstractGridEngineBatchSystem import (
+    AbstractGridEngineBatchSystem,
+    UpdatedBatchJobInfo,
+)
 from toil.lib.conversions import hms_duration_to_seconds
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 
@@ -41,18 +43,17 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             self._version = self._pbsVersion()
 
         def _pbsVersion(self):
-            """ Determines PBS/Torque version via pbsnodes
-            """
+            """Determines PBS/Torque version via pbsnodes"""
             try:
                 out = call_command(["pbsnodes", "--version"])
                 if "PBSPro" in out:
-                     logger.debug("PBS Pro proprietary Torque version detected")
-                     self._version = "pro"
+                    logger.debug("PBS Pro proprietary Torque version detected")
+                    self._version = "pro"
                 else:
-                     logger.debug("Torque OSS version detected")
-                     self._version = "oss"
+                    logger.debug("Torque OSS version detected")
+                    self._version = "oss"
             except CalledProcessErrorStderr as e:
-               if e.returncode != 0:
+                if e.returncode != 0:
                     logger.error("Could not determine PBS/Torque version")
 
             return self._version
@@ -60,6 +61,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         Torque-specific AbstractGridEngineWorker methods
         """
+
         def getRunningJobIDs(self):
             times = {}
             with self.runningJobsLock:
@@ -75,32 +77,33 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # PBS plain qstat will return every running job on the system.
             jobids = sorted(list(currentjobs.keys()))
             if self._version == "pro":
-                stdout = call_command(['qstat', '-x'] + jobids)
+                stdout = call_command(["qstat", "-x"] + jobids)
             elif self._version == "oss":
-                stdout = call_command(['qstat'] + jobids)
+                stdout = call_command(["qstat"] + jobids)
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it
             # so instead we stick with plain commandline qstat tabular outputs
-            for currline in stdout.split('\n'):
+            for currline in stdout.split("\n"):
                 items = currline.strip().split()
                 if items:
                     jobid = items[0].strip().split(".")[0]
                     if jobid in currentjobs:
                         logger.debug("getRunningJobIDs job status for is: %s", items[4])
-                    if jobid in currentjobs and items[4] == 'R':
+                    if jobid in currentjobs and items[4] == "R":
                         walltime = items[3].strip()
                         logger.debug(
                             "getRunningJobIDs qstat reported walltime is: %s", walltime
                         )
                         # normal qstat has a quirk with job time where it reports '0'
                         # when initially running; this catches this case
-                        if walltime == '0':
+                        if walltime == "0":
                             walltime = 0.0
                         elif not walltime:
                             # Sometimes we don't get any data here.
                             # See https://github.com/DataBiosphere/toil/issues/3715
                             logger.warning(
-                                "Assuming 0 walltime due to missing field in qstat line: %s", currline
+                                "Assuming 0 walltime due to missing field in qstat line: %s",
+                                currline,
                             )
                             walltime = 0.0
                         else:
@@ -120,10 +123,12 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             except Empty:
                 logger.debug("getUpdatedBatchJob: Job queue is empty")
             else:
-                return UpdatedBatchJobInfo(jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None)
+                return UpdatedBatchJobInfo(
+                    jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None
+                )
 
         def killJob(self, jobID):
-            call_command(['qdel', self.getBatchSystemID(jobID)])
+            call_command(["qdel", self.getBatchSystemID(jobID)])
 
         def prepareSubmission(
             self,
@@ -132,8 +137,9 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             jobID: int,
             command: str,
             jobName: str,
-            job_environment: Optional[Dict[str, str]] = None,
-            gpus: Optional[int] = None) -> List[str]:
+            job_environment: Optional[dict[str, str]] = None,
+            gpus: Optional[int] = None,
+        ) -> list[str]:
             return self.prepareQsub(cpu, memory, jobID, job_environment) + [
                 self.generateTorqueWrapper(command, jobID)
             ]
@@ -143,21 +149,25 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         def getJobExitCode(self, torqueJobID):
             if self._version == "pro":
-                args = ["qstat", "-x", "-f", str(torqueJobID).split('.')[0]]
+                args = ["qstat", "-x", "-f", str(torqueJobID).split(".")[0]]
             elif self._version == "oss":
-                args = ["qstat", "-f", str(torqueJobID).split('.')[0]]
+                args = ["qstat", "-f", str(torqueJobID).split(".")[0]]
 
             stdout = call_command(args)
-            for line in stdout.split('\n'):
+            for line in stdout.split("\n"):
                 line = line.strip()
                 # Case differences due to PBSPro vs OSS Torque qstat outputs
-                if line.startswith("failed") or line.startswith("FAILED") and int(line.split()[1]) == 1:
+                if (
+                    line.startswith("failed")
+                    or line.startswith("FAILED")
+                    and int(line.split()[1]) == 1
+                ):
                     return 1
                 if line.startswith("exit_status") or line.startswith("Exit_status"):
                     status = line.split(" = ")[1]
                     logger.debug("Exit Status: %s", status)
                     return int(status)
-                if 'unknown job id' in line.lower():
+                if "unknown job id" in line.lower():
                     # some clusters configure Torque to forget everything about just
                     # finished jobs instantly, apparently for performance reasons
                     logger.debug(
@@ -176,8 +186,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             cpu: int,
             mem: int,
             jobID: int,
-            job_environment: Optional[Dict[str, str]],
-        ) -> List[str]:
+            job_environment: Optional[dict[str, str]],
+        ) -> list[str]:
 
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?
@@ -189,9 +199,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 environment.update(job_environment)
 
             if environment:
-                qsubline.append('-v')
-                qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                         for k, v in self.boss.environment.items()))
+                qsubline.append("-v")
+                qsubline.append(
+                    ",".join(
+                        k + "=" + quote(os.environ[k] if v is None else v)
+                        for k, v in self.boss.environment.items()
+                    )
+                )
 
             reqline = list()
             if self._version == "pro":
@@ -208,7 +222,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     reqline.append("nodes=1:ppn=" + str(int(math.ceil(cpu))))
 
             # Other resource requirements can be passed through the environment (see man qsub)
-            reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
+            reqlineEnv = os.getenv("TOIL_TORQUE_REQS")
             if reqlineEnv is not None:
                 logger.debug(
                     "Additional Torque resource requirements appended to qsub from "
@@ -232,7 +246,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # All other qsub parameters can be passed through the environment (see man qsub).
             # No attempt is made to parse them out here and check that they do not conflict
             # with those that we already constructed above
-            arglineEnv = os.getenv('TOIL_TORQUE_ARGS')
+            arglineEnv = os.getenv("TOIL_TORQUE_ARGS")
             if arglineEnv is not None:
                 logger.debug(
                     "Native Torque options appended to qsub from TOIL_TORQUE_ARGS env. variable: %s",

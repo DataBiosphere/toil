@@ -7,15 +7,20 @@ def deprecated(new_function_name: str) -> Callable[..., Any]:
     def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
         def call(*args: Any, **kwargs: Any) -> Any:
-            warnings.warn(f'WARNING: "{func.__name__}()" is deprecated.  Please use "{new_function_name}()" instead.',
-                          DeprecationWarning)
+            warnings.warn(
+                f'WARNING: "{func.__name__}()" is deprecated.  Please use "{new_function_name}()" instead.',
+                DeprecationWarning,
+            )
             return func(*args, **kwargs)
+
         return call
+
     return decorate
 
 
 def compat_bytes(s: Union[bytes, str]) -> str:
-    return s.decode('utf-8') if isinstance(s, bytes) else s
+    return s.decode("utf-8") if isinstance(s, bytes) else s
+
 
 # MyPy can't yet support the recursive type we would need to say "we go through
 # any structure of dicts, tuples, lists, and sets and convert all bytes types
@@ -28,13 +33,13 @@ def compat_bytes_recursive(data: Any) -> Any:
     """
     if isinstance(data, dict):
         # Keyed collection
-        return type(data)((compat_bytes_recursive(i) for i in data.items()))
+        return type(data)(compat_bytes_recursive(i) for i in data.items())
     elif isinstance(data, (tuple, list, set)):
         # Flat collection
-        return type(data)((compat_bytes_recursive(i) for i in data))
+        return type(data)(compat_bytes_recursive(i) for i in data)
     elif isinstance(data, bytes):
         # Leaf bytes
-        return data.decode('utf-8')
+        return data.decode("utf-8")
     else:
         # Leaf non-bytes
         return data

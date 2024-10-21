@@ -32,6 +32,7 @@ class UserNameAvailableTest(ToilTest):
         apparent_user_name = get_user_name()
         self.assertEqual(apparent_user_name, real_user_name)
 
+
 class UserNameUnvailableTest(ToilTest):
     """
     Make sure we can get something for a user name when user names are not
@@ -42,9 +43,12 @@ class UserNameUnvailableTest(ToilTest):
         super().setUp()
         # Monkey patch getpass.getuser to fail
         self.original_getuser = getpass.getuser
+
         def fake_getuser():
-            raise KeyError('Fake key error')
+            raise KeyError("Fake key error")
+
         getpass.getuser = fake_getuser
+
     def tearDown(self):
         # Fix the module we hacked up
         getpass.getuser = self.original_getuser
@@ -54,7 +58,8 @@ class UserNameUnvailableTest(ToilTest):
         apparent_user_name = get_user_name()
         # Make sure we got something
         self.assertTrue(isinstance(apparent_user_name, str))
-        self.assertNotEqual(apparent_user_name, '')
+        self.assertNotEqual(apparent_user_name, "")
+
 
 class UserNameVeryBrokenTest(ToilTest):
     """
@@ -66,9 +71,12 @@ class UserNameVeryBrokenTest(ToilTest):
         super().setUp()
         # Monkey patch getpass.getuser to fail
         self.original_getuser = getpass.getuser
+
         def fake_getuser():
-            raise RuntimeError('Fake error that we did not anticipate')
+            raise RuntimeError("Fake error that we did not anticipate")
+
         getpass.getuser = fake_getuser
+
     def tearDown(self):
         # Fix the module we hacked up
         getpass.getuser = self.original_getuser
@@ -78,5 +86,4 @@ class UserNameVeryBrokenTest(ToilTest):
         apparent_user_name = get_user_name()
         # Make sure we got something
         self.assertTrue(isinstance(apparent_user_name, str))
-        self.assertNotEqual(apparent_user_name, '')
-
+        self.assertNotEqual(apparent_user_name, "")

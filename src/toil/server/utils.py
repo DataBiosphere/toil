@@ -16,7 +16,7 @@ import logging
 import os
 from abc import abstractmethod
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 import requests
@@ -28,11 +28,13 @@ try:
     from toil.lib.aws import get_current_aws_region
     from toil.lib.aws.session import client
     from toil.lib.aws.utils import retry_s3
+
     HAVE_S3 = True
 except ImportError:
     HAVE_S3 = False
 
 logger = logging.getLogger(__name__)
+
 
 def get_iso_time() -> str:
     """
@@ -55,7 +57,9 @@ def link_file(src: str, dest: str) -> None:
         os.symlink(src, dest)
 
 
-def download_file_from_internet(src: str, dest: str, content_type: Optional[str] = None) -> None:
+def download_file_from_internet(
+    src: str, dest: str, content_type: Optional[str] = None
+) -> None:
     """
     Download a file from the Internet and write it to dest.
     """
@@ -64,14 +68,19 @@ def download_file_from_internet(src: str, dest: str, content_type: Optional[str]
     if not response.ok:
         raise RuntimeError("Request failed with a client error or a server error.")
 
-    if content_type and not response.headers.get("Content-Type", "").startswith(content_type):
+    if content_type and not response.headers.get("Content-Type", "").startswith(
+        content_type
+    ):
         val = response.headers.get("Content-Type")
         raise RuntimeError(f"Expected content type to be '{content_type}'.  Not {val}.")
 
     with open(dest, "wb") as f:
         f.write(response.content)
 
-def download_file_from_s3(src: str, dest: str, content_type: Optional[str] = None) -> None:
+
+def download_file_from_s3(
+    src: str, dest: str, content_type: Optional[str] = None
+) -> None:
     """
     Download a file from Amazon S3 and write it to dest.
     """
@@ -81,9 +90,10 @@ def download_file_from_s3(src: str, dest: str, content_type: Optional[str] = Non
     except ImportError:
         raise RuntimeError("Cannot access S3 as AWS modules are not available")
 
-    with open(dest, 'wb') as out_stream:
+    with open(dest, "wb") as out_stream:
         obj = get_object_for_url(urlparse(src), existing=True)
         obj.download_fileobj(out_stream)
+
 
 def get_file_class(path: str) -> str:
     """
@@ -96,6 +106,7 @@ def get_file_class(path: str) -> str:
     elif os.path.isdir(path):
         return "Directory"
     return "Unknown"
+
 
 @retry(errors=[OSError, BlockingIOError])
 def safe_read_file(file: str) -> Optional[str]:
@@ -153,6 +164,7 @@ def safe_write_file(file: str, s: str) -> None:
             with open(temp_name, "w") as file_obj:
                 file_obj.write(s)
 
+
 class MemoryStateCache:
     """
     An in-memory place to store workflow state.
@@ -164,7 +176,7 @@ class MemoryStateCache:
         """
 
         super().__init__()
-        self._data: Dict[Tuple[str, str], Optional[str]] = {}
+        self._data: dict[tuple[str, str], Optional[str]] = {}
 
     def get(self, workflow_id: str, key: str) -> Optional[str]:
         """
@@ -184,6 +196,7 @@ class MemoryStateCache:
                 pass
         else:
             self._data[(workflow_id, key)] = value
+
 
 class AbstractStateStore:
     """
@@ -250,6 +263,7 @@ class AbstractStateStore:
         """
         self._cache.set(workflow_id, key, value)
 
+
 class MemoryStateStore(MemoryStateCache, AbstractStateStore):
     """
     An in-memory place to store workflow state, for testing.
@@ -260,6 +274,7 @@ class MemoryStateStore(MemoryStateCache, AbstractStateStore):
 
     def __init__(self):
         super().__init__()
+
 
 class FileStateStore(AbstractStateStore):
     """
@@ -275,7 +290,7 @@ class FileStateStore(AbstractStateStore):
         """
         super().__init__()
         parse = urlparse(url)
-        if parse.scheme.lower() not in ['file', '']:
+        if parse.scheme.lower() not in ["file", ""]:
             # We want to catch if we get the wrong argument.
             raise RuntimeError(f"{url} doesn't look like a local path")
         if not os.path.exists(parse.path):
@@ -309,7 +324,9 @@ class FileStateStore(AbstractStateStore):
             # Set the value in the file
             safe_write_file(file_path, value)
 
+
 if HAVE_S3:
+
     class S3StateStore(AbstractStateStore):
         """
         A place to store workflow state that uses an S3-compatible object store.
@@ -327,7 +344,7 @@ if HAVE_S3:
 
             parse = urlparse(url)
 
-            if parse.scheme.lower() != 's3':
+            if parse.scheme.lower() != "s3":
                 # We want to catch if we get the wrong argument.
                 raise RuntimeError(f"{url} doesn't look like an S3 URL")
 
@@ -335,12 +352,14 @@ if HAVE_S3:
             # urlparse keeps the leading '/', but here we want a path in the
             # bucket without a leading '/'. We also need to support an empty
             # path.
-            self._base_path = parse.path[1:] if parse.path.startswith('/') else parse.path
-            self._client = client('s3', region_name=get_current_aws_region())
+            self._base_path = (
+                parse.path[1:] if parse.path.startswith("/") else parse.path
+            )
+            self._client = client("s3", region_name=get_current_aws_region())
 
             logger.debug("Connected to S3StateStore at %s", url)
 
-        def _get_bucket_and_path(self, workflow_id: str, key: str) -> Tuple[str, str]:
+        def _get_bucket_and_path(self, workflow_id: str, key: str) -> tuple[str, str]:
             """
             Get the bucket and path in the bucket at which a key value belongs.
             """
@@ -354,12 +373,11 @@ if HAVE_S3:
             bucket, path = self._get_bucket_and_path(workflow_id, key)
             for attempt in retry_s3():
                 try:
-                    logger.debug('Fetch %s path %s', bucket, path)
+                    logger.debug("Fetch %s path %s", bucket, path)
                     response = self._client.get_object(Bucket=bucket, Key=path)
-                    return response['Body'].read().decode('utf-8')
+                    return response["Body"].read().decode("utf-8")
                 except self._client.exceptions.NoSuchKey:
                     return None
-
 
         def set(self, workflow_id: str, key: str, value: Optional[str]) -> None:
             """
@@ -369,18 +387,21 @@ if HAVE_S3:
             for attempt in retry_s3():
                 if value is None:
                     # Get rid of it.
-                    logger.debug('Clear %s path %s', bucket, path)
+                    logger.debug("Clear %s path %s", bucket, path)
                     self._client.delete_object(Bucket=bucket, Key=path)
                     return
                 else:
                     # Store it, clobbering anything there already.
-                    logger.debug('Set %s path %s', bucket, path)
-                    self._client.put_object(Bucket=bucket, Key=path,
-                                            Body=value.encode('utf-8'))
+                    logger.debug("Set %s path %s", bucket, path)
+                    self._client.put_object(
+                        Bucket=bucket, Key=path, Body=value.encode("utf-8")
+                    )
                     return
 
+
 # We want to memoize state stores so we can cache on them.
-state_store_cache: Dict[str, AbstractStateStore] = {}
+state_store_cache: dict[str, AbstractStateStore] = {}
+
 
 def connect_to_state_store(url: str) -> AbstractStateStore:
     """
@@ -392,24 +413,29 @@ def connect_to_state_store(url: str) -> AbstractStateStore:
     if url not in state_store_cache:
         # We need to actually make the state store
         parse = urlparse(url)
-        if parse.scheme.lower() == 's3':
+        if parse.scheme.lower() == "s3":
             # It's an S3 URL
             if HAVE_S3:
                 # And we can use S3, so make the right implementation for S3.
                 state_store_cache[url] = S3StateStore(url)
             else:
                 # We can't actually use S3, so complain.
-                raise RuntimeError(f'Cannot connect to {url} because Toil AWS '
-                                   f'dependencies are not available. Did you '
-                                   f'install Toil with the [aws] extra?')
-        elif parse.scheme.lower() in ['file', '']:
+                raise RuntimeError(
+                    f"Cannot connect to {url} because Toil AWS "
+                    f"dependencies are not available. Did you "
+                    f"install Toil with the [aws] extra?"
+                )
+        elif parse.scheme.lower() in ["file", ""]:
             # It's a file URL or path
             state_store_cache[url] = FileStateStore(url)
         else:
-            raise RuntimeError(f'Cannot connect to {url} because we do not '
-                               f'implement its URL scheme')
+            raise RuntimeError(
+                f"Cannot connect to {url} because we do not "
+                f"implement its URL scheme"
+            )
 
     return state_store_cache[url]
+
 
 class WorkflowStateStore:
     """
@@ -463,12 +489,14 @@ def connect_to_workflow_state_store(url: str, workflow_id: str) -> WorkflowState
 
     return WorkflowStateStore(connect_to_state_store(url), workflow_id)
 
+
 # When we see one of these terminal states, we stay there forever.
 TERMINAL_STATES = {"COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED"}
 
 # How long can a workflow be in CANCELING state before we conclude that the
 # workflow running task is gone and move it to CANCELED?
 MAX_CANCELING_SECONDS = 30
+
 
 class WorkflowStateMachine:
     """
@@ -628,5 +656,3 @@ class WorkflowStateMachine:
             state = "UNKNOWN"
 
         return state
-
-

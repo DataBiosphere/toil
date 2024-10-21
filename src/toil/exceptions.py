@@ -1,7 +1,7 @@
 """Neutral place for exceptions, to break import cycles."""
 
 import logging
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
 from toil.statsAndLogging import StatsAndLogging
 
@@ -16,7 +16,7 @@ class FailedJobsException(Exception):
     def __init__(
         self,
         job_store: "AbstractJobStore",
-        failed_jobs: List["JobDescription"],
+        failed_jobs: list["JobDescription"],
         exit_code: int = 1,
     ):
         """
@@ -36,7 +36,9 @@ class FailedJobsException(Exception):
             for job_desc in failed_jobs:
                 if job_desc.logJobStoreFileID:
                     with job_desc.getLogFileHandle(job_store) as f:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(f, f'Log from job "{job_desc}"')
+                        self.msg += "\n" + StatsAndLogging.formatLogStream(
+                            f, f'Log from job "{job_desc}"'
+                        )
         # catch failures to prepare more complex details and only return the basics
         except Exception:
             logger.exception("Exception when compiling information about failed jobs")

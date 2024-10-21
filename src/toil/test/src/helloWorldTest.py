@@ -22,27 +22,30 @@ class HelloWorldTest(ToilTest):
         options.logLevel = "INFO"
         Job.Runner.startToil(HelloWorld(), options)
 
+
 class HelloWorld(Job):
     def __init__(self):
-        Job.__init__(self,  memory=100000, cores=1, disk="3G")
+        Job.__init__(self, memory=100000, cores=1, disk="3G")
 
     def run(self, fileStore):
         fileID = self.addChildJobFn(childFn, cores=1, memory="1M", disk="3G").rv()
         self.addFollowOn(FollowOn(fileID))
+
 
 def childFn(job):
     with job.fileStore.writeGlobalFileStream() as (fH, fileID):
         fH.write(b"Hello, World!")
         return fileID
 
+
 class FollowOn(Job):
-    def __init__(self,fileId):
+    def __init__(self, fileId):
         Job.__init__(self)
-        self.fileId=fileId
+        self.fileId = fileId
 
     def run(self, fileStore):
         tempDir = fileStore.getLocalTempDir()
-        tempFilePath = "/".join([tempDir,"LocalCopy"])
+        tempFilePath = "/".join([tempDir, "LocalCopy"])
         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
             with open(tempFilePath, "wb") as localFile:
                 localFile.write(globalFile.read())

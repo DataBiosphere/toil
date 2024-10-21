@@ -126,10 +126,10 @@ class InnerClass:
         if instance is None:
             return self.inner_class
         else:
-            return self._bind( instance )
+            return self._bind(instance)
 
     @sync_memoize
-    def _bind( self, _outer):
+    def _bind(self, _outer):
         class BoundInner(self.inner_class):
             outer = _outer
 

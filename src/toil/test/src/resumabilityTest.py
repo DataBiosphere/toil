@@ -24,6 +24,7 @@ class ResumabilityTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/808
     """
+
     @slow
     def test(self):
         """
@@ -70,7 +71,7 @@ class ResumabilityTest(ToilTest):
             # This one is intended to fail.
             Job.Runner.startToil(root, options)
 
-        with open(options.logFile, 'r') as f:
+        with open(options.logFile) as f:
             log_content = f.read()
             # Make sure we actually did do chaining
             assert "Chaining from" in log_content
@@ -81,6 +82,7 @@ class ResumabilityTest(ToilTest):
         options.restart = True
         Job.Runner.startToil(root, options)
 
+
 def parent(job):
     """
     Set up a bunch of dummy child jobs, and a bad job that needs to be
@@ -90,17 +92,20 @@ def parent(job):
         job.addChildJobFn(goodChild)
     job.addFollowOnJobFn(badChild)
 
+
 def chaining_parent(job):
     """
     Set up a failing job to chain to.
     """
     job.addFollowOnJobFn(badChild)
 
+
 def goodChild(job):
     """
     Does nothing.
     """
     return
+
 
 def badChild(job):
     """
@@ -110,6 +115,8 @@ def badChild(job):
         with job.fileStore.jobStore.read_shared_file_stream("alreadyRun") as fileHandle:
             fileHandle.read()
     except NoSuchFileException as ex:
-        with job.fileStore.jobStore.write_shared_file_stream("alreadyRun", encrypted=False) as fileHandle:
+        with job.fileStore.jobStore.write_shared_file_stream(
+            "alreadyRun", encrypted=False
+        ) as fileHandle:
             fileHandle.write(b"failed once\n")
         raise RuntimeError(f"this is an expected error: {str(ex)}")

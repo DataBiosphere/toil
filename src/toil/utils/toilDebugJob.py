@@ -17,11 +17,10 @@ import logging
 import os
 import pprint
 import sys
-
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional
 
-from toil.common import Config, Toil, parser_with_common_options
+from toil.common import Toil, parser_with_common_options
 from toil.job import FilesDownloadedStoppingPointReached
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import set_logging_from_options
@@ -33,23 +32,38 @@ logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    parser = parser_with_common_options(jobstore_option=True, prog="toil debug-job", default_log_level=logging.DEBUG)
-    parser.add_argument("job", type=str,
-                        help="The job store id or job name of a job within the provided jobstore")
-    parser.add_argument("--printJobInfo", action="store_true",
-                        help="Dump debugging info about the job instead of running it")
-    parser.add_argument("--retrieveTaskDirectory", dest="retrieve_task_directory", type=str, default=None,
-                        help="Download CWL or WDL task inputs to the given directory and stop.")
+    parser = parser_with_common_options(
+        jobstore_option=True, prog="toil debug-job", default_log_level=logging.DEBUG
+    )
+    parser.add_argument(
+        "job",
+        type=str,
+        help="The job store id or job name of a job within the provided jobstore",
+    )
+    parser.add_argument(
+        "--printJobInfo",
+        action="store_true",
+        help="Dump debugging info about the job instead of running it",
+    )
+    parser.add_argument(
+        "--retrieveTaskDirectory",
+        dest="retrieve_task_directory",
+        type=str,
+        default=None,
+        help="Download CWL or WDL task inputs to the given directory and stop.",
+    )
 
     options = parser.parse_args()
     set_logging_from_options(options)
 
-    if options.retrieve_task_directory is not None and os.path.exists(options.retrieve_task_directory):
+    if options.retrieve_task_directory is not None and os.path.exists(
+        options.retrieve_task_directory
+    ):
         # The logic to duplicate container mounts depends on stuff not already existing.
         logger.error(
             "The directory %s given for --retrieveTaskDirectory already exists. "
             "Stopping to avoid clobbering existing files.",
-            options.retrieve_task_directory
+            options.retrieve_task_directory,
         )
         sys.exit(1)
 
@@ -83,26 +97,45 @@ def main() -> None:
         if len(hits) == 0:
             # No hits
             if suggestion is None:
-                logger.critical("No job found with ID or name \"%s\". No jobs are completely failed.", options.job)
+                logger.critical(
+                    'No job found with ID or name "%s". No jobs are completely failed.',
+                    options.job,
+                )
             else:
-                logger.critical("No job found with ID or name \"%s\". How about the failed job %s instead?", options.job, suggestion)
+                logger.critical(
+                    'No job found with ID or name "%s". How about the failed job %s instead?',
+                    options.job,
+                    suggestion,
+                )
             sys.exit(1)
         elif len(hits) > 1:
             # Several hits, maybe only one has failed
             completely_failed_hits = [job for job in hits if job.remainingTryCount == 0]
             if len(completely_failed_hits) == 0:
-                logger.critical("Multiple jobs match \"%s\" but none are completely failed: %s", options.job, hits)
+                logger.critical(
+                    'Multiple jobs match "%s" but none are completely failed: %s',
+                    options.job,
+                    hits,
+                )
                 sys.exit(1)
             elif len(completely_failed_hits) > 0:
-                logger.critical("Multiple jobs matching \"%s\" are completely failed: %s", options.job, completely_failed_hits)
+                logger.critical(
+                    'Multiple jobs matching "%s" are completely failed: %s',
+                    options.job,
+                    completely_failed_hits,
+                )
                 sys.exit(1)
             else:
                 # We found one completely failed job, they probably mean that one.
-                logger.info("There are %s jobs matching \"%s\"; assuming you mean the failed one: %s", options.job, completely_failed_hits[0])
+                logger.info(
+                    'There are %s jobs matching "%s"; assuming you mean the failed one: %s',
+                    options.job,
+                    completely_failed_hits[0],
+                )
                 job_id = completely_failed_hits[0].jobStoreID
         else:
             # We found one job with this name, so they must mean that one
-            logger.info("Looked up job named \"%s\": %s", options.job, hits[0])
+            logger.info('Looked up job named "%s": %s', options.job, hits[0])
             job_id = hits[0].jobStoreID
 
     if options.printJobInfo:
@@ -122,19 +155,29 @@ def main() -> None:
         local_worker_temp_dir = None
         if options.retrieve_task_directory is not None:
             # Pick a directory in it (which may be removed by the worker) as the worker's temp dir.
-            local_worker_temp_dir = os.path.join(options.retrieve_task_directory, "worker")
+            local_worker_temp_dir = os.path.join(
+                options.retrieve_task_directory, "worker"
+            )
             # Make sure it exists
             os.makedirs(local_worker_temp_dir, exist_ok=True)
             # And tell the job to just download files
             debug_flags.add("download_only")
         # We might need to reconstruct a container environment.
-        host_and_job_paths: Optional[List[Tuple[str, str]]] = None
+        host_and_job_paths: Optional[list[tuple[str, str]]] = None
         # Track if the run succeeded without error
         run_succeeded = False
 
         logger.info(f"Running the following job locally: {job_id}")
         try:
-            workerScript(jobStore, config, job_id, job_id, redirect_output_to_log_file=False, local_worker_temp_dir=local_worker_temp_dir, debug_flags=debug_flags)
+            workerScript(
+                jobStore,
+                config,
+                job_id,
+                job_id,
+                redirect_output_to_log_file=False,
+                local_worker_temp_dir=local_worker_temp_dir,
+                debug_flags=debug_flags,
+            )
         except FilesDownloadedStoppingPointReached as e:
             # We asked for the files to be downloaded and now they are.
             assert options.retrieve_task_directory is not None
@@ -165,21 +208,37 @@ def main() -> None:
 
             for host_path, job_path in sorted_mounts:
                 if not os.path.exists(host_path):
-                    logger.error("Job intended to mount %s as %s but it does not exist!", host_path, job_path)
+                    logger.error(
+                        "Job intended to mount %s as %s but it does not exist!",
+                        host_path,
+                        job_path,
+                    )
                     continue
                 if not job_path.startswith("/"):
-                    logger.error("Job intended to mount %s as %s but destination is a relative path!", host_path, job_path)
+                    logger.error(
+                        "Job intended to mount %s as %s but destination is a relative path!",
+                        host_path,
+                        job_path,
+                    )
                     continue
                 # Drop the slash because we are building a chroot-ish mini filesystem.
                 job_relative_path = job_path[1:]
                 if job_relative_path.startswith("/"):
                     # We are having trouble understanding what the job
                     # intended to do. Stop working on this mount.
-                    logger.error("Job intended to mount %s as %s but destination starts with multiple slashes for some reason!", host_path, job_path)
+                    logger.error(
+                        "Job intended to mount %s as %s but destination starts with multiple slashes for some reason!",
+                        host_path,
+                        job_path,
+                    )
                     continue
                 fake_job_path = os.path.join(fake_job_root, job_relative_path)
                 if os.path.exists(fake_job_path):
-                    logger.error("Job intended to mount %s as %s but that location is already mounted!", host_path, job_path)
+                    logger.error(
+                        "Job intended to mount %s as %s but that location is already mounted!",
+                        host_path,
+                        job_path,
+                    )
                     continue
 
                 logger.info("Job mounted %s as %s", host_path, job_path)

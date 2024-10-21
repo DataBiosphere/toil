@@ -21,62 +21,55 @@ from argparse import Namespace
 from collections import defaultdict
 from queue import Empty, Queue
 from threading import Event, Thread
-from typing import List, Optional, Set, Tuple
+from typing import Optional
 from unittest.mock import MagicMock
 
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   AbstractScalableBatchSystem,
-                                                   NodeInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    AbstractBatchSystem,
+    AbstractScalableBatchSystem,
+    NodeInfo,
+)
 from toil.common import Config
-from toil.options.common import defaultTargetTime
 from toil.job import JobDescription
 from toil.lib.conversions import human2bytes as h2b
+from toil.options.common import defaultTargetTime
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import (BinPackedFit,
-                                             ClusterScaler,
-                                             NodeReservation,
-                                             ScalerThread)
+from toil.provisioners.clusterScaler import (
+    BinPackedFit,
+    ClusterScaler,
+    NodeReservation,
+    ScalerThread,
+)
 from toil.provisioners.node import Node
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
 # simplified c4.8xlarge (preemptible)
-c4_8xlarge_preemptible = Shape(wallTime=3600,
-                               memory=h2b('60G'),
-                               cores=36,
-                               disk=h2b('100G'),
-                               preemptible=True)
+c4_8xlarge_preemptible = Shape(
+    wallTime=3600, memory=h2b("60G"), cores=36, disk=h2b("100G"), preemptible=True
+)
 # simplified c4.8xlarge (non-preemptible)
-c4_8xlarge = Shape(wallTime=3600,
-                   memory=h2b('60G'),
-                   cores=36,
-                   disk=h2b('100G'),
-                   preemptible=False)
+c4_8xlarge = Shape(
+    wallTime=3600, memory=h2b("60G"), cores=36, disk=h2b("100G"), preemptible=False
+)
 # simplified r3.8xlarge (non-preemptible)
-r3_8xlarge = Shape(wallTime=3600,
-                   memory=h2b('260G'),
-                   cores=32,
-                   disk=h2b('600G'),
-                   preemptible=False)
+r3_8xlarge = Shape(
+    wallTime=3600, memory=h2b("260G"), cores=32, disk=h2b("600G"), preemptible=False
+)
 # simplified r5.2xlarge (non-preemptible)
-r5_2xlarge = Shape(wallTime=3600,
-                   memory=h2b('64Gi'),
-                   cores=8,
-                   disk=h2b('50G'),
-                   preemptible=False)
+r5_2xlarge = Shape(
+    wallTime=3600, memory=h2b("64Gi"), cores=8, disk=h2b("50G"), preemptible=False
+)
 # simplified r5.4xlarge (non-preemptible)
-r5_4xlarge = Shape(wallTime=3600,
-                   memory=h2b('128Gi'),
-                   cores=16,
-                   disk=h2b('50G'),
-                   preemptible=False)
+r5_4xlarge = Shape(
+    wallTime=3600, memory=h2b("128Gi"), cores=16, disk=h2b("50G"), preemptible=False
+)
 # simplified t2.micro (non-preemptible)
-t2_micro = Shape(wallTime=3600,
-                 memory=h2b('1G'),
-                 cores=1,
-                 disk=h2b('8G'),
-                 preemptible=False)
+t2_micro = Shape(
+    wallTime=3600, memory=h2b("1G"), cores=1, disk=h2b("8G"), preemptible=False
+)
+
 
 class BinPackingTest(ToilTest):
     def setUp(self):
@@ -85,56 +78,104 @@ class BinPackingTest(ToilTest):
 
     def testPackingOneShape(self):
         """Pack one shape and check that the resulting reservations look sane."""
-        self.bpf.nodeReservations[c4_8xlarge_preemptible] = [NodeReservation(c4_8xlarge_preemptible)]
-        self.bpf.addJobShape(Shape(wallTime=1000,
-                                   cores=2,
-                                   memory=h2b('1G'),
-                                   disk=h2b('2G'),
-                                   preemptible=True))
+        self.bpf.nodeReservations[c4_8xlarge_preemptible] = [
+            NodeReservation(c4_8xlarge_preemptible)
+        ]
+        self.bpf.addJobShape(
+            Shape(
+                wallTime=1000,
+                cores=2,
+                memory=h2b("1G"),
+                disk=h2b("2G"),
+                preemptible=True,
+            )
+        )
         self.assertEqual(self.bpf.nodeReservations[r3_8xlarge], [])
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptible]],
-                         [[Shape(wallTime=1000,
-                                 memory=h2b('59G'),
-                                 cores=34,
-                                 disk=h2b('98G'),
-                                 preemptible=True),
-                           Shape(wallTime=2600,
-                                 memory=h2b('60G'),
-                                 cores=36,
-                                 disk=h2b('100G'),
-                                 preemptible=True)]])
+        self.assertEqual(
+            [x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptible]],
+            [
+                [
+                    Shape(
+                        wallTime=1000,
+                        memory=h2b("59G"),
+                        cores=34,
+                        disk=h2b("98G"),
+                        preemptible=True,
+                    ),
+                    Shape(
+                        wallTime=2600,
+                        memory=h2b("60G"),
+                        cores=36,
+                        disk=h2b("100G"),
+                        preemptible=True,
+                    ),
+                ]
+            ],
+        )
 
     def testSorting(self):
         """
         Test that sorting is correct: preemptible, then memory, then cores, then disk,
         then wallTime.
         """
-        shapeList = [c4_8xlarge_preemptible, r3_8xlarge, c4_8xlarge, c4_8xlarge,
-                     t2_micro, t2_micro, c4_8xlarge, r3_8xlarge, r3_8xlarge, t2_micro]
+        shapeList = [
+            c4_8xlarge_preemptible,
+            r3_8xlarge,
+            c4_8xlarge,
+            c4_8xlarge,
+            t2_micro,
+            t2_micro,
+            c4_8xlarge,
+            r3_8xlarge,
+            r3_8xlarge,
+            t2_micro,
+        ]
         shapeList.sort()
-        assert shapeList == [c4_8xlarge_preemptible,
-                             t2_micro, t2_micro, t2_micro,
-                             c4_8xlarge, c4_8xlarge, c4_8xlarge,
-                             r3_8xlarge, r3_8xlarge, r3_8xlarge]
+        assert shapeList == [
+            c4_8xlarge_preemptible,
+            t2_micro,
+            t2_micro,
+            t2_micro,
+            c4_8xlarge,
+            c4_8xlarge,
+            c4_8xlarge,
+            r3_8xlarge,
+            r3_8xlarge,
+            r3_8xlarge,
+        ]
 
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
-        self.bpf.addJobShape(Shape(wallTime=1000,
-                                   cores=2,
-                                   memory=h2b('1G'),
-                                   disk=h2b('2G'),
-                                   preemptible=True))
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptible]],
-                         [[Shape(wallTime=1000,
-                                 memory=h2b('59G'),
-                                 cores=34,
-                                 disk=h2b('98G'),
-                                 preemptible=True),
-                           Shape(wallTime=2600,
-                                 memory=h2b('60G'),
-                                 cores=36,
-                                 disk=h2b('100G'),
-                                 preemptible=True)]])
+        self.bpf.addJobShape(
+            Shape(
+                wallTime=1000,
+                cores=2,
+                memory=h2b("1G"),
+                disk=h2b("2G"),
+                preemptible=True,
+            )
+        )
+        self.assertEqual(
+            [x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptible]],
+            [
+                [
+                    Shape(
+                        wallTime=1000,
+                        memory=h2b("59G"),
+                        cores=34,
+                        disk=h2b("98G"),
+                        preemptible=True,
+                    ),
+                    Shape(
+                        wallTime=2600,
+                        memory=h2b("60G"),
+                        cores=36,
+                        disk=h2b("100G"),
+                        preemptible=True,
+                    ),
+                ]
+            ],
+        )
 
     def testLowTargetTime(self):
         """
@@ -150,11 +191,13 @@ class BinPackingTest(ToilTest):
         Each job is parametrized to take 300 seconds, so (the minimum of) 1 of them should fit into
         each node's 0 second window, so we expect 1000 nodes.
         """
-        allocation = self.run1000JobsOnMicros(jobCores=1,
-                                              jobMem=h2b('1G'),
-                                              jobDisk=h2b('1G'),
-                                              jobTime=300,
-                                              globalTargetTime=0)
+        allocation = self.run1000JobsOnMicros(
+            jobCores=1,
+            jobMem=h2b("1G"),
+            jobDisk=h2b("1G"),
+            jobTime=300,
+            globalTargetTime=0,
+        )
         self.assertEqual(allocation, {t2_micro: 1000})
 
     def testHighTargetTime(self):
@@ -170,11 +213,13 @@ class BinPackingTest(ToilTest):
         Each job is parametrized to take 300 seconds, so 12 of them should fit into each node's
         3600 second window.  1000/12 = 83.33, so we expect 84 nodes.
         """
-        allocation = self.run1000JobsOnMicros(jobCores=1,
-                                              jobMem=h2b('1G'),
-                                              jobDisk=h2b('1G'),
-                                              jobTime=300,
-                                              globalTargetTime=3600)
+        allocation = self.run1000JobsOnMicros(
+            jobCores=1,
+            jobMem=h2b("1G"),
+            jobDisk=h2b("1G"),
+            jobTime=300,
+            globalTargetTime=3600,
+        )
         self.assertEqual(allocation, {t2_micro: 84})
 
     def testZeroResourceJobs(self):
@@ -188,11 +233,9 @@ class BinPackingTest(ToilTest):
         Since all jobs should pack cpu/disk/mem-wise on a t2.micro, we expect only one t2.micro to
         be provisioned.  If we raise this, as in testLowTargetTime, it will launch 1000 t2.micros.
         """
-        allocation = self.run1000JobsOnMicros(jobCores=0,
-                                              jobMem=0,
-                                              jobDisk=0,
-                                              jobTime=300,
-                                              globalTargetTime=0)
+        allocation = self.run1000JobsOnMicros(
+            jobCores=0, jobMem=0, jobDisk=0, jobTime=300, globalTargetTime=0
+        )
         self.assertEqual(allocation, {t2_micro: 1})
 
     def testLongRunningJobs(self):
@@ -206,11 +249,13 @@ class BinPackingTest(ToilTest):
         Despite setting globalTargetTime=3600, this should launch 1000 t2.micros because each job's
         estimated runtime (30000 seconds) extends well beyond 3600 seconds.
         """
-        allocation = self.run1000JobsOnMicros(jobCores=1,
-                                              jobMem=h2b('1G'),
-                                              jobDisk=h2b('1G'),
-                                              jobTime=30000,
-                                              globalTargetTime=3600)
+        allocation = self.run1000JobsOnMicros(
+            jobCores=1,
+            jobMem=h2b("1G"),
+            jobDisk=h2b("1G"),
+            jobTime=30000,
+            globalTargetTime=3600,
+        )
         self.assertEqual(allocation, {t2_micro: 1000})
 
     def run1000JobsOnMicros(self, jobCores, jobMem, jobDisk, jobTime, globalTargetTime):
@@ -221,11 +266,15 @@ class BinPackingTest(ToilTest):
         bpf = BinPackedFit(node_shapes_for_testing, targetTime=globalTargetTime)
 
         for _ in range(1000):
-            bpf.addJobShape(Shape(wallTime=jobTime,
-                                   memory=jobMem,
-                                   cores=jobCores,
-                                   disk=jobDisk,
-                                   preemptible=False))
+            bpf.addJobShape(
+                Shape(
+                    wallTime=jobTime,
+                    memory=jobMem,
+                    cores=jobCores,
+                    disk=jobDisk,
+                    preemptible=False,
+                )
+            )
         return bpf.getRequiredNodes()
 
     def testPathologicalCase(self):
@@ -238,20 +287,30 @@ class BinPackingTest(ToilTest):
         the future.
         """
         # Add one job that partially fills an r3.8xlarge for 1000 hours
-        self.bpf.addJobShape(Shape(wallTime=3600000,
-                                   memory=h2b('10G'),
-                                   cores=0,
-                                   disk=h2b('10G'),
-                                   preemptible=False))
+        self.bpf.addJobShape(
+            Shape(
+                wallTime=3600000,
+                memory=h2b("10G"),
+                cores=0,
+                disk=h2b("10G"),
+                preemptible=False,
+            )
+        )
         for _ in range(500):
             # Add 500 CPU-hours worth of jobs that fill an r3.8xlarge
-            self.bpf.addJobShape(Shape(wallTime=3600,
-                                       memory=h2b('26G'),
-                                       cores=32,
-                                       disk=h2b('60G'),
-                                       preemptible=False))
+            self.bpf.addJobShape(
+                Shape(
+                    wallTime=3600,
+                    memory=h2b("26G"),
+                    cores=32,
+                    disk=h2b("60G"),
+                    preemptible=False,
+                )
+            )
         # Hopefully we didn't assign just one node to cover all those jobs.
-        self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptible: 0})
+        self.assertNotEqual(
+            self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptible: 0}
+        )
 
     def testJobTooLargeForAllNodes(self):
         """
@@ -259,13 +318,16 @@ class BinPackingTest(ToilTest):
         warning, but definitely not crash.
         """
         # Takes more RAM than an r3.8xlarge
-        largerThanR3 = Shape(wallTime=3600,
-                             memory=h2b('360G'),
-                             cores=32,
-                             disk=h2b('600G'),
-                             preemptible=False)
+        largerThanR3 = Shape(
+            wallTime=3600,
+            memory=h2b("360G"),
+            cores=32,
+            disk=h2b("600G"),
+            preemptible=False,
+        )
         self.bpf.addJobShape(largerThanR3)
         # If we got here we didn't crash.
+
 
 class ClusterScalerTest(ToilTest):
     def setUp(self):
@@ -279,7 +341,9 @@ class ClusterScalerTest(ToilTest):
         # It is also a full mock provisioner, so configure it to be that as well
         self.provisioner = self.leader
         # Pretend that Shapes are actually strings we can use for instance type names.
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes(
+            [({t}, None) for t in self.config.nodeTypes]
+        )
 
     def testRounding(self):
         """
@@ -299,8 +363,8 @@ class ClusterScalerTest(ToilTest):
         self.assertEqual(scaler._round(123456789101112.13), 123456789101112)
 
         # Decimals other than X.5 round to the side they are closer to
-        self.assertEqual(scaler._round(1E-10), 0)
-        self.assertEqual(scaler._round(0.5 + 1E-15), 1)
+        self.assertEqual(scaler._round(1e-10), 0)
+        self.assertEqual(scaler._round(0.5 + 1e-15), 1)
         self.assertEqual(scaler._round(-0.9), -1)
         self.assertEqual(scaler._round(-0.4), 0)
 
@@ -322,17 +386,30 @@ class ClusterScalerTest(ToilTest):
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        jobShapes = [Shape(wallTime=3600,
-                           cores=2,
-                           memory=h2b('1G'),
-                           disk=h2b('2G'),
-                           preemptible=True)] * 1000
-        jobShapes.extend([Shape(wallTime=3600,
-                                cores=2,
-                                memory=h2b('1G'),
-                                disk=h2b('2G'),
-                                preemptible=False)] * 1000)
-        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        jobShapes = [
+            Shape(
+                wallTime=3600,
+                cores=2,
+                memory=h2b("1G"),
+                disk=h2b("2G"),
+                preemptible=True,
+            )
+        ] * 1000
+        jobShapes.extend(
+            [
+                Shape(
+                    wallTime=3600,
+                    cores=2,
+                    memory=h2b("1G"),
+                    disk=h2b("2G"),
+                    preemptible=False,
+                )
+            ]
+            * 1000
+        )
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(
+            jobShapes, defaultdict(int)
+        )
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptible], 3)
         self.assertEqual(len(could_not_fit), 0)
@@ -345,7 +422,9 @@ class ClusterScalerTest(ToilTest):
         self.config.minNodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         jobShapes = []
-        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(
+            jobShapes, defaultdict(int)
+        )
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
         self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptible], 3)
         self.assertEqual(len(could_not_fit), 0)
@@ -367,7 +446,9 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes(
+            [({t}, None) for t in self.config.nodeTypes]
+        )
 
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -375,16 +456,24 @@ class ClusterScalerTest(ToilTest):
         scaler.preemptibleNodeDeficit[c4_8xlarge] = 5
         # Add a bunch of preemptible jobs (so the bin-packing
         # estimate for the non-preemptible node should still be 0)
-        jobShapes = [Shape(wallTime=3600,
-                           cores=2,
-                           memory=h2b('1G'),
-                           disk=h2b('2G'),
-                           preemptible=True)] * 1000
-        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        jobShapes = [
+            Shape(
+                wallTime=3600,
+                cores=2,
+                memory=h2b("1G"),
+                disk=h2b("2G"),
+                preemptible=True,
+            )
+        ] * 1000
+        estimatedNodeCounts, could_not_fit = scaler.getEstimatedNodeCounts(
+            jobShapes, defaultdict(int)
+        )
         # We don't care about the estimated size of the preemptible
         # nodes. All we want to know is if we responded to the deficit
         # properly: 0.5 * 5 (preemptibleCompensation * the deficit) = 3 (rounded up).
-        self.assertEqual(estimatedNodeCounts[self.provisioner.node_shapes_for_testing[1]], 3)
+        self.assertEqual(
+            estimatedNodeCounts[self.provisioner.node_shapes_for_testing[1]], 3
+        )
         self.assertEqual(len(could_not_fit), 0)
 
     def testPreemptibleDeficitIsSet(self):
@@ -404,7 +493,9 @@ class ClusterScalerTest(ToilTest):
         # the same type. That is the only situation where
         # preemptibleCompensation applies.
         self.config.nodeTypes = [c4_8xlarge_preemptible, c4_8xlarge]
-        self.provisioner.setAutoscaledNodeTypes([({t}, None) for t in self.config.nodeTypes])
+        self.provisioner.setAutoscaledNodeTypes(
+            [({t}, None) for t in self.config.nodeTypes]
+        )
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         estimatedNodeCounts = {c4_8xlarge_preemptible: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
@@ -427,18 +518,30 @@ class ClusterScalerTest(ToilTest):
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Pretend there is one ignored worker in the cluster
         self.provisioner.getProvisionedWorkers = MagicMock(
-            return_value=[Node('127.0.0.1', '127.0.0.1', 'testNode',
-                               datetime.datetime.now().isoformat(),
-                               nodeType=c4_8xlarge, preemptible=True)])
-        scaler.ignoredNodes.add('127.0.0.1')
+            return_value=[
+                Node(
+                    "127.0.0.1",
+                    "127.0.0.1",
+                    "testNode",
+                    datetime.datetime.now().isoformat(),
+                    nodeType=c4_8xlarge,
+                    preemptible=True,
+                )
+            ]
+        )
+        scaler.ignoredNodes.add("127.0.0.1")
         # Exercise the updateClusterSize logic
         self.provisioner.addNodes = MagicMock()
         scaler.updateClusterSize({c4_8xlarge: 1})
-        self.assertFalse(self.provisioner.addNodes.called,
-                         "addNodes was called when no new nodes were needed")
-        self.assertEqual(len(scaler.ignoredNodes), 0,
-                         "The scaler didn't unignore an ignored node when "
-                         "scaling up")
+        self.assertFalse(
+            self.provisioner.addNodes.called,
+            "addNodes was called when no new nodes were needed",
+        )
+        self.assertEqual(
+            len(scaler.ignoredNodes),
+            0,
+            "The scaler didn't unignore an ignored node when " "scaling up",
+        )
 
     def testBetaInertia(self):
         # This is really high, but makes things easy to calculate.
@@ -466,25 +569,29 @@ class ClusterScalerTest(ToilTest):
 
         # If the job needs 100% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=h2b('60G'))
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=h2b("60G"))
 
         # If the job needs 98% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=int(h2b('60G') * 0.98))
+        self._check_job_estimate(
+            [(c4_8xlarge, 0), (r3_8xlarge, 1)], memory=int(h2b("60G") * 0.98)
+        )
 
         # If the job needs 90% of the memory of the instance type, it will fit.
-        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], memory=int(h2b('60G') * 0.90))
+        self._check_job_estimate(
+            [(c4_8xlarge, 1), (r3_8xlarge, 0)], memory=int(h2b("60G") * 0.90)
+        )
 
         # If the job needs 100% of the disk of the instance type, it won't
         # fit and will need a bigger node.
-        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('100G'))
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b("100G"))
 
         # If the job needs all but 7G of the disk of the instance type, it won't
         # fit and will need a bigger node.
-        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b('93G'))
+        self._check_job_estimate([(c4_8xlarge, 0), (r3_8xlarge, 1)], disk=h2b("93G"))
 
         # If the job leaves 10% and 10G of the disk free, it fits
-        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], disk=h2b('90G'))
+        self._check_job_estimate([(c4_8xlarge, 1), (r3_8xlarge, 0)], disk=h2b("90G"))
 
     def test_overhead_accounting_small(self):
         """
@@ -499,11 +606,13 @@ class ClusterScalerTest(ToilTest):
 
         # If the job needs 100% of the memory of the instance type, it won't
         # fit and will need a bigger node.
-        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G'))
+        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b("1G"))
 
         # If the job needs all but 100M of the memory of the instance type, it
         # won't fit and will need a bigger node.
-        self._check_job_estimate([(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b('1G') - h2b('100M'))
+        self._check_job_estimate(
+            [(t2_micro, 0), (r3_8xlarge, 1)], memory=h2b("1G") - h2b("100M")
+        )
 
         # If the job needs no more than 90% of the memory on the node *and*
         # leaves at least 384M free for overhead, we can rely on it fitting on a 1G
@@ -512,12 +621,14 @@ class ClusterScalerTest(ToilTest):
             Shape(
                 wallTime=3600,
                 cores=1,
-                memory=h2b('1G') - h2b('384M'),
-                disk=h2b('2G'),
-                preemptible=True
+                memory=h2b("1G") - h2b("384M"),
+                disk=h2b("2G"),
+                preemptible=True,
             )
         ]
-        self._check_job_estimate([(t2_micro, 1), (r3_8xlarge, 0)], memory=h2b('1G') - h2b('384M'))
+        self._check_job_estimate(
+            [(t2_micro, 1), (r3_8xlarge, 0)], memory=h2b("1G") - h2b("384M")
+        )
 
     def test_overhead_accounting_observed(self):
         """
@@ -536,9 +647,13 @@ class ClusterScalerTest(ToilTest):
         # not clear if Mesos is thinking in actual GB or GiB here.
 
         # A 62.5Gi job is sent to the larger node
-        self._check_job_estimate([(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b('62.5 Gi'))
+        self._check_job_estimate(
+            [(r5_2xlarge, 0), (r5_4xlarge, 1)], memory=h2b("62.5 Gi")
+        )
 
-    def _check_job_estimate(self, nodes: List[Tuple[Shape, int]], cores=1, memory=1, disk=1) -> None:
+    def _check_job_estimate(
+        self, nodes: list[tuple[Shape, int]], cores=1, memory=1, disk=1
+    ) -> None:
         """
         Make sure that a job with the given requirements, when run on the given
         nodes, produces the given numbers of them.
@@ -553,22 +668,19 @@ class ClusterScalerTest(ToilTest):
 
         jobs = [
             Shape(
-                wallTime=3600,
-                cores=cores,
-                memory=memory,
-                disk=disk,
-                preemptible=True
+                wallTime=3600, cores=cores, memory=memory, disk=disk, preemptible=True
             )
         ]
 
-        logger.debug('Try and fit jobs: %s', jobs)
+        logger.debug("Try and fit jobs: %s", jobs)
         counts, could_not_fit = scaler.getEstimatedNodeCounts(jobs, defaultdict(int))
         for node, count in nodes:
             seen_count = counts.get(node, 0)
             if seen_count != count:
-                logger.error('Saw %s/%s instances of node %s', seen_count, count, node)
+                logger.error("Saw %s/%s instances of node %s", seen_count, count, node)
             self.assertEqual(seen_count, count)
         self.assertEqual(len(could_not_fit), 0)
+
 
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptibleJobs, jobShape):
@@ -587,49 +699,77 @@ class ScalerThreadTest(ToilTest):
         clusterScaler.start()
         try:
             # Add 100 jobs to complete
-            list(map(lambda x: mock.addJob(jobShape=jobShape),
-                     list(range(numJobs))))
-            list(map(lambda x: mock.addJob(jobShape=jobShape, preemptible=True),
-                     list(range(numPreemptibleJobs))))
+            list(map(lambda x: mock.addJob(jobShape=jobShape), list(range(numJobs))))
+            list(
+                map(
+                    lambda x: mock.addJob(jobShape=jobShape, preemptible=True),
+                    list(range(numPreemptibleJobs)),
+                )
+            )
 
             # Add some completed jobs
             for preemptible in (True, False):
-                if preemptible and numPreemptibleJobs > 0 or not preemptible and numJobs > 0:
+                if (
+                    preemptible
+                    and numPreemptibleJobs > 0
+                    or not preemptible
+                    and numJobs > 0
+                ):
                     # Add 1000 random jobs
                     for _ in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
-                        iJ = JobDescription(requirements=dict(
-                                                memory=random.randrange(1, x.memory),
-                                                cores=random.randrange(1, x.cores),
-                                                disk=random.randrange(1, x.disk),
-                                                preemptible=preemptible),
-                                            jobName='testClusterScaling', unitName='')
-                        clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
+                        iJ = JobDescription(
+                            requirements=dict(
+                                memory=random.randrange(1, x.memory),
+                                cores=random.randrange(1, x.cores),
+                                disk=random.randrange(1, x.disk),
+                                preemptible=preemptible,
+                            ),
+                            jobName="testClusterScaling",
+                            unitName="",
+                        )
+                        clusterScaler.addCompletedJob(
+                            iJ, random.choice(list(range(1, x.wallTime)))
+                        )
 
             startTime = time.time()
             # Wait while the cluster processes the jobs
-            while (mock.getNumberOfJobsIssued(preemptible=False) > 0
-                   or mock.getNumberOfJobsIssued(preemptible=True) > 0
-                   or mock.getNumberOfNodes() > 0 or mock.getNumberOfNodes(preemptible=True) > 0):
-                logger.debug("Running, non-preemptible queue size: %s, non-preemptible workers: %s, "
-                            "preemptible queue size: %s, preemptible workers: %s" %
-                            (mock.getNumberOfJobsIssued(preemptible=False),
-                             mock.getNumberOfNodes(preemptible=False),
-                             mock.getNumberOfJobsIssued(preemptible=True),
-                             mock.getNumberOfNodes(preemptible=True)))
+            while (
+                mock.getNumberOfJobsIssued(preemptible=False) > 0
+                or mock.getNumberOfJobsIssued(preemptible=True) > 0
+                or mock.getNumberOfNodes() > 0
+                or mock.getNumberOfNodes(preemptible=True) > 0
+            ):
+                logger.debug(
+                    "Running, non-preemptible queue size: %s, non-preemptible workers: %s, "
+                    "preemptible queue size: %s, preemptible workers: %s"
+                    % (
+                        mock.getNumberOfJobsIssued(preemptible=False),
+                        mock.getNumberOfNodes(preemptible=False),
+                        mock.getNumberOfJobsIssued(preemptible=True),
+                        mock.getNumberOfNodes(preemptible=True),
+                    )
+                )
                 clusterScaler.check()
                 time.sleep(0.5)
-            logger.debug("We waited %s for cluster to finish" % (time.time() - startTime))
+            logger.debug(
+                "We waited %s for cluster to finish" % (time.time() - startTime)
+            )
         finally:
             clusterScaler.shutdown()
             mock.shutDown()
 
         # Print some info about the autoscaling
-        logger.debug("Total-jobs: %s: Max-workers: %s, "
-                     "Total-worker-time: %s, Worker-time-per-job: %s" %
-                    (mock.totalJobs, sum(mock.maxWorkers.values()),
-                     mock.totalWorkerTime,
-                     mock.totalWorkerTime // mock.totalJobs if mock.totalJobs > 0 else 0.0))
+        logger.debug(
+            "Total-jobs: %s: Max-workers: %s, "
+            "Total-worker-time: %s, Worker-time-per-job: %s"
+            % (
+                mock.totalJobs,
+                sum(mock.maxWorkers.values()),
+                mock.totalWorkerTime,
+                mock.totalWorkerTime // mock.totalJobs if mock.totalJobs > 0 else 0.0,
+            )
+        )
 
     @slow
     def testClusterScaling(self):
@@ -640,15 +780,15 @@ class ScalerThreadTest(ToilTest):
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = h2b('1Gi')
+        config.defaultMemory = h2b("1Gi")
         config.defaultCores = 1
-        config.defaultDisk = h2b('1Gi')
+        config.defaultDisk = h2b("1Gi")
 
         # No preemptible nodes/jobs
         config.maxPreemptibleNodes = []  # No preemptible nodes
 
         # Non-preemptible parameters
-        config.nodeTypes = [Shape(20, h2b('10Gi'), 10, h2b('100Gi'), False)]
+        config.nodeTypes = [Shape(20, h2b("10Gi"), 10, h2b("100Gi"), False)]
         config.minNodes = [0]
         config.maxNodes = [10]
 
@@ -657,27 +797,31 @@ class ScalerThreadTest(ToilTest):
         config.betaInertia = 0.1
         config.scaleInterval = 3
 
-        self._testClusterScaling(config, numJobs=100, numPreemptibleJobs=0,
-                                 jobShape=Shape(20, h2b('7Gi'), 10, h2b('80Gi'), False))
+        self._testClusterScaling(
+            config,
+            numJobs=100,
+            numPreemptibleJobs=0,
+            jobShape=Shape(20, h2b("7Gi"), 10, h2b("80Gi"), False),
+        )
 
     @slow
     def testClusterScalingMultipleNodeTypes(self):
 
-        small_node = Shape(20, h2b('5Gi'), 10, h2b('20Gi'), False)
-        small_job = Shape(20, h2b('3Gi'), 10, h2b('4Gi'), False)
-        medium_node = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), False)
-        medium_job = Shape(20, h2b('7Gi'), 10, h2b('4Gi'), False)
-        large_node = Shape(20, h2b('20Gi'), 10, h2b('20Gi'), False)
-        large_job = Shape(20, h2b('16Gi'), 10, h2b('4Gi'), False)
+        small_node = Shape(20, h2b("5Gi"), 10, h2b("20Gi"), False)
+        small_job = Shape(20, h2b("3Gi"), 10, h2b("4Gi"), False)
+        medium_node = Shape(20, h2b("10Gi"), 10, h2b("20Gi"), False)
+        medium_job = Shape(20, h2b("7Gi"), 10, h2b("4Gi"), False)
+        large_node = Shape(20, h2b("20Gi"), 10, h2b("20Gi"), False)
+        large_job = Shape(20, h2b("16Gi"), 10, h2b("4Gi"), False)
 
         numJobs = 100
 
         config = Config()
 
         # Make defaults dummy values
-        config.defaultMemory = h2b('1Gi')
+        config.defaultMemory = h2b("1Gi")
         config.defaultCores = 1
-        config.defaultDisk = h2b('1Gi')
+        config.defaultDisk = h2b("1Gi")
 
         # No preemptible nodes/jobs
         config.preemptibleNodeTypes = []
@@ -707,12 +851,18 @@ class ScalerThreadTest(ToilTest):
 
             # Add medium completed jobs
             for i in range(1000):
-                iJ = JobDescription(requirements=dict(
-                                        memory=random.choice(range(small_job.memory, medium_job.memory)),
-                                        cores=medium_job.cores,
-                                        disk=large_job.disk,
-                                        preemptible=False),
-                                    jobName='testClusterScaling', unitName='')
+                iJ = JobDescription(
+                    requirements=dict(
+                        memory=random.choice(
+                            range(small_job.memory, medium_job.memory)
+                        ),
+                        cores=medium_job.cores,
+                        disk=large_job.disk,
+                        preemptible=False,
+                    ),
+                    jobName="testClusterScaling",
+                    unitName="",
+                )
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
 
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:
@@ -739,15 +889,15 @@ class ScalerThreadTest(ToilTest):
         """
         config = Config()
 
-        node_shape = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), False)
-        preemptible_node_shape = Shape(20, h2b('10Gi'), 10, h2b('20Gi'), True)
-        job_shape = Shape(20, h2b('7Gi'), 10, h2b('2Gi'), False)
-        preemptible_job_shape = Shape(20, h2b('7Gi'), 10, h2b('2Gi'), True)
+        node_shape = Shape(20, h2b("10Gi"), 10, h2b("20Gi"), False)
+        preemptible_node_shape = Shape(20, h2b("10Gi"), 10, h2b("20Gi"), True)
+        job_shape = Shape(20, h2b("7Gi"), 10, h2b("2Gi"), False)
+        preemptible_job_shape = Shape(20, h2b("7Gi"), 10, h2b("2Gi"), True)
 
         # Make defaults dummy values
-        config.defaultMemory = h2b('1Gi')
+        config.defaultMemory = h2b("1Gi")
         config.defaultCores = 1
-        config.defaultDisk = h2b('1Gi')
+        config.defaultDisk = h2b("1Gi")
 
         # non-preemptible node parameters
         config.nodeTypes = [node_shape, preemptible_node_shape]
@@ -759,13 +909,16 @@ class ScalerThreadTest(ToilTest):
         config.betaInertia = 0.9
         config.scaleInterval = 3
 
-        self._testClusterScaling(config, numJobs=100, numPreemptibleJobs=100, jobShape=job_shape)
+        self._testClusterScaling(
+            config, numJobs=100, numPreemptibleJobs=100, jobShape=job_shape
+        )
 
 
 class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisioner):
     """Mimics a leader, job batcher, provisioner and scalable batch system."""
+
     def __init__(self, config, secondsPerJob):
-        super().__init__(clusterName='clusterName', clusterType='mesos')
+        super().__init__(clusterName="clusterName", clusterType="mesos")
         # To mimic parallel preemptible and non-preemptible queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -797,8 +950,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     # Stub out all AbstractBatchSystem methods since they are never called
     for name, value in AbstractBatchSystem.__dict__.items():
-        if getattr(value, '__isabstractmethod__', False):
-            exec('def %s(): pass' % name)
+        if getattr(value, "__isabstractmethod__", False):
+            exec("def %s(): pass" % name)
         # Without this, the class would end up with .name and .value attributes
         del name, value
 
@@ -813,7 +966,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     def supportedClusterTypes(self):
-        return {'mesos'}
+        return {"mesos"}
 
     def createClusterSettings(self):
         pass
@@ -822,7 +975,9 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         pass
 
     # AbstractProvisioner methods
-    def setAutoscaledNodeTypes(self, node_types: List[Tuple[Set[Shape], Optional[float]]]):
+    def setAutoscaledNodeTypes(
+        self, node_types: list[tuple[set[Shape], Optional[float]]]
+    ):
         self.node_shapes_for_testing = sorted(it for t in node_types for it in t[0])
         super().setAutoscaledNodeTypes(node_types)
 
@@ -856,18 +1011,25 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         """
         self.totalJobs += 1
         jobID = uuid.uuid4()
-        self.jobBatchSystemIDToIssuedJob[jobID] = JobDescription(requirements={"memory": jobShape.memory,
-                                                                               "cores": jobShape.cores,
-                                                                               "disk": jobShape.disk,
-                                                                               "preemptible": preemptible},
-                                                                 jobName=f'job{self.totalJobs}')
+        self.jobBatchSystemIDToIssuedJob[jobID] = JobDescription(
+            requirements={
+                "memory": jobShape.memory,
+                "cores": jobShape.cores,
+                "disk": jobShape.disk,
+                "preemptible": preemptible,
+            },
+            jobName=f"job{self.totalJobs}",
+        )
         self.jobQueue.put(jobID)
 
     # JobBatcher functionality
     def getNumberOfJobsIssued(self, preemptible=None):
         if preemptible is not None:
-            jobList = [job for job in list(self.jobQueue.queue) if
-                       self.jobBatchSystemIDToIssuedJob[job].preemptible == preemptible]
+            jobList = [
+                job
+                for job in list(self.jobQueue.queue)
+                if self.jobBatchSystemIDToIssuedJob[job].preemptible == preemptible
+            ]
             return len(jobList)
         else:
             return self.jobQueue.qsize()
@@ -883,13 +1045,19 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         for node in self.nodesToWorker:
             if node.preemptible == preemptible:
                 worker = self.nodesToWorker[node]
-                nodes[node.privateIP] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=1,
-                                                 memoryTotal=0, memoryUsed=0, requestedMemory=1,
-                                                 workers=1 if worker.busyEvent.is_set() else 0)
+                nodes[node.privateIP] = NodeInfo(
+                    coresTotal=0,
+                    coresUsed=0,
+                    requestedCores=1,
+                    memoryTotal=0,
+                    memoryUsed=0,
+                    requestedMemory=1,
+                    workers=1 if worker.busyEvent.is_set() else 0,
+                )
         return nodes
 
     # AbstractProvisioner functionality
-    def addNodes(self, nodeTypes: Set[str], numNodes, preemptible) -> int:
+    def addNodes(self, nodeTypes: set[str], numNodes, preemptible) -> int:
         nodeType = next(iter(nodeTypes))
         self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptible=preemptible)
         return self.getNumberOfNodes(nodeType=nodeType, preemptible=preemptible)
@@ -902,8 +1070,17 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getWorkersInCluster(self, nodeShape):
         return self.workers[nodeShape]
 
-    def launchCluster(self, leaderNodeType, keyName, userTags=None,
-                      vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+    def launchCluster(
+        self,
+        leaderNodeType,
+        keyName,
+        userTags=None,
+        vpcSubnet=None,
+        leaderStorage=50,
+        nodeStorage=50,
+        botoPath=None,
+        **kwargs,
+    ):
         pass
 
     def destroyCluster(self) -> None:
@@ -911,7 +1088,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     def getLeader(self):
         pass
-
 
     def _leaderFn(self):
         while self.running:
@@ -955,14 +1131,28 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                 return time.time() - self.startTime
 
         for _ in range(numNodes):
-            node = Node('127.0.0.1', uuid.uuid4(), 'testNode', datetime.datetime.now().isoformat()+'Z', nodeType=nodeType,
-                    preemptible=preemptible)
-            self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)
+            node = Node(
+                "127.0.0.1",
+                uuid.uuid4(),
+                "testNode",
+                datetime.datetime.now().isoformat() + "Z",
+                nodeType=nodeType,
+                preemptible=preemptible,
+            )
+            self.nodesToWorker[node] = Worker(
+                self.jobQueue, self.updatedJobsQueue, self.secondsPerJob
+            )
             self.workers[nodeShape].append(self.nodesToWorker[node])
-        self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
+        self.maxWorkers[nodeShape] = max(
+            self.maxWorkers[nodeShape], len(self.workers[nodeShape])
+        )
 
     def _removeNodes(self, nodes):
-        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker), len(nodes))
+        logger.debug(
+            "Removing nodes. %s workers and %s to terminate.",
+            len(self.nodesToWorker),
+            len(nodes),
+        )
         for node in nodes:
             try:
                 nodeShape = self.getNodeShape(node.nodeType, node.preemptible)

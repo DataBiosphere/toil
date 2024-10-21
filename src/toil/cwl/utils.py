@@ -16,21 +16,11 @@
 
 import logging
 import os
-from pathlib import PurePosixPath
 import posixpath
 import stat
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    MutableMapping,
-    MutableSequence,
-    Type,
-    TypeVar,
-    Union,
-)
+from collections.abc import Iterable, MutableMapping, MutableSequence
+from pathlib import PurePosixPath
+from typing import Any, Callable, TypeVar, Union
 
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -55,7 +45,7 @@ try:
     import cwltool.errors
 
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION: Union[
-        Type[cwltool.errors.UnsupportedRequirement], Type[CWLUnsupportedException]
+        type[cwltool.errors.UnsupportedRequirement], type[CWLUnsupportedException]
     ] = cwltool.errors.UnsupportedRequirement
 except ImportError:
     CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION = CWLUnsupportedException
@@ -92,8 +82,8 @@ def visit_cwl_class_and_reduce(
     rec: Any,
     classes: Iterable[str],
     op_down: Callable[[Any], DownReturnType],
-    op_up: Callable[[Any, DownReturnType, List[UpReturnType]], UpReturnType],
-) -> List[UpReturnType]:
+    op_up: Callable[[Any, DownReturnType, list[UpReturnType]], UpReturnType],
+) -> list[UpReturnType]:
     """
     Apply the given operations to all CWL objects with the given named CWL class.
 
@@ -130,9 +120,12 @@ def visit_cwl_class_and_reduce(
     return results
 
 
-DirectoryStructure = Dict[str, Union[str, "DirectoryStructure"]]
+DirectoryStructure = dict[str, Union[str, "DirectoryStructure"]]
 
-def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, DirectoryStructure, None]:
+
+def get_from_structure(
+    dir_dict: DirectoryStructure, path: str
+) -> Union[str, DirectoryStructure, None]:
     """
     Given a relative path, follow it in the given directory structure.
 
@@ -144,7 +137,7 @@ def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, Di
     parts = PurePosixPath(posixpath.normpath(path)).parts
     if len(parts) == 0:
         return dir_dict
-    if parts[0] in ('..', '/'):
+    if parts[0] in ("..", "/"):
         raise RuntimeError(f"Path {path} not resolvable in virtual directory")
     found: Union[str, DirectoryStructure] = dir_dict
     for part in parts:
@@ -161,8 +154,8 @@ def get_from_structure(dir_dict: DirectoryStructure, path: str) -> Union[str, Di
 
 def download_structure(
     file_store: AbstractFileStore,
-    index: Dict[str, str],
-    existing: Dict[str, str],
+    index: dict[str, str],
+    existing: dict[str, str],
     dir_dict: DirectoryStructure,
     into_dir: str,
 ) -> None:
@@ -215,7 +208,9 @@ def download_structure(
                 )
             else:
                 # We need to download from some other kind of URL.
-                size, executable = AbstractJobStore.read_from_url(value, open(dest_path, 'wb'))
+                size, executable = AbstractJobStore.read_from_url(
+                    value, open(dest_path, "wb")
+                )
                 if executable:
                     # Make the written file executable
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)

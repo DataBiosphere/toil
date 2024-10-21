@@ -17,18 +17,9 @@ import os
 import shutil
 import uuid
 from collections import Counter
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Generator,
-                    List,
-                    Optional,
-                    TextIO,
-                    Tuple,
-                    Type,
-                    Union,
-                    overload)
+from typing import Any, Callable, Optional, TextIO, Union, overload
 
 from flask import send_from_directory
 from werkzeug.utils import redirect
@@ -38,21 +29,23 @@ import toil.server.wes.amazon_wes_utils as amazon_wes_utils
 from toil.bus import JobStatus, replay_message_bus
 from toil.lib.io import AtomicFileCreate
 from toil.lib.threading import global_mutex
-from toil.server.utils import (WorkflowStateMachine,
-                               connect_to_workflow_state_store)
-from toil.server.wes.abstract_backend import (OperationForbidden,
-                                              TaskLog,
-                                              VersionNotImplementedException,
-                                              WESBackend,
-                                              WorkflowConflictException,
-                                              WorkflowExecutionException,
-                                              WorkflowNotFoundException,
-                                              handle_errors)
+from toil.server.utils import WorkflowStateMachine, connect_to_workflow_state_store
+from toil.server.wes.abstract_backend import (
+    OperationForbidden,
+    TaskLog,
+    VersionNotImplementedException,
+    WESBackend,
+    WorkflowConflictException,
+    WorkflowExecutionException,
+    WorkflowNotFoundException,
+    handle_errors,
+)
 from toil.server.wes.tasks import MultiprocessingTaskRunner, TaskRunner
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
 
 class ToilWorkflow:
     def __init__(self, base_work_dir: str, state_store_url: str, run_id: str):
@@ -115,24 +108,31 @@ class ToilWorkflow:
             yield None
 
     def exists(self) -> bool:
-        """ Return True if the workflow run exists."""
+        """Return True if the workflow run exists."""
         return self.get_state() != "UNKNOWN"
 
     def get_state(self) -> str:
-        """ Return the state of the current run."""
+        """Return the state of the current run."""
         return self.state_machine.get_current_state()
 
-    def check_on_run(self, task_runner: Type[TaskRunner]) -> None:
+    def check_on_run(self, task_runner: type[TaskRunner]) -> None:
         """
         Check to make sure nothing has gone wrong in the task runner for this
         workflow. If something has, log, and fail the workflow with an error.
         """
-        if not task_runner.is_ok(self.run_id) and self.get_state() not in ['SYSTEM_ERROR', 'EXECUTOR_ERROR', 'COMPLETE', 'CANCELED']:
-            logger.error('Failing run %s because the task to run its leader crashed', self.run_id)
+        if not task_runner.is_ok(self.run_id) and self.get_state() not in [
+            "SYSTEM_ERROR",
+            "EXECUTOR_ERROR",
+            "COMPLETE",
+            "CANCELED",
+        ]:
+            logger.error(
+                "Failing run %s because the task to run its leader crashed", self.run_id
+            )
             self.state_machine.send_system_error()
 
     def set_up_run(self) -> None:
-        """ Set up necessary directories for the run."""
+        """Set up necessary directories for the run."""
         # Go to queued state
         self.state_machine.send_enqueue()
 
@@ -140,11 +140,13 @@ class ToilWorkflow:
         os.makedirs(self.exec_dir, exist_ok=True)
 
     def clean_up(self) -> None:
-        """ Clean directory and files related to the run."""
+        """Clean directory and files related to the run."""
         shutil.rmtree(self.scratch_dir)
         # Don't remove state; state needs to persist forever.
 
-    def queue_run(self, task_runner: Type[TaskRunner], request: Dict[str, Any], options: List[str]) -> None:
+    def queue_run(
+        self, task_runner: type[TaskRunner], request: dict[str, Any], options: list[str]
+    ) -> None:
         """This workflow should be ready to run. Hand this to the task system."""
         with open(os.path.join(self.scratch_dir, "request.json"), "w") as f:
             # Save the request to disk for get_run_log()
@@ -152,8 +154,16 @@ class ToilWorkflow:
 
         try:
             # Run the task. Set the task ID the same as our run ID
-            task_runner.run(args=(self.base_scratch_dir, self.state_store_url, self.run_id, request, options),
-                            task_id=self.run_id)
+            task_runner.run(
+                args=(
+                    self.base_scratch_dir,
+                    self.state_store_url,
+                    self.run_id,
+                    request,
+                    options,
+                ),
+                task_id=self.run_id,
+            )
         except Exception:
             # Celery or the broker might be down
             self.state_machine.send_system_error()
@@ -185,23 +195,28 @@ class ToilWorkflow:
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
-        return self._get_scratch_file_path('stdout')
+        return self._get_scratch_file_path("stdout")
 
     def get_stderr_path(self) -> Optional[str]:
         """
         Return the path to the standard output log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
-        return self._get_scratch_file_path('stderr')
+        return self._get_scratch_file_path("stderr")
 
     def get_messages_path(self) -> Optional[str]:
         """
         Return the path to the bus message log, relative to the run's
         scratch_dir, or None if it doesn't exist.
         """
-        return self._get_scratch_file_path('bus_messages')
+        return self._get_scratch_file_path("bus_messages")
 
-    def get_task_logs(self, filter_function: Optional[Callable[[TaskLog, JobStatus], Optional[TaskLog]]] = None) -> List[Dict[str, Union[str, int, None]]]:
+    def get_task_logs(
+        self,
+        filter_function: Optional[
+            Callable[[TaskLog, JobStatus], Optional[TaskLog]]
+        ] = None,
+    ) -> list[dict[str, Union[str, int, None]]]:
         """
         Return all the task log objects for the individual tasks in the workflow.
 
@@ -226,9 +241,12 @@ class ToilWorkflow:
             abs_path = os.path.join(self.scratch_dir, path)
             job_statuses = replay_message_bus(abs_path)
             # Compose log objects from recovered job info.
-            logs: List[TaskLog] = []
+            logs: list[TaskLog] = []
             for job_status in job_statuses.values():
-                task: Optional[TaskLog] = {"name": job_status.name, "exit_code": job_status.exit_code}
+                task: Optional[TaskLog] = {
+                    "name": job_status.name,
+                    "exit_code": job_status.exit_code,
+                }
                 if filter_function is not None:
                     # Convince MyPy the task is set
                     assert task is not None
@@ -236,12 +254,9 @@ class ToilWorkflow:
                     task = filter_function(task, job_status)
                 if task is not None:
                     logs.append(task)
-            logger.info('Recovered task logs: %s', logs)
+            logger.info("Recovered task logs: %s", logs)
             return logs
             # TODO: times, log files, AWS Batch IDs if any, names from the workflow instead of IDs, commands
-
-
-
 
 
 class ToilBackend(WESBackend):
@@ -250,8 +265,15 @@ class ToilBackend(WESBackend):
     class is responsible for validating and executing submitted workflows.
     """
 
-    def __init__(self, work_dir: str, state_store: Optional[str], options: List[str],
-                 dest_bucket_base: Optional[str], bypass_celery: bool = False, wes_dialect: str = "standard") -> None:
+    def __init__(
+        self,
+        work_dir: str,
+        state_store: Optional[str],
+        options: list[str],
+        dest_bucket_base: Optional[str],
+        bypass_celery: bool = False,
+        wes_dialect: str = "standard",
+    ) -> None:
         """
         Make a new ToilBackend for serving WES.
 
@@ -274,19 +296,21 @@ class ToilBackend(WESBackend):
                acceptable in any dialect.
         """
         for opt in options:
-            if not opt.startswith('-'):
+            if not opt.startswith("-"):
                 # We don't allow a value to be set across multiple arguments
                 # that would need to remain in the same order.
-                raise ValueError(f'Option {opt} does not begin with -')
+                raise ValueError(f"Option {opt} does not begin with -")
         super().__init__(options)
 
         # How should we generate run IDs? We apply a prefix so that we can tell
         # what things in our work directory suggest that runs exist and what
         # things don't.
-        self.run_id_prefix = 'run-'
+        self.run_id_prefix = "run-"
 
         # Use this to run Celery tasks so we can swap it out for testing.
-        self.task_runner = TaskRunner if not bypass_celery else MultiprocessingTaskRunner
+        self.task_runner = (
+            TaskRunner if not bypass_celery else MultiprocessingTaskRunner
+        )
         logger.info("Using task runner: %s", self.task_runner)
 
         # Record if we need to limit our WES responses for a particular
@@ -304,7 +328,7 @@ class ToilBackend(WESBackend):
 
         if state_store is None:
             # Store workflow metadata under the work_dir.
-            self.state_store_url = os.path.join(self.work_dir, 'state_store')
+            self.state_store_url = os.path.join(self.work_dir, "state_store")
         else:
             # Use the provided value
             self.state_store_url = state_store
@@ -331,14 +355,14 @@ class ToilBackend(WESBackend):
                 pass
         # Assign an ID to the work directory storage.
         work_dir_id = None
-        work_dir_id_file = os.path.join(self.work_dir, 'id.txt')
+        work_dir_id_file = os.path.join(self.work_dir, "id.txt")
         if os.path.exists(work_dir_id_file):
             # An ID is assigned already
             with open(work_dir_id_file) as f:
                 work_dir_id = uuid.UUID(f.readline().strip())
         else:
             # We need to try and assign an ID.
-            with global_mutex(self.work_dir, 'id-assignment'):
+            with global_mutex(self.work_dir, "id-assignment"):
                 # We need to synchronize with other processes starting up to
                 # make sure we agree on an ID.
                 if os.path.exists(work_dir_id_file):
@@ -350,7 +374,7 @@ class ToilBackend(WESBackend):
                     with AtomicFileCreate(work_dir_id_file) as temp_file:
                         # Still need to be atomic here or people not locking
                         # will see an incomplete file.
-                        with open(temp_file, 'w') as f:
+                        with open(temp_file, "w") as f:
                             f.write(str(work_dir_id))
         # Now combine into one ID
         if boot_id is not None:
@@ -359,14 +383,15 @@ class ToilBackend(WESBackend):
             self.server_id = str(work_dir_id)
         logger.info("Using server ID: %s", self.server_id)
 
-
         self.supported_versions = {
             "py": ["3.7", "3.8", "3.9"],
             "cwl": ["v1.0", "v1.1", "v1.2"],
-            "wdl": ["draft-2", "1.0"]
+            "wdl": ["draft-2", "1.0"],
         }
 
-    def _get_run(self, run_id: str, should_exists: Optional[bool] = None) -> ToilWorkflow:
+    def _get_run(
+        self, run_id: str, should_exists: Optional[bool] = None
+    ) -> ToilWorkflow:
         """
         Helper method to instantiate a ToilWorkflow object.
 
@@ -387,24 +412,32 @@ class ToilBackend(WESBackend):
         # TODO: Implement multiple servers working together.
         owning_server = run.fetch_state("server_id")
         apparent_state = run.get_state()
-        if (apparent_state not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED") and
-            owning_server != self.server_id):
+        if (
+            apparent_state
+            not in ("UNKNOWN", "COMPLETE", "EXECUTOR_ERROR", "SYSTEM_ERROR", "CANCELED")
+            and owning_server != self.server_id
+        ):
 
             # This workflow is in a state that suggests it is doing something
             # but it appears to belong to a previous incarnation of the server,
             # and so its Celery is probably gone. Put it into system error
             # state if possible.
-            logger.warning("Run %s in state %s appears to belong to server %s and not us, server %s. "
-                           "Its server is probably gone. Failing the workflow!",
-                           run_id, apparent_state, owning_server, self.server_id)
+            logger.warning(
+                "Run %s in state %s appears to belong to server %s and not us, server %s. "
+                "Its server is probably gone. Failing the workflow!",
+                run_id,
+                apparent_state,
+                owning_server,
+                self.server_id,
+            )
             run.state_machine.send_system_error()
 
         # Poll to make sure the run is not broken
         run.check_on_run(self.task_runner)
         return run
 
-    def get_runs(self) -> Generator[Tuple[str, str], None, None]:
-        """ A generator of a list of run ids and their state."""
+    def get_runs(self) -> Generator[tuple[str, str], None, None]:
+        """A generator of a list of run ids and their state."""
         if not os.path.exists(self.work_dir):
             return
 
@@ -423,25 +456,24 @@ class ToilBackend(WESBackend):
         return self._get_run(run_id, should_exists=True).get_state()
 
     @handle_errors
-    def get_service_info(self) -> Dict[str, Any]:
-        """ Get information about the Workflow Execution Service."""
+    def get_service_info(self) -> dict[str, Any]:
+        """Get information about the Workflow Execution Service."""
 
         state_counts = Counter(state for _, state in self.get_runs())
 
         engine_parameters = []
         for option in self.options:
-            if '=' not in option:  # flags like "--logDebug"
+            if "=" not in option:  # flags like "--logDebug"
                 k, v = option, None
             else:
-                k, v = option.split('=', 1)
+                k, v = option.split("=", 1)
             engine_parameters.append((k, v))
 
         return {
             "version": baseVersion,
             "workflow_type_versions": {
-                k: {
-                    "workflow_type_version": v
-                } for k, v in self.supported_versions.items()
+                k: {"workflow_type_version": v}
+                for k, v in self.supported_versions.items()
             },
             "supported_wes_versions": ["1.0.0"],
             "supported_filesystem_protocols": ["file", "http", "https"],
@@ -449,10 +481,7 @@ class ToilBackend(WESBackend):
             # TODO: How can we report --destBucket here, since we pass it only
             # for CWL workflows?
             "default_workflow_engine_parameters": [
-                {
-                    "name": key,
-                    "default_value": value
-                }
+                {"name": key, "default_value": value}
                 for key, value in engine_parameters
             ],
             "system_state_counts": state_counts,
@@ -460,22 +489,21 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def list_runs(self, page_size: Optional[int] = None, page_token: Optional[str] = None) -> Dict[str, Any]:
-        """ List the workflow runs."""
+    def list_runs(
+        self, page_size: Optional[int] = None, page_token: Optional[str] = None
+    ) -> dict[str, Any]:
+        """List the workflow runs."""
         # TODO: implement pagination
         return {
             "workflows": [
-                {
-                    "run_id": run_id,
-                    "state": state
-                } for run_id, state in self.get_runs()
+                {"run_id": run_id, "state": state} for run_id, state in self.get_runs()
             ],
-            "next_page_token": ""
+            "next_page_token": "",
         }
 
     @handle_errors
-    def run_workflow(self) -> Dict[str, str]:
-        """ Run a workflow."""
+    def run_workflow(self) -> dict[str, str]:
+        """Run a workflow."""
         run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)
 
@@ -491,7 +519,11 @@ class ToilBackend(WESBackend):
             run.clean_up()
             raise
 
-        logger.info("Received workflow run request %s with parameters: %s", run_id, list(request.keys()))
+        logger.info(
+            "Received workflow run request %s with parameters: %s",
+            run_id,
+            list(request.keys()),
+        )
 
         wf_type = request["workflow_type"].lower().strip()
         version = request["workflow_type_version"]
@@ -514,21 +546,25 @@ class ToilBackend(WESBackend):
         workflow_options = list(self.options)
         if wf_type == "cwl" and self.dest_bucket_base:
             # Output to a directory under out base destination bucket URL.
-            workflow_options.append('--destBucket=' + os.path.join(self.dest_bucket_base, run_id))
+            workflow_options.append(
+                "--destBucket=" + os.path.join(self.dest_bucket_base, run_id)
+            )
         # Tell it to dump its messages to a file.
         # TODO: automatically sync file names with accessors somehow.
-        workflow_options.append('--writeMessages=' + os.path.join(run.scratch_dir, 'bus_messages'))
+        workflow_options.append(
+            "--writeMessages=" + os.path.join(run.scratch_dir, "bus_messages")
+        )
 
-        logger.info(f"Putting workflow {run_id} into the queue. Waiting to be picked up...")
+        logger.info(
+            f"Putting workflow {run_id} into the queue. Waiting to be picked up..."
+        )
         run.queue_run(self.task_runner, request, options=workflow_options)
 
-        return {
-            "run_id": run_id
-        }
+        return {"run_id": run_id}
 
     @handle_errors
-    def get_run_log(self, run_id: str) -> Dict[str, Any]:
-        """ Get detailed info about a workflow run."""
+    def get_run_log(self, run_id: str) -> dict[str, Any]:
+        """Get detailed info about a workflow run."""
         run = self._get_run(run_id, should_exists=True)
         state = run.get_state()
 
@@ -550,7 +586,7 @@ class ToilBackend(WESBackend):
             # path under that hostname. So we need to use a relative URL to the
             # logs.
             stdout = f"../../../../toil/wes/v1/logs/{run_id}/stdout"
-        stderr =""
+        stderr = ""
         if run.get_stderr_path() is not None:
             # We have a standard error link.
             stderr = f"../../../../toil/wes/v1/logs/{run_id}/stderr"
@@ -564,7 +600,9 @@ class ToilBackend(WESBackend):
             filter_function = amazon_wes_utils.task_filter
         else:
             # We can emit any standard-compliant WES tasks
-            logger.info("WES dialect %s does not require transforming tasks", self.wes_dialect)
+            logger.info(
+                "WES dialect %s does not require transforming tasks", self.wes_dialect
+            )
             filter_function = None
         task_logs = run.get_task_logs(filter_function=filter_function)
 
@@ -589,8 +627,8 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def cancel_run(self, run_id: str) -> Dict[str, str]:
-        """ Cancel a running workflow."""
+    def cancel_run(self, run_id: str) -> dict[str, str]:
+        """Cancel a running workflow."""
         run = self._get_run(run_id, should_exists=True)
 
         # Do some preflight checks on the current state.
@@ -598,31 +636,30 @@ class ToilBackend(WESBackend):
         state = run.get_state()
         if state in ("CANCELING", "CANCELED", "COMPLETE"):
             # We don't need to do anything.
-            logger.warning(f"A user is attempting to cancel a workflow in state: '{state}'.")
+            logger.warning(
+                f"A user is attempting to cancel a workflow in state: '{state}'."
+            )
         elif state in ("EXECUTOR_ERROR", "SYSTEM_ERROR"):
             # Something went wrong. Let the user know.
-            raise OperationForbidden(f"Workflow is in state: '{state}', which cannot be cancelled.")
+            raise OperationForbidden(
+                f"Workflow is in state: '{state}', which cannot be cancelled."
+            )
         else:
             # Go to canceling state if allowed
             run.state_machine.send_cancel()
             # Stop the run task if it is there.
             self.task_runner.cancel(run_id)
 
-        return {
-            "run_id": run_id
-        }
+        return {"run_id": run_id}
 
     @handle_errors
-    def get_run_status(self, run_id: str) -> Dict[str, str]:
+    def get_run_status(self, run_id: str) -> dict[str, str]:
         """
         Get quick status info about a workflow run, returning a simple result
         with the overall state of the workflow run.
         """
 
-        return {
-            "run_id": run_id,
-            "state": self.get_state(run_id)
-        }
+        return {"run_id": run_id, "state": self.get_state(run_id)}
 
     # Toil custom endpoints that are not part of the GA4GH WES spec
 
@@ -665,6 +702,4 @@ class ToilBackend(WESBackend):
         Provide a sensible result for / other than 404.
         """
         # For now just go to the service info endpoint
-        return redirect('ga4gh/wes/v1/service-info', code=302)
-
-
+        return redirect("ga4gh/wes/v1/service-info", code=302)

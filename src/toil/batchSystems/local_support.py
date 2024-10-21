@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
-from typing import Dict, List, Optional
+from typing import Optional
 
-from toil.batchSystems.abstractBatchSystem import (BatchSystemSupport,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    BatchSystemSupport,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.common import Config
 from toil.job import JobDescription
@@ -27,9 +29,13 @@ logger = logging.getLogger(__name__)
 class BatchSystemLocalSupport(BatchSystemSupport):
     """Adds a local queue for helper jobs, useful for CWL & others."""
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
-        max_local_jobs = config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
+        max_local_jobs = (
+            config.max_local_jobs if config.max_local_jobs is not None else cpu_count()
+        )
         self.localBatch: SingleMachineBatchSystem = SingleMachineBatchSystem(
             config, maxCores, maxMemory, maxDisk, max_jobs=max_local_jobs
         )
@@ -41,8 +47,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         Returns the jobID if the jobDesc has been submitted to the local queue,
         otherwise returns None
         """
-        if (not self.config.run_local_jobs_on_workers
-                and jobDesc.local):
+        if not self.config.run_local_jobs_on_workers and jobDesc.local:
             # Since singleMachine.py doesn't typecheck yet and MyPy is ignoring
             # it, it will raise errors here unless we add type annotations to
             # everything we get back from it. The easiest way to do that seems
@@ -55,7 +60,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         else:
             return None
 
-    def killLocalJobs(self, jobIDs: List[int]) -> None:
+    def killLocalJobs(self, jobIDs: list[int]) -> None:
         """
         Will kill all local jobs that match the provided jobIDs.
 
@@ -63,14 +68,14 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         """
         self.localBatch.killBatchJobs(jobIDs)
 
-    def getIssuedLocalJobIDs(self) -> List[int]:
+    def getIssuedLocalJobIDs(self) -> list[int]:
         """To be called by getIssuedBatchJobIDs."""
-        local_ids: List[int] = self.localBatch.getIssuedBatchJobIDs()
+        local_ids: list[int] = self.localBatch.getIssuedBatchJobIDs()
         return local_ids
 
-    def getRunningLocalJobIDs(self) -> Dict[int, float]:
+    def getRunningLocalJobIDs(self) -> dict[int, float]:
         """To be called by getRunningBatchJobIDs()."""
-        local_running: Dict[int, float] = self.localBatch.getRunningBatchJobIDs()
+        local_running: dict[int, float] = self.localBatch.getRunningBatchJobIDs()
         return local_running
 
     def getUpdatedLocalJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:

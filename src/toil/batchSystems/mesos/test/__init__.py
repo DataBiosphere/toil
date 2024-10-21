@@ -17,16 +17,18 @@ log = logging.getLogger(__name__)
 class MesosTestSupport:
     """Mixin for test cases that need a running Mesos master and agent on the local host."""
 
-    @retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-           log_message=(log.info, 'Checking if Mesos is ready...'))
+    @retry(
+        intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+        log_message=(log.info, "Checking if Mesos is ready..."),
+    )
     def wait_for_master(self):
-        with closing(urlopen('http://127.0.0.1:5050/version')) as content:
+        with closing(urlopen("http://127.0.0.1:5050/version")) as content:
             content.read()
 
     def _startMesos(self, numCores=None):
         if numCores is None:
             numCores = cpu_count()
-        shutil.rmtree('/tmp/mesos', ignore_errors=True)
+        shutil.rmtree("/tmp/mesos", ignore_errors=True)
         self.master = self.MesosMasterThread(numCores)
         self.master.start()
         self.agent = self.MesosAgentThread(numCores)
@@ -35,7 +37,7 @@ class MesosTestSupport:
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
         self.wait_for_master()
 
-        log.info('Mesos is ready! Running test.')
+        log.info("Mesos is ready! Running test.")
 
     def _stopProcess(self, process, timeout=10) -> None:
         """Gracefully stop a process on a timeout, given the Popen object for the process."""
@@ -47,7 +49,7 @@ class MesosTestSupport:
             waited += 1
         if process.poll() is None:
             # It didn't shut down gracefully
-            log.warning('Forcibly killing child which ignored SIGTERM')
+            log.warning("Forcibly killing child which ignored SIGTERM")
             process.kill()
 
     def _stopMesos(self):
@@ -71,7 +73,7 @@ class MesosTestSupport:
 
         def tryRun(self):
             self.popen.wait()
-            log.info('Exiting %s', self.__class__.__name__)
+            log.info("Exiting %s", self.__class__.__name__)
 
         def findMesosBinary(self, names):
             if isinstance(names, str):
@@ -86,7 +88,7 @@ class MesosTestSupport:
                         # Special case for users of PyCharm on OS X. This is where Homebrew installs
                         # it. It's hard to set PATH for PyCharm (or any GUI app) on OS X so let's
                         # make it easy for those poor souls.
-                        return which(name, path='/usr/local/sbin')
+                        return which(name, path="/usr/local/sbin")
                     except StopIteration:
                         pass
 
@@ -94,18 +96,22 @@ class MesosTestSupport:
             if len(names) == 1:
                 sought = "binary '%s'" % names[0]
             else:
-                sought = 'any binary in %s' % str(names)
+                sought = "any binary in %s" % str(names)
 
-            raise RuntimeError("Cannot find %s. Make sure Mesos is installed "
-                                "and it's 'bin' directory is present on the PATH." % sought)
+            raise RuntimeError(
+                "Cannot find %s. Make sure Mesos is installed "
+                "and it's 'bin' directory is present on the PATH." % sought
+            )
 
     class MesosMasterThread(MesosThread):
         def mesosCommand(self):
-            return [self.findMesosBinary('mesos-master'),
-                    '--registry=in_memory',
-                    '--ip=127.0.0.1',
-                    '--port=5050',
-                    '--allocation_interval=500ms']
+            return [
+                self.findMesosBinary("mesos-master"),
+                "--registry=in_memory",
+                "--ip=127.0.0.1",
+                "--port=5050",
+                "--allocation_interval=500ms",
+            ]
 
     class MesosAgentThread(MesosThread):
         def mesosCommand(self):
@@ -114,10 +120,12 @@ class MesosTestSupport:
             # We also make sure to point it explicitly at the right temp work directory, and
             # to disable systemd support because we have to be root to make systemd make us
             # things and we probably aren't when testing.
-            return [self.findMesosBinary(['mesos-agent']),
-                    '--ip=127.0.0.1',
-                    '--master=127.0.0.1:5050',
-                    '--attributes=preemptible:False',
-                    '--resources=cpus(*):%i' % self.numCores,
-                    '--work_dir=/tmp/mesos',
-                    '--no-systemd_enable_support']
+            return [
+                self.findMesosBinary(["mesos-agent"]),
+                "--ip=127.0.0.1",
+                "--master=127.0.0.1:5050",
+                "--attributes=preemptible:False",
+                "--resources=cpus(*):%i" % self.numCores,
+                "--work_dir=/tmp/mesos",
+                "--no-systemd_enable_support",
+            ]
