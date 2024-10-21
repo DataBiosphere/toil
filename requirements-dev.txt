@@ -11,7 +11,7 @@ sphinxcontrib-autoprogram==0.1.9
 cwltest>=2.2.20211116163652
 mypy==1.11.2
 types-aws-xray-sdk
-types-boto<2.49.18.20240807
+types-boto<2.49.18.20241020
 types-Flask-Cors
 types-requests
 types-psutil
