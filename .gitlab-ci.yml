@@ -103,35 +103,6 @@ quick_test_offline:
     - make develop extras=[aws,google,wdl]
     - TOIL_TEST_QUICK=True make test_offline threads="${TEST_THREADS}"
 
-py38_appliance_build:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
-    - if: $CI_COMMIT_BRANCH =~ /.*3\.8.*/
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.8 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && pip install -U build && make prepare && pip install pycparser && make develop extras=[all] && pip install -r requirements-htcondor.txt
-    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
-    - python setup_gitlab_docker.py
-    - make push_docker
-
-py38_main:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
-    - if: $CI_COMMIT_BRANCH =~ /.*3\.8.*/
-  stage: basic_tests
-  script:
-    - pwd
-    - python3.8 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all] && pip install -r requirements-htcondor.txt
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
-    - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
-
 py39_appliance_build:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"

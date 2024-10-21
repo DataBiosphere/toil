@@ -25,8 +25,7 @@ python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
 pip = f'{python} -m pip'
 
 # Debian and Ubuntu don't package ensurepip by default so the python-venv package must be installed
-python_packages = {'python3.8': ['python3.8-distutils', 'python3.8-venv'],
-                   'python3.9': ['python3.9-distutils', 'python3.9-venv'],
+python_packages = {'python3.9': ['python3.9-distutils', 'python3.9-venv'],
                    'python3.10': ['python3.10-distutils', 'python3.10-venv'],
                    'python3.11': ['python3.11-distutils', 'python3.11-venv'],
                    'python3.12': ['python3.12-distutils', 'python3.12-venv']}
