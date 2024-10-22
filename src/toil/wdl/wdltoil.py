@@ -97,12 +97,16 @@ logger = logging.getLogger(__name__)
 #   execution_dir: Directory to use as the working directory for workflow code.
 #   container: The type of container to use when executing a WDL task. Carries through the value of the commandline --container option
 #   all_call_outputs: whether a job should include all calls outputs
-class WDLContext(TypedDict):
-    execution_dir: NotRequired[str]
-    container: NotRequired[str]
-    task_path: str
-    namespace: str
-    all_call_outputs: bool
+WDLContext = TypedDict(
+    "WDLContext",
+    {
+        "execution_dir": NotRequired[str],
+        "container": NotRequired[str],
+        "task_path": str,
+        "namespace": str,
+        "all_call_outputs": bool,
+    },
+)
 
 
 class InsufficientMountDiskSpace(Exception):
