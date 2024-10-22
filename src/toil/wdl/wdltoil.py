@@ -960,7 +960,8 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
             #
             # This ought to be the case because we just virtualized
             # them all for transport out of the machine.
-            if get_file_virtualized_value(file) is None:
+            virtualized = get_file_virtualized_value(file)
+            if virtualized is None:
                 # TODO: If we're passing things around by URL reference and
                 # some of them are file: is this actually allowed?
                 raise RuntimeError(f"File {file} caught escaping from task unvirtualized")
@@ -972,7 +973,7 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
 
             # Devirtualize the virtualized path to save the file
             exported_path = ToilWDLStdLibBase.devirtualize_to(
-                get_file_virtualized_value(file),
+                virtualized,
                 output_directory,
                 file_store,
                 devirtualization_state,
