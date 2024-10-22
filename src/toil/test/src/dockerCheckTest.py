@@ -14,7 +14,8 @@
 import unittest
 
 from docker.errors import ImageNotFound
-from toil import checkDockerImageExists, parseDockerAppliance, retry
+from toil import checkDockerImageExists, parseDockerAppliance
+from toil.lib.retry import retry
 from toil.test import ToilTest, needs_docker
 
 

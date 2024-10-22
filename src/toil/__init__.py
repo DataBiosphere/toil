@@ -23,6 +23,7 @@ import requests
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
+from toil.lib.retry import retry as retry
 from toil.version import currentCommit
 
 if TYPE_CHECKING:
