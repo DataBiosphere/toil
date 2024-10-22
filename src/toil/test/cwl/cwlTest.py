@@ -476,7 +476,6 @@ class CWLWorkflowTest(ToilTest):
             "--outdir",
             self.outDir,
             os.path.join(self.rootDir, "src/toil/test/cwl/measure_default_memory.cwl"),
-            os.path.join(self.rootDir, "src/toil/test/cwl/empty.json"),
         ]
         try:
             log.debug("Start test workflow")
@@ -497,7 +496,7 @@ class CWLWorkflowTest(ToilTest):
         else:
             out = json.loads(output)
             log.debug("Workflow output: %s", out)
-            memory_string = open(out["memory"]["location"][len("file://") :]).read()
+            memory_string = out["memory"]
             log.debug("Observed memory: %s", memory_string)
             result = int(memory_string)
             # We should see more than the CWL default or the Toil default, assuming Slurm nodes of reasonable size (3 GiB).
