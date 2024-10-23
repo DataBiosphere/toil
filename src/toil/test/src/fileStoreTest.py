@@ -32,16 +32,20 @@ import pytest
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
-from toil.fileStores.cachingFileStore import (CacheUnbalancedError,
-                                              IllegalDeletionCacheError)
+from toil.fileStores.cachingFileStore import (
+    CacheUnbalancedError,
+    IllegalDeletionCacheError,
+)
 from toil.job import Job
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
-from toil.test import (ToilTest,
-                       needs_aws_ec2,
-                       needs_google_project,
-                       needs_google_storage,
-                       slow)
+from toil.test import (
+    ToilTest,
+    needs_aws_ec2,
+    needs_google_project,
+    needs_google_storage,
+    slow,
+)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -55,41 +59,43 @@ class hidden:
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.
     """
+
     class AbstractFileStoreTest(ToilTest, metaclass=ABCMeta):
         """
         An abstract base class for testing the various general functions described in
         :class:toil.fileStores.abstractFileStore.AbstractFileStore
         """
+
         # This is overwritten in the inheriting classs
         jobStoreType = None
 
         def _getTestJobStore(self):
-            if self.jobStoreType == 'file':
+            if self.jobStoreType == "file":
                 return self._getTestJobStorePath()
-            elif self.jobStoreType == 'aws':
-                return f'aws:{self.awsRegion()}:cache-tests-{str(uuid4())}'
-            elif self.jobStoreType == 'google':
-                projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-                return f'google:{projectID}:cache-tests-{str(uuid4())}'
+            elif self.jobStoreType == "aws":
+                return f"aws:{self.awsRegion()}:cache-tests-{str(uuid4())}"
+            elif self.jobStoreType == "google":
+                projectID = os.getenv("TOIL_GOOGLE_PROJECTID")
+                return f"google:{projectID}:cache-tests-{str(uuid4())}"
             else:
-                raise RuntimeError('Illegal job store type.')
+                raise RuntimeError("Illegal job store type.")
 
         def setUp(self):
             super().setUp()
             self.work_dir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
-            self.options.logLevel = 'DEBUG'
+            self.options.logLevel = "DEBUG"
             self.options.realTimeLogging = True
             self.options.workDir = self.work_dir
-            self.options.clean = 'always'
-            self.options.logFile = os.path.join(self.work_dir, 'logFile')
+            self.options.clean = "always"
+            self.options.logFile = os.path.join(self.work_dir, "logFile")
 
             self.tmp_dir = self._createTempDir()
 
         def create_file(self, content, executable=False):
-            file_path = f'{self.tmp_dir}/{uuid4()}'
+            file_path = f"{self.tmp_dir}/{uuid4()}"
 
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write(content)
 
             if executable:
@@ -132,6 +138,7 @@ class hidden:
                 A logging handler that watches for a certain substring and
                 trips a flag if it appears.
                 """
+
                 def __init__(self, match: str):
                     super().__init__()
                     self.match = match
@@ -145,8 +152,7 @@ class hidden:
 
             logging.getLogger().addHandler(handler)
 
-            F = Job.wrapJobFn(self._accessAndFail,
-                              disk='100M')
+            F = Job.wrapJobFn(self._accessAndFail, disk="100M")
             try:
                 Job.Runner.startToil(F, self.options)
             except FailedJobsException:
@@ -155,18 +161,19 @@ class hidden:
 
             logging.getLogger().removeHandler(handler)
 
-            assert handler.seen, "Downloaded file name not found in logs of failing Toil run"
+            assert (
+                handler.seen
+            ), "Downloaded file name not found in logs of failing Toil run"
 
         @staticmethod
         def _accessAndFail(job):
             with job.fileStore.writeGlobalFileStream() as (writable, file_id):
-                writable.write(b'Cats')
-            localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
+                writable.write(b"Cats")
+            localPath = os.path.join(job.fileStore.getLocalTempDir(), "cats.txt")
             job.fileStore.readGlobalFile(file_id, localPath)
             with job.fileStore.readGlobalFileStream(file_id) as readable:
                 pass
             raise RuntimeError("I do not like this file")
-
 
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
@@ -176,10 +183,13 @@ class hidden:
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
             and locally deleted files.
             """
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            F = Job.wrapJobFn(self._testFileStoreOperations,
-                              nonLocalDir=workdir,
-                              numIters=30, disk='2G')
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            F = Job.wrapJobFn(
+                self._testFileStoreOperations,
+                nonLocalDir=workdir,
+                numIters=30,
+                disk="2G",
+            )
             Job.Runner.startToil(F, self.options)
 
         @staticmethod
@@ -193,14 +203,15 @@ class hidden:
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
-                                               fileMB=writeFileSize)
+            fsId, _ = cls._writeFileToJobStore(
+                job, isLocalFile=True, nonLocalDir=nonLocalDir, fileMB=writeFileSize
+            )
 
             # Fill in the size of the local file we just made
             writtenFiles[fsId] = writeFileSize
             # Remember it actually should be local
             localFileIDs.add(fsId)
-            logger.info('Now have local file: %s', fsId)
+            logger.info("Now have local file: %s", fsId)
 
             i = 0
             while i <= numIters:
@@ -208,13 +219,21 @@ class hidden:
                 if randVal < 0.33:  # Write
                     writeFileSize = random.randint(0, 30)
                     isLocalFile = True if random.random() <= 0.5 else False
-                    fsID, _ = cls._writeFileToJobStore(job, isLocalFile=isLocalFile,
-                                                       nonLocalDir=nonLocalDir,
-                                                       fileMB=writeFileSize)
+                    fsID, _ = cls._writeFileToJobStore(
+                        job,
+                        isLocalFile=isLocalFile,
+                        nonLocalDir=nonLocalDir,
+                        fileMB=writeFileSize,
+                    )
                     writtenFiles[fsID] = writeFileSize
                     if isLocalFile:
                         localFileIDs.add(fsID)
-                    logger.info('Wrote %s file of size %d MB: %s', 'local' if isLocalFile else 'non-local', writeFileSize, fsID)
+                    logger.info(
+                        "Wrote %s file of size %d MB: %s",
+                        "local" if isLocalFile else "non-local",
+                        writeFileSize,
+                        fsID,
+                    )
                 else:
                     if len(writtenFiles) == 0:
                         continue
@@ -224,10 +243,19 @@ class hidden:
                     if randVal < 0.66:  # Read
                         mutable = True if random.random() <= 0.5 else False
                         cache = True if random.random() <= 0.5 else False
-                        job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
-                                                     cache=cache, mutable=mutable)
+                        job.fileStore.readGlobalFile(
+                            fsID,
+                            "/".join([work_dir, str(uuid4())]),
+                            cache=cache,
+                            mutable=mutable,
+                        )
                         localFileIDs.add(fsID)
-                        logger.info('Read %s %s local copy of: %s', 'mutable' if mutable else 'immutable', 'cached' if cache else 'uncached', fsID)
+                        logger.info(
+                            "Read %s %s local copy of: %s",
+                            "mutable" if mutable else "immutable",
+                            "cached" if cache else "uncached",
+                            fsID,
+                        )
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in localFileIDs:
@@ -240,18 +268,23 @@ class hidden:
                                         # ENOENT. If it doesn't something is
                                         # broken.
                                         raise
-                                    logger.info('Correctly fail to local-delete non-local file: %s', fsID)
+                                    logger.info(
+                                        "Correctly fail to local-delete non-local file: %s",
+                                        fsID,
+                                    )
                                 else:
-                                    assert False, f"Was able to delete non-local file {fsID}"
+                                    assert (
+                                        False
+                                    ), f"Was able to delete non-local file {fsID}"
                             else:
-                                logger.info('Delete local file: %s', fsID)
+                                logger.info("Delete local file: %s", fsID)
                                 job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
                             writtenFiles.pop(fsID)
                         if fsID in localFileIDs:
                             localFileIDs.remove(fsID)
-                            logger.info('No longer have file: %s', fsID)
+                            logger.info("No longer have file: %s", fsID)
                 i += 1
 
         def testWriteReadGlobalFilePermissions(self):
@@ -262,18 +295,23 @@ class hidden:
             """
             for executable in True, False:
                 for caching in True, False:
-                    with self.subTest(f'Testing readwrite file permissions\n'
-                                      f'[executable: {executable}]\n'
-                                      f'[caching: {caching}]\n'):
+                    with self.subTest(
+                        f"Testing readwrite file permissions\n"
+                        f"[executable: {executable}]\n"
+                        f"[caching: {caching}]\n"
+                    ):
                         self.options.caching = caching
-                        read_write_job = Job.wrapJobFn(self._testWriteReadGlobalFilePermissions, executable=executable)
+                        read_write_job = Job.wrapJobFn(
+                            self._testWriteReadGlobalFilePermissions,
+                            executable=executable,
+                        )
                         Job.Runner.startToil(read_write_job, self.options)
 
         @staticmethod
         def _testWriteReadGlobalFilePermissions(job, executable):
             srcFile = job.fileStore.getLocalTempFile()
-            with open(srcFile, 'w') as f:
-                f.write('Hello')
+            with open(srcFile, "w") as f:
+                f.write("Hello")
 
             if executable:
                 os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
@@ -285,10 +323,14 @@ class hidden:
             for mutable in True, False:
                 for symlink in True, False:
                     dstFile = job.fileStore.getLocalTempFileName()
-                    job.fileStore.readGlobalFile(fileID, userPath=dstFile, mutable=mutable, symlink=symlink)
+                    job.fileStore.readGlobalFile(
+                        fileID, userPath=dstFile, mutable=mutable, symlink=symlink
+                    )
                     # Current file owner execute permissions
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
-                    assert initialPermissions == currentPermissions, f'{initialPermissions} != {currentPermissions}'
+                    assert (
+                        initialPermissions == currentPermissions
+                    ), f"{initialPermissions} != {currentPermissions}"
 
         def testWriteExportFileCompatibility(self):
             """
@@ -296,20 +338,24 @@ class hidden:
             when they are exported from the leader.
             """
             for executable in True, False:
-                export_file_job = Job.wrapJobFn(self._testWriteExportFileCompatibility, executable=executable)
+                export_file_job = Job.wrapJobFn(
+                    self._testWriteExportFileCompatibility, executable=executable
+                )
                 with Toil(self.options) as toil:
                     initialPermissions, fileID = toil.start(export_file_job)
                     dstFile = os.path.join(self._createTempDir(), str(uuid4()))
-                    toil.exportFile(fileID, 'file://' + dstFile)
+                    toil.exportFile(fileID, "file://" + dstFile)
                     currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
-                    assert initialPermissions == currentPermissions, f'{initialPermissions} != {currentPermissions}'
+                    assert (
+                        initialPermissions == currentPermissions
+                    ), f"{initialPermissions} != {currentPermissions}"
 
         @staticmethod
         def _testWriteExportFileCompatibility(job, executable):
             srcFile = job.fileStore.getLocalTempFile()
-            with open(srcFile, 'w') as f:
-                f.write('Hello')
+            with open(srcFile, "w") as f:
+                f.write("Hello")
             if executable:
                 os.chmod(srcFile, os.stat(srcFile).st_mode | stat.S_IXUSR)
             initialPermissions = os.stat(srcFile).st_mode & stat.S_IXUSR
@@ -323,22 +369,30 @@ class hidden:
             """
             with Toil(self.options) as toil:
                 for executable in True, False:
-                    file_path = self.create_file(content='Hello', executable=executable)
+                    file_path = self.create_file(content="Hello", executable=executable)
                     initial_permissions = os.stat(file_path).st_mode & stat.S_IXUSR
-                    file_id = toil.importFile(f'file://{file_path}')
+                    file_id = toil.importFile(f"file://{file_path}")
                     for mutable in True, False:
                         for symlink in True, False:
-                            with self.subTest(f'Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}'):
-                                A = Job.wrapJobFn(self._testImportReadFileCompatibility,
-                                                  fileID=file_id,
-                                                  initialPermissions=initial_permissions,
-                                                  mutable=mutable,
-                                                  symlink=symlink)
+                            with self.subTest(
+                                f"Now testing readGlobalFileWith: mutable={mutable} symlink={symlink}"
+                            ):
+                                A = Job.wrapJobFn(
+                                    self._testImportReadFileCompatibility,
+                                    fileID=file_id,
+                                    initialPermissions=initial_permissions,
+                                    mutable=mutable,
+                                    symlink=symlink,
+                                )
                                 toil.start(A)
 
         @staticmethod
-        def _testImportReadFileCompatibility(job, fileID, initialPermissions, mutable, symlink):
-            dstFile = job.fileStore.readGlobalFile(fileID, mutable=mutable, symlink=symlink)
+        def _testImportReadFileCompatibility(
+            job, fileID, initialPermissions, mutable, symlink
+        ):
+            dstFile = job.fileStore.readGlobalFile(
+                fileID, mutable=mutable, symlink=symlink
+            )
             currentPermissions = os.stat(dstFile).st_mode & stat.S_IXUSR
 
             assert initialPermissions == currentPermissions
@@ -353,11 +407,16 @@ class hidden:
 
         @staticmethod
         def _testReadWriteFileStreamTextMode(job):
-            with job.fileStore.writeGlobalFileStream(encoding='utf-8') as (stream, fileID):
-                stream.write('foo')
+            with job.fileStore.writeGlobalFileStream(encoding="utf-8") as (
+                stream,
+                fileID,
+            ):
+                stream.write("foo")
             job.fileStore.readGlobalFileStream(fileID)
-            with job.fileStore.readGlobalFileStream(fileID, encoding='utf-8') as stream2:
-                assert 'foo' == stream2.read()
+            with job.fileStore.readGlobalFileStream(
+                fileID, encoding="utf-8"
+            ) as stream2:
+                assert "foo" == stream2.read()
 
         @staticmethod
         def _writeFileToJobStore(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -374,7 +433,7 @@ class hidden:
             else:
                 assert nonLocalDir is not None
                 work_dir = nonLocalDir
-            with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
+            with open(os.path.join(work_dir, str(uuid4())), "wb") as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
             return job.fileStore.writeGlobalFile(testFile.name), testFile
@@ -409,7 +468,7 @@ class hidden:
             the chain.  This tests whether the cache is created properly even when the job crashes
             randomly.
             """
-            if testingIsAutomatic and self.jobStoreType != 'file':
+            if testingIsAutomatic and self.jobStoreType != "file":
                 self.skipTest("To save time")
             self.options.retryCount = 10
             self.options.badWorker = 0.25
@@ -436,7 +495,7 @@ class hidden:
 
             # Explicitly set clean to always so even the failed cases get cleaned (This will
             # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = 'always'
+            self.options.clean = "always"
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=10)
 
@@ -452,7 +511,7 @@ class hidden:
 
             # Explicitly set clean to always so even the failed cases get cleaned (This will
             # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = 'always'
+            self.options.clean = "always"
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=30)
 
@@ -468,7 +527,7 @@ class hidden:
 
             # Explicitly set clean to always so even the failed cases get cleaned (This will
             # overwrite the value set in setUp if it is ever changed in the future)
-            self.options.clean = 'always'
+            self.options.clean = "always"
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
 
@@ -476,7 +535,7 @@ class hidden:
             # If the job store and cache are on the same file system, file
             # sizes are accounted for by the job store and are not reflected in
             # the cache hence this test is redundant (caching will be free).
-            if not self.options.jobStore.startswith(('aws', 'google')):
+            if not self.options.jobStore.startswith(("aws", "google")):
                 workDirDev = os.stat(self.options.workDir).st_dev
                 if self.options.jobStore.startswith("file:"):
                     # Before #4538, options.jobStore would have the raw path while the Config object would prepend the
@@ -484,11 +543,15 @@ class hidden:
                     # The options namespace and the Config object now have the exact same behavior
                     # which means parse_jobstore will be called with argparse rather than with the config object
                     # so remove the prepended file: scheme
-                    jobStoreDev = os.stat(os.path.dirname(self.options.jobStore[5:])).st_dev
+                    jobStoreDev = os.stat(
+                        os.path.dirname(self.options.jobStore[5:])
+                    ).st_dev
                 else:
                     jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
-                    self.skipTest('Job store and working directory are on the same filesystem.')
+                    self.skipTest(
+                        "Job store and working directory are on the same filesystem."
+                    )
 
         def _testCacheEviction(self, file1MB, file2MB, diskRequestMB):
             """
@@ -501,23 +564,35 @@ class hidden:
             self.options.retryCount = 0
             if diskRequestMB > 50:
                 # This can be non int as it will never reach _probeJobReqs
-                expectedResult = 'Fail'
+                expectedResult = "Fail"
             else:
                 expectedResult = 50 - file1MB if diskRequestMB <= file1MB else 0
             try:
-                A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
-                                  fileMB=file1MB)
+                A = Job.wrapJobFn(
+                    self._writeFileToJobStoreWithAsserts,
+                    isLocalFile=True,
+                    fileMB=file1MB,
+                )
                 # Sleep for 1 second after writing the first file so that their ctimes are
                 # guaranteed to be distinct for the purpose of this test.
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
-                C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
-                                  fileMB=file2MB)
-                D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=50, disk='0Mi')
-                E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'Mi']))
+                C = Job.wrapJobFn(
+                    self._writeFileToJobStoreWithAsserts,
+                    isLocalFile=True,
+                    fileMB=file2MB,
+                )
+                D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=50, disk="0Mi")
+                E = Job.wrapJobFn(
+                    self._uselessFunc, disk="".join([str(diskRequestMB), "Mi"])
+                )
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
-                F = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='10Mi')
-                G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
-                                  disk='100Mi')
+                F = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk="10Mi")
+                G = Job.wrapJobFn(
+                    self._probeJobReqs,
+                    sigmaJob=100,
+                    cached=expectedResult,
+                    disk="100Mi",
+                )
                 A.addChild(B)
                 B.addChild(C)
                 C.addChild(D)
@@ -529,12 +604,16 @@ class hidden:
                 with open(self.options.logFile) as f:
                     logContents = f.read()
                 if CacheUnbalancedError.message in logContents:
-                    self.assertEqual(expectedResult, 'Fail')
+                    self.assertEqual(expectedResult, "Fail")
                 else:
-                    self.fail('Toil did not raise the expected CacheUnbalancedError but failed for some other reason')
+                    self.fail(
+                        "Toil did not raise the expected CacheUnbalancedError but failed for some other reason"
+                    )
 
         @staticmethod
-        def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1, expectAsyncUpload=True):
+        def _writeFileToJobStoreWithAsserts(
+            job, isLocalFile, nonLocalDir=None, fileMB=1, expectAsyncUpload=True
+        ):
             """
             This function creates a file and writes it to the jobstore.
 
@@ -548,7 +627,9 @@ class hidden:
                                            the job store later(T) or immediately(F)
             """
             cls = hidden.AbstractNonCachingFileStoreTest
-            fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
+            fsID, testFile = cls._writeFileToJobStore(
+                job, isLocalFile, nonLocalDir, fileMB
+            )
             actual = os.stat(testFile.name).st_nlink
 
             # If the caching is free, the job store must have hard links to
@@ -566,13 +647,19 @@ class hidden:
                     # We also expect a link in the job store
                     expected += 1
 
-            assert actual == expected, 'Should have %d links. Got %d.' % (expected, actual)
+            assert actual == expected, "Should have %d links. Got %d." % (
+                expected,
+                actual,
+            )
 
-            logger.info('Uploaded %s with %d links', fsID, actual)
+            logger.info("Uploaded %s with %d links", fsID, actual)
 
             if not isLocalFile:
                 # Make sure it isn't cached if we don't want it to be
-                assert not job.fileStore.fileIsCached(fsID), "File uploaded from non-local-temp directory %s should not be cached" % nonLocalDir
+                assert not job.fileStore.fileIsCached(fsID), (
+                    "File uploaded from non-local-temp directory %s should not be cached"
+                    % nonLocalDir
+                )
 
             return fsID
 
@@ -609,30 +696,36 @@ class hidden:
             :param int sigmaJob: Expected sum of job requirements in MB.
             """
 
-            RealtimeLogger.info('Probing job requirements')
+            RealtimeLogger.info("Probing job requirements")
 
             valueDict = locals()
-            assert (total or cached or sigmaJob)
+            assert total or cached or sigmaJob
 
             # Work out which function to call for which value
-            toCall = {'total': job.fileStore.getCacheLimit,
-                      'cached': job.fileStore.getCacheUsed,
-                      'sigmaJob': job.fileStore.getCacheExtraJobSpace}
+            toCall = {
+                "total": job.fileStore.getCacheLimit,
+                "cached": job.fileStore.getCacheUsed,
+                "sigmaJob": job.fileStore.getCacheExtraJobSpace,
+            }
 
-            for value in ('total', 'cached', 'sigmaJob'):
+            for value in ("total", "cached", "sigmaJob"):
                 # If the value wasn't provided, it is None and should be ignored
                 if valueDict[value] is None:
                     continue
 
-                RealtimeLogger.info('Probing cache state: %s', value)
+                RealtimeLogger.info("Probing cache state: %s", value)
 
                 expectedBytes = valueDict[value] * 1024 * 1024
                 cacheInfoBytes = toCall[value]()
 
-                RealtimeLogger.info('Got %d for %s; expected %d', cacheInfoBytes, value, expectedBytes)
+                RealtimeLogger.info(
+                    "Got %d for %s; expected %d", cacheInfoBytes, value, expectedBytes
+                )
 
-                assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
-                                                  f'{expectedBytes} but got {cacheInfoBytes}.'
+                assert cacheInfoBytes == expectedBytes, (
+                    "Testing %s: Expected " % value
+                    + f"{expectedBytes} but got {cacheInfoBytes}."
+                )
 
         @slow
         def testAsyncWriteWithCaching(self):
@@ -650,12 +743,14 @@ class hidden:
             print("Testing")
             logger.debug("Testing testing 123")
             self.options.retryCount = 0
-            self.options.logLevel = 'DEBUG'
-            A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk='1G')
-            B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk='900M')
-            C = Job.wrapJobFn(self._readFromJobStoreWithoutAssertions, fsID=B.rv(), disk='1G')
+            self.options.logLevel = "DEBUG"
+            A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk="1G")
+            B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk="900M")
+            C = Job.wrapJobFn(
+                self._readFromJobStoreWithoutAssertions, fsID=B.rv(), disk="1G"
+            )
             # Set it to > 2GB such that the cleanup jobs don't die.
-            D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='1G')
+            D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk="1G")
             A.addChild(B)
             B.addChild(C)
             C.addChild(D)
@@ -671,20 +766,22 @@ class hidden:
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            job.fileStore.log_to_leader('Double writing a file into job store')
+            job.fileStore.log_to_leader("Double writing a file into job store")
             work_dir = job.fileStore.getLocalTempDir()
-            with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
+            with open(os.path.join(work_dir, str(uuid4())), "wb") as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
-            job.fileStore.log_to_leader('Writing copy 1 and discarding ID')
+            job.fileStore.log_to_leader("Writing copy 1 and discarding ID")
             job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.log_to_leader('Writing copy 2 and saving ID')
+            job.fileStore.log_to_leader("Writing copy 2 and saving ID")
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            job.fileStore.log_to_leader(f'Copy 2 ID: {fsID}')
+            job.fileStore.log_to_leader(f"Copy 2 ID: {fsID}")
 
-            hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
+            hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(
+                job, fsID
+            )
 
-            job.fileStore.log_to_leader('Writing copy 3 and returning ID')
+            job.fileStore.log_to_leader("Writing copy 3 and returning ID")
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
@@ -696,7 +793,7 @@ class hidden:
             :param fsID: Job store file ID for the read file
             :return: None
             """
-            job.fileStore.log_to_leader('Reading the written file')
+            job.fileStore.log_to_leader("Reading the written file")
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
@@ -706,9 +803,12 @@ class hidden:
             Write a file not in localTempDir to the job store.  Such a file should not be cached.
             Ensure the file is not cached.
             """
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
-                              nonLocalDir=workdir)
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            A = Job.wrapJobFn(
+                self._writeFileToJobStoreWithAsserts,
+                isLocalFile=False,
+                nonLocalDir=workdir,
+            )
             Job.Runner.startToil(A, self.options)
 
         def testWriteLocalFileToJobStore(self):
@@ -741,11 +841,18 @@ class hidden:
 
             :param cacheReadFile: Does the read file need to be cached(T) or not(F)
             """
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
-                              nonLocalDir=workdir)
-            B = Job.wrapJobFn(self._readFromJobStore, isCachedFile=False,
-                              cacheReadFile=cacheReadFile, fsID=A.rv())
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            A = Job.wrapJobFn(
+                self._writeFileToJobStoreWithAsserts,
+                isLocalFile=False,
+                nonLocalDir=workdir,
+            )
+            B = Job.wrapJobFn(
+                self._readFromJobStore,
+                isCachedFile=False,
+                cacheReadFile=cacheReadFile,
+                fsID=A.rv(),
+            )
             A.addChild(B)
             Job.Runner.startToil(A, self.options)
 
@@ -768,25 +875,38 @@ class hidden:
             work_dir = job.fileStore.getLocalTempDir()
             wantHardLink = False
             if isCachedFile:
-                outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
-                                                       mutable=False)
+                outfile = job.fileStore.readGlobalFile(
+                    fsID, "/".join([work_dir, "temp"]), mutable=False
+                )
                 wantHardLink = True
             else:
                 if cacheReadFile:
-                    outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
-                                                           cache=True, mutable=False)
+                    outfile = job.fileStore.readGlobalFile(
+                        fsID, "/".join([work_dir, "temp"]), cache=True, mutable=False
+                    )
                     wantHardLink = True
                 else:
-                    assert not job.fileStore.fileIsCached(fsID), "File mistakenly cached before read"
-                    outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
-                                                           cache=False, mutable=False)
-                    assert not job.fileStore.fileIsCached(fsID), "File mistakenly cached after read"
+                    assert not job.fileStore.fileIsCached(
+                        fsID
+                    ), "File mistakenly cached before read"
+                    outfile = job.fileStore.readGlobalFile(
+                        fsID, "/".join([work_dir, "temp"]), cache=False, mutable=False
+                    )
+                    assert not job.fileStore.fileIsCached(
+                        fsID
+                    ), "File mistakenly cached after read"
                     wantHardLink = False
             if isTest:
                 actual = os.stat(outfile).st_nlink
                 if wantHardLink:
-                    assert actual > 1, 'Should have multiple links for file that was %s and %s. Got %i.' % ('cached' if isCachedFile else 'not cached',
-                        'saved' if cacheReadFile else 'not saved', actual)
+                    assert actual > 1, (
+                        "Should have multiple links for file that was %s and %s. Got %i."
+                        % (
+                            "cached" if isCachedFile else "not cached",
+                            "saved" if cacheReadFile else "not saved",
+                            actual,
+                        )
+                    )
                 # We need to accept harf links even if we don't want them,
                 # because we may get them straight from the FileJobStore since
                 # we asked for immutable reads.
@@ -800,8 +920,12 @@ class hidden:
             of links on the file are appropriate.
             """
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True)
-            B = Job.wrapJobFn(self._readFromJobStore, isCachedFile=True, cacheReadFile=None,
-                              fsID=A.rv())
+            B = Job.wrapJobFn(
+                self._readFromJobStore,
+                isCachedFile=True,
+                cacheReadFile=None,
+                fsID=A.rv(),
+            )
             A.addChild(B)
             Job.Runner.startToil(A, self.options)
 
@@ -831,20 +955,29 @@ class hidden:
 
             :param bool cacheHit: Is the test for the CacheHit case(T) or cacheMiss case(F)
             """
-            dirPurpose = 'tempWriteDir' if cacheHit else 'nonLocalDir'
+            dirPurpose = "tempWriteDir" if cacheHit else "nonLocalDir"
             workdir = self._createTempDir(purpose=dirPurpose)
-            file_name = os.path.join(workdir, 'test')
-            with open(file_name, 'w') as x:
+            file_name = os.path.join(workdir, "test")
+            with open(file_name, "w") as x:
                 x.write(str(0))
-            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=cacheHit,
-                              nonLocalDir=workdir,
-                              fileMB=256)
-            B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100Mi')
+            A = Job.wrapJobFn(
+                self._writeFileToJobStoreWithAsserts,
+                isLocalFile=cacheHit,
+                nonLocalDir=workdir,
+                fileMB=256,
+            )
+            B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk="100Mi")
             jobs = {}
             for i in range(0, 10):
-                jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
-                                        maxWriteFile=os.path.abspath(file_name), disk='1Gi',
-                                        memory='10Mi', cores=1)
+                jobs[i] = Job.wrapJobFn(
+                    self._multipleFileReader,
+                    diskMB=1024,
+                    fsID=A.rv(),
+                    maxWriteFile=os.path.abspath(file_name),
+                    disk="1Gi",
+                    memory="10Mi",
+                    cores=1,
+                )
                 A.addChild(jobs[i])
                 jobs[i].addChild(B)
             Job.Runner.startToil(A, self.options)
@@ -869,8 +1002,9 @@ class hidden:
                                      file will be written
             """
             work_dir = job.fileStore.getLocalTempDir()
-            outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True,
-                                                   mutable=False)
+            outfile = job.fileStore.readGlobalFile(
+                fsID, "/".join([work_dir, "temp"]), cache=True, mutable=False
+            )
             diskBytes = diskMB * 1024 * 1024
             fileStats = os.stat(outfile)
             fileSize = fileStats.st_size
@@ -883,13 +1017,13 @@ class hidden:
 
             usedCache = job.fileStore.getCacheUsed()
 
-            logger.info('Extra job space: %s', str(extraJobSpace))
-            logger.info('Current file readers: %s', str(currentReaders))
-            logger.info('File size: %s', str(fileSize))
-            logger.info('Job disk bytes: %s', str(diskBytes))
-            logger.info('Used cache: %s', str(usedCache))
+            logger.info("Extra job space: %s", str(extraJobSpace))
+            logger.info("Current file readers: %s", str(currentReaders))
+            logger.info("File size: %s", str(fileSize))
+            logger.info("Job disk bytes: %s", str(diskBytes))
+            logger.info("Used cache: %s", str(usedCache))
 
-            with open(maxWriteFile, 'r+') as x:
+            with open(maxWriteFile, "r+") as x:
                 # Advisory lock the file we are saving max readers to
                 fcntl.lockf(x, fcntl.LOCK_EX)
                 prev_max = int(x.read())
@@ -905,23 +1039,26 @@ class hidden:
                 assert usedCache == fileSize
 
             # Make sure that there's no over-usage of job requirements
-            assert ((extraJobSpace + currentReaders * fileSize) %
-                    diskBytes) == 0.0
+            assert ((extraJobSpace + currentReaders * fileSize) % diskBytes) == 0.0
             # Sleep so there's no race conditions where a job ends before another can get a hold of
             # the file
             time.sleep(3)
 
         @staticmethod
         def _writeExportGlobalFile(job):
-            fileName = os.path.join(job.fileStore.getLocalTempDir(), 'testfile')
-            with open(fileName, 'wb') as f:
-                f.write(os.urandom(1024 * 30000)) # 30 Mb
-            outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
-            job.fileStore.export_file(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
+            fileName = os.path.join(job.fileStore.getLocalTempDir(), "testfile")
+            with open(fileName, "wb") as f:
+                f.write(os.urandom(1024 * 30000))  # 30 Mb
+            outputFile = os.path.join(job.fileStore.getLocalTempDir(), "exportedFile")
+            job.fileStore.export_file(
+                job.fileStore.writeGlobalFile(fileName), "File://" + outputFile
+            )
             if not filecmp.cmp(fileName, outputFile):
-                logger.warning('Source file: %s', str(os.stat(fileName)))
-                logger.warning('Destination file: %s', str(os.stat(outputFile)))
-                raise RuntimeError(f"File {fileName} did not properly get copied to {outputFile}")
+                logger.warning("Source file: %s", str(os.stat(fileName)))
+                logger.warning("Destination file: %s", str(os.stat(outputFile)))
+                raise RuntimeError(
+                    f"File {fileName} did not properly get copied to {outputFile}"
+                )
 
         @slow
         def testFileStoreExportFile(self):
@@ -938,12 +1075,14 @@ class hidden:
             Read back written and locally deleted files. Ensure that after
             every step that the cache is in a valid state.
             """
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            F = Job.wrapJobFn(self._returnFileTestFn,
-                              jobDisk=2 * 1024 * 1024 * 1024,
-                              initialCachedSize=0,
-                              nonLocalDir=workdir,
-                              disk='2Gi')
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            F = Job.wrapJobFn(
+                self._returnFileTestFn,
+                jobDisk=2 * 1024 * 1024 * 1024,
+                initialCachedSize=0,
+                nonLocalDir=workdir,
+                disk="2Gi",
+            )
             Job.Runner.startToil(F, self.options)
 
         @slow
@@ -956,16 +1095,21 @@ class hidden:
             self.options.retryCount = 20
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
-            workdir = self._createTempDir(purpose='nonLocalDir')
-            F = Job.wrapJobFn(self._returnFileTestFn,
-                              jobDisk=2 * 1024 * 1024 * 1024,
-                              initialCachedSize=0,
-                              nonLocalDir=workdir,
-                              numIters=30, disk='2Gi')
+            workdir = self._createTempDir(purpose="nonLocalDir")
+            F = Job.wrapJobFn(
+                self._returnFileTestFn,
+                jobDisk=2 * 1024 * 1024 * 1024,
+                initialCachedSize=0,
+                nonLocalDir=workdir,
+                numIters=30,
+                disk="2Gi",
+            )
             Job.Runner.startToil(F, self.options)
 
         @staticmethod
-        def _returnFileTestFn(job, jobDisk, initialCachedSize, nonLocalDir, numIters=100):
+        def _returnFileTestFn(
+            job, jobDisk, initialCachedSize, nonLocalDir, numIters=100
+        ):
             """
             Aux function for jobCacheTest.testReturnFileSizes Conduct numIters operations and ensure
             the cache has the right amount of data in it at all times.
@@ -977,7 +1121,7 @@ class hidden:
             :param float jobDisk: The value of disk passed to this job.
             """
             cached = initialCachedSize
-            RealtimeLogger.info('Expecting %d bytes cached initially', cached)
+            RealtimeLogger.info("Expecting %d bytes cached initially", cached)
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
             # fsid: local/mutable/immutable for all operations that should make local files as tracked by the FileStore
@@ -988,45 +1132,71 @@ class hidden:
             # We keep jobDisk in sync with the amount of free space the job
             # still has that the file store doesn't know it has used.
             cls = hidden.AbstractCachingFileStoreTest
-            fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
+            fsId = cls._writeFileToJobStoreWithAsserts(
+                job, isLocalFile=True, fileMB=writeFileSize
+            )
             writtenFiles[fsId] = writeFileSize
             if job.fileStore.fileIsCached(list(writtenFiles.keys())[0]):
                 cached += writeFileSize * 1024 * 1024
-                RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is cached', cached, writeFileSize)
+                RealtimeLogger.info(
+                    "Expecting %d bytes cached because file of %d MB is cached",
+                    cached,
+                    writeFileSize,
+                )
             else:
-                RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is not cached', cached, writeFileSize)
-            localFileIDs[list(writtenFiles.keys())[0]].append('local')
-            RealtimeLogger.info('Checking for %d bytes cached', cached)
+                RealtimeLogger.info(
+                    "Expecting %d bytes cached because file of %d MB is not cached",
+                    cached,
+                    writeFileSize,
+                )
+            localFileIDs[list(writtenFiles.keys())[0]].append("local")
+            RealtimeLogger.info("Checking for %d bytes cached", cached)
             cls._requirementsConcur(job, jobDisk, cached)
             i = 0
             while i <= numIters:
                 randVal = random.random()
                 if randVal < 0.33:  # Write
-                    RealtimeLogger.info('Writing a file')
+                    RealtimeLogger.info("Writing a file")
                     writeFileSize = random.randint(0, 30)
                     if random.random() <= 0.5:  # Write a local file
-                        RealtimeLogger.info('Writing a local file of %d MB', writeFileSize)
-                        fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True,
-                                                                   fileMB=writeFileSize)
-                        RealtimeLogger.info('Wrote local file: %s', fsID)
+                        RealtimeLogger.info(
+                            "Writing a local file of %d MB", writeFileSize
+                        )
+                        fsID = cls._writeFileToJobStoreWithAsserts(
+                            job, isLocalFile=True, fileMB=writeFileSize
+                        )
+                        RealtimeLogger.info("Wrote local file: %s", fsID)
                         writtenFiles[fsID] = writeFileSize
-                        localFileIDs[fsID].append('local')
+                        localFileIDs[fsID].append("local")
                         jobDisk -= writeFileSize * 1024 * 1024
                         if job.fileStore.fileIsCached(fsID):
                             cached += writeFileSize * 1024 * 1024
-                            RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is cached', cached, writeFileSize)
+                            RealtimeLogger.info(
+                                "Expecting %d bytes cached because file of %d MB is cached",
+                                cached,
+                                writeFileSize,
+                            )
                         else:
-                            RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is not cached', cached, writeFileSize)
+                            RealtimeLogger.info(
+                                "Expecting %d bytes cached because file of %d MB is not cached",
+                                cached,
+                                writeFileSize,
+                            )
                     else:  # Write a non-local file
-                        RealtimeLogger.info('Writing a non-local file of %d MB', writeFileSize)
-                        fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
-                                                                   nonLocalDir=nonLocalDir,
-                                                                   fileMB=writeFileSize)
-                        RealtimeLogger.info('Wrote non-local file: %s', fsID)
+                        RealtimeLogger.info(
+                            "Writing a non-local file of %d MB", writeFileSize
+                        )
+                        fsID = cls._writeFileToJobStoreWithAsserts(
+                            job,
+                            isLocalFile=False,
+                            nonLocalDir=nonLocalDir,
+                            fileMB=writeFileSize,
+                        )
+                        RealtimeLogger.info("Wrote non-local file: %s", fsID)
                         writtenFiles[fsID] = writeFileSize
                         # Don't record in localFileIDs because we're not local
                         # No change to the job since there was no caching
-                    RealtimeLogger.info('Checking for %d bytes cached', cached)
+                    RealtimeLogger.info("Checking for %d bytes cached", cached)
                     cls._requirementsConcur(job, jobDisk, cached)
                 else:
                     if len(writtenFiles) == 0:
@@ -1036,61 +1206,101 @@ class hidden:
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
-                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s: %s', rdelFileSize, str(fileWasCached), fsID)
+                        RealtimeLogger.info(
+                            "Reading a file with size %d and previous cache status %s: %s",
+                            rdelFileSize,
+                            str(fileWasCached),
+                            fsID,
+                        )
                         if rdelRandVal <= 0.5:  # Read as mutable, uncached
-                            RealtimeLogger.info('Reading as mutable and uncached; should still have %d bytes cached', cached)
-                            job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
-                                                         mutable=True, cache=False)
-                            localFileIDs[fsID].append('mutable')
+                            RealtimeLogger.info(
+                                "Reading as mutable and uncached; should still have %d bytes cached",
+                                cached,
+                            )
+                            job.fileStore.readGlobalFile(
+                                fsID,
+                                "/".join([work_dir, str(uuid4())]),
+                                mutable=True,
+                                cache=False,
+                            )
+                            localFileIDs[fsID].append("mutable")
                             # No change because the file wasn't cached
                         else:  # Read as immutable
-                            RealtimeLogger.info('Reading as immutable and cacheable')
-                            job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
-                                                         mutable=False, cache=True)
-                            localFileIDs[fsID].append('immutable')
+                            RealtimeLogger.info("Reading as immutable and cacheable")
+                            job.fileStore.readGlobalFile(
+                                fsID,
+                                "/".join([work_dir, str(uuid4())]),
+                                mutable=False,
+                                cache=True,
+                            )
+                            localFileIDs[fsID].append("immutable")
                             jobDisk -= rdelFileSize * 1024 * 1024
                         if not fileWasCached:
                             if job.fileStore.fileIsCached(fsID):
-                                RealtimeLogger.info('File was not cached before and is now. Should have %d bytes cached', cached)
+                                RealtimeLogger.info(
+                                    "File was not cached before and is now. Should have %d bytes cached",
+                                    cached,
+                                )
                                 cached += rdelFileSize * 1024 * 1024
                             else:
-                                RealtimeLogger.info('File was not cached before and still is not now. '
-                                                    'Should still have %d bytes cached', cached)
+                                RealtimeLogger.info(
+                                    "File was not cached before and still is not now. "
+                                    "Should still have %d bytes cached",
+                                    cached,
+                                )
                         else:
-                            RealtimeLogger.info('File was cached before. Should still have %d bytes cached', cached)
+                            RealtimeLogger.info(
+                                "File was cached before. Should still have %d bytes cached",
+                                cached,
+                            )
                         cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in list(localFileIDs.keys()):
                                 continue
-                            RealtimeLogger.info('Deleting a file locally with history %s: %s', localFileIDs[fsID], fsID)
+                            RealtimeLogger.info(
+                                "Deleting a file locally with history %s: %s",
+                                localFileIDs[fsID],
+                                fsID,
+                            )
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
-                            RealtimeLogger.info('Deleting a file globally: %s', fsID)
+                            RealtimeLogger.info("Deleting a file globally: %s", fsID)
                             job.fileStore.deleteGlobalFile(fsID)
                             try:
                                 job.fileStore.readGlobalFile(fsID)
                             except FileNotFoundError as err:
                                 pass
                             except:
-                                raise RuntimeError('Got wrong error type for read of deleted file')
+                                raise RuntimeError(
+                                    "Got wrong error type for read of deleted file"
+                                )
                             else:
-                                raise RuntimeError('Able to read deleted file')
+                                raise RuntimeError("Able to read deleted file")
                             writtenFiles.pop(fsID)
                         if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
-                                if lFID != 'mutable':
+                                if lFID != "mutable":
                                     jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
                             if not job.fileStore.fileIsCached(fsID):
                                 cached -= rdelFileSize * 1024 * 1024
-                                RealtimeLogger.info('File was cached before and is not now. Should have %d bytes cached', cached)
+                                RealtimeLogger.info(
+                                    "File was cached before and is not now. Should have %d bytes cached",
+                                    cached,
+                                )
                             else:
-                                RealtimeLogger.info('File was cached before and still is cached now. '
-                                                    'Should still have %d bytes cached', cached)
+                                RealtimeLogger.info(
+                                    "File was cached before and still is cached now. "
+                                    "Should still have %d bytes cached",
+                                    cached,
+                                )
                         else:
-                            RealtimeLogger.info('File was not cached before deletion. Should still have %d bytes cached', cached)
+                            RealtimeLogger.info(
+                                "File was not cached before deletion. Should still have %d bytes cached",
+                                cached,
+                            )
                         cls._requirementsConcur(job, jobDisk, cached)
                 i += 1
             return jobDisk, cached
@@ -1105,15 +1315,32 @@ class hidden:
             used = job.fileStore.getCacheUsed()
 
             if not job.fileStore.cachingIsFree():
-                RealtimeLogger.info('Caching is not free; %d bytes are used and %d bytes are expected', used, cached)
-                assert used == cached, 'Cache should have %d bytes used, but actually has %d bytes used' % (cached, used)
+                RealtimeLogger.info(
+                    "Caching is not free; %d bytes are used and %d bytes are expected",
+                    used,
+                    cached,
+                )
+                assert used == cached, (
+                    "Cache should have %d bytes used, but actually has %d bytes used"
+                    % (cached, used)
+                )
             else:
-                RealtimeLogger.info('Caching is free; %d bytes are used and %d bytes would be expected if caching were not free', used, cached)
-                assert used == 0, 'Cache should have nothing in it, but actually has %d bytes used' % used
+                RealtimeLogger.info(
+                    "Caching is free; %d bytes are used and %d bytes would be expected if caching were not free",
+                    used,
+                    cached,
+                )
+                assert used == 0, (
+                    "Cache should have nothing in it, but actually has %d bytes used"
+                    % used
+                )
 
             jobUnused = job.fileStore.getCacheUnusedJobRequirement()
 
-            assert jobUnused == jobDisk, 'Job should have %d bytes of disk for non-FileStore use but the FileStore reports %d' % (jobDisk, jobUnused)
+            assert jobUnused == jobDisk, (
+                "Job should have %d bytes of disk for non-FileStore use but the FileStore reports %d"
+                % (jobDisk, jobUnused)
+            )
 
         # Testing the resumability of a failed worker
         @slow
@@ -1122,13 +1349,16 @@ class hidden:
             Conduct a couple of job store operations.  Then die.  Ensure that the restarted job is
             tracking values in the cache state file appropriately.
             """
-            workdir = self._createTempDir(purpose='nonLocalDir')
+            workdir = self._createTempDir(purpose="nonLocalDir")
             self.options.retryCount = 1
             jobDiskBytes = 2 * 1024 * 1024 * 1024
-            F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=jobDiskBytes,
-                              testDir=workdir,
-                              disk=jobDiskBytes)
-            G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100Mi')
+            F = Job.wrapJobFn(
+                self._controlledFailTestFn,
+                jobDisk=jobDiskBytes,
+                testDir=workdir,
+                disk=jobDiskBytes,
+            )
+            G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk="100Mi")
             F.addChild(G)
             Job.Runner.startToil(F, self.options)
 
@@ -1144,22 +1374,35 @@ class hidden:
             """
 
             # Make sure we actually have the disk size we are supposed to
-            job.fileStore.log_to_leader('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
-            assert job.disk == jobDisk, 'Job was scheduled with %d bytes but requested %d' % (job.disk, jobDisk)
+            job.fileStore.log_to_leader(
+                "Job is running with %d bytes of disk, %d requested"
+                % (job.disk, jobDisk)
+            )
+            assert (
+                job.disk == jobDisk
+            ), "Job was scheduled with %d bytes but requested %d" % (job.disk, jobDisk)
 
             cls = hidden.AbstractCachingFileStoreTest
-            if os.path.exists(os.path.join(testDir, 'testfile.test')):
-                with open(os.path.join(testDir, 'testfile.test'), 'rb') as fH:
-                    cached = unpack('d', fH.read())[0]
-                RealtimeLogger.info('Loaded expected cache size of %d from testfile.test', cached)
+            if os.path.exists(os.path.join(testDir, "testfile.test")):
+                with open(os.path.join(testDir, "testfile.test"), "rb") as fH:
+                    cached = unpack("d", fH.read())[0]
+                RealtimeLogger.info(
+                    "Loaded expected cache size of %d from testfile.test", cached
+                )
                 cls._requirementsConcur(job, jobDisk, cached)
                 cls._returnFileTestFn(job, jobDisk, cached, testDir, 20)
             else:
-                RealtimeLogger.info('Expecting cache size of 0 because testfile.test is absent')
-                modifiedJobReqs, cached = cls._returnFileTestFn(job, jobDisk, 0, testDir, 20)
-                with open(os.path.join(testDir, 'testfile.test'), 'wb') as fH:
-                    fH.write(pack('d', cached))
-                    RealtimeLogger.info('Wrote cache size of %d to testfile.test', cached)
+                RealtimeLogger.info(
+                    "Expecting cache size of 0 because testfile.test is absent"
+                )
+                modifiedJobReqs, cached = cls._returnFileTestFn(
+                    job, jobDisk, 0, testDir, 20
+                )
+                with open(os.path.join(testDir, "testfile.test"), "wb") as fH:
+                    fH.write(pack("d", cached))
+                    RealtimeLogger.info(
+                        "Wrote cache size of %d to testfile.test", cached
+                    )
                 os.kill(os.getpid(), signal.SIGKILL)
 
         @slow
@@ -1178,9 +1421,15 @@ class hidden:
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
             self.options.retryCount = 0
-            A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory='10M')
-            B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
-                              memory='20M')
+            A = Job.wrapJobFn(
+                self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory="10M"
+            )
+            B = Job.wrapJobFn(
+                self._removeReadFileFn,
+                A.rv(),
+                readAsMutable=readAsMutable,
+                memory="20M",
+            )
             A.addChild(B)
             Job.Runner.startToil(A, self.options)
 
@@ -1198,9 +1447,10 @@ class hidden:
             # Are we processing the read file or the written file?
             processsingReadFile = True
             # Read in the file
-            outfile = job.fileStore.readGlobalFile(fileToDelete, os.path.join(work_dir, 'temp'),
-                                                   mutable=readAsMutable)
-            tempfile = os.path.join(work_dir, 'tmp.tmp')
+            outfile = job.fileStore.readGlobalFile(
+                fileToDelete, os.path.join(work_dir, "temp"), mutable=readAsMutable
+            )
+            tempfile = os.path.join(work_dir, "tmp.tmp")
             # The first time we run this loop, processsingReadFile is True and fileToDelete is the
             # file read from the job store.  The second time, processsingReadFile is False and
             # fileToDelete is one that was just written in to the job store. Ensure the correct
@@ -1210,7 +1460,9 @@ class hidden:
                 try:
                     job.fileStore.deleteLocalFile(fileToDelete)
                 except IllegalDeletionCacheError:
-                    job.fileStore.log_to_leader('Detected a deleted file %s.' % fileToDelete)
+                    job.fileStore.log_to_leader(
+                        "Detected a deleted file %s." % fileToDelete
+                    )
                     os.rename(tempfile, outfile)
                 else:
                     # If we are processing the write test, or if we are testing the immutably read
@@ -1219,7 +1471,7 @@ class hidden:
                 if processsingReadFile:
                     processsingReadFile = False
                     # Write a file
-                    with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
+                    with open(os.path.join(work_dir, str(uuid4())), "wb") as testFile:
                         testFile.write(os.urandom(1 * 1024 * 1024))
                     fileToDelete = job.fileStore.writeGlobalFile(testFile.name)
                     outfile = testFile.name
@@ -1231,7 +1483,7 @@ class hidden:
             Test the deletion capabilities of deleteLocalFile
             """
             self.options.retryCount = 0
-            workdir = self._createTempDir(purpose='nonLocalDir')
+            workdir = self._createTempDir(purpose="nonLocalDir")
             A = Job.wrapJobFn(self._deleteLocalFileFn, nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
 
@@ -1243,11 +1495,11 @@ class hidden:
             """
             work_dir = job.fileStore.getLocalTempDir()
             # Write local file
-            with open(os.path.join(work_dir, str(uuid4())), 'wb') as localFile:
+            with open(os.path.join(work_dir, str(uuid4())), "wb") as localFile:
                 localFile.write(os.urandom(1 * 1024 * 1024))
             localFsID = job.fileStore.writeGlobalFile(localFile.name)
             # write Non-Local File
-            with open(os.path.join(nonLocalDir, str(uuid4())), 'wb') as nonLocalFile:
+            with open(os.path.join(nonLocalDir, str(uuid4())), "wb") as nonLocalFile:
                 nonLocalFile.write(os.urandom(1 * 1024 * 1024))
             nonLocalFsID = job.fileStore.writeGlobalFile(nonLocalFile.name)
             # Delete fsid of local file. The file should be deleted
@@ -1277,7 +1529,7 @@ class hidden:
             assert not os.path.exists(readBackFile2)
             # Try to get a non-FileID that doesn't exist.
             try:
-                job.fileStore.readGlobalFile('bogus')
+                job.fileStore.readGlobalFile("bogus")
             except NoSuchFileException:
                 # TODO: We would like to require TypeError, but for Cactus
                 # support we have to accept non-FileIDs.
@@ -1286,7 +1538,7 @@ class hidden:
                 raise RuntimeError("Managed to get a file from a non-FileID")
             # Try to get a FileID for something that doesn't exist
             try:
-                job.fileStore.readGlobalFile(FileID('bogus', 4096))
+                job.fileStore.readGlobalFile(FileID("bogus", 4096))
             except NoSuchFileException:
                 pass
             else:
@@ -1314,7 +1566,7 @@ class hidden:
             Create and return a FileID for a non-cached file written via a stream.
             """
 
-            messageBytes = b'This is a test file\n'
+            messageBytes = b"This is a test file\n"
 
             with job.fileStore.jobStore.write_file_stream() as (out, idString):
                 # Write directly to the job store so the caching file store doesn't even see it.
@@ -1327,7 +1579,9 @@ class hidden:
             return fileID
 
         @staticmethod
-        def _readFileWithDelay(job, fileID, cores=0.1, memory=50 * 1024 * 1024, disk=50 * 1024 * 1024):
+        def _readFileWithDelay(
+            job, fileID, cores=0.1, memory=50 * 1024 * 1024, disk=50 * 1024 * 1024
+        ):
             """
             Read a file from the CachingFileStore with a delay imposed on the download.
             Should create contention.
@@ -1340,43 +1594,47 @@ class hidden:
             job.fileStore.forceDownloadDelay = 120
 
             readStart = datetime.datetime.now()
-            logger.debug('Begin read at %s', str(readStart))
+            logger.debug("Begin read at %s", str(readStart))
 
             localPath = job.fileStore.readGlobalFile(fileID, cache=True, mutable=True)
 
             readEnd = datetime.datetime.now()
-            logger.debug('End read at %s: took %f seconds', str(readEnd), (readEnd - readStart).total_seconds())
+            logger.debug(
+                "End read at %s: took %f seconds",
+                str(readEnd),
+                (readEnd - readStart).total_seconds(),
+            )
 
-            with open(localPath, 'rb') as fh:
-                text = fh.read().decode('utf-8').strip()
-            logger.debug('Got file contents: %s', text)
-
+            with open(localPath, "rb") as fh:
+                text = fh.read().decode("utf-8").strip()
+            logger.debug("Got file contents: %s", text)
 
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
-    jobStoreType = 'file'
+    jobStoreType = "file"
+
 
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
-    jobStoreType = 'file'
+    jobStoreType = "file"
 
 
 @needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
-    jobStoreType = 'aws'
+    jobStoreType = "aws"
 
 
 @slow
 @needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
-    jobStoreType = 'aws'
+    jobStoreType = "aws"
 
 
 @needs_google_project
 @needs_google_storage
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
-    jobStoreType = 'google'
+    jobStoreType = "google"
 
 
 @slow
@@ -1384,7 +1642,7 @@ class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileSto
 @needs_google_storage
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
-    jobStoreType = 'google'
+    jobStoreType = "google"
 
 
 def _exportStaticMethodAsGlobalFunctions(cls):
@@ -1393,10 +1651,12 @@ def _exportStaticMethodAsGlobalFunctions(cls):
     the convention that the first argument of a job function is named 'job'.
     """
     for name, kind, clazz, value in inspect.classify_class_attrs(cls):
-        if kind == 'static method' and name != '__new__':  # __new__ became static in 3.7
+        if (
+            kind == "static method" and name != "__new__"
+        ):  # __new__ became static in 3.7
             method = value.__func__
             args = inspect.getfullargspec(method).args
-            if args and args[0] == 'job':
+            if args and args[0] == "job":
                 globals()[name] = method
 
 

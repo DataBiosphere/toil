@@ -40,11 +40,13 @@ def encrypt(message: bytes, keyPath: str) -> bytes:
     >>> import os
     >>> os.remove(k)
     """
-    with open(keyPath, 'rb') as f:
+    with open(keyPath, "rb") as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:
-        raise ValueError("Key is %d bytes, but must be exactly %d bytes" % (len(key),
-                                                                            SecretBox.KEY_SIZE))
+        raise ValueError(
+            "Key is %d bytes, but must be exactly %d bytes"
+            % (len(key), SecretBox.KEY_SIZE)
+        )
     sb = SecretBox(key)
     # We generate the nonce using secure random bits. For long enough
     # nonce size, the chance of a random nonce collision becomes
@@ -87,11 +89,13 @@ def decrypt(ciphertext: bytes, keyPath: str) -> bytes:
     >>> import os
     >>> os.remove(k)
     """
-    with open(keyPath, 'rb') as f:
+    with open(keyPath, "rb") as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:
-        raise ValueError("Key is %d bytes, but must be exactly %d bytes" % (len(key),
-                                                                            SecretBox.KEY_SIZE))
+        raise ValueError(
+            "Key is %d bytes, but must be exactly %d bytes"
+            % (len(key), SecretBox.KEY_SIZE)
+        )
     sb = SecretBox(key)
     # The nonce is kept with the message.
     return sb.decrypt(ciphertext)

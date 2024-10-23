@@ -5,10 +5,7 @@ from contextlib import contextmanager
 
 from toil.exceptions import FailedJobsException
 from toil.lib.iterables import concat
-from toil.test import (ApplianceTestSupport,
-                       needs_local_appliance,
-                       needs_mesos,
-                       slow)
+from toil.test import ApplianceTestSupport, needs_local_appliance, needs_mesos, slow
 from toil.version import exactPython
 
 logger = logging.getLogger(__name__)
@@ -35,34 +32,38 @@ class AutoDeploymentTest(ApplianceTestSupport):
         Creates an appliance cluster with a virtualenv at './venv' on the leader and a temporary
         directory on the host mounted at /data in the leader and worker containers.
         """
-        dataDirPath = self._createTempDir(purpose='data')
-        with self._applianceCluster(mounts={dataDirPath: '/data'}) as (leader, worker):
-            leader.runOnAppliance('virtualenv',
-                                  '--system-site-packages',
-                                  '--never-download',  # prevent silent upgrades to pip etc
-                                  '--python', exactPython,
-                                  'venv')
-            leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
+        dataDirPath = self._createTempDir(purpose="data")
+        with self._applianceCluster(mounts={dataDirPath: "/data"}) as (leader, worker):
+            leader.runOnAppliance(
+                "virtualenv",
+                "--system-site-packages",
+                "--never-download",  # prevent silent upgrades to pip etc
+                "--python",
+                exactPython,
+                "venv",
+            )
+            leader.runOnAppliance("venv/bin/pip", "list")  # For diagnostic purposes
             yield leader, worker
 
     # TODO: Are we sure the python in the appliance we are testing is the same
     # as the one we are testing from? If not, how can we get the version it is?
-    sitePackages = f'venv/lib/{exactPython}/site-packages'
+    sitePackages = f"venv/lib/{exactPython}/site-packages"
 
     def testRestart(self):
         """
         Test whether auto-deployment works on restart.
         """
         with self._venvApplianceCluster() as (leader, worker):
+
             def userScript():
                 from toil.common import Toil
                 from toil.job import Job
 
                 # noinspection PyUnusedLocal
-                def job(job, disk='10M', cores=1, memory='10M'):
+                def job(job, disk="10M", cores=1, memory="10M"):
                     assert False
 
-                if __name__ == '__main__':
+                if __name__ == "__main__":
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
                     with Toil(options) as toil:
                         if toil.config.restart:
@@ -72,26 +73,30 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
             userScript = self._getScriptSource(userScript)
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='foo.bar',
-                                script=userScript)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="foo.bar", script=userScript
+            )
 
-            pythonArgs = ['venv/bin/python', '-m', 'foo.bar']
-            toilArgs = ['--logDebug',
-                        '--batchSystem=mesos',
-                        '--mesosEndpoint=localhost:5050',
-                        '--defaultMemory=10M',
-                        '/data/jobstore']
+            pythonArgs = ["venv/bin/python", "-m", "foo.bar"]
+            toilArgs = [
+                "--logDebug",
+                "--batchSystem=mesos",
+                "--mesosEndpoint=localhost:5050",
+                "--defaultMemory=10M",
+                "/data/jobstore",
+            ]
             command = concat(pythonArgs, toilArgs)
-            self.assertRaises(subprocess.CalledProcessError, leader.runOnAppliance, *command)
+            self.assertRaises(
+                subprocess.CalledProcessError, leader.runOnAppliance, *command
+            )
 
             # Deploy an updated version of the script ...
-            userScript = userScript.replace('assert False', 'assert True')
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='foo.bar',
-                                script=userScript)
+            userScript = userScript.replace("assert False", "assert True")
+            leader.deployScript(
+                path=self.sitePackages, packagePath="foo.bar", script=userScript
+            )
             # ... and restart Toil.
-            command = concat(pythonArgs, '--restart', toilArgs)
+            command = concat(pythonArgs, "--restart", toilArgs)
             leader.runOnAppliance(*command)
 
     def testSplitRootPackages(self):
@@ -109,11 +114,11 @@ class AutoDeploymentTest(ApplianceTestSupport):
             def libraryModule():
                 # noinspection PyUnusedLocal
                 def libraryJob(job):
-                    open('/data/foo.txt', 'w').close()
+                    open("/data/foo.txt", "w").close()
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='toil_lib.foo',
-                                script=libraryModule)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="toil_lib.foo", script=libraryModule
+            )
 
             # Deploy the user script
             def userScript():
@@ -124,12 +129,14 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 from toil.job import Job
 
                 # noinspection PyUnusedLocal
-                def job(job, disk='10M', cores=1, memory='10M'):
+                def job(job, disk="10M", cores=1, memory="10M"):
                     # Double the requirements to prevent chaining as chaining might hide problems
                     # in auto-deployment code.
-                    job.addChildJobFn(libraryJob, disk='20M', cores=cores, memory=memory)
+                    job.addChildJobFn(
+                        libraryJob, disk="20M", cores=cores, memory=memory
+                    )
 
-                if __name__ == '__main__':
+                if __name__ == "__main__":
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
                     with Toil(options) as toil:
                         if toil.config.restart:
@@ -137,24 +144,32 @@ class AutoDeploymentTest(ApplianceTestSupport):
                         else:
                             toil.start(Job.wrapJobFn(job))
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='toil_script.bar',
-                                script=userScript)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="toil_script.bar", script=userScript
+            )
 
             # Assert that output file isn't there
-            worker.runOnAppliance('test', '!', '-f', '/data/foo.txt')
+            worker.runOnAppliance("test", "!", "-f", "/data/foo.txt")
             # Just being paranoid
-            self.assertRaises(subprocess.CalledProcessError,
-                              worker.runOnAppliance, 'test', '-f', '/data/foo.txt')
-            leader.runOnAppliance('venv/bin/python',
-                                  '-m', 'toil_script.bar',
-                                  '--logDebug',
-                                  '--batchSystem=mesos',
-                                  '--mesosEndpoint=localhost:5050',
-                                  '--defaultMemory=10M',
-                                  '/data/jobstore')
+            self.assertRaises(
+                subprocess.CalledProcessError,
+                worker.runOnAppliance,
+                "test",
+                "-f",
+                "/data/foo.txt",
+            )
+            leader.runOnAppliance(
+                "venv/bin/python",
+                "-m",
+                "toil_script.bar",
+                "--logDebug",
+                "--batchSystem=mesos",
+                "--mesosEndpoint=localhost:5050",
+                "--defaultMemory=10M",
+                "/data/jobstore",
+            )
             # Assert that out output file is there
-            worker.runOnAppliance('test', '-f', '/data/foo.txt')
+            worker.runOnAppliance("test", "-f", "/data/foo.txt")
 
     def testUserTypesInJobFunctionArgs(self):
         """
@@ -165,6 +180,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
         revealed https://github.com/BD2KGenomics/toil/issues/1278.
         """
         with self._venvApplianceCluster() as (leader, worker):
+
             def userScript():
                 from toil.common import Toil
                 from toil.job import Job
@@ -174,10 +190,10 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     pass
 
                 # noinspection PyUnusedLocal
-                def job(job, x, disk='10M', cores=1, memory='10M'):
+                def job(job, x, disk="10M", cores=1, memory="10M"):
                     return x
 
-                if __name__ == '__main__':
+                if __name__ == "__main__":
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
                     x = X()
                     with Toil(options) as toil:
@@ -187,23 +203,28 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     # translation from __main__ to foo.bar is a side effect of auto-deployment.
                     assert r.__class__ is not X
                     import foo.bar
+
                     assert r.__class__ is foo.bar.X
                     # Assert that a copy was made. This is a side effect of pickling/unpickling.
                     assert x is not r
 
             userScript = self._getScriptSource(userScript)
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='foo.bar',
-                                script=userScript)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="foo.bar", script=userScript
+            )
 
-            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
-                                  '--logDebug',
-                                  '--batchSystem=mesos',
-                                  '--mesosEndpoint=localhost:5050',
-                                  '--defaultMemory=10M',
-                                  '--defaultDisk=10M',
-                                  '/data/jobstore')
+            leader.runOnAppliance(
+                "venv/bin/python",
+                "-m",
+                "foo.bar",
+                "--logDebug",
+                "--batchSystem=mesos",
+                "--mesosEndpoint=localhost:5050",
+                "--defaultMemory=10M",
+                "--defaultDisk=10M",
+                "/data/jobstore",
+            )
 
     def testDeferralWithConcurrentEncapsulation(self):
         """
@@ -248,13 +269,16 @@ class AutoDeploymentTest(ApplianceTestSupport):
         `Encapsulated` has two children to ensure that `Follow-on` is run in a separate worker.
         """
         with self._venvApplianceCluster() as (leader, worker):
+
             def userScript():
                 from toil.common import Toil
                 from toil.job import Job
 
                 def root(rootJob):
                     def nullFile():
-                        return rootJob.fileStore.jobStore.import_file('file:///dev/null')
+                        return rootJob.fileStore.jobStore.import_file(
+                            "file:///dev/null"
+                        )
 
                     startFile = nullFile()
                     endFile = nullFile()
@@ -290,7 +314,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 def last(job, endFile):
                     job.fileStore.jobStore.delete_file(endFile)
 
-                if __name__ == '__main__':
+                if __name__ == "__main__":
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
                     with Toil(options) as toil:
                         rootJob = Job.wrapJobFn(root)
@@ -298,18 +322,22 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
             userScript = self._getScriptSource(userScript)
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='foo.bar',
-                                script=userScript)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="foo.bar", script=userScript
+            )
 
-            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
-                                  '--logDebug',
-                                  '--batchSystem=mesos',
-                                  '--mesosEndpoint=localhost:5050',
-                                  '--retryCount=0',
-                                  '--defaultMemory=10M',
-                                  '--defaultDisk=10M',
-                                  '/data/jobstore')
+            leader.runOnAppliance(
+                "venv/bin/python",
+                "-m",
+                "foo.bar",
+                "--logDebug",
+                "--batchSystem=mesos",
+                "--mesosEndpoint=localhost:5050",
+                "--retryCount=0",
+                "--defaultMemory=10M",
+                "--defaultDisk=10M",
+                "/data/jobstore",
+            )
 
     def testDeferralWithFailureAndEncapsulation(self):
         """
@@ -348,6 +376,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
         jobs have been executed by that worker.
         """
         with self._venvApplianceCluster() as (leader, worker):
+
             def userScript():
                 import os
                 import time
@@ -359,7 +388,9 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
                 def root(rootJob):
                     def nullFile():
-                        return rootJob.fileStore.jobStore.import_file('file:///dev/null')
+                        return rootJob.fileStore.jobStore.import_file(
+                            "file:///dev/null"
+                        )
 
                     startFile = nullFile()
                     endFile = nullFile()
@@ -380,10 +411,10 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     Return path to a file at the root of the job store, exploiting the fact that
                     the job store is shared between leader and worker container.
                     """
-                    prefix = 'file:'
+                    prefix = "file:"
                     locator = config.jobStore
                     assert locator.startswith(prefix)
-                    return os.path.join(locator[len(prefix):], 'testDeferredFile')
+                    return os.path.join(locator[len(prefix) :], "testDeferredFile")
 
                 def deferred(deferredFilePath):
                     """
@@ -425,6 +456,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                     finds the left-overs of the `deferring` job.
                     """
                     import errno
+
                     jobStore = job.fileStore.jobStore
                     with jobStore.read_file_stream(endFile) as fH:
                         pid = int(fH.read())
@@ -452,36 +484,44 @@ class AutoDeploymentTest(ApplianceTestSupport):
                         else:
                             raise
 
-                if __name__ == '__main__':
+                if __name__ == "__main__":
                     import errno
+
                     options = Job.Runner.getDefaultArgumentParser().parse_args()
                     with Toil(options) as toil:
                         deferredFilePath = deferredFile(toil.config)
-                        open(deferredFilePath, 'w').close()
+                        open(deferredFilePath, "w").close()
                         try:
                             assert os.path.exists(deferredFilePath)
                             try:
                                 toil.start(Job.wrapJobFn(root))
                             except FailedJobsException as e:
-                                assert e.numberOfFailedJobs == 2 # `root` and `deferring`
-                                assert not os.path.exists(deferredFilePath), \
-                                    'Apparently, the deferred function did not run.'
+                                assert (
+                                    e.numberOfFailedJobs == 2
+                                )  # `root` and `deferring`
+                                assert not os.path.exists(
+                                    deferredFilePath
+                                ), "Apparently, the deferred function did not run."
                             else:
-                                assert False, 'Workflow should not have succeeded.'
+                                assert False, "Workflow should not have succeeded."
                         finally:
                             tryUnlink(deferredFilePath)
 
             userScript = self._getScriptSource(userScript)
 
-            leader.deployScript(path=self.sitePackages,
-                                packagePath='foo.bar',
-                                script=userScript)
+            leader.deployScript(
+                path=self.sitePackages, packagePath="foo.bar", script=userScript
+            )
 
-            leader.runOnAppliance('venv/bin/python', '-m', 'foo.bar',
-                                  '--logDebug',
-                                  '--batchSystem=mesos',
-                                  '--mesosEndpoint=localhost:5050',
-                                  '--retryCount=0',
-                                  '--defaultMemory=10M',
-                                  '--defaultDisk=10M',
-                                  '/data/jobstore')
+            leader.runOnAppliance(
+                "venv/bin/python",
+                "-m",
+                "foo.bar",
+                "--logDebug",
+                "--batchSystem=mesos",
+                "--mesosEndpoint=localhost:5050",
+                "--retryCount=0",
+                "--defaultMemory=10M",
+                "--defaultDisk=10M",
+                "/data/jobstore",
+            )
