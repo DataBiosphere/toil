@@ -23,14 +23,15 @@ from toil.job import Job
 childMessage = "The child job is now running!"
 parentMessage = "The parent job is now running!"
 
+
 def hello_world(job):
 
     job.fileStore.log_to_leader(parentMessage)
-    with open('foo_bam.txt', 'w') as handle:
-        handle.write('\nThis is a triumph...\n')
+    with open("foo_bam.txt", "w") as handle:
+        handle.write("\nThis is a triumph...\n")
 
     # Assign FileStoreID to a given file
-    foo_bam = job.fileStore.writeGlobalFile('foo_bam.txt')
+    foo_bam = job.fileStore.writeGlobalFile("foo_bam.txt")
 
     # Spawn child
     job.addChildJobFn(hello_world_child, foo_bam, memory=100, cores=0.5, disk="3G")
@@ -43,13 +44,13 @@ def hello_world_child(job, hw):
     # NOTE: path and the udpated file are stored to /tmp
     # If we want to SAVE our changes to this tmp file, we must write it out.
     with open(path) as r:
-        with open('bar_bam.txt', 'w') as handle:
+        with open("bar_bam.txt", "w") as handle:
             for line in r.readlines():
                 handle.write(line)
 
     # Assign FileStoreID to a given file
     # can also use:  job.updateGlobalFile() given the FileStoreID instantiation.
-    job.fileStore.writeGlobalFile('bar_bam.txt')
+    job.fileStore.writeGlobalFile("bar_bam.txt")
 
 
 def main():
@@ -67,5 +68,5 @@ def main():
         toil.start(i)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

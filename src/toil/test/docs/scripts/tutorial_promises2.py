@@ -7,8 +7,10 @@ from toil.lib.io import mkdtemp
 
 def binaryStrings(job, depth, message=""):
     if depth > 0:
-        s = [job.addChildJobFn(binaryStrings, depth - 1, message + "0").rv(),
-             job.addChildJobFn(binaryStrings, depth - 1, message + "1").rv()]
+        s = [
+            job.addChildJobFn(binaryStrings, depth - 1, message + "0").rv(),
+            job.addChildJobFn(binaryStrings, depth - 1, message + "1").rv(),
+        ]
         return job.addFollowOnFn(merge, s).rv()
     return [message]
 
