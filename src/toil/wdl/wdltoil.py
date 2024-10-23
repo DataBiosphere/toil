@@ -958,7 +958,7 @@ def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
 
-def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings) -> Tuple[Optional[WDLBindings], str]:
+def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings) -> tuple[WDLBindings | None, str]:
     """
     Return the cached result of calling this workflow or task, and its key.
 
@@ -1006,8 +1006,8 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
 
     # Set up deduplication just for these outputs.
     devirtualization_state: DirectoryNamingStateDict = {}
-    devirtualized_to_virtualized: Dict[str, str] = dict()
-    virtualized_to_devirtualized: Dict[str, str] = dict()
+    devirtualized_to_virtualized: dict[str, str] = dict()
+    virtualized_to_devirtualized: dict[str, str] = dict()
     # TODO: if a URL is passed through multiple tasks it will be saved multiple times. Also save on input???
 
     # Determine where we will save our cached versions of files.
@@ -1770,7 +1770,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             )
 
         # TODO: Support people doing path operations (join, split, get parent directory) on the virtualized filenames.
-        if is_url(filename):
+        if is_remote_url(filename):
             if (
                 virtualized_to_devirtualized is not None
                 and filename in virtualized_to_devirtualized
