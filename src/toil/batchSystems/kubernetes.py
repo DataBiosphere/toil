@@ -30,22 +30,10 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
+from collections.abc import Iterator
 from queue import Empty, Queue
 from threading import Condition, Event, RLock, Thread
-from typing import (Any,
-                    Callable,
-                    Dict,
-                    Iterator,
-                    List,
-                    Literal,
-                    Optional,
-                    Set,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    cast,
-                    overload)
+from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast, overload
 
 from toil.lib.conversions import opt_strtobool
 
@@ -53,72 +41,79 @@ if sys.version_info < (3, 10):
     from typing_extensions import ParamSpec
 else:
     from typing import ParamSpec
-if sys.version_info >= (3, 8):
-    from typing import Protocol, TypedDict, runtime_checkable
+
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
 else:
-    from typing_extensions import Protocol, TypedDict, runtime_checkable
-# TODO: When this gets into the standard library, get it from there and drop
+    from typing import NotRequired
+
+from typing import Protocol, TypedDict, runtime_checkable
+
 import urllib3
 import yaml
+
 # The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
-from kubernetes.client import (BatchV1Api,
-                               CoreV1Api,
-                               CustomObjectsApi,
-                               V1Affinity,
-                               V1Container,
-                               V1ContainerStatus,
-                               V1EmptyDirVolumeSource,
-                               V1HostPathVolumeSource,
-                               V1Job,
-                               V1JobCondition,
-                               V1JobSpec,
-                               V1NodeAffinity,
-                               V1NodeSelector,
-                               V1NodeSelectorRequirement,
-                               V1NodeSelectorTerm,
-                               V1ObjectMeta,
-                               V1Pod,
-                               V1PodSpec,
-                               V1PodTemplateSpec,
-                               V1PreferredSchedulingTerm,
-                               V1ResourceRequirements,
-                               V1SecretVolumeSource,
-                               V1Toleration,
-                               V1Volume,
-                               V1VolumeMount, V1SecurityContext)
+from kubernetes.client import (
+    BatchV1Api,
+    CoreV1Api,
+    CustomObjectsApi,
+    V1Affinity,
+    V1Container,
+    V1ContainerStatus,
+    V1EmptyDirVolumeSource,
+    V1HostPathVolumeSource,
+    V1Job,
+    V1JobCondition,
+    V1JobSpec,
+    V1NodeAffinity,
+    V1NodeSelector,
+    V1NodeSelectorRequirement,
+    V1NodeSelectorTerm,
+    V1ObjectMeta,
+    V1Pod,
+    V1PodSpec,
+    V1PodTemplateSpec,
+    V1PreferredSchedulingTerm,
+    V1ResourceRequirements,
+    V1SecretVolumeSource,
+    V1SecurityContext,
+    V1Toleration,
+    V1Volume,
+    V1VolumeMount,
+)
 from kubernetes.client.api_client import ApiClient
 from kubernetes.client.exceptions import ApiException
 from kubernetes.config.config_exception import ConfigException
 from kubernetes.config.incluster_config import load_incluster_config
-from kubernetes.config.kube_config import (list_kube_config_contexts,
-                                           load_kube_config)
+from kubernetes.config.kube_config import list_kube_config_contexts, load_kube_config
+
 # TODO: Watch API is not typed yet
 from kubernetes.watch import Watch  # type: ignore
-# typing-extensions dependency on Pythons that are new enough.
-from typing_extensions import NotRequired
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   BatchJobExitReason,
-                                                   InsufficientSystemResources,
-                                                   ResourcePool,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE,
+    BatchJobExitReason,
+    InsufficientSystemResources,
+    ResourcePool,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
 from toil.common import Config, Toil
-from toil.options.common import SYS_MAX_SIZE
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes
 from toil.lib.misc import get_user_name, slow_down, utc_now
 from toil.lib.retry import ErrorCondition, retry
+from toil.options.common import SYS_MAX_SIZE
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors: List[Union[Type[Exception], ErrorCondition]] = [
+retryable_kubernetes_errors: list[Union[type[Exception], ErrorCondition]] = [
     urllib3.exceptions.MaxRetryError,
     urllib3.exceptions.ProtocolError,
-    ApiException
+    ApiException,
 ]
 
 
@@ -132,8 +127,10 @@ def is_retryable_kubernetes_error(e: Exception) -> bool:
             return True
     return False
 
+
 # Represents a collection of label or taint keys and their sets of acceptable (or unacceptable) values.
-KeyValuesList = List[Tuple[str, List[str]]]
+KeyValuesList = list[tuple[str, list[str]]]
+
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
     @classmethod
@@ -150,8 +147,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         core: NotRequired[CoreV1Api]
         customObjects: NotRequired[CustomObjectsApi]
 
-
-    def __init__(self, config: Config, maxCores: int, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Re-type the config to make sure it has all the fields we need.
@@ -162,8 +160,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise if we are at debug log level, we dump every
         # request/response to Kubernetes, including tokens which we shouldn't
         # reveal on CI.
-        logging.getLogger('kubernetes').setLevel(logging.ERROR)
-        logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
+        logging.getLogger("kubernetes").setLevel(logging.ERROR)
+        logging.getLogger("requests_oauthlib").setLevel(logging.ERROR)
 
         # This will hold the last time our Kubernetes credentials were refreshed
         self.credential_time: Optional[datetime.datetime] = None
@@ -171,7 +169,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self._apis: KubernetesBatchSystem._ApiStorageDict = {}
 
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
-        self.namespace: str = self._api('namespace')
+        self.namespace: str = self._api("namespace")
 
         # Decide if we are going to mount a Kubernetes host path as the Toil
         # work dir in the workers, for shared caching.
@@ -190,7 +188,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.unique_id = uuid.uuid4()
 
         # Create a prefix for jobs, starting with our username
-        self.job_prefix: str = f'{username}-toil-{self.unique_id}-'
+        self.job_prefix: str = f"{username}-toil-{self.unique_id}-"
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
         # BatchSystemLocalSupport.
@@ -214,55 +212,61 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
         self.worker_work_dir: str = Toil.getToilWorkDir(config.workDir)
-        if (config.workDir is None and
-            os.getenv('TOIL_WORKDIR') is None and
-            self.worker_work_dir == tempfile.gettempdir()):
+        if (
+            config.workDir is None
+            and os.getenv("TOIL_WORKDIR") is None
+            and self.worker_work_dir == tempfile.gettempdir()
+        ):
 
             # We defaulted to the system temp directory. But we think the
             # worker Dockerfiles will make them use /var/lib/toil instead.
             # TODO: Keep this in sync with the Dockerfile.
-            self.worker_work_dir = '/var/lib/toil'
+            self.worker_work_dir = "/var/lib/toil"
 
         # A Toil-managed Kubernetes cluster will have most of its temp space at
         # /var/tmp, which is where really large temp files really belong
         # according to https://systemd.io/TEMPORARY_DIRECTORIES/. So we will
         # set the default temporary directory to there for all our jobs.
-        self.environment['TMPDIR'] = '/var/tmp'
+        self.environment["TMPDIR"] = "/var/tmp"
 
         # Get the name of the AWS secret, if any, to mount in containers.
-        self.aws_secret_name: Optional[str] = os.environ.get("TOIL_AWS_SECRET_NAME", None)
+        self.aws_secret_name: Optional[str] = os.environ.get(
+            "TOIL_AWS_SECRET_NAME", None
+        )
 
         # Set this to True to enable the experimental wait-for-job-update code
         self.enable_watching: bool = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         # This will be a label to select all our jobs.
-        self.run_id: str = f'toil-{self.unique_id}'
+        self.run_id: str = f"toil-{self.unique_id}"
 
         # Keep track of available resources.
-        maxMillicores = int(SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000)
-        self.resource_sources: List[ResourcePool] = [
+        maxMillicores = int(
+            SYS_MAX_SIZE if self.maxCores == SYS_MAX_SIZE else self.maxCores * 1000
+        )
+        self.resource_sources: list[ResourcePool] = [
             # A pool representing available job slots
-            ResourcePool(self.config.max_jobs, 'job slots'),
+            ResourcePool(self.config.max_jobs, "job slots"),
             # A pool representing available CPU in units of millicores (1 CPU
             # unit = 1000 millicores)
-            ResourcePool(maxMillicores, 'cores'),
+            ResourcePool(maxMillicores, "cores"),
             # A pool representing available memory in bytes
-            ResourcePool(self.maxMemory, 'memory'),
+            ResourcePool(self.maxMemory, "memory"),
             # A pool representing the available space in bytes
-            ResourcePool(self.maxDisk, 'disk'),
+            ResourcePool(self.maxDisk, "disk"),
         ]
 
         # A set of job IDs that are queued (useful for getIssuedBatchJobIDs())
-        self._queued_job_ids: Set[int] = set()
+        self._queued_job_ids: set[int] = set()
 
         # Keep track of the acquired resources for each job
-        self._acquired_resources: Dict[str, List[int]] = {}
+        self._acquired_resources: dict[str, list[int]] = {}
 
         # Queue for jobs to be submitted to the Kubernetes cluster
-        self._jobs_queue: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
+        self._jobs_queue: Queue[tuple[int, JobDescription, V1PodSpec]] = Queue()
 
         # A set of job IDs that should be killed
-        self._killed_queue_jobs: Set[int] = set()
+        self._killed_queue_jobs: set[int] = set()
 
         # We use this event to signal shutdown
         self._shutting_down: Event = Event()
@@ -286,7 +290,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         if not kubernetes_object:
-            return 'None'
+            return "None"
 
         # We need a Kubernetes widget that knows how to translate
         # its data structures to nice YAML-able dicts. See:
@@ -296,7 +300,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Convert to a dict
         root_dict = api_client.sanitize_for_serialization(kubernetes_object)
 
-        def drop_boring(here: Dict[str, Any]) -> None:
+        def drop_boring(here: dict[str, Any]) -> None:
             """
             Drop boring fields recursively.
             """
@@ -304,7 +308,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             for k, v in here.items():
                 if isinstance(v, dict):
                     drop_boring(v)
-                if k in ['managedFields']:
+                if k in ["managedFields"]:
                     boring_keys.append(k)
             for k in boring_keys:
                 del here[k]
@@ -314,33 +318,43 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @overload
     def _api(
-        self, kind: Literal['batch'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
-    ) -> BatchV1Api:
-        ...
+        self,
+        kind: Literal["batch"],
+        max_age_seconds: float = 5 * 60,
+        errors: Optional[list[int]] = None,
+    ) -> BatchV1Api: ...
 
     @overload
     def _api(
-        self, kind: Literal['core'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
-    ) -> CoreV1Api:
-        ...
+        self,
+        kind: Literal["core"],
+        max_age_seconds: float = 5 * 60,
+        errors: Optional[list[int]] = None,
+    ) -> CoreV1Api: ...
 
     @overload
     def _api(
-        self, kind: Literal['customObjects'], max_age_seconds: float = 5 * 60, errors: Optional[List[int]] = None
-    ) -> CustomObjectsApi:
-        ...
+        self,
+        kind: Literal["customObjects"],
+        max_age_seconds: float = 5 * 60,
+        errors: Optional[list[int]] = None,
+    ) -> CustomObjectsApi: ...
 
     @overload
     def _api(
-        self, kind: Literal['namespace'], max_age_seconds: float = 5 * 60
-    ) -> str:
-        ...
+        self, kind: Literal["namespace"], max_age_seconds: float = 5 * 60
+    ) -> str: ...
 
     def _api(
         self,
-        kind: Union[Literal['batch'], Literal['core'], Literal['customObjects'], Literal['namespace']],
+        kind: Union[
+            Literal["batch"],
+            Literal["core"],
+            Literal["customObjects"],
+            Literal["namespace"],
+        ],
         max_age_seconds: float = 5 * 60,
-        errors: Optional[List[int]] = None
+        errors: Optional[list[int]] = None,
     ) -> Union[BatchV1Api, CoreV1Api, CustomObjectsApi, str]:
         """
         The Kubernetes module isn't clever enough to renew its credentials when
@@ -373,44 +387,53 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         now = utc_now()
 
-        if self.credential_time is None or (now - self.credential_time).total_seconds() > max_age_seconds:
+        if (
+            self.credential_time is None
+            or (now - self.credential_time).total_seconds() > max_age_seconds
+        ):
             # Credentials need a refresh
             try:
                 # Load ~/.kube/config or KUBECONFIG
                 load_kube_config()
                 # Worked. We're using kube config
-                config_source = 'kube'
+                config_source = "kube"
             except ConfigException:
                 # Didn't work. Try pod-based credentials in case we are in a pod.
                 try:
                     load_incluster_config()
                     # Worked. We're using in_cluster config
-                    config_source = 'in_cluster'
+                    config_source = "in_cluster"
                 except ConfigException:
-                    raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
+                    raise RuntimeError(
+                        "Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod."
+                    )
 
             # Now fill in the API objects with these credentials
-            self._apis['batch'] = BatchV1Api()
-            self._apis['core'] = CoreV1Api()
-            self._apis['customObjects'] = CustomObjectsApi()
+            self._apis["batch"] = BatchV1Api()
+            self._apis["core"] = CoreV1Api()
+            self._apis["customObjects"] = CustomObjectsApi()
 
             # And save the time
             self.credential_time = now
-        if kind == 'namespace':
+        if kind == "namespace":
             # We just need the namespace string
-            if config_source == 'in_cluster':
+            if config_source == "in_cluster":
                 # Our namespace comes from a particular file.
-                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace") as fh:
+                with open(
+                    "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+                ) as fh:
                     return fh.read().strip()
             else:
                 # Find all contexts and the active context.
                 # The active context gets us our namespace.
                 contexts, activeContext = list_kube_config_contexts()
                 if not contexts:
-                    raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
+                    raise RuntimeError(
+                        "No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG"
+                    )
 
                 # Identify the namespace to work in
-                namespace = activeContext.get('context', {}).get('namespace', 'default')
+                namespace = activeContext.get("context", {}).get("namespace", "default")
                 assert isinstance(namespace, str)
                 return namespace
 
@@ -430,11 +453,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             ErrorCondition(
                                 error=ApiException,
                                 error_codes=errors,
-                                retry_on_this_condition=False
+                                retry_on_this_condition=False,
                             )
                         )
                     decorator = retry(errors=error_list)
-                    wrapper = KubernetesBatchSystem.DecoratorWrapper(api_object, decorator)
+                    wrapper = KubernetesBatchSystem.DecoratorWrapper(
+                        api_object, decorator
+                    )
                     return cast(Union[BatchV1Api, CoreV1Api, CustomObjectsApi], wrapper)
             except KeyError:
                 raise RuntimeError(f"Unknown Kubernetes API type: {kind}")
@@ -445,7 +470,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         P = ParamSpec("P")
-        def __init__(self, to_wrap: Any, decorator: Callable[[Callable[P, Any]], Callable[P, Any]]) -> None:
+
+        def __init__(
+            self,
+            to_wrap: Any,
+            decorator: Callable[[Callable[P, Any]], Callable[P, Any]],
+        ) -> None:
             """
             Make a wrapper around the given object.
             When methods on the object are called, they will be called through
@@ -469,16 +499,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 return attr
 
     ItemT = TypeVar("ItemT")
+
     class _ItemsHaver(Protocol[ItemT]):
         """
         Anything that has a .items that is a list of something.
         """
+
         # KubernetesBatchSystem isn't defined until the class executes, so any
         # up-references to types from there that are in signatures (and not
         # method code) need to be quoted
-        items: List["KubernetesBatchSystem.ItemT"]
+        items: list["KubernetesBatchSystem.ItemT"]
 
     CovItemT = TypeVar("CovItemT", covariant=True)
+
     class _WatchEvent(Protocol[CovItemT]):
         """
         An event from a Kubernetes watch stream.
@@ -490,23 +523,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # __getitem__ instead.
 
         @overload
-        def __getitem__(self, name: Literal['type']) -> str:
-            ...
+        def __getitem__(self, name: Literal["type"]) -> str: ...
 
         @overload
-        def __getitem__(self, name: Literal['object']) -> "KubernetesBatchSystem.CovItemT":
-            ...
+        def __getitem__(
+            self, name: Literal["object"]
+        ) -> "KubernetesBatchSystem.CovItemT": ...
 
         @overload
-        def __getitem__(self, name: Literal['raw_object']) -> Dict[str, Any]:
-            ...
+        def __getitem__(self, name: Literal["raw_object"]) -> dict[str, Any]: ...
 
-        def __getitem__(self, name: Union[Literal['type'], Literal['object'], Literal['raw_object']]) -> Any:
-            ...
+        def __getitem__(
+            self, name: Union[Literal["type"], Literal["object"], Literal["raw_object"]]
+        ) -> Any: ...
 
     P = ParamSpec("P")
     R = TypeVar("R")
-    def _stream_until_error(self, method: Callable[P, _ItemsHaver[R]], *args: P.args, **kwargs: P.kwargs) -> Iterator[_WatchEvent[R]]:
+
+    def _stream_until_error(
+        self, method: Callable[P, _ItemsHaver[R]], *args: P.args, **kwargs: P.kwargs
+    ) -> Iterator[_WatchEvent[R]]:
         """
         Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
         errors. We don't want to have those errors fail the entire workflow, so
@@ -572,7 +608,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Loop through all jobs inside the queue and see if any of them
                 # could be launched.
-                jobs: Queue[Tuple[int, JobDescription, V1PodSpec]] = Queue()
+                jobs: Queue[tuple[int, JobDescription, V1PodSpec]] = Queue()
                 while True:
                     try:
                         job = self._jobs_queue.get_nowait()
@@ -584,7 +620,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             logger.debug(f"Skipping killed job {job_id}")
                             continue
 
-                        job_name = f'{self.job_prefix}{job_id}'
+                        job_name = f"{self.job_prefix}{job_id}"
                         result = self._launch_job(job_name, job_desc, spec)
                         if result is False:
                             # Not enough resources to launch this job.
@@ -605,7 +641,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 logger.debug(f"Roughly {self._jobs_queue.qsize} jobs in the queue")
 
     def setUserScript(self, userScript: Resource) -> None:
-        logger.info(f'Setting user script for deployment: {userScript}')
+        logger.info(f"Setting user script for deployment: {userScript}")
         self.user_script = userScript
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
@@ -657,18 +693,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Amazon just uses a label, while Google
             # <https://cloud.google.com/kubernetes-engine/docs/how-to/preemptible-vms>
             # uses a label and a taint.
-            PREEMPTIBLE_SCHEMES = {'labels': [('eks.amazonaws.com/capacityType', ['SPOT']),
-                                              ('cloud.google.com/gke-preemptible', ['true'])],
-                                   'taints': [('cloud.google.com/gke-preemptible', ['true'])]}
+            PREEMPTIBLE_SCHEMES = {
+                "labels": [
+                    ("eks.amazonaws.com/capacityType", ["SPOT"]),
+                    ("cloud.google.com/gke-preemptible", ["true"]),
+                ],
+                "taints": [("cloud.google.com/gke-preemptible", ["true"])],
+            }
 
             if preemptible:
                 # We want to seek preemptible labels and tolerate preemptible taints.
-                self.desired_labels += PREEMPTIBLE_SCHEMES['labels']
-                self.tolerated_taints += PREEMPTIBLE_SCHEMES['taints']
+                self.desired_labels += PREEMPTIBLE_SCHEMES["labels"]
+                self.tolerated_taints += PREEMPTIBLE_SCHEMES["taints"]
             else:
                 # We want to prohibit preemptible labels
-                self.prohibited_labels += PREEMPTIBLE_SCHEMES['labels']
-
+                self.prohibited_labels += PREEMPTIBLE_SCHEMES["labels"]
 
         def apply(self, pod_spec: V1PodSpec) -> None:
             """
@@ -679,29 +718,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Convert our collections to Kubernetes expressions.
 
             # REQUIRE that ALL of these requirements be satisfied
-            required_selector_requirements: List[V1NodeSelectorRequirement] = []
+            required_selector_requirements: list[V1NodeSelectorRequirement] = []
             # PREFER that EACH of these terms be satisfied
-            preferred_scheduling_terms: List[V1PreferredSchedulingTerm] = []
+            preferred_scheduling_terms: list[V1PreferredSchedulingTerm] = []
             # And this list of tolerations to apply
-            tolerations: List[V1Toleration] = []
+            tolerations: list[V1Toleration] = []
 
             for label, values in self.required_labels:
                 # Collect requirements for the required labels
-                has_label = V1NodeSelectorRequirement(key=label,
-                                                      operator='In',
-                                                      values=values)
+                has_label = V1NodeSelectorRequirement(
+                    key=label, operator="In", values=values
+                )
                 required_selector_requirements.append(has_label)
             for label, values in self.desired_labels:
                 # Collect preferences for the preferred labels
-                has_label = V1NodeSelectorRequirement(key=label,
-                                                      operator='In',
-                                                      values=values)
-                term = V1NodeSelectorTerm(
-                    match_expressions=[has_label]
+                has_label = V1NodeSelectorRequirement(
+                    key=label, operator="In", values=values
                 )
+                term = V1NodeSelectorTerm(match_expressions=[has_label])
                 # Each becomes a separate preference, more is better.
-                preference = V1PreferredSchedulingTerm(weight=1,
-                                                       preference=term)
+                preference = V1PreferredSchedulingTerm(weight=1, preference=term)
 
                 preferred_scheduling_terms.append(preference)
             for label, values in self.prohibited_labels:
@@ -712,15 +748,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # <https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement>
                 # So we create a NotIn for each label and AND them
                 # all together.
-                not_labeled = V1NodeSelectorRequirement(key=label,
-                                                        operator='NotIn',
-                                                        values=values)
+                not_labeled = V1NodeSelectorRequirement(
+                    key=label, operator="NotIn", values=values
+                )
                 required_selector_requirements.append(not_labeled)
             for taint, values in self.tolerated_taints:
                 for value in values:
                     # Each toleration can tolerate one value
-                    taint_ok = V1Toleration(key=taint,
-                                            value=value)
+                    taint_ok = V1Toleration(key=taint, value=value)
                     tolerations.append(taint_ok)
 
             # Now combine everything
@@ -734,16 +769,22 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         match_expressions=required_selector_requirements
                     )
                     # And a selector to hold the term
-                    requirements_selector = V1NodeSelector(node_selector_terms=[requirements_term])
+                    requirements_selector = V1NodeSelector(
+                        node_selector_terms=[requirements_term]
+                    )
 
                 # Make an affinity that prefers the preferences and requires the requirements
                 node_affinity = V1NodeAffinity(
-                    preferred_during_scheduling_ignored_during_execution=preferred_scheduling_terms if preferred_scheduling_terms else None,
-                    required_during_scheduling_ignored_during_execution=requirements_selector
+                    preferred_during_scheduling_ignored_during_execution=(
+                        preferred_scheduling_terms
+                        if preferred_scheduling_terms
+                        else None
+                    ),
+                    required_during_scheduling_ignored_during_execution=requirements_selector,
                 )
 
                 # Apply the affinity
-                pod_spec.affinity = V1Affinity(node_affinity = node_affinity)
+                pod_spec.affinity = V1Affinity(node_affinity=node_affinity)
 
             if tolerations:
                 # Apply the tolerations
@@ -751,18 +792,22 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
-            if accelerator['kind'] != 'gpu' and 'model' not in accelerator:
+            if accelerator["kind"] != "gpu" and "model" not in accelerator:
                 # We can only provide GPUs or things with a model right now
-                raise InsufficientSystemResources(requirer, 'accelerators', details=[
-                    f'The accelerator {accelerator} could not be provided.',
-                    'The Toil Kubernetes batch system only knows how to request gpu accelerators or accelerators with a defined model.'
-                ])
+                raise InsufficientSystemResources(
+                    requirer,
+                    "accelerators",
+                    details=[
+                        f"The accelerator {accelerator} could not be provided.",
+                        "The Toil Kubernetes batch system only knows how to request gpu accelerators or accelerators with a defined model.",
+                    ],
+                )
 
     def _create_pod_spec(
-            self,
-            command: str,
-            job_desc: JobDescription,
-            job_environment: Optional[Dict[str, str]] = None
+        self,
+        command: str,
+        job_desc: JobDescription,
+        job_environment: Optional[dict[str, str]] = None,
     ) -> V1PodSpec:
         """
         Make the specification for a pod that can execute the given job.
@@ -789,9 +834,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # OOMing. We also want to provision some extra space so that when
         # we test _isPodStuckOOM we never get True unless the job has
         # exceeded job_desc.memory.
-        requirements_dict = {'cpu': job_desc.cores,
-                             'memory': job_desc.memory + 1024 * 1024 * 512,
-                             'ephemeral-storage': job_desc.disk + 1024 * 1024 * 512}
+        requirements_dict = {
+            "cpu": job_desc.cores,
+            "memory": job_desc.memory + 1024 * 1024 * 512,
+            "ephemeral-storage": job_desc.disk + 1024 * 1024 * 512,
+        }
 
         # Also start on the placement constraints
         placement = KubernetesBatchSystem.Placement()
@@ -801,19 +848,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Add in requirements for accelerators (GPUs).
             # See https://kubernetes.io/docs/tasks/manage-gpus/scheduling-gpus/
 
-            if accelerator['kind'] == 'gpu':
+            if accelerator["kind"] == "gpu":
                 # We can't schedule GPUs without a brand, because the
                 # Kubernetes resources are <brand>.com/gpu. If no brand is
                 # specified, default to nvidia, which is very popular.
-                vendor = accelerator.get('brand', 'nvidia')
+                vendor = accelerator.get("brand", "nvidia")
                 key = f'{vendor}.com/{accelerator["kind"]}'
                 if key not in requirements_dict:
                     requirements_dict[key] = 0
-                requirements_dict[key] += accelerator['count']
+                requirements_dict[key] += accelerator["count"]
 
-            if 'model' in accelerator:
+            if "model" in accelerator:
                 # TODO: What if the cluster uses some other accelerator model labeling scheme?
-                placement.required_labels.append(('accelerator', [accelerator['model']]))
+                placement.required_labels.append(
+                    ("accelerator", [accelerator["model"]])
+                )
 
             # TODO: Support AMD's labeling scheme: https://github.com/RadeonOpenCompute/k8s-device-plugin/tree/master/cmd/k8s-node-labeller
             # That just has each trait of the accelerator as a separate label, but nothing that quite corresponds to a model.
@@ -825,14 +874,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # the UCSC Kubernetes admins want it that way. For GPUs, Kubernetes
         # requires them to be equal.
         limits_dict = requests_dict
-        resources = V1ResourceRequirements(limits=limits_dict,
-                                           requests=requests_dict)
+        resources = V1ResourceRequirements(limits=limits_dict, requests=requests_dict)
 
         # Collect volumes and mounts
         volumes = []
         mounts = []
 
-        def mount_host_path(volume_name: str, host_path: str, mount_path: str, create: bool = False) -> None:
+        def mount_host_path(
+            volume_name: str, host_path: str, mount_path: str, create: bool = False
+        ) -> None:
             """
             Add a host path volume with the given name to mount the given path.
 
@@ -840,10 +890,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                    not exist. Otherwise, when the directory does not exist, the
                    pod will wait for it to come into existence.
             """
-            volume_type = 'DirectoryOrCreate' if create else 'Directory'
+            volume_type = "DirectoryOrCreate" if create else "Directory"
             volume_source = V1HostPathVolumeSource(path=host_path, type=volume_type)
-            volume = V1Volume(name=volume_name,
-                                                host_path=volume_source)
+            volume = V1Volume(name=volume_name, host_path=volume_source)
             volumes.append(volume)
             volume_mount = V1VolumeMount(mount_path=mount_path, name=volume_name)
             mounts.append(volume_mount)
@@ -851,49 +900,63 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         if self.host_path is not None:
             # Provision Toil WorkDir from a HostPath volume, to share with other pods.
             # Create the directory if it doesn't exist already.
-            mount_host_path('workdir', self.host_path, self.worker_work_dir, create=True)
+            mount_host_path(
+                "workdir", self.host_path, self.worker_work_dir, create=True
+            )
             # We also need to mount across /run/lock, where we will put
             # per-node coordiantion info.
             # Don't create this; it really should always exist.
-            mount_host_path('coordination', '/run/lock', '/run/lock')
+            mount_host_path("coordination", "/run/lock", "/run/lock")
         else:
             # Provision Toil WorkDir as an ephemeral volume
-            ephemeral_volume_name = 'workdir'
+            ephemeral_volume_name = "workdir"
             ephemeral_volume_source = V1EmptyDirVolumeSource()
-            ephemeral_volume = V1Volume(name=ephemeral_volume_name,
-                                                          empty_dir=ephemeral_volume_source)
+            ephemeral_volume = V1Volume(
+                name=ephemeral_volume_name, empty_dir=ephemeral_volume_source
+            )
             volumes.append(ephemeral_volume)
-            ephemeral_volume_mount = V1VolumeMount(mount_path=self.worker_work_dir, name=ephemeral_volume_name)
+            ephemeral_volume_mount = V1VolumeMount(
+                mount_path=self.worker_work_dir, name=ephemeral_volume_name
+            )
             mounts.append(ephemeral_volume_mount)
             # And don't share coordination directory
 
         if self.aws_secret_name is not None:
             # Also mount an AWS secret, if provided.
             # TODO: make this generic somehow
-            secret_volume_name = 's3-credentials'
-            secret_volume_source = V1SecretVolumeSource(secret_name=self.aws_secret_name)
-            secret_volume = V1Volume(name=secret_volume_name,
-                                                       secret=secret_volume_source)
+            secret_volume_name = "s3-credentials"
+            secret_volume_source = V1SecretVolumeSource(
+                secret_name=self.aws_secret_name
+            )
+            secret_volume = V1Volume(
+                name=secret_volume_name, secret=secret_volume_source
+            )
             volumes.append(secret_volume)
-            secret_volume_mount = V1VolumeMount(mount_path='/root/.aws', name=secret_volume_name)
+            secret_volume_mount = V1VolumeMount(
+                mount_path="/root/.aws", name=secret_volume_name
+            )
             mounts.append(secret_volume_mount)
 
         # Make a container definition
-        container = V1Container(command=command_list,
-                                image=self.docker_image,
-                                name="runner-container",
-                                resources=resources,
-                                volume_mounts=mounts)
+        container = V1Container(
+            command=command_list,
+            image=self.docker_image,
+            name="runner-container",
+            resources=resources,
+            volume_mounts=mounts,
+        )
 
         # In case security context rules are not allowed to be set, we only apply
         # a security context at all if we need to turn on privileged mode.
         if self.config.kubernetes_privileged:
-            container.security_context = V1SecurityContext(privileged=self.config.kubernetes_privileged)
+            container.security_context = V1SecurityContext(
+                privileged=self.config.kubernetes_privileged
+            )
 
         # Wrap the container in a spec
-        pod_spec = V1PodSpec(containers=[container],
-                             volumes=volumes,
-                             restart_policy="Never")
+        pod_spec = V1PodSpec(
+            containers=[container], volumes=volumes, restart_policy="Never"
+        )
         # Tell the spec where to land
         placement.apply(pod_spec)
 
@@ -903,7 +966,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         return pod_spec
 
-    def _release_acquired_resources(self, resources: List[int], notify: bool = False) -> None:
+    def _release_acquired_resources(
+        self, resources: list[int], notify: bool = False
+    ) -> None:
         """
         Release all resources acquired for a job.
 
@@ -922,10 +987,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 self._work_available.notify_all()
 
     def _launch_job(
-        self,
-        job_name: str,
-        job_desc: JobDescription,
-        pod_spec: V1PodSpec
+        self, job_name: str, job_desc: JobDescription, pod_spec: V1PodSpec
     ) -> bool:
         """
         Try to launch the given job to the Kubernetes cluster. Return False if
@@ -933,19 +995,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         # Limit the amount of resources requested at a time.
-        resource_requests: List[int] = [1, int(job_desc.cores * 1000), job_desc.memory, job_desc.disk]
+        resource_requests: list[int] = [
+            1,
+            int(job_desc.cores * 1000),
+            job_desc.memory,
+            job_desc.disk,
+        ]
 
         acquired = []
         for source, request in zip(self.resource_sources, resource_requests):
             # For each kind of resource we want, go get it
-            assert ((isinstance(source, ResourcePool) and isinstance(request, int)))
+            assert isinstance(source, ResourcePool) and isinstance(request, int)
             if source.acquireNow(request):
                 acquired.append(request)
             else:
                 # We can't get everything
-                self._release_acquired_resources(acquired,
+                self._release_acquired_resources(
+                    acquired,
                     # Put it back quietly.
-                    notify=False)
+                    notify=False,
+                )
                 return False
 
         self._acquired_resources[job_name] = acquired
@@ -954,9 +1023,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make metadata to label the job/pod with info.
         # Don't let the cluster autoscaler evict any Toil jobs.
-        metadata = V1ObjectMeta(name=job_name,
-                                labels={"toil_run": self.run_id},
-                                annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"})
+        metadata = V1ObjectMeta(
+            name=job_name,
+            labels={"toil_run": self.run_id},
+            annotations={"cluster-autoscaler.kubernetes.io/safe-to-evict": "false"},
+        )
 
         # Wrap the spec in a template
         template = V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
@@ -964,18 +1035,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Make another spec for the job, asking to run the template with no
         # backoff/retry. Specify our own TTL to avoid catching the notice
         # of over-zealous abandoned job cleanup scripts.
-        job_spec = V1JobSpec(template=template,
-                             backoff_limit=0,
-                             ttl_seconds_after_finished=self.finished_job_ttl)
+        job_spec = V1JobSpec(
+            template=template,
+            backoff_limit=0,
+            ttl_seconds_after_finished=self.finished_job_ttl,
+        )
 
         # And make the actual job
-        job = V1Job(spec=job_spec,
-                    metadata=metadata,
-                    api_version="batch/v1",
-                    kind="Job")
+        job = V1Job(
+            spec=job_spec, metadata=metadata, api_version="batch/v1", kind="Job"
+        )
 
         # Launch the job
-        launched = self._api('batch', errors=[]).create_namespaced_job(self.namespace, job)
+        launched = self._api("batch", errors=[]).create_namespaced_job(
+            self.namespace, job
+        )
 
         logger.debug(f"Launched job: {job_name}")
 
@@ -983,10 +1057,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def _delete_job(
         self,
-        job_name: str, *,
+        job_name: str,
+        *,
         propagation_policy: Literal["Foreground", "Background"] = "Foreground",
         gone_ok: bool = False,
-        resource_notify: bool = True
+        resource_notify: bool = True,
     ) -> None:
         """
         Given the name of a kubernetes job, delete the job and release all
@@ -999,11 +1074,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             the self._work_available condition.
         """
         try:
-            logger.debug(f'Deleting Kubernetes job {job_name}')
-            self._api('batch', errors=[404] if gone_ok else []).delete_namespaced_job(
-                job_name,
-                self.namespace,
-                propagation_policy=propagation_policy
+            logger.debug(f"Deleting Kubernetes job {job_name}")
+            self._api("batch", errors=[404] if gone_ok else []).delete_namespaced_job(
+                job_name, self.namespace, propagation_policy=propagation_policy
             )
         finally:
             # We should always release the acquired resources.
@@ -1014,7 +1087,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             self._release_acquired_resources(resources, notify=resource_notify)
             del self._acquired_resources[job_name]
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(
+        self,
+        command: str,
+        job_desc: JobDescription,
+        job_environment: Optional[dict[str, str]] = None,
+    ) -> int:
         # Try the job as local
         localID = self.handleLocalJob(command, job_desc)
         if localID is not None:
@@ -1027,7 +1105,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.check_resource_request(job_desc)
 
         # Make a pod that describes running the job
-        pod_spec = self._create_pod_spec(command, job_desc, job_environment=job_environment)
+        pod_spec = self._create_pod_spec(
+            command, job_desc, job_environment=job_environment
+        )
 
         # Make a batch system scope job ID
         job_id = self.getNextJobID()
@@ -1055,6 +1135,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         kwargs, so we can't just set unused ones to None. But we also don't
         want to duplicate code for every combination of possible present keys.
         """
+
         _continue: NotRequired[str]
         label_selector: NotRequired[str]
         field_selector: NotRequired[str]
@@ -1084,29 +1165,29 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         token = None
 
         while True:
-            kwargs: KubernetesBatchSystem._ArgsDict = {'label_selector': f"toil_run={self.run_id}"}
+            kwargs: KubernetesBatchSystem._ArgsDict = {
+                "label_selector": f"toil_run={self.run_id}"
+            }
 
             if onlySucceeded:
-                kwargs['field_selector'] = "status.successful==1"
+                kwargs["field_selector"] = "status.successful==1"
 
             if token is not None:
-                kwargs['_continue'] = token
+                kwargs["_continue"] = token
 
-            results = self._api('batch', errors=[]).list_namespaced_job(
-                self.namespace,
-                **kwargs
+            results = self._api("batch", errors=[]).list_namespaced_job(
+                self.namespace, **kwargs
             )
-            
+
             # These jobs belong to us
             yield from (j for j in results.items if not self._is_deleted(j))
 
             # Remember the continuation token, if any
-            token = getattr(results.metadata, 'continue', None)
+            token = getattr(results.metadata, "continue", None)
 
             if token is None:
                 # There isn't one. We got everything.
                 break
-
 
     def _ourPodObject(self) -> Iterator[V1Pod]:
         """
@@ -1117,24 +1198,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         token = None
 
         while True:
-            kwargs: KubernetesBatchSystem._ArgsDict = {'label_selector': f"toil_run={self.run_id}"}
+            kwargs: KubernetesBatchSystem._ArgsDict = {
+                "label_selector": f"toil_run={self.run_id}"
+            }
 
             if token is not None:
-                kwargs['_continue'] = token
+                kwargs["_continue"] = token
 
-            results = self._api('core', errors=[]).list_namespaced_pod(
-                self.namespace,
-                **kwargs
+            results = self._api("core", errors=[]).list_namespaced_pod(
+                self.namespace, **kwargs
             )
 
             yield from (j for j in results.items if not self._is_deleted(j))
             # Remember the continuation token, if any
-            token = getattr(results.metadata, 'continue', None)
+            token = getattr(results.metadata, "continue", None)
 
             if token is None:
                 # There isn't one. We got everything.
                 break
-
 
     def _getPodForJob(self, jobObject: V1Job) -> Optional[V1Pod]:
         """
@@ -1149,22 +1230,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
 
         # Make sure the job has the fields we need
-        assert(jobObject.metadata is not None)
+        assert jobObject.metadata is not None
 
         token = None
 
         while True:
-            kwargs: KubernetesBatchSystem._ArgsDict = {'label_selector': f'job-name={jobObject.metadata.name}'}
+            kwargs: KubernetesBatchSystem._ArgsDict = {
+                "label_selector": f"job-name={jobObject.metadata.name}"
+            }
             if token is not None:
-                kwargs['_continue'] = token
-            results = self._api('core', errors=[]).list_namespaced_pod(self.namespace, **kwargs)
+                kwargs["_continue"] = token
+            results = self._api("core", errors=[]).list_namespaced_pod(
+                self.namespace, **kwargs
+            )
 
             for pod in results.items:
                 # Return the first pod we find
                 return pod
 
             # Remember the continuation token, if any
-            token = getattr(results.metadata, 'continue', None)
+            token = getattr(results.metadata, "continue", None)
 
             if token is None:
                 # There isn't one. We got everything.
@@ -1188,12 +1273,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         assert podObject.metadata is not None
         assert podObject.metadata.name is not None
 
-        return self._api('core', errors=[]).read_namespaced_pod_log(
-            podObject.metadata.name,
-            namespace=self.namespace
+        return self._api("core", errors=[]).read_namespaced_pod_log(
+            podObject.metadata.name, namespace=self.namespace
         )
 
-    def _isPodStuckOOM(self, podObject: V1Pod, minFreeBytes: float = 1024 * 1024 * 2) -> bool:
+    def _isPodStuckOOM(
+        self, podObject: V1Pod, minFreeBytes: float = 1024 * 1024 * 2
+    ) -> bool:
         """
         Poll the current memory usage for the pod from the cluster.
 
@@ -1223,14 +1309,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         assert podObject.metadata.name is not None
 
         # Compose a query to get just the pod we care about
-        query = f'metadata.name={podObject.metadata.name}'
+        query = f"metadata.name={podObject.metadata.name}"
 
         # Look for it, but manage our own exceptions
         try:
             # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
-            response = self._api('customObjects').list_namespaced_custom_object('metrics.k8s.io', 'v1beta1',
-                                                                                self.namespace, 'pods',
-                                                                                field_selector=query)
+            response = self._api("customObjects").list_namespaced_custom_object(
+                "metrics.k8s.io",
+                "v1beta1",
+                self.namespace,
+                "pods",
+                field_selector=query,
+            )
         except Exception as e:
             # We couldn't talk to the metrics service on this attempt. We don't
             # retry, but we also don't want to just ignore all errors. We only
@@ -1246,7 +1336,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 raise
 
         # Pull out the items
-        items = response.get('items', [])
+        items = response.get("items", [])
 
         if len(items) == 0:
             # If there's no statistics we can't say we're stuck OOM
@@ -1255,7 +1345,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Assume the first result is the right one, because of the selector.
         # That means we don't need to bother with _continue.
         # Assume it has exactly one pod, because we made it.
-        containers = items[0].get('containers', [{}])
+        containers = items[0].get("containers", [{}])
 
         if len(containers) == 0:
             # If there are no containers (because none have started yet?), we can't say we're stuck OOM
@@ -1264,26 +1354,37 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise, assume it just has one container.
         # Grab the memory usage string, like 123Ki, and convert to bytes.
         # If anything is missing, assume 0 bytes used.
-        bytesUsed = human2bytes(containers[0].get('usage', {}).get('memory', '0'))
+        bytesUsed = human2bytes(containers[0].get("usage", {}).get("memory", "0"))
 
         # Also get the limit out of the pod object's spec
         assert podObject.spec is not None
         assert len(podObject.spec.containers) > 0
         assert podObject.spec.containers[0].resources is not None
         assert podObject.spec.containers[0].resources.limits is not None
-        assert 'memory' in podObject.spec.containers[0].resources.limits
-        bytesAllowed = human2bytes(podObject.spec.containers[0].resources.limits['memory'])
+        assert "memory" in podObject.spec.containers[0].resources.limits
+        bytesAllowed = human2bytes(
+            podObject.spec.containers[0].resources.limits["memory"]
+        )
 
         if bytesAllowed - bytesUsed < minFreeBytes:
             # This is too much!
-            logger.warning('Pod %s has used %d of %d bytes of memory; reporting as stuck due to OOM.',
-                           podObject.metadata.name, bytesUsed, bytesAllowed)
+            logger.warning(
+                "Pod %s has used %d of %d bytes of memory; reporting as stuck due to OOM.",
+                podObject.metadata.name,
+                bytesUsed,
+                bytesAllowed,
+            )
 
             return True
         else:
             return False
 
-    def _isPodStuckWaiting(self, pod_object: V1Pod, reason: Optional[str] = None, timeout: Optional[float] = None) -> bool:
+    def _isPodStuckWaiting(
+        self,
+        pod_object: V1Pod,
+        reason: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ) -> bool:
         """
         Return True if the pod looks to be in a waiting state, and false otherwise.
 
@@ -1307,7 +1408,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Can't be stuck
             return False
 
-        waiting_info = getattr(getattr(container_statuses[0], 'state', None), 'waiting', None)
+        waiting_info = getattr(
+            getattr(container_statuses[0], "state", None), "waiting", None
+        )
         if waiting_info is None:
             # Pod is not waiting
             return False
@@ -1316,15 +1419,17 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Pod fails reason filter
             return False
 
-        start_time = getattr(pod_object.status, 'start_time', None)
-        if timeout is not None and (start_time is None or (utc_now() - start_time).total_seconds() < timeout):
+        start_time = getattr(pod_object.status, "start_time", None)
+        if timeout is not None and (
+            start_time is None or (utc_now() - start_time).total_seconds() < timeout
+        ):
             # It hasn't been waiting too long, or we care but don't know how
             # long it has been waiting
             return False
 
         return True
 
-    def _is_deleted(self, kube_thing: Union['V1Job', 'V1Pod']) -> bool:
+    def _is_deleted(self, kube_thing: Union["V1Job", "V1Pod"]) -> bool:
         """
         Determine if a job or pod is in the process od being deleted, and
         shouldn't count anymore.
@@ -1333,7 +1438,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Kubernetes "Terminating" is the same as having the deletion_timestamp
         # set in the metadata of the object.
 
-        deletion_timestamp: Optional[datetime.datetime] = getattr(getattr(kube_thing, 'metadata', None), 'deletion_timestamp', None)
+        deletion_timestamp: Optional[datetime.datetime] = getattr(
+            getattr(kube_thing, "metadata", None), "deletion_timestamp", None
+        )
         # If the deletion timestamp is set to anything, it is in the process of
         # being deleted. We will treat that as as good as gone.
         return deletion_timestamp is not None
@@ -1350,8 +1457,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         assert jobObject.metadata is not None
         assert jobObject.metadata.name is not None
-        return int(jobObject.metadata.name[len(self.job_prefix):])
-
+        return int(jobObject.metadata.name[len(self.job_prefix) :])
 
     def getUpdatedBatchJob(self, maxWait: float) -> Optional[UpdatedBatchJobInfo]:
 
@@ -1367,22 +1473,27 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Otherwise we need to maybe wait.
         if self.enable_watching and maxWait >= 1:
             # We can try a watch. Watches can only work in whole seconds.
-            for event in self._stream_until_error(self._api('batch').list_namespaced_job,
-                                                  self.namespace,
-                                                  label_selector=f"toil_run={self.run_id}",
-                                                  timeout_seconds=math.floor(maxWait)):
+            for event in self._stream_until_error(
+                self._api("batch").list_namespaced_job,
+                self.namespace,
+                label_selector=f"toil_run={self.run_id}",
+                timeout_seconds=math.floor(maxWait),
+            ):
                 # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
-                jobObject = event['object']
-                
+                jobObject = event["object"]
+
                 if self._is_deleted(jobObject):
                     # Job is already deleted, so ignore it.
-                    logger.warning('Kubernetes job %s is deleted; ignore its update', getattr(getattr(jobObject, 'metadata', None), 'name', None))
+                    logger.warning(
+                        "Kubernetes job %s is deleted; ignore its update",
+                        getattr(getattr(jobObject, "metadata", None), "name", None),
+                    )
                     continue
-                
+
                 assert jobObject.metadata is not None
                 assert jobObject.metadata.name is not None
-                
-                jobID = int(jobObject.metadata.name[len(self.job_prefix):])
+
+                jobID = int(jobObject.metadata.name[len(self.job_prefix) :])
                 if jobObject.status is None:
                     # Can't tell what is up with this job.
                     continue
@@ -1392,7 +1503,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 failed_pods = jobObject.status.failed or 0
                 # Fetch out the condition object that has info about how the job is going.
                 condition: Optional[V1JobCondition] = None
-                if jobObject.status.conditions is not None and len(jobObject.status.conditions) > 0:
+                if (
+                    jobObject.status.conditions is not None
+                    and len(jobObject.status.conditions) > 0
+                ):
                     condition = jobObject.status.conditions[0]
 
                 totalPods = active_pods + succeeded_pods + failed_pods
@@ -1402,14 +1516,25 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Check if there are any active pods
                 if active_pods > 0:
-                    logger.info("%s has %d pods running" % jobObject.metadata.name, active_pods)
+                    logger.info(
+                        "%s has %d pods running" % jobObject.metadata.name, active_pods
+                    )
                     continue
                 elif succeeded_pods > 0 or failed_pods > 0:
                     # No more active pods in the current job ; must be finished
-                    logger.info("%s RESULTS -> Succeeded: %d Failed:%d Active:%d" % jobObject.metadata.name,
-                                                                                    succeeded_pods, failed_pods, active_pods)
+                    logger.info(
+                        "%s RESULTS -> Succeeded: %d Failed:%d Active:%d"
+                        % jobObject.metadata.name,
+                        succeeded_pods,
+                        failed_pods,
+                        active_pods,
+                    )
                     # Log out success/failure given a reason
-                    logger.info("%s REASON: %s", getattr(condition, 'type', None), getattr(condition, 'reason', None))
+                    logger.info(
+                        "%s REASON: %s",
+                        getattr(condition, "type", None),
+                        getattr(condition, "reason", None),
+                    )
 
                     # Log out reason of failure and pod exit code
                     if failed_pods > 0:
@@ -1419,22 +1544,40 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         if condition is not None:
                             logger.warning("Failed Job Message: %s", condition.message)
                         pod = self._getPodForJob(jobObject)
-                        statuses: List[V1ContainerStatus] = getattr(getattr(pod, 'status', None), 'container_statuses', [])
-                        if len(statuses) > 0 and statuses[0].state is not None and statuses[0].state.terminated is not None:
+                        statuses: list[V1ContainerStatus] = getattr(
+                            getattr(pod, "status", None), "container_statuses", []
+                        )
+                        if (
+                            len(statuses) > 0
+                            and statuses[0].state is not None
+                            and statuses[0].state.terminated is not None
+                        ):
                             exitCode = statuses[0].state.terminated.exit_code
 
                     raw_runtime = 0.0
-                    if jobObject.status.completion_time is not None and jobObject.status.start_time is not None:
-                        raw_runtime = (jobObject.status.completion_time - jobObject.status.start_time).total_seconds()
+                    if (
+                        jobObject.status.completion_time is not None
+                        and jobObject.status.start_time is not None
+                    ):
+                        raw_runtime = (
+                            jobObject.status.completion_time
+                            - jobObject.status.start_time
+                        ).total_seconds()
                     runtime = slow_down(raw_runtime)
-                    result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=exitReason)
+                    result = UpdatedBatchJobInfo(
+                        jobID=jobID,
+                        exitStatus=exitCode,
+                        wallTime=runtime,
+                        exitReason=exitReason,
+                    )
 
-                    if (exitReason == BatchJobExitReason.FAILED) or (succeeded_pods + failed_pods == totalPods):
+                    if (exitReason == BatchJobExitReason.FAILED) or (
+                        succeeded_pods + failed_pods == totalPods
+                    ):
                         # Cleanup if job is all finished or there was a pod that failed
                         # TODO: use delete_job() to release acquired resources
                         self._delete_job(
-                            jobObject.metadata.name,
-                            propagation_policy='Foreground'
+                            jobObject.metadata.name, propagation_policy="Foreground"
                         )
                         # Make sure the job is deleted so we won't see it again.
                         self._waitForJobDeath(jobObject.metadata.name)
@@ -1442,12 +1585,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     continue
                 else:
                     # Job is not running/updating ; no active, successful, or failed pods yet
-                    logger.debug("Job {} -> {}".format(jobObject.metadata.name, getattr(condition, 'reason', None)))
+                    logger.debug(
+                        "Job {} -> {}".format(
+                            jobObject.metadata.name, getattr(condition, "reason", None)
+                        )
+                    )
                     # Pod could be pending; don't say it's lost.
                     continue
         else:
             # Try polling instead
-            while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
+            while (
+                result is None
+                and (datetime.datetime.now() - entry).total_seconds() < maxWait
+            ):
                 # We still have nothing and we haven't hit the timeout.
 
                 # Poll
@@ -1455,11 +1605,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 if result is None:
                     # Still nothing. Wait a second, or some fraction of our max wait time.
-                    time.sleep(min(maxWait/2, 1.0))
+                    time.sleep(min(maxWait / 2, 1.0))
 
             # When we get here, either we found something or we ran out of time
             return result
-
 
     def _getUpdatedBatchJobImmediately(self) -> Optional[UpdatedBatchJobInfo]:
         """
@@ -1484,25 +1633,25 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Find a job that is done, failed, or stuck
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
-        chosenFor = ''
+        chosenFor = ""
 
         for j in self._ourJobObject(onlySucceeded=True):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
-            chosenFor = 'done'
+            chosenFor = "done"
 
         if jobObject is None:
             for j in self._ourJobObject():
                 # If there aren't any succeeded jobs, scan all jobs
                 # See how many times each failed
-                failCount = getattr(j.status, 'failed', 0)
+                failCount = getattr(j.status, "failed", 0)
                 if failCount is None:
                     # Make sure it is an int
                     failCount = 0
                 if failCount > 0:
                     # Take the first failed one you find
                     jobObject = j
-                    chosenFor = 'failed'
+                    chosenFor = "failed"
                     break
 
         if jobObject is None:
@@ -1515,23 +1664,30 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     continue
 
                 # Containers can get stuck in Waiting with reason ImagePullBackOff
-                if self._isPodStuckWaiting(pod, reason='ImagePullBackoff'):
+                if self._isPodStuckWaiting(pod, reason="ImagePullBackoff"):
                     # Assume it will never finish, even if the registry comes back or whatever.
                     # We can get into this state when we send in a non-existent image.
                     # See https://github.com/kubernetes/kubernetes/issues/58384
                     jobObject = j
-                    chosenFor = 'stuck'
-                    logger.warning('Failing stuck job (ImagePullBackoff); did you try to run a non-existent Docker image?'
-                                   ' Check TOIL_APPLIANCE_SELF.')
+                    chosenFor = "stuck"
+                    logger.warning(
+                        "Failing stuck job (ImagePullBackoff); did you try to run a non-existent Docker image?"
+                        " Check TOIL_APPLIANCE_SELF."
+                    )
                     break
 
                 # Containers can also get stuck in Waiting with reason
                 # ContainerCreating, if for example their mounts don't work.
-                if self._isPodStuckWaiting(pod, reason='ContainerCreating', timeout=self.pod_timeout):
+                if self._isPodStuckWaiting(
+                    pod, reason="ContainerCreating", timeout=self.pod_timeout
+                ):
                     # Assume that it will never finish.
                     jobObject = j
-                    chosenFor = 'stuck'
-                    logger.warning('Failing stuck job (ContainerCreating longer than %s seconds); did you try to mount something impossible?', self.pod_timeout)
+                    chosenFor = "stuck"
+                    logger.warning(
+                        "Failing stuck job (ContainerCreating longer than %s seconds); did you try to mount something impossible?",
+                        self.pod_timeout,
+                    )
                     break
 
                 # Pods can also get stuck nearly but not quite out of memory,
@@ -1541,7 +1697,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     # We found a job that probably should be OOM! Report it as stuck.
                     # Polling function takes care of the logging.
                     jobObject = j
-                    chosenFor = 'stuck'
+                    chosenFor = "stuck"
                     break
 
         if jobObject is None:
@@ -1549,25 +1705,30 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return None
         else:
             # We actually have something
-            logger.debug('Identified stopped Kubernetes job %s as %s', getattr(jobObject.metadata, 'name', None), chosenFor)
-
+            logger.debug(
+                "Identified stopped Kubernetes job %s as %s",
+                getattr(jobObject.metadata, "name", None),
+                chosenFor,
+            )
 
         # Otherwise we got something.
 
         # Work out what the job's ID was (whatever came after our name prefix)
         assert jobObject.metadata is not None
         assert jobObject.metadata.name is not None
-        jobID = int(jobObject.metadata.name[len(self.job_prefix):])
+        jobID = int(jobObject.metadata.name[len(self.job_prefix) :])
 
         # Grab the pod
         pod = self._getPodForJob(jobObject)
 
         if pod is not None:
-            if chosenFor == 'done' or chosenFor == 'failed':
+            if chosenFor == "done" or chosenFor == "failed":
                 # The job actually finished or failed
 
                 # Get the statuses of the pod's containers
-                containerStatuses = getattr(getattr(pod, 'status', None), 'container_statuses', None)
+                containerStatuses = getattr(
+                    getattr(pod, "status", None), "container_statuses", None
+                )
 
                 # Get when the pod started (reached the Kubelet) as a datetime
                 start_time = self._get_start_time(pod, jobObject)
@@ -1577,18 +1738,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     # This happens when a pod is "Scheduled". But how could a
                     # 'done' or 'failed' pod be merely "Scheduled"?
                     # Complain so we can find out.
-                    logger.warning('Exit code and runtime unavailable; pod has no container statuses')
-                    logger.warning('Pod: %s', str(pod))
+                    logger.warning(
+                        "Exit code and runtime unavailable; pod has no container statuses"
+                    )
+                    logger.warning("Pod: %s", str(pod))
                     exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                     # Say it stopped now and started when it was scheduled/submitted.
                     # We still need a strictly positive runtime.
                     runtime = slow_down((utc_now() - start_time).total_seconds())
                 else:
                     # Get the termination info from the pod's main (only) container
-                    terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
+                    terminatedInfo = getattr(
+                        getattr(containerStatuses[0], "state", None), "terminated", None
+                    )
                     if terminatedInfo is None:
-                        logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
-                        logger.warning('Pod: %s', str(pod))
+                        logger.warning(
+                            "Exit code and runtime unavailable; pod stopped without container terminating"
+                        )
+                        logger.warning("Pod: %s", str(pod))
                         exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                         # Say it stopped now and started when it was scheduled/submitted.
                         # We still need a strictly positive runtime.
@@ -1603,34 +1770,42 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                         # created. And we need to look at the pod's end time
                         # because the job only gets a completion time if
                         # successful.
-                        runtime = slow_down((terminatedInfo.finished_at -
-                                             start_time).total_seconds())
+                        runtime = slow_down(
+                            (terminatedInfo.finished_at - start_time).total_seconds()
+                        )
 
-                        if chosenFor == 'failed':
+                        if chosenFor == "failed":
                             # Warn the user with the failed pod's log
                             # TODO: cut this down somehow?
-                            logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
+                            logger.warning(
+                                "Log from failed pod: %s", self._getLogForPod(pod)
+                            )
 
             else:
                 # The job has gotten stuck
 
-                assert chosenFor == 'stuck'
+                assert chosenFor == "stuck"
 
                 # Synthesize an exit code
                 exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                 # Say it ran from when the job was submitted to when the pod got stuck
-                runtime = slow_down((utc_now() - self._get_start_time(job=jobObject)).total_seconds())
+                runtime = slow_down(
+                    (utc_now() - self._get_start_time(job=jobObject)).total_seconds()
+                )
         else:
             # The pod went away from under the job.
-            logging.warning('Exit code and runtime unavailable; pod vanished')
+            logging.warning("Exit code and runtime unavailable; pod vanished")
             exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
             # Say it ran from when the job was submitted to when the pod vanished
-            runtime = slow_down((utc_now() - self._get_start_time(job=jobObject)).total_seconds())
-
+            runtime = slow_down(
+                (utc_now() - self._get_start_time(job=jobObject)).total_seconds()
+            )
 
         try:
             # Delete the job and all dependents (pods), hoping to get a 404 if it's magically gone
-            self._delete_job(jobObject.metadata.name, propagation_policy='Foreground', gone_ok=True)
+            self._delete_job(
+                jobObject.metadata.name, propagation_policy="Foreground", gone_ok=True
+            )
 
             # That just kicks off the deletion process. Foreground doesn't
             # actually block. See
@@ -1646,7 +1821,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Otherwise everything is fine and the job is gone.
 
         # Return the one finished job we found
-        return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
+        return UpdatedBatchJobInfo(
+            jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None
+        )
 
     def _waitForJobDeath(self, jobName: str) -> None:
         """
@@ -1660,7 +1837,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         while True:
             try:
                 # Look for the job
-                job_object = self._api('batch', errors=[404]).read_namespaced_job(jobName, self.namespace)
+                job_object = self._api("batch", errors=[404]).read_namespaced_job(
+                    jobName, self.namespace
+                )
                 if self._is_deleted(job_object):
                     # The job looks deleted, so we can treat it as not being there.
                     return
@@ -1685,59 +1864,80 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown scheduling thread
         self._shutting_down.set()
         with self._work_available:
-            self._work_available.notify_all()   # Wake it up.
+            self._work_available.notify_all()  # Wake it up.
 
         self.schedulingThread.join()
 
         # Kill all of our jobs and clean up pods that are associated with those jobs
         try:
-            logger.debug('Deleting all Kubernetes jobs for toil_run=%s', self.run_id)
-            self._api('batch', errors=[404]).delete_collection_namespaced_job(
+            logger.debug("Deleting all Kubernetes jobs for toil_run=%s", self.run_id)
+            self._api("batch", errors=[404]).delete_collection_namespaced_job(
                 self.namespace,
                 label_selector=f"toil_run={self.run_id}",
-                propagation_policy='Background'
+                propagation_policy="Background",
             )
-            logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
+            logger.debug(
+                "Killed jobs with delete_collection_namespaced_job; cleaned up"
+            )
             # TODO: should we release all resources? We're shutting down so would it matter?
         except ApiException as e:
             if e.status != 404:
                 # Anything other than a 404 is weird here.
-                logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
+                logger.error(
+                    "Exception when calling BatchV1Api->delete_collection_namespaced_job: %s"
+                    % e
+                )
 
             # If batch delete fails, try to delete all remaining jobs individually.
-            logger.debug('Deleting Kubernetes jobs individually for toil_run=%s', self.run_id)
+            logger.debug(
+                "Deleting Kubernetes jobs individually for toil_run=%s", self.run_id
+            )
             for job_id in self._getIssuedNonLocalBatchJobIDs():
-                job_name = f'{self.job_prefix}{job_id}'
-                self._delete_job(job_name, propagation_policy='Background', resource_notify=False)
+                job_name = f"{self.job_prefix}{job_id}"
+                self._delete_job(
+                    job_name, propagation_policy="Background", resource_notify=False
+                )
 
             # Aggregate all pods and check if any pod has failed to cleanup or is orphaned.
             ourPods = self._ourPodObject()
 
             for pod in ourPods:
                 try:
-                    phase = getattr(pod.status, 'phase', None)
-                    if phase == 'Failed':
-                            logger.debug('Failed pod encountered at shutdown:\n%s', self._pretty_print(pod))
-                    if phase == 'Orphaned':
-                            logger.debug('Orphaned pod encountered at shutdown:\n%s', self._pretty_print(pod))
+                    phase = getattr(pod.status, "phase", None)
+                    if phase == "Failed":
+                        logger.debug(
+                            "Failed pod encountered at shutdown:\n%s",
+                            self._pretty_print(pod),
+                        )
+                    if phase == "Orphaned":
+                        logger.debug(
+                            "Orphaned pod encountered at shutdown:\n%s",
+                            self._pretty_print(pod),
+                        )
                 except:
                     # Don't get mad if that doesn't work.
                     pass
                 if pod.metadata is not None and pod.metadata.name is not None:
                     try:
-                        logger.debug('Cleaning up pod at shutdown: %s', pod.metadata.name)
-                        response = self._api('core', errors=[404]).delete_namespaced_pod(
+                        logger.debug(
+                            "Cleaning up pod at shutdown: %s", pod.metadata.name
+                        )
+                        response = self._api(
+                            "core", errors=[404]
+                        ).delete_namespaced_pod(
                             pod.metadata.name,
                             self.namespace,
-                            propagation_policy='Background'
+                            propagation_policy="Background",
                         )
                     except ApiException as e:
                         if e.status != 404:
                             # Anything other than a 404 is weird here.
-                            logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
+                            logger.error(
+                                "Exception when calling CoreV1Api->delete_namespaced_pod: %s"
+                                % e
+                            )
 
-
-    def _getIssuedNonLocalBatchJobIDs(self) -> List[int]:
+    def _getIssuedNonLocalBatchJobIDs(self) -> list[int]:
         """
         Get the issued batch job IDs that are not for local jobs.
         """
@@ -1749,29 +1949,35 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 jobIDs.append(self._getIDForOurJob(job))
         return jobIDs
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         # Make sure to send the local jobs and queued jobs also
         with self._mutex:
             queued_jobs = list(self._queued_job_ids)
-        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs()) + queued_jobs
+        return (
+            self._getIssuedNonLocalBatchJobIDs()
+            + list(self.getIssuedLocalJobIDs())
+            + queued_jobs
+        )
 
-    def _get_start_time(self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None) -> datetime.datetime:
+    def _get_start_time(
+        self, pod: Optional[V1Pod] = None, job: Optional[V1Job] = None
+    ) -> datetime.datetime:
         """
         Get an actual or estimated start time for a pod.
         """
 
         # Get when the pod started (reached the Kubelet) as a datetime
-        start_time = getattr(getattr(pod, 'status', None), 'start_time', None)
+        start_time = getattr(getattr(pod, "status", None), "start_time", None)
         if start_time is None:
             # If the pod never made it to the kubelet to get a
             # start_time, say it was when the job was submitted.
-            start_time = getattr(getattr(job, 'status', None), 'start_time', None)
+            start_time = getattr(getattr(job, "status", None), "start_time", None)
         if start_time is None:
             # If this is still unset, say it was just now.
             start_time = utc_now()
         return start_time
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObject():
@@ -1782,7 +1988,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 # Jobs whose pods are gone are not running
                 continue
 
-            if getattr(pod.status, 'phase', None) == 'Running':
+            if getattr(pod.status, "phase", None) == "Running":
                 # The job's pod is running
 
                 # Estimate the runtime
@@ -1794,7 +2000,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
 
-    def killBatchJobs(self, jobIDs: List[int]) -> None:
+    def killBatchJobs(self, jobIDs: list[int]) -> None:
 
         # Kill all the ones that are local
         self.killLocalJobs(jobIDs)
@@ -1803,7 +2009,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # First get the jobs we even issued non-locally
         issued_on_kubernetes = set(self._getIssuedNonLocalBatchJobIDs())
-        deleted_jobs: List[str] = []
+        deleted_jobs: list[str] = []
 
         for job_id in jobIDs:
             # For each job we are supposed to kill
@@ -1829,10 +2035,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
-            self._delete_job(job_name, propagation_policy='Foreground')
+            self._delete_job(job_name, propagation_policy="Foreground")
 
             deleted_jobs.append(job_name)
-            logger.debug('Killed job by request: %s', job_name)
+            logger.debug("Killed job by request: %s", job_name)
 
         for job_name in deleted_jobs:
             # Now we need to wait for all the jobs we killed to be gone.
@@ -1842,7 +2048,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # the potential deadlock (if the user code needs exclusive access to
             # a resource) onto the user code, instead of always hanging
             # whenever we can't certify that a faulty node is no longer running
-            # the user code. 
+            # the user code.
             self._waitForJobDeath(job_name)
 
     @classmethod
@@ -1853,9 +2059,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
-        acceptable_chars = set(string.ascii_lowercase + string.digits + '-.')
+        acceptable_chars = set(string.ascii_lowercase + string.digits + "-.")
 
-        return ''.join([c for c in get_user_name().lower() if c in acceptable_chars])[:100]
+        return "".join([c for c in get_user_name().lower() if c in acceptable_chars])[
+            :100
+        ]
 
     @runtime_checkable
     class KubernetesConfig(Protocol):
@@ -1867,38 +2075,66 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         have to let the fact that this also has to be a Config just be manually
         enforced.
         """
+
         kubernetes_host_path: Optional[str]
         kubernetes_owner: str
         kubernetes_service_account: Optional[str]
         kubernetes_pod_timeout: float
 
-
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--kubernetesHostPath", dest="kubernetes_host_path", default=None, env_var="TOIL_KUBERNETES_HOST_PATH",
-                            help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetesOwner", dest="kubernetes_owner", default=None, env_var="TOIL_KUBERNETES_OWNER",
-                            help=f"Username to mark Kubernetes jobs with. If the provided value is None, the value will "
-                                 f"be generated at runtime. "
-                                 f"(Generated default: {cls.get_default_kubernetes_owner()})")
-        parser.add_argument("--kubernetesServiceAccount", dest="kubernetes_service_account", default=None, env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
-                            help="Service account to run jobs as.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetesPodTimeout", dest="kubernetes_pod_timeout", default=120, env_var="TOIL_KUBERNETES_POD_TIMEOUT", type=float,
-                            help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
-                                 "(default: %(default)s)")
-        parser.add_argument("--kubernetesPrivileged", dest="kubernetes_privileged", default=False, env_var="TOIL_KUBERNETES_PRIVILEGED", type=opt_strtobool,
-                            help="Whether to ask worker pods to run in privileged mode. This should be used to access "
-                                 "privileged operations, such as FUSE. On Toil-managed clusters with --enableFuse, "
-                                 "this is set to True. (default: %(default)s)")
+        parser.add_argument(
+            "--kubernetesHostPath",
+            dest="kubernetes_host_path",
+            default=None,
+            env_var="TOIL_KUBERNETES_HOST_PATH",
+            help="Path on Kubernetes hosts to use as shared inter-pod temp directory.  "
+            "(default: %(default)s)",
+        )
+        parser.add_argument(
+            "--kubernetesOwner",
+            dest="kubernetes_owner",
+            default=None,
+            env_var="TOIL_KUBERNETES_OWNER",
+            help=f"Username to mark Kubernetes jobs with. If the provided value is None, the value will "
+            f"be generated at runtime. "
+            f"(Generated default: {cls.get_default_kubernetes_owner()})",
+        )
+        parser.add_argument(
+            "--kubernetesServiceAccount",
+            dest="kubernetes_service_account",
+            default=None,
+            env_var="TOIL_KUBERNETES_SERVICE_ACCOUNT",
+            help="Service account to run jobs as.  " "(default: %(default)s)",
+        )
+        parser.add_argument(
+            "--kubernetesPodTimeout",
+            dest="kubernetes_pod_timeout",
+            default=120,
+            env_var="TOIL_KUBERNETES_POD_TIMEOUT",
+            type=float,
+            help="Seconds to wait for a scheduled Kubernetes pod to start running.  "
+            "(default: %(default)s)",
+        )
+        parser.add_argument(
+            "--kubernetesPrivileged",
+            dest="kubernetes_privileged",
+            default=False,
+            env_var="TOIL_KUBERNETES_PRIVILEGED",
+            type=opt_strtobool,
+            help="Whether to ask worker pods to run in privileged mode. This should be used to access "
+            "privileged operations, such as FUSE. On Toil-managed clusters with --enableFuse, "
+            "this is set to True. (default: %(default)s)",
+        )
 
-    OptionType = TypeVar('OptionType')
+    OptionType = TypeVar("OptionType")
+
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         setOption("kubernetes_host_path")
         setOption("kubernetes_owner")
-        setOption("kubernetes_service_account",)
+        setOption(
+            "kubernetes_service_account",
+        )
         setOption("kubernetes_pod_timeout")
         setOption("kubernetes_privileged")
-

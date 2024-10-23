@@ -6,14 +6,16 @@ from toil.lib.io import mkdtemp
 
 
 def globalFileStoreJobFn(job):
-    job.log("The following example exercises all the methods provided "
-            "by the toil.fileStores.abstractFileStore.AbstractFileStore class")
+    job.log(
+        "The following example exercises all the methods provided "
+        "by the toil.fileStores.abstractFileStore.AbstractFileStore class"
+    )
 
     # Create a local temporary file.
     scratchFile = job.fileStore.getLocalTempFile()
 
     # Write something in the scratch file.
-    with open(scratchFile, 'w') as fH:
+    with open(scratchFile, "w") as fH:
         fH.write("What a tangled web we weave")
 
     # Write a copy of the file into the file-store; fileID is the key that can be used to retrieve the file.

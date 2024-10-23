@@ -20,6 +20,7 @@ from toil.test.src.jobTest import fn1Test
 
 class JobEncapsulationTest(ToilTest):
     """Tests testing the EncapsulationJob class."""
+
     def testEncapsulation(self):
         """
         Tests the Job.encapsulation method, which uses the EncapsulationJob
@@ -60,6 +61,7 @@ class JobEncapsulationTest(ToilTest):
 
 def noOp():
     pass
+
 
 def encapsulatedJobFn(job, string, outFile):
     a = job.addChildFn(fn1Test, string, outFile, name="inner-a")

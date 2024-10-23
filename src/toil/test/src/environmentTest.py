@@ -13,19 +13,18 @@
 # limitations under the License.
 import logging
 import os
-import sys
 import time
-
 from argparse import Namespace
 from threading import Thread
 from typing import Optional
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest, slow
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.test import ToilTest
 
 logger = logging.getLogger(__name__)
+
 
 class EnvironmentTest(ToilTest):
     """
@@ -36,31 +35,36 @@ class EnvironmentTest(ToilTest):
     should be sent through based on that, not base don the leader's current
     environment when the job is launched.
     """
-    
+
     def test_environment(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "DEBUG"
         options.retryCount = 0
 
         main(options)
-        
+
+
 def signal_leader(job):
     """
     Make a file in the file store that the leader can see.
     """
-    with job.fileStore.jobStore.write_shared_file_stream("jobstarted.txt", encoding="utf-8") as stream:
+    with job.fileStore.jobStore.write_shared_file_stream(
+        "jobstarted.txt", encoding="utf-8"
+    ) as stream:
         stream.write("Job has run")
-        
+
+
 def check_environment(job, try_name: str):
     """
     Fail if the test environment is wrong.
     """
-    
+
     job.fileStore.log_to_leader(f"Try {try_name} checking environment")
     value = os.environ["MAGIC_ENV_VAR_123"]
     job.fileStore.log_to_leader(f"Try {try_name} got: {value}")
     if value != "Value1":
         raise RuntimeError("Environment variable is wrong!")
+
 
 def wait_a_bit(job):
     """
@@ -68,18 +72,20 @@ def wait_a_bit(job):
     """
     time.sleep(10)
 
+
 def check_environment_repeatedly(job):
     """
     Toil job that checks the environment, waits, and checks it again, as
     separate invocations.
     """
-    
+
     signal = job.addChildJobFn(signal_leader)
     check1 = signal.addFollowOnJobFn(check_environment, "try1")
     waiter = check1.addFollowOnJobFn(wait_a_bit)
     check2 = waiter.addFollowOnJobFn(check_environment, "try2")
     # Add another one to make sure we don't chain
     check3 = waiter.addFollowOnJobFn(check_environment, "try3")
+
 
 def main(options: Optional[Namespace] = None):
     """
@@ -108,7 +114,9 @@ def main(options: Optional[Namespace] = None):
                 # Wait for the workflow to say it ran something
                 time.sleep(5)
                 try:
-                    with jobStore.read_shared_file_stream("jobstarted.txt", encoding="utf-8") as stream:
+                    with jobStore.read_shared_file_stream(
+                        "jobstarted.txt", encoding="utf-8"
+                    ) as stream:
                         logger.info("Got signal from job: %s", stream.read().strip())
                         break
                 except NoSuchFileException:
@@ -116,10 +124,12 @@ def main(options: Optional[Namespace] = None):
             # Change the environment variable
             logger.info("Changing environment variable")
             os.environ["MAGIC_ENV_VAR_123"] = "Value2"
+
         changer_thread = Thread(target=change_environment_later)
         changer_thread.start()
 
         toil.start(Job.wrapJobFn(check_environment_repeatedly))
+
 
 if __name__ == "__main__":
     main()
