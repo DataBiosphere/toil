@@ -51,14 +51,14 @@ class MesosExecutor(Executor):
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
-        log.debug('Preparing system for resource download')
+        log.debug("Preparing system for resource download")
         Resource.prepareSystem()
         self.address = None
         self.id = None
         # Setting this value at this point will ensure that the toil workflow directory will go to
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
-        if not os.getenv('TOIL_WORKDIR'):
-            os.environ['TOIL_WORKDIR'] = os.getcwd()
+        if not os.getenv("TOIL_WORKDIR"):
+            os.environ["TOIL_WORKDIR"] = os.getcwd()
 
     def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
@@ -66,11 +66,13 @@ class MesosExecutor(Executor):
         """
 
         # Get the ID we have been assigned, if we have it
-        self.id = executorInfo.executor_id.get('value', None)
+        self.id = executorInfo.executor_id.get("value", None)
 
         log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
-        nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver], daemon=True)
+        nodeInfoThread = threading.Thread(
+            target=self._sendFrameworkMessage, args=[driver], daemon=True
+        )
         nodeInfoThread.start()
 
     def reregistered(self, driver, agentInfo):
@@ -99,12 +101,12 @@ class MesosExecutor(Executor):
             os.killpg(pgid, signal.SIGKILL)
 
     def shutdown(self, driver):
-        log.critical('Shutting down executor ...')
+        log.critical("Shutting down executor ...")
         for taskId in list(self.runningTasks.keys()):
             self.killTask(driver, taskId)
         Resource.cleanSystem()
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
-        log.critical('... executor shut down.')
+        log.critical("... executor shut down.")
 
     def error(self, driver, message):
         """
@@ -123,13 +125,15 @@ class MesosExecutor(Executor):
                 message = Expando(address=self.address)
                 psutil.cpu_percent()
             else:
-                message.nodeInfo = dict(coresUsed=float(psutil.cpu_percent()) * .01,
-                                        memoryUsed=float(psutil.virtual_memory().percent) * .01,
-                                        coresTotal=cpu_count(),
-                                        memoryTotal=psutil.virtual_memory().total,
-                                        workers=len(self.runningTasks))
+                message.nodeInfo = dict(
+                    coresUsed=float(psutil.cpu_percent()) * 0.01,
+                    memoryUsed=float(psutil.virtual_memory().percent) * 0.01,
+                    coresTotal=cpu_count(),
+                    memoryTotal=psutil.virtual_memory().total,
+                    workers=len(self.runningTasks),
+                )
             log.debug("Send framework message: %s", message)
-            driver.sendFrameworkMessage(encode_data(repr(message).encode('utf-8')))
+            driver.sendFrameworkMessage(encode_data(repr(message).encode("utf-8")))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
             time.sleep(random.randint(45, 75))
 
@@ -144,16 +148,21 @@ class MesosExecutor(Executor):
 
             log.debug("Running task %s", task.task_id.value)
             startTime = time.time()
-            sendUpdate(task, 'TASK_RUNNING', wallTime=0)
+            sendUpdate(task, "TASK_RUNNING", wallTime=0)
 
             # try to unpickle the task
             try:
                 taskData = pickle.loads(decode_data(task.data))
             except:
                 exc_info = sys.exc_info()
-                log.error('Exception while unpickling task: ', exc_info=exc_info)
+                log.error("Exception while unpickling task: ", exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(task, 'TASK_FAILED', wallTime=0, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(
+                    task,
+                    "TASK_FAILED",
+                    wallTime=0,
+                    msg="".join(traceback.format_exception_only(exc_type, exc_value)),
+                )
                 return
 
             # This is where task.data is first invoked. Using this position to setup cleanupInfo
@@ -170,23 +179,27 @@ class MesosExecutor(Executor):
                     exitStatus = process.wait()
                     wallTime = time.time() - startTime
                     if 0 == exitStatus:
-                        sendUpdate(task, 'TASK_FINISHED', wallTime)
+                        sendUpdate(task, "TASK_FINISHED", wallTime)
                     elif -9 == exitStatus:
-                        sendUpdate(task, 'TASK_KILLED', wallTime)
+                        sendUpdate(task, "TASK_KILLED", wallTime)
                     else:
-                        sendUpdate(task, 'TASK_FAILED', wallTime, msg=str(exitStatus))
+                        sendUpdate(task, "TASK_FAILED", wallTime, msg=str(exitStatus))
                 finally:
                     del self.runningTasks[task.task_id.value]
             except:
                 wallTime = time.time() - startTime
                 exc_info = sys.exc_info()
-                log.error('Exception while running task:', exc_info=exc_info)
+                log.error("Exception while running task:", exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(task, 'TASK_FAILED', wallTime=wallTime, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(
+                    task,
+                    "TASK_FAILED",
+                    wallTime=wallTime,
+                    msg="".join(traceback.format_exception_only(exc_type, exc_value)),
+                )
 
             wallTime = time.time() - startTime
-            sendUpdate(task, 'TASK_FINISHED', wallTime)
-
+            sendUpdate(task, "TASK_FINISHED", wallTime)
 
         def runJob(job):
             """
@@ -200,13 +213,13 @@ class MesosExecutor(Executor):
             log.debug("Invoking command: '%s'", command)
             # Construct the job's environment
             jobEnv = dict(os.environ, **job.environment)
-            log.debug('Using environment variables: %s', jobEnv.keys())
+            log.debug("Using environment variables: %s", jobEnv.keys())
             with self.popenLock:
-                return subprocess.Popen(command,
-                                        preexec_fn=lambda: os.setpgrp(),
-                                        shell=True, env=jobEnv)
+                return subprocess.Popen(
+                    command, preexec_fn=lambda: os.setpgrp(), shell=True, env=jobEnv
+                )
 
-        def sendUpdate(task, taskState, wallTime, msg=''):
+        def sendUpdate(task, taskState, wallTime, msg=""):
             update = addict.Dict()
             update.task_id.value = task.task_id.value
             if self.id is not None:
@@ -217,7 +230,7 @@ class MesosExecutor(Executor):
 
             # Add wallTime as a label.
             labels = addict.Dict()
-            labels.labels = [{'key': 'wallTime', 'value': str(wallTime)}]
+            labels.labels = [{"key": "wallTime", "value": str(wallTime)}]
             update.labels = labels
 
             driver.sendStatusUpdate(update)
@@ -239,34 +252,48 @@ def main():
     if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
         # fake one to maybe convince the executor driver to work.
-        os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
-        log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
+        os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get(
+            "MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051"
+        )
+        log.warning(
+            "Had to fake MESOS_AGENT_ENDPOINT as %s"
+            % os.environ["MESOS_AGENT_ENDPOINT"]
+        )
 
     # must be set manually to enable toggling of the mesos log level for debugging jenkins
     # may be useful: https://github.com/DataBiosphere/toil/pull/2338#discussion_r223854931
     if False:
         try:
-            urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
+            urlopen(
+                "http://%s/logging/toggle?level=1&duration=15mins"
+                % os.environ["MESOS_AGENT_ENDPOINT"]
+            ).read()
             log.debug("Toggled agent log level")
         except Exception:
             log.debug("Failed to toggle agent log level")
 
     # Parse the agent state
-    agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
-    if 'completed_frameworks' in agent_state:
+    agent_state = json.loads(
+        urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
+    )
+    if "completed_frameworks" in agent_state:
         # Drop the completed frameworks which grow over time
-        del agent_state['completed_frameworks']
+        del agent_state["completed_frameworks"]
     log.debug("Agent state: %s", str(agent_state))
 
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
 
-    if os.path.exists('/sys/fs/cgroup/memory'):
+    if os.path.exists("/sys/fs/cgroup/memory"):
         # Mesos can limit memory with a cgroup, so we should report on that.
-        for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
+        for dirpath, dirnames, filenames in os.walk(
+            "/sys/fs/cgroup/memory", followlinks=True
+        ):
             for filename in filenames:
-                if 'limit_in_bytes' not in filename:
+                if "limit_in_bytes" not in filename:
                     continue
-                log.debug('cgroup memory info from %s:' % os.path.join(dirpath, filename))
+                log.debug(
+                    "cgroup memory info from %s:" % os.path.join(dirpath, filename)
+                )
                 try:
                     for line in open(os.path.join(dirpath, filename)):
                         log.debug(line.rstrip())
@@ -275,14 +302,13 @@ def main():
 
     # Mesos can also impose rlimit limits, including on things that really
     # ought to not be limited, like virtual address space size.
-    log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
-    log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
-    log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
-    log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
-
+    log.debug("DATA rlimit: %s", str(resource.getrlimit(resource.RLIMIT_DATA)))
+    log.debug("STACK rlimit: %s", str(resource.getrlimit(resource.RLIMIT_STACK)))
+    log.debug("RSS rlimit: %s", str(resource.getrlimit(resource.RLIMIT_RSS)))
+    log.debug("AS rlimit: %s", str(resource.getrlimit(resource.RLIMIT_AS)))
 
     executor = MesosExecutor()
-    log.debug('Made executor')
+    log.debug("Made executor")
     driver = MesosExecutorDriver(executor, use_addict=True)
 
     old_on_event = driver.on_event
@@ -296,13 +322,15 @@ def main():
 
     driver.on_event = patched_on_event
 
-    log.debug('Made driver')
+    log.debug("Made driver")
     driver.start()
-    log.debug('Started driver')
+    log.debug("Started driver")
     driver_result = driver.join()
-    log.debug('Joined driver')
+    log.debug("Joined driver")
 
     # Tolerate a None in addition to the code the docs suggest we should receive from join()
-    exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
+    exit_value = (
+        0 if (driver_result is None or driver_result == "DRIVER_STOPPED") else 1
+    )
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)

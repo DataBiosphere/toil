@@ -47,23 +47,23 @@ class LocalThrottle:
         configured minimum interval has passed since the last time this method returned True in
         the current thread) or False otherwise.
         """
-        now = time.time( )
+        now = time.time()
         last_invocation = self.per_thread.last_invocation
         if last_invocation is not None:
             interval = now - last_invocation
             if interval < self.min_interval:
                 if wait:
                     remainder = self.min_interval - interval
-                    time.sleep( remainder )
+                    time.sleep(remainder)
                 else:
                     return False
         self.per_thread.last_invocation = now
         return True
 
-    def __call__( self, function ):
-        def wrapper( *args, **kwargs ):
-            self.throttle( )
-            return function( *args, **kwargs )
+    def __call__(self, function):
+        def wrapper(*args, **kwargs):
+            self.throttle()
+            return function(*args, **kwargs)
 
         return wrapper
 
@@ -146,18 +146,19 @@ class throttle:
     def __init__(self, min_interval: Union[int, float]) -> None:
         self.min_interval = min_interval
 
-    def __enter__( self ):
-        self.start = time.time( )
+    def __enter__(self):
+        self.start = time.time()
 
-    def __exit__( self, exc_type, exc_val, exc_tb ):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type is None:
-            duration = time.time( ) - self.start
+            duration = time.time() - self.start
             remainder = self.min_interval - duration
             if remainder > 0:
-                time.sleep( remainder )
+                time.sleep(remainder)
 
-    def __call__( self, function ):
-        def wrapper( *args, **kwargs ):
+    def __call__(self, function):
+        def wrapper(*args, **kwargs):
             with self:
-                return function( *args, **kwargs )
+                return function(*args, **kwargs)
+
         return wrapper
