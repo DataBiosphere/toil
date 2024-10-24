@@ -20,10 +20,7 @@ from uuid import uuid4
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
-from toil.lib.io import (AtomicFileCreate,
-                         atomic_install,
-                         atomic_tmp_file,
-                         mkdtemp)
+from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file, mkdtemp
 from toil.lib.misc import CalledProcessErrorStderr, call_command
 from toil.test import ToilTest, slow
 
@@ -36,6 +33,7 @@ class MiscTests(ToilTest):
     This class contains miscellaneous tests that don't have enough content to be their own test
     file, and that don't logically fit in with any of the other test suites.
     """
+
     def setUp(self):
         super().setUp()
         self.testDir = self._createTempDir()
@@ -49,14 +47,14 @@ class MiscTests(ToilTest):
 
     @slow
     def testGetSizeOfDirectoryWorks(self):
-        '''A test to make sure toil.common.getDirSizeRecursively does not
+        """A test to make sure toil.common.getDirSizeRecursively does not
         underestimate the amount of disk space needed.
 
         Disk space allocation varies from system to system.  The computed value
         should always be equal to or slightly greater than the creation value.
         This test generates a number of random directories and randomly sized
         files to test this using getDirSizeRecursively.
-        '''
+        """
         from toil.common import getDirSizeRecursively
 
         # a list of the directories used in the test
@@ -64,17 +62,17 @@ class MiscTests(ToilTest):
         # A dict of {FILENAME: FILESIZE} for all files used in the test
         files = {}
         # Create a random directory structure
-        for i in range(0,10):
-            directories.append(mkdtemp(dir=random.choice(directories), prefix='test'))
+        for i in range(0, 10):
+            directories.append(mkdtemp(dir=random.choice(directories), prefix="test"))
         # Create 50 random file entries in different locations in the directories. 75% of the time
         # these are fresh files of size [1, 10] MB and 25% of the time they are hard links to old
         # files.
         while len(files) <= 50:
             fileName = os.path.join(random.choice(directories), self._getRandomName())
-            if random.randint(0,100) < 75:
+            if random.randint(0, 100) < 75:
                 # Create a fresh file in the range of 1-10 MB
                 fileSize = int(round(random.random(), 2) * 10 * 1024 * 1024)
-                with open(fileName, 'wb') as fileHandle:
+                with open(fileName, "wb") as fileHandle:
                     fileHandle.write(os.urandom(fileSize))
                 files[fileName] = fileSize
             else:
@@ -83,7 +81,7 @@ class MiscTests(ToilTest):
                     continue
                 linkSrc = random.choice(list(files.keys()))
                 os.link(linkSrc, fileName)
-                files[fileName] = 'Link to %s' % linkSrc
+                files[fileName] = "Link to %s" % linkSrc
 
         computedDirectorySize = getDirSizeRecursively(self.testDir)
         totalExpectedSize = sum(x for x in list(files.values()) if isinstance(x, int))
@@ -101,7 +99,7 @@ class MiscTests(ToilTest):
 
     def _write_test_file(self, outf_tmp):
         with open(outf_tmp, "w") as fh:
-            fh.write(self.id() + '\n')
+            fh.write(self.id() + "\n")
 
     def test_atomic_install(self):
         outf = self._get_test_out_file(".foo.gz")
@@ -111,7 +109,7 @@ class MiscTests(ToilTest):
         self.assertTrue(os.path.exists(outf))
 
     def test_atomic_install_dev(self):
-        devn = '/dev/null'
+        devn = "/dev/null"
         tmp = atomic_tmp_file(devn)
         self.assertEqual(tmp, devn)
         atomic_install(tmp, devn)
@@ -138,9 +136,12 @@ class MiscTests(ToilTest):
         self.assertTrue(isinstance(o, str), str(type(o)))
 
     def test_call_command_err(self):
-        with self.assertRaisesRegex(CalledProcessErrorStderr,
-                                     "^Command '\\['cat', '/dev/Frankenheimer']' exit status 1: cat: /dev/Frankenheimer: No such file or directory\n$"):
+        with self.assertRaisesRegex(
+            CalledProcessErrorStderr,
+            "^Command '\\['cat', '/dev/Frankenheimer']' exit status 1: cat: /dev/Frankenheimer: No such file or directory\n$",
+        ):
             call_command(["cat", "/dev/Frankenheimer"])
+
 
 class TestPanic(ToilTest):
     def test_panic_by_hand(self):
@@ -192,7 +193,7 @@ class TestPanic(ToilTest):
             self.line_of_primary_exc = inspect.currentframe().f_lineno + 1
             raise ValueError("primary")
         except:
-            with panic( log ):
+            with panic(log):
                 raise RuntimeError("secondary")
 
     def try_and_nested_panic_with_secondary(self):
@@ -200,8 +201,8 @@ class TestPanic(ToilTest):
             self.line_of_primary_exc = inspect.currentframe().f_lineno + 1
             raise ValueError("primary")
         except:
-            with panic( log ):
-                with panic( log ):
+            with panic(log):
+                with panic(log):
                     raise RuntimeError("secondary")
 
     def __assert_raised_exception_is_primary(self):

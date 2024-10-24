@@ -20,16 +20,21 @@ from toil.statsAndLogging import set_logging_from_options
 
 logger = logging.getLogger(__name__)
 
+
 def main() -> None:
-    parser = parser_with_common_options(provisioner_options=True, jobstore_option=False, prog="toil destroy-cluster")
+    parser = parser_with_common_options(
+        provisioner_options=True, jobstore_option=False, prog="toil destroy-cluster"
+    )
     options = parser.parse_args()
     set_logging_from_options(options)
 
-    logger.info('Destroying cluster %s', options.clusterName)
+    logger.info("Destroying cluster %s", options.clusterName)
 
-    cluster = cluster_factory(provisioner=options.provisioner,
-                              clusterName=options.clusterName,
-                              zone=options.zone)
+    cluster = cluster_factory(
+        provisioner=options.provisioner,
+        clusterName=options.clusterName,
+        zone=options.zone,
+    )
     cluster.destroyCluster()
 
-    logger.info('Cluster %s is now gone.', options.clusterName)
+    logger.info("Cluster %s is now gone.", options.clusterName)

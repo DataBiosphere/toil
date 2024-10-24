@@ -18,7 +18,7 @@ import math
 import sys
 from argparse import ArgumentParser, Namespace
 from functools import partial
-from typing import Any, Callable, Dict, List, Optional, TextIO, Union
+from typing import Any, Callable, Optional, TextIO, Union
 
 from toil.common import Config, Toil, parser_with_common_options
 from toil.job import Job
@@ -37,7 +37,7 @@ CATEGORY_UNITS = {
     "clock": "core-s",
     "wait": "core-s",
     "memory": "KiB",
-    "disk": "B"
+    "disk": "B",
 }
 # These are what we call them to the user
 TITLES = {
@@ -45,7 +45,7 @@ TITLES = {
     "clock": "CPU Time",
     "wait": "CPU Wait",
     "memory": "Memory",
-    "disk": "Disk"
+    "disk": "Disk",
 }
 
 # Of those, these are in time
@@ -65,6 +65,7 @@ LONG_FORMS = {
     "max": "max",
 }
 
+
 class ColumnWidths:
     """
     Convenience object that stores the width of columns for printing. Helps make things pretty.
@@ -74,7 +75,7 @@ class ColumnWidths:
         self.categories = CATEGORIES
         self.fields_count = ["count", "min", "med", "ave", "max", "total"]
         self.fields = ["min", "med", "ave", "max", "total"]
-        self.data: Dict[str, int] = {}
+        self.data: dict[str, int] = {}
         for category in self.categories:
             for field in self.fields_count:
                 self.set_width(category, field, 8)
@@ -110,21 +111,27 @@ def pretty_space(k: float, field: Optional[int] = None, alone: bool = False) -> 
     # If we don't have a header to say bytes, include the B.
     trailer = "B" if alone else ""
     if k < 1024:
-        return pad_str("%gKi%s" % (k, trailer), field)
+        return pad_str("{:g}Ki{}".format(k, trailer), field)
     if k < (1024 * 1024):
-        return pad_str("%.1fMi%s" % (k / 1024.0, trailer), field)
+        return pad_str("{:.1f}Mi{}".format(k / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024):
-        return pad_str("%.1fGi%s" % (k / 1024.0 / 1024.0, trailer), field)
+        return pad_str("{:.1f}Gi{}".format(k / 1024.0 / 1024.0, trailer), field)
     if k < (1024 * 1024 * 1024 * 1024):
-        return pad_str("%.1fTi%s" % (k / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str(
+            "{:.1f}Ti{}".format(k / 1024.0 / 1024.0 / 1024.0, trailer), field
+        )
     if k < (1024 * 1024 * 1024 * 1024 * 1024):
-        return pad_str("%.1fPi%s" % (k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field)
+        return pad_str(
+            "{:.1f}Pi{}".format(k / 1024.0 / 1024.0 / 1024.0 / 1024.0, trailer), field
+        )
 
     # due to https://stackoverflow.com/questions/47149154
     assert False
 
 
-def pretty_time(t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
+def pretty_time(
+    t: float, field: Optional[int] = None, unit: str = "s", alone: bool = False
+) -> str:
     """
     Given input t as seconds, return a nicely formatted string.
     """
@@ -170,7 +177,10 @@ def pretty_time(t: float, field: Optional[int] = None, unit: str = "s", alone: b
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
-    return pad_str("%dweek%s%dday%s%dh%dm%d%s" % (w, wPlural, d, dPlural, h, m, s, unit_str), field)
+    return pad_str(
+        "%dweek%s%dday%s%dh%dm%d%s" % (w, wPlural, d, dPlural, h, m, s, unit_str), field
+    )
+
 
 def report_unit(unit: str) -> str:
     """
@@ -180,7 +190,14 @@ def report_unit(unit: str) -> str:
         return "core·s"
     return unit
 
-def report_time(t: float, options: Namespace, field: Optional[int] = None, unit: str = "s", alone: bool = False) -> str:
+
+def report_time(
+    t: float,
+    options: Namespace,
+    field: Optional[int] = None,
+    unit: str = "s",
+    alone: bool = False,
+) -> str:
     """Given t seconds, report back the correct format as string."""
     assert unit in ("s", "core-s")
     if options.pretty:
@@ -189,11 +206,15 @@ def report_time(t: float, options: Namespace, field: Optional[int] = None, unit:
     if field is not None:
         assert field >= len(unit_text)
         return "%*.2f%s" % (field - len(unit_text), t, unit_text)
-    return "%.2f%s" % (t, unit_text)
+    return "{:.2f}{}".format(t, unit_text)
 
 
 def report_space(
-        k: float, options: Namespace, field: Optional[int] = None, unit: str = "KiB", alone: bool = False
+    k: float,
+    options: Namespace,
+    field: Optional[int] = None,
+    unit: str = "KiB",
+    alone: bool = False,
 ) -> str:
     """
     Given k kibibytes, report back the correct format as string.
@@ -216,10 +237,12 @@ def report_space(
             return "%d%s" % (int(k), trailer)
 
 
-def report_number(n: Union[int, float, None], field: Optional[int] = None, nan_value: str = "NaN") -> str:
+def report_number(
+    n: Union[int, float, None], field: Optional[int] = None, nan_value: str = "NaN"
+) -> str:
     """
     Given a number, report back the correct format as string.
-    
+
     If it is a NaN or None, use nan_value to represent it instead.
     """
     if n is None or math.isnan(n):
@@ -229,7 +252,14 @@ def report_number(n: Union[int, float, None], field: Optional[int] = None, nan_v
         # leave room for . and the spacing to the previous field.
         return "%*.*g" % (field, field - 2, n) if field else "%g" % n
 
-def report(v: float, category: str, options: Namespace, field: Optional[int] = None, alone=False) -> str:
+
+def report(
+    v: float,
+    category: str,
+    options: Namespace,
+    field: Optional[int] = None,
+    alone=False,
+) -> str:
     """
     Report a value of the given category formatted as a string.
 
@@ -247,6 +277,7 @@ def report(v: float, category: str, options: Namespace, field: Optional[int] = N
         return report_space(v, options, field=field, unit=unit, alone=alone)
     else:
         raise ValueError(f"Unimplemented unit {unit} for category {category}")
+
 
 def sprint_tag(
     key: str,
@@ -365,15 +396,15 @@ def get(tree: Expando, name: str) -> float:
         return float("nan")
 
 
-def sort_jobs(jobTypes: List[Any], options: Namespace) -> List[Any]:
+def sort_jobs(jobTypes: list[Any], options: Namespace) -> list[Any]:
     """Return a jobTypes all sorted."""
     sortField = LONG_FORMS[options.sortField]
-    if (
-        options.sortCategory in CATEGORIES
-    ):
+    if options.sortCategory in CATEGORIES:
         return sorted(
             jobTypes,
-            key=lambda tag: getattr(tag, "%s_%s" % (sortField, options.sortCategory)),
+            key=lambda tag: getattr(
+                tag, "{}_{}".format(sortField, options.sortCategory)
+            ),
             reverse=options.sort == "decending",
         )
     elif options.sortCategory == "alpha":
@@ -397,7 +428,7 @@ def report_pretty_data(
     root: Expando,
     worker: Expando,
     job: Expando,
-    job_types: List[Any],
+    job_types: list[Any],
     options: Namespace,
 ) -> str:
     """Print the important bits out."""
@@ -426,7 +457,7 @@ def report_pretty_data(
 
 
 def compute_column_widths(
-    job_types: List[Any], worker: Expando, job: Expando, options: Namespace
+    job_types: list[Any], worker: Expando, job: Expando, options: Namespace
 ) -> ColumnWidths:
     """Return a ColumnWidths() object with the correct max widths."""
     cw = ColumnWidths()
@@ -451,12 +482,14 @@ def update_column_widths(tag: Expando, cw: ColumnWidths, options: Namespace) -> 
                     cw.set_width(category, field, len(s) + 1)
 
 
-def build_element(element: Expando, items: List[Job], item_name: str, defaults: Dict[str, float]) -> Expando:
+def build_element(
+    element: Expando, items: list[Job], item_name: str, defaults: dict[str, float]
+) -> Expando:
     """Create an element for output."""
 
     def assertNonnegative(i: float, name: str) -> float:
         if i < 0:
-            raise RuntimeError("Negative value %s reported for %s" % (i, name))
+            raise RuntimeError("Negative value {} reported for {}".format(i, name))
         else:
             return float(i)
 
@@ -470,12 +503,17 @@ def build_element(element: Expando, items: List[Job], item_name: str, defaults: 
             if category in COMPUTED_CATEGORIES:
                 continue
             category_key = category if category != "cores" else "requested_cores"
-            category_value = assertNonnegative(float(item.get(category_key, defaults[category])), category)
+            category_value = assertNonnegative(
+                float(item.get(category_key, defaults[category])), category
+            )
             values.append(category_value)
 
     for index in range(0, len(item_values[CATEGORIES[0]])):
         # For each item, compute the computed categories
-        item_values["wait"].append(item_values["time"][index] * item_values["cores"][index] - item_values["clock"][index])
+        item_values["wait"].append(
+            item_values["time"][index] * item_values["cores"][index]
+            - item_values["clock"][index]
+        )
 
     for category, values in item_values.items():
         values.sort()
@@ -485,10 +523,7 @@ def build_element(element: Expando, items: List[Job], item_name: str, defaults: 
         for k, v in item_values.items():
             v.append(0)
 
-    item_element = Expando(
-        total_number=float(len(items)),
-        name=item_name
-    )
+    item_element = Expando(total_number=float(len(items)), name=item_name)
 
     for category, values in item_values.items():
         item_element["total_" + category] = float(sum(values))
@@ -504,7 +539,7 @@ def build_element(element: Expando, items: List[Job], item_name: str, defaults: 
 
 def create_summary(
     element: Expando,
-    containingItems: List[Expando],
+    containingItems: list[Expando],
     containingItemName: str,
     count_contained: Callable[[Expando], int],
 ) -> None:
@@ -599,7 +634,7 @@ def process_data(config: Config, stats: Expando) -> Expando:
         build_element(collatedStatsTag, jobs, "jobs", defaults),
         getattr(stats, "workers", []),
         "worker",
-        lambda worker: getattr(worker, "jobs_run", 0)
+        lambda worker: getattr(worker, "jobs_run", 0),
     )
     # Get info for each job
     jobNames = set()
@@ -684,7 +719,9 @@ def main() -> None:
 
     for c in options.categories.split(","):
         if c.strip().lower() not in CATEGORIES:
-            logger.critical("Cannot use category %s, options are: %s", c.strip().lower(), CATEGORIES)
+            logger.critical(
+                "Cannot use category %s, options are: %s", c.strip().lower(), CATEGORIES
+            )
             sys.exit(1)
     options.categories = [x.strip().lower() for x in options.categories.split(",")]
 
@@ -696,7 +733,9 @@ def main() -> None:
     except NoSuchJobStoreException:
         logger.critical("The job store %s does not exist", config.jobStore)
         sys.exit(1)
-    logger.info('Gathering stats from jobstore... depending on the number of jobs, this may take a while (e.g. 10 jobs ~= 3 seconds; 100,000 jobs ~= 3,000 seconds or 50 minutes).')
+    logger.info(
+        "Gathering stats from jobstore... depending on the number of jobs, this may take a while (e.g. 10 jobs ~= 3 seconds; 100,000 jobs ~= 3,000 seconds or 50 minutes)."
+    )
     stats = get_stats(jobStore)
     collatedStatsTag = process_data(jobStore.config, stats)
     report_data(collatedStatsTag, options)

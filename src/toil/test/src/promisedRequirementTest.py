@@ -32,46 +32,77 @@ class hidden:
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class AbstractPromisedRequirementsTest(batchSystemTest.hidden.AbstractBatchSystemJobTest):
+    class AbstractPromisedRequirementsTest(
+        batchSystemTest.hidden.AbstractBatchSystemJobTest
+    ):
         """An abstract base class for testing Toil workflows with promised requirements."""
+
         @slow
         def testConcurrencyDynamic(self):
             """
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
             """
             for coresPerJob in self.allocatedCores:
-                log.debug('Testing %d cores per job with CPU count %d', coresPerJob, self.cpuCount)
-                tempDir = self._createTempDir('testFiles')
+                log.debug(
+                    "Testing %d cores per job with CPU count %d",
+                    coresPerJob,
+                    self.cpuCount,
+                )
+                tempDir = self._createTempDir("testFiles")
                 counterPath = self.getCounterPath(tempDir)
 
-                root = Job.wrapJobFn(maxConcurrency, self.cpuCount, counterPath, coresPerJob,
-                                     cores=1, memory='1M', disk='1M')
+                root = Job.wrapJobFn(
+                    maxConcurrency,
+                    self.cpuCount,
+                    counterPath,
+                    coresPerJob,
+                    cores=1,
+                    memory="1M",
+                    disk="1M",
+                )
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
                 self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
 
         @slow
-        @retry_flaky_test(prepare=[batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
-                                   batchSystemTest.hidden.AbstractBatchSystemJobTest.setUp])
+        @retry_flaky_test(
+            prepare=[
+                batchSystemTest.hidden.AbstractBatchSystemJobTest.tearDown,
+                batchSystemTest.hidden.AbstractBatchSystemJobTest.setUp,
+            ]
+        )
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
             """
             for coresPerJob in self.allocatedCores:
-                log.debug('Testing %d cores per job with CPU count %d', coresPerJob, self.cpuCount)
-                tempDir = self._createTempDir('testFiles')
+                log.debug(
+                    "Testing %d cores per job with CPU count %d",
+                    coresPerJob,
+                    self.cpuCount,
+                )
+                tempDir = self._createTempDir("testFiles")
                 counterPath = self.getCounterPath(tempDir)
 
                 root = Job()
-                one = Job.wrapFn(getOne, cores=0.1, memory='32M', disk='1M')
-                thirtyTwoMb = Job.wrapFn(getThirtyTwoMb, cores=0.1, memory='32M', disk='1M')
+                one = Job.wrapFn(getOne, cores=0.1, memory="32M", disk="1M")
+                thirtyTwoMb = Job.wrapFn(
+                    getThirtyTwoMb, cores=0.1, memory="32M", disk="1M"
+                )
                 root.addChild(one)
                 root.addChild(thirtyTwoMb)
                 for _ in range(self.cpuCount):
-                    root.addFollowOn(Job.wrapFn(batchSystemTest.measureConcurrency, counterPath,
-                                                cores=PromisedRequirement(lambda x: x * coresPerJob, one.rv()),
-                                                memory=PromisedRequirement(thirtyTwoMb.rv()),
-                                                disk='1M'))
+                    root.addFollowOn(
+                        Job.wrapFn(
+                            batchSystemTest.measureConcurrency,
+                            counterPath,
+                            cores=PromisedRequirement(
+                                lambda x: x * coresPerJob, one.rv()
+                            ),
+                            memory=PromisedRequirement(thirtyTwoMb.rv()),
+                            disk="1M",
+                        )
+                    )
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
                 self.assertLessEqual(maxValue, self.cpuCount // coresPerJob)
@@ -90,7 +121,7 @@ class hidden:
             :param str tempDir: path to test directory
             :return: path to counter file
             """
-            counterPath = os.path.join(tempDir, 'counter')
+            counterPath = os.path.join(tempDir, "counter")
             batchSystemTest.resetCounters(counterPath)
             minValue, maxValue = batchSystemTest.getCounters(counterPath)
             assert (minValue, maxValue) == (0, 0)
@@ -108,13 +139,19 @@ class hidden:
             file2 = 512
             F1 = Job.wrapJobFn(_writer, file1)
             F2 = Job.wrapJobFn(_writer, file2)
-            G = Job.wrapJobFn(_follower, file1 + file2,
-                              disk=PromisedRequirement(lambda x, y: x.size + y.size,
-                                                       F1.rv(), F2.rv()))
+            G = Job.wrapJobFn(
+                _follower,
+                file1 + file2,
+                disk=PromisedRequirement(
+                    lambda x, y: x.size + y.size, F1.rv(), F2.rv()
+                ),
+            )
             F1.addChild(F2)
             F2.addChild(G)
 
-            Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
+            Job.Runner.startToil(
+                F1, self.getOptions(self._createTempDir("testFiles"), caching=caching)
+            )
 
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
@@ -124,14 +161,18 @@ class hidden:
             """
             Checks for a race condition when using promised requirements and child job functions.
             """
-            A = Job.wrapJobFn(logDiskUsage, 'A', sleep=5, disk=PromisedRequirement(1024))
-            B = Job.wrapJobFn(logDiskUsage, 'B', disk=PromisedRequirement(lambda x: x + 1024, A.rv()))
+            A = Job.wrapJobFn(
+                logDiskUsage, "A", sleep=5, disk=PromisedRequirement(1024)
+            )
+            B = Job.wrapJobFn(
+                logDiskUsage, "B", disk=PromisedRequirement(lambda x: x + 1024, A.rv())
+            )
             A.addChild(B)
-            Job.Runner.startToil(A, self.getOptions(self._createTempDir('testFiles')))
+            Job.Runner.startToil(A, self.getOptions(self._createTempDir("testFiles")))
 
 
 def _writer(job, fileSize):
-    '''
+    """
     Write a local file and return the FileID obtained from running writeGlobalFile on
     it.
 
@@ -139,8 +180,8 @@ def _writer(job, fileSize):
     :param int fileSize: Size of the file in bytes
     :returns: the result of writeGlobalFile on a locally created file
     :rtype: job.FileID
-    '''
-    with open(job.fileStore.getLocalTempFileName(), 'wb') as fH:
+    """
+    with open(job.fileStore.getLocalTempFileName(), "wb") as fH:
         fH.write(os.urandom(fileSize))
     return job.fileStore.writeGlobalFile(fH.name)
 
@@ -166,15 +207,18 @@ def maxConcurrency(job, cpuCount, filename, coresPerJob):
     :param int coresPerJob: number of cores assigned to each job
     :return int max concurrency value:
     """
-    one = job.addChildFn(getOne, cores=0.1, memory='32M', disk='1M')
-    thirtyTwoMb = job.addChildFn(getThirtyTwoMb, cores=0.1, memory='32M', disk='1M')
+    one = job.addChildFn(getOne, cores=0.1, memory="32M", disk="1M")
+    thirtyTwoMb = job.addChildFn(getThirtyTwoMb, cores=0.1, memory="32M", disk="1M")
 
     values = []
     for _ in range(cpuCount):
-        value = job.addFollowOnFn(batchSystemTest.measureConcurrency, filename,
-                                  cores=PromisedRequirement(lambda x: x * coresPerJob, one.rv()),
-                                  memory=PromisedRequirement(thirtyTwoMb.rv()),
-                                  disk='1M').rv()
+        value = job.addFollowOnFn(
+            batchSystemTest.measureConcurrency,
+            filename,
+            cores=PromisedRequirement(lambda x: x * coresPerJob, one.rv()),
+            memory=PromisedRequirement(thirtyTwoMb.rv()),
+            disk="1M",
+        ).rv()
         values.append(value)
     return values
 
@@ -184,7 +228,7 @@ def getOne():
 
 
 def getThirtyTwoMb():
-    return '32M'
+    return "32M"
 
 
 def logDiskUsage(job, funcName, sleep=0):
@@ -194,7 +238,7 @@ def logDiskUsage(job, funcName, sleep=0):
     :return: job function's disk usage
     """
     diskUsage = job.disk
-    job.fileStore.log_to_leader(f'{funcName}: {diskUsage}')
+    job.fileStore.log_to_leader(f"{funcName}: {diskUsage}")
     time.sleep(sleep)
     return diskUsage
 
@@ -212,14 +256,16 @@ class SingleMachinePromisedRequirementsTest(hidden.AbstractPromisedRequirementsT
 
 
 @needs_mesos
-class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, MesosTestSupport):
+class MesosPromisedRequirementsTest(
+    hidden.AbstractPromisedRequirementsTest, MesosTestSupport
+):
     """
     Tests against the Mesos batch system
     """
 
     def getOptions(self, tempDir, caching=True):
         options = super().getOptions(tempDir, caching=caching)
-        options.mesos_endpoint = 'localhost:5050'
+        options.mesos_endpoint = "localhost:5050"
         return options
 
     def getBatchSystemName(self):

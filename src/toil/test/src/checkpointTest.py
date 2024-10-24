@@ -63,8 +63,10 @@ class CheckpointTest(ToilTest):
         except FailedJobsException:
             self.fail("Checkpointed workflow restart doesn't clean failures.")
 
+
 class CheckRetryCount(Job):
     """Fail N times, succeed on the next try."""
+
     def __init__(self, numFailuresBeforeSuccess):
         super().__init__(checkpoint=True)
         self.numFailuresBeforeSuccess = numFailuresBeforeSuccess
@@ -73,11 +75,11 @@ class CheckRetryCount(Job):
         """Mark a retry in the fileStore, and return the number of retries so far."""
         try:
             with fileStore.jobStore.read_shared_file_stream("checkpointRun") as f:
-                timesRun = int(f.read().decode('utf-8'))
+                timesRun = int(f.read().decode("utf-8"))
         except NoSuchFileException:
             timesRun = 0
         with fileStore.jobStore.write_shared_file_stream("checkpointRun") as f:
-            f.write(str(timesRun + 1).encode('utf-8'))
+            f.write(str(timesRun + 1).encode("utf-8"))
         return timesRun
 
     def run(self, fileStore):
@@ -86,9 +88,11 @@ class CheckRetryCount(Job):
         if retryCount < self.numFailuresBeforeSuccess:
             self.addChild(AlwaysFail())
 
+
 class AlwaysFail(Job):
     def run(self, fileStore):
         raise RuntimeError(":(")
+
 
 class CheckpointFailsFirstTime(Job):
     def __init__(self):
@@ -97,8 +101,10 @@ class CheckpointFailsFirstTime(Job):
     def run(self, fileStore):
         self.addChild(FailOnce())
 
+
 class FailOnce(Job):
     """Fail the first time the workflow is run, but succeed thereafter."""
+
     def run(self, fileStore):
         if fileStore.jobStore.config.workflowAttemptNumber < 1:
             raise RuntimeError("first time around")

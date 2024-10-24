@@ -30,29 +30,27 @@ class CactusIntegrationTest(AbstractClusterTest):
         )
         self.leader = self.cluster.getLeader()
 
-        CACTUS_COMMIT_SHA = os.environ["CACTUS_COMMIT_SHA"] or "f5adf4013326322ae58ef1eccb8409b71d761583"  # default cactus commit
+        CACTUS_COMMIT_SHA = (
+            os.environ["CACTUS_COMMIT_SHA"]
+            or "f5adf4013326322ae58ef1eccb8409b71d761583"
+        )  # default cactus commit
 
         # command to install and run cactus on the cluster
-        cactus_command = ("python -m virtualenv --system-site-packages venv && "
-                          ". venv/bin/activate && "
-                          "git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive && "
-                          "cd cactus && "
-                          "git fetch origin && "
-                          f"git checkout {CACTUS_COMMIT_SHA} && "
-                          "git submodule update --init --recursive && "
-                          "pip install --upgrade 'setuptools' pip && "
-                          "pip install --upgrade . && "
-                          "pip install --upgrade numpy psutil && "
-                          "time cactus --batchSystem kubernetes --retryCount=3 "
-                          f"--consCores 2 --binariesMode singularity --clean always {self.jobStore} "
-                          "examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk 8G --logDebug")
-
-        # run cactus
-        self.sshUtil(
-            [
-                "bash",
-                "-c",
-                cactus_command
-            ]
+        cactus_command = (
+            "python -m virtualenv --system-site-packages venv && "
+            ". venv/bin/activate && "
+            "git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive && "
+            "cd cactus && "
+            "git fetch origin && "
+            f"git checkout {CACTUS_COMMIT_SHA} && "
+            "git submodule update --init --recursive && "
+            "pip install --upgrade 'setuptools' pip && "
+            "pip install --upgrade . && "
+            "pip install --upgrade numpy psutil && "
+            "time cactus --batchSystem kubernetes --retryCount=3 "
+            f"--consCores 2 --binariesMode singularity --clean always {self.jobStore} "
+            "examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk 8G --logDebug"
         )
 
+        # run cactus
+        self.sshUtil(["bash", "-c", cactus_command])
