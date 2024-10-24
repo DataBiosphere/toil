@@ -92,6 +92,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.integration import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
@@ -3515,7 +3516,7 @@ def import_workflow_inputs(
     # We cast this because import_file is overloaded depending on if we
     # pass a shared file name or not, and we know the way we call it we
     # always get a FileID out.
-    file_import_function = cast(
+    input_import_function = cast(
         Callable[[str], FileID],
         functools.partial(jobstore.import_file, symlink=True),
     )
@@ -3525,7 +3526,7 @@ def import_workflow_inputs(
     logger.info("Importing input files...")
     fs_access = ToilFsAccess(options.basedir)
     import_files(
-        file_import_function,
+        input_import_function,
         fs_access,
         fileindex,
         existing,
@@ -3535,6 +3536,15 @@ def import_workflow_inputs(
         bypass_file_store=options.bypass_file_store,
         log_level=logging.INFO,
     )
+
+    # Make another function for importing tool files. This one doesn't allow
+    # symlinking, since the tools might be coming from storage not accessible
+    # to all nodes.
+    tool_import_function = cast(
+        Callable[[str], FileID],
+        functools.partial(jobstore.import_file, symlink=False),
+    )
+
     # Import all the files associated with tools (binaries, etc.).
     # Not sure why you would have an optional secondary file here, but
     # the spec probably needs us to support them.
@@ -3543,7 +3553,7 @@ def import_workflow_inputs(
         tool,
         functools.partial(
             import_files,
-            file_import_function,
+            tool_import_function,
             fs_access,
             fileindex,
             existing,
@@ -3981,6 +3991,11 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if options.restart:
                 outobj = toil.restart()
             else:
+                # Before showing the options to any cwltool stuff that wants to
+                # load the workflow, transform options.cwltool, where our
+                # argument for what to run is, to handle Dockstore workflows.
+                options.cwltool = resolve_workflow(options.cwltool)
+
                 # TODO: why are we doing this? Does this get applied to all
                 # tools as a default or something?
                 loading_context.hints = [
