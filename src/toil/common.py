@@ -1283,15 +1283,24 @@ class Toil(ContextManager["Toil"]):
         src_uri: str,
         shared_file_name: None = None,
         symlink: bool = True,
-        check_existence: bool = True,
+        check_existence: Literal[True] = True
     ) -> FileID: ...
 
+    @overload
     def import_file(
         self,
         src_uri: str,
-        shared_file_name: Optional[str] = None,
+        shared_file_name: None = None,
         symlink: bool = True,
-        check_existence: bool = True,
+        check_existence: bool = True
+    ) -> Optional[FileID]: ...
+
+    def import_file(
+      self,
+      src_uri: str,
+      shared_file_name: Optional[str] = None,
+      symlink: bool = True,
+      check_existence: bool = True
     ) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
