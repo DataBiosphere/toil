@@ -1125,36 +1125,6 @@ def get_file_sizes(
     return {k: get_filename_size(k) for k in filenames}
 
 
-def import_files(files: List[str], file_source: AbstractJobStore) -> Dict[str, FileID]:
-    """
-    Import all files from the list into the jobstore. Returns a dictionary mapping the filename to it's FileID
-    :param files: list of filenames
-    :param file_source: jobstore object
-    :return:
-    """
-
-    @memoize
-    def import_filename(filename: str) -> Optional[FileID]:
-        """
-        Detect if any potential URI exists. Will convert a file's value to a URI and import it.
-
-        Separated out from convert_file_to_url in order to properly memoize and avoid importing the same file twice
-        :param filename: Filename to import
-        :return: Tuple of the uri the file was found at and the virtualized import
-        """
-        # Search through any input search paths passed in and download it if found
-        # Actually import
-        # Try to import the file. If we can't find it, continue
-        return file_source.import_file(filename)
-
-    path_to_fileid = {}
-    for file in files:
-        imported = import_filename(file)
-        if imported is not None:
-            path_to_fileid[file] = imported
-    return path_to_fileid
-
-
 def convert_files(
     environment: WDLBindings,
     file_to_id: Dict[str, FileID],
