@@ -1146,7 +1146,7 @@ def convert_files(
         Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
         """
         candidate_uri = file_to_data[file.value][0]
-        file_id = file_to_id.get(candidate_uri)
+        file_id = file_to_id[candidate_uri]
 
         # Work out what the basename for the file was
         file_basename = os.path.basename(urlsplit(candidate_uri).path)
@@ -4877,7 +4877,7 @@ class WDLInstallImportsJob(Job):
         self,
         task_path: str,
         inputs: WDLBindings,
-        import_data: Promised[Tuple[Dict[str, FileID]], Dict[str, FileMetadata]],
+        import_data: Promised[Tuple[Dict[str, FileID], Dict[str, FileMetadata]]],
         **kwargs: Any,
     ) -> None:
         """
@@ -4915,9 +4915,9 @@ class WDLImportWrapper(WDLSectionJob):
         target: Union[WDL.Tree.Workflow, WDL.Tree.Task],
         inputs: WDLBindings,
         wdl_options: WDLContext,
-        inputs_search_path,
-        import_remote_files,
-        import_workers_threshold,
+        inputs_search_path: List[str],
+        import_remote_files: bool,
+        import_workers_threshold: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
         """
@@ -4960,13 +4960,13 @@ class WDLImportWrapper(WDLSectionJob):
 def make_root_job(
     target: WDL.Tree.Workflow | WDL.Tree.Task,
     inputs: WDLBindings,
-    inputs_search_path: list[str],
+    inputs_search_path: List[str],
     toil: Toil,
     wdl_options: WDLContext,
     options: Namespace,
 ) -> WDLSectionJob:
     if options.run_imports_on_workers:
-        root_job = WDLImportWrapper(
+        root_job: WDLSectionJob = WDLImportWrapper(
             target,
             inputs,
             wdl_options=wdl_options,

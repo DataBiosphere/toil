@@ -54,7 +54,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
-    Sequence,
+    Sequence, Literal,
 )
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urlparse, urlsplit
@@ -1857,7 +1857,7 @@ def extract_files(
 
     if location in fileindex:
         file_metadata["location"] = fileindex[location]
-        return
+        return None
     if not location and file_metadata["path"]:
         file_metadata["location"] = location = schema_salad.ref_resolver.file_uri(
             cast(str, file_metadata["path"])
@@ -1944,7 +1944,7 @@ def visit_files(
 
     :param log_level: Log imported files at the given level.
     """
-    func_return = list()
+    func_return: List[Any] = list()
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
@@ -3653,7 +3653,7 @@ class CWLStartJob(CWLNamedJob):
 
     def __init__(
         self,
-        inputs: Promised[Tuple[CWLObjectType, CWLObjectType]],
+        inputs: Promised[Tuple[CWLObjectType, Process]],
         runtime_context: cwltool.context.RuntimeContext,
         **kwargs: Any,
     ) -> None:
@@ -3765,7 +3765,7 @@ def import_workflow_inputs(
     # always get a FileID out.
     def file_import_function(url: str) -> FileID:
         logger.log(log_level, "Loading %s...", url)
-        return cast(FileID, jobstore.import_file(url, symlink=True))
+        return jobstore.import_file(url, symlink=True)
 
     # Import all the input files, some of which may be missing optional
     # files.
@@ -3835,6 +3835,8 @@ def visitSteps(
             f"Unsupported type encountered in workflow "
             f"traversal: {type(cmdline_tool)}"
         )
+    # Satisfy mypy, but this branch should never be reached in practice
+    return []
 
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:

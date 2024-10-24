@@ -3874,8 +3874,8 @@ class ImportsJob(Job):
     def __init__(
         self,
         file_to_data: Dict[str, FileMetadata],
-        import_workers_threshold,
-        **kwargs: Any,
+        import_workers_threshold: ParseableIndivisibleResource,
+        **kwargs: Any
     ):
         """
         Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
