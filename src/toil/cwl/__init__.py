@@ -13,8 +13,8 @@
 # limitations under the License.
 import sys
 from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
 
-from importlib.metadata import version, PackageNotFoundError
 from toil.version import cwltool_version
 
 

@@ -31,7 +31,7 @@ class JobDescriptionTest(ToilTest):
         Job.Runner.addToilOptions(parser)
         options = parser.parse_args(args=[self.jobStorePath])
         self.toil = Toil(options)
-        self.assertEqual( self.toil, self.toil.__enter__() )
+        self.assertEqual(self.toil, self.toil.__enter__())
 
     def tearDown(self):
         self.toil.__exit__(None, None, None)
@@ -44,14 +44,21 @@ class JobDescriptionTest(ToilTest):
         Tests the public interface of a JobDescription.
         """
 
-        memory = 2^32
-        disk = 2^32
+        memory = 2 ^ 32
+        disk = 2 ^ 32
         cores = "1"
         preemptible = 1
 
-        j = JobDescription(requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
-                           jobName='testJobGraph', unitName='noName')
-        
+        j = JobDescription(
+            requirements={
+                "memory": memory,
+                "cores": cores,
+                "disk": disk,
+                "preemptible": preemptible,
+            },
+            jobName="testJobGraph",
+            unitName="noName",
+        )
 
         # Without a body, and with nothing to run, nextSuccessors will be None
         self.assertEqual(j.has_body(), False)
@@ -61,7 +68,7 @@ class JobDescriptionTest(ToilTest):
         j.attach_body("fake", ModuleDescriptor.forModule("toil"))
         self.assertEqual(j.has_body(), True)
 
-        #Check attributes
+        # Check attributes
         self.assertEqual(j.memory, memory)
         self.assertEqual(j.disk, disk)
         self.assertEqual(j.cores, int(cores))
@@ -75,18 +82,26 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.predecessorsFinished, set())
         self.assertEqual(j.logJobStoreFileID, None)
 
-        #Check equals function (should be based on object identity and not contents)
-        j2 = JobDescription(requirements={"memory": memory, "cores": cores, "disk": disk, "preemptible": preemptible},
-                            jobName='testJobGraph', unitName='noName')
+        # Check equals function (should be based on object identity and not contents)
+        j2 = JobDescription(
+            requirements={
+                "memory": memory,
+                "cores": cores,
+                "disk": disk,
+                "preemptible": preemptible,
+            },
+            jobName="testJobGraph",
+            unitName="noName",
+        )
         j2.attach_body("fake", ModuleDescriptor.forModule("toil"))
         self.assertNotEqual(j, j2)
         ###TODO test other functionality
 
     def testJobDescriptionSequencing(self):
-        j = JobDescription(requirements={},  jobName='unimportant')
+        j = JobDescription(requirements={}, jobName="unimportant")
 
-        j.addChild('child')
-        j.addFollowOn('followOn')
+        j.addChild("child")
+        j.addFollowOn("followOn")
 
         # With a body, nothing should be ready to run
         j.attach_body("fake", ModuleDescriptor.forModule("toil"))
@@ -94,13 +109,13 @@ class JobDescriptionTest(ToilTest):
 
         # With body cleared, child should be ready to run
         j.detach_body()
-        self.assertEqual(list(j.nextSuccessors()), ['child'])
+        self.assertEqual(list(j.nextSuccessors()), ["child"])
 
         # Without the child, the follow-on should be ready to run
-        j.filterSuccessors(lambda jID: jID != 'child')
-        self.assertEqual(list(j.nextSuccessors()), ['followOn'])
+        j.filterSuccessors(lambda jID: jID != "child")
+        self.assertEqual(list(j.nextSuccessors()), ["followOn"])
 
         # Without the follow-on, we should return None, to be distinct from an
         # empty list. Nothing left to do!
-        j.filterSuccessors(lambda jID: jID != 'followOn')
+        j.filterSuccessors(lambda jID: jID != "followOn")
         self.assertEqual(j.nextSuccessors(), None)

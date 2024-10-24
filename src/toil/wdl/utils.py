@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def get_version(iterable: Iterable[str]) -> str:
@@ -22,14 +22,14 @@ def get_version(iterable: Iterable[str]) -> str:
     :return: The WDL version used in the workflow.
     """
     if isinstance(iterable, str):
-        iterable = iterable.split('\n')
+        iterable = iterable.split("\n")
 
     for line in iterable:
         line = line.strip()
         # check if the first non-empty, non-comment line is the version statement
-        if line and not line.startswith('#'):
-            if line.startswith('version '):
+        if line and not line.startswith("#"):
+            if line.startswith("version "):
                 return line[8:].strip()
             break
     # only draft-2 doesn't contain the version declaration
-    return 'draft-2'
+    return "draft-2"

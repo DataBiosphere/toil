@@ -23,76 +23,68 @@ import tempfile
 import time
 import uuid
 import warnings
-from io import StringIO
-
-from ruamel.yaml import YAML
-from ruamel.yaml.comments import CommentedMap
-from configargparse import ArgParser, YAMLConfigFileParser
-from argparse import (SUPPRESS,
-                      ArgumentDefaultsHelpFormatter,
-                      ArgumentParser,
-                      Namespace,
-                      _ArgumentGroup, Action, _StoreFalseAction, _StoreTrueAction, _AppendAction)
+from argparse import (
+    SUPPRESS,
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    Namespace,
+    _ArgumentGroup,
+    _StoreFalseAction,
+    _StoreTrueAction,
+)
 from functools import lru_cache
 from types import TracebackType
-from typing import (IO,
-                    TYPE_CHECKING,
-                    Any,
-                    Callable,
-                    ContextManager,
-                    Dict,
-                    List,
-                    Optional,
-                    Set,
-                    Tuple,
-                    Type,
-                    TypeVar,
-                    Union,
-                    cast,
-                    overload)
-from urllib.parse import urlparse, unquote, quote
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ContextManager,
+    Literal,
+    Optional,
+    TypeVar,
+    Union,
+    cast,
+    overload,
+)
+from urllib.parse import quote, unquote, urlparse
 
 import requests
-
-from toil.options.common import add_base_toil_options, JOBSTORE_HELP
-from toil.options.cwl import add_cwl_options
-from toil.options.runner import add_runner_options
-from toil.options.wdl import add_wdl_options
-
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
+from configargparse import ArgParser, YAMLConfigFileParser
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import set_batchsystem_options
-from toil.bus import (ClusterDesiredSizeMessage,
-                      ClusterSizeMessage,
-                      JobCompletedMessage,
-                      JobFailedMessage,
-                      JobIssuedMessage,
-                      JobMissingMessage,
-                      MessageBus,
-                      QueueSizeMessage, gen_message_bus_path)
+from toil.bus import (
+    ClusterDesiredSizeMessage,
+    ClusterSizeMessage,
+    JobCompletedMessage,
+    JobFailedMessage,
+    JobIssuedMessage,
+    JobMissingMessage,
+    MessageBus,
+    QueueSizeMessage,
+    gen_message_bus_path,
+)
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.io import try_path, AtomicFileCreate
+from toil.lib.io import AtomicFileCreate, try_path
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
-from toil.provisioners import (add_provisioner_options,
-                               cluster_factory)
+from toil.options.common import JOBSTORE_HELP, add_base_toil_options
+from toil.options.cwl import add_cwl_options
+from toil.options.runner import add_runner_options
+from toil.options.wdl import add_wdl_options
+from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
-from toil.statsAndLogging import (add_logging_options,
-                                  set_logging_from_options)
+from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
     from toil.batchSystems.options import OptionSetter
-    from toil.job import (AcceleratorRequirement,
-                          Job,
-                          JobDescription,
-                          TemporaryID)
+    from toil.job import AcceleratorRequirement, Job, JobDescription, TemporaryID
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
     from toil.resource import ModuleDescriptor
@@ -108,6 +100,7 @@ DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
+
     logFile: Optional[str]
     logRotating: bool
     cleanWorkDir: str
@@ -174,23 +167,22 @@ class Config:
 
     # Autoscaling options
     provisioner: Optional[str]
-    nodeTypes: List[Tuple[Set[str], Optional[float]]]
-    minNodes: List[int]
-    maxNodes: List[int]
+    nodeTypes: list[tuple[set[str], Optional[float]]]
+    minNodes: list[int]
+    maxNodes: list[int]
     targetTime: float
     betaInertia: float
     scaleInterval: int
     preemptibleCompensation: float
     nodeStorage: int
-    nodeStorageOverrides: List[str]
+    nodeStorageOverrides: list[str]
     metrics: bool
     assume_zero_overhead: bool
 
     # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
     maxPreemptibleServiceJobs: int
     maxServiceJobs: int
-    deadlockWait: Union[
-        float, int]
+    deadlockWait: Union[float, int]
     deadlockCheckInterval: Union[float, int]
 
     # Resource requirements
@@ -201,7 +193,7 @@ class Config:
     # TODO: These names are generated programmatically in
     # Requirer._fetchRequirement so we can't use snake_case until we fix
     # that (and add compatibility getters/setters?)
-    defaultAccelerators: List['AcceleratorRequirement']
+    defaultAccelerators: list["AcceleratorRequirement"]
     maxCores: int
     maxMemory: int
     maxDisk: int
@@ -223,7 +215,7 @@ class Config:
     realTimeLogging: bool
 
     # Misc
-    environment: Dict[str, str]
+    environment: dict[str, str]
     disableChaining: bool
     disableJobStoreChecksumVerification: bool
     sseKey: Optional[str]
@@ -283,8 +275,7 @@ class Config:
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
 
-        def set_option(option_name: str,
-                       old_names: Optional[List[str]] = None) -> None:
+        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> None:
             """
             Determine the correct value for the given option.
 
@@ -307,15 +298,21 @@ class Config:
                 for old_name in old_names:
                     # If the option is already set with the new name and not the old name
                     # prioritize the new name over the old name and break
-                    if option_value is not None and option_value != [] and option_value != {}:
+                    if (
+                        option_value is not None
+                        and option_value != []
+                        and option_value != {}
+                    ):
                         break
                     # Try all the old names in case user code is setting them
                     # in an options object.
                     # This does assume that all deprecated options have a default value of None
                     if getattr(options, old_name, None) is not None:
-                        warnings.warn(f'Using deprecated option field {old_name} to '
-                                      f'provide value for config field {option_name}',
-                                      DeprecationWarning)
+                        warnings.warn(
+                            f"Using deprecated option field {old_name} to "
+                            f"provide value for config field {option_name}",
+                            DeprecationWarning,
+                        )
                         option_value = getattr(options, old_name)
             if option_value is not None or not hasattr(self, option_name):
                 setattr(self, option_name, option_value)
@@ -330,13 +327,14 @@ class Config:
         set_option("stats")
         set_option("cleanWorkDir")
         set_option("clean")
-        set_option('clusterStats')
+        set_option("clusterStats")
         set_option("restart")
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(None, cast("OptionSetter",
-                                           set_option))  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
+        set_batchsystem_options(
+            None, cast("OptionSetter", set_option)
+        )  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
 
         # File store options
         set_option("symlinkImports", old_names=["linkImports"])
@@ -424,31 +422,39 @@ class Config:
 
         # Apply overrides as highest priority
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
-        if os.getenv('TOIL_WORKDIR_OVERRIDE') is not None:
-            self.workDir = os.getenv('TOIL_WORKDIR_OVERRIDE')
+        if os.getenv("TOIL_WORKDIR_OVERRIDE") is not None:
+            self.workDir = os.getenv("TOIL_WORKDIR_OVERRIDE")
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
-        if os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') is not None:
-            self.workDir = os.getenv('TOIL_COORDINATION_DIR_OVERRIDE')
+        if os.getenv("TOIL_COORDINATION_DIR_OVERRIDE") is not None:
+            self.workDir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
 
         self.check_configuration_consistency()
 
     def check_configuration_consistency(self) -> None:
         """Old checks that cannot be fit into an action class for argparse"""
         if self.writeLogs and self.writeLogsGzip:
-            raise ValueError("Cannot use both --writeLogs and --writeLogsGzip at the same time.")
+            raise ValueError(
+                "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+            )
         if self.writeLogsFromAllJobs and not self.writeLogs and not self.writeLogsGzip:
-            raise ValueError("To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set.")
+            raise ValueError(
+                "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
+            )
         for override in self.nodeStorageOverrides:
             tokens = override.split(":")
             if not any(tokens[0] in n[0] for n in self.nodeTypes):
-                raise ValueError("Instance type in --nodeStorageOverrides must be in --nodeTypes")
+                raise ValueError(
+                    "Instance type in --nodeStorageOverrides must be in --nodeTypes"
+                )
 
         if self.stats:
             if self.clean != "never" and self.clean is not None:
-                logger.warning("Contradicting options passed: Clean flag is set to %s "
-                               "despite the stats flag requiring "
-                               "the jobStore to be intact at the end of the run. "
-                               "Setting clean to \'never\'." % self.clean)
+                logger.warning(
+                    "Contradicting options passed: Clean flag is set to %s "
+                    "despite the stats flag requiring "
+                    "the jobStore to be intact at the end of the run. "
+                    "Setting clean to 'never'." % self.clean
+                )
             self.clean = "never"
 
     def __eq__(self, other: object) -> bool:
@@ -468,7 +474,9 @@ def check_and_create_toil_home_dir() -> None:
 
     dir_path = try_path(TOIL_HOME_DIR)
     if dir_path is None:
-        raise RuntimeError(f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}")
+        raise RuntimeError(
+            f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}"
+        )
 
 
 def check_and_create_default_config_file() -> None:
@@ -526,9 +534,23 @@ def generate_config(filepath: str) -> None:
     #   and --caching respectively
     # Skip StoreTrue and StoreFalse options that have opposite defaults as including it in the config would
     # override those defaults
-    deprecated_or_redundant_options = ("help", "config", "logCritical", "logDebug", "logError", "logInfo", "logOff",
-                                       "logWarning", "linkImports", "noLinkImports", "moveExports", "noMoveExports",
-                                       "enableCaching", "disableCaching", "version")
+    deprecated_or_redundant_options = (
+        "help",
+        "config",
+        "logCritical",
+        "logDebug",
+        "logError",
+        "logInfo",
+        "logOff",
+        "logWarning",
+        "linkImports",
+        "noLinkImports",
+        "moveExports",
+        "noMoveExports",
+        "enableCaching",
+        "disableCaching",
+        "version",
+    )
 
     def create_config_dict_from_parser(parser: ArgumentParser) -> CommentedMap:
         """
@@ -539,9 +561,12 @@ def generate_config(filepath: str) -> None:
         :return: CommentedMap of what to put into the config file
         """
         data = CommentedMap()  # to preserve order
-        group_title_key: Dict[str, str] = dict()
+        group_title_key: dict[str, str] = dict()
         for action in parser._actions:
-            if any(s.replace("-", "") in deprecated_or_redundant_options for s in action.option_strings):
+            if any(
+                s.replace("-", "") in deprecated_or_redundant_options
+                for s in action.option_strings
+            ):
                 continue
             # if action is StoreFalse and default is True then don't include
             if isinstance(action, _StoreFalseAction) and action.default is True:
@@ -553,8 +578,11 @@ def generate_config(filepath: str) -> None:
             if len(action.option_strings) == 0:
                 continue
 
-            option_string = action.option_strings[0] if action.option_strings[0].find("--") != -1 else \
-                action.option_strings[1]
+            option_string = (
+                action.option_strings[0]
+                if action.option_strings[0].find("--") != -1
+                else action.option_strings[1]
+            )
             option = option_string[2:]
 
             default = action.default
@@ -577,10 +605,12 @@ def generate_config(filepath: str) -> None:
     add_base_toil_options(parser, jobstore_as_flag=True, cwl=False)
     toil_base_data = create_config_dict_from_parser(parser)
 
-    toil_base_data.yaml_set_start_comment("This is the configuration file for Toil. To set an option, uncomment an "
-                                          "existing option and set its value. The current values are the defaults. "
-                                          "If the default configuration file is outdated, it can be refreshed with "
-                                          "`toil config ~/.toil/default.yaml`.\n\nBASE TOIL OPTIONS\n")
+    toil_base_data.yaml_set_start_comment(
+        "This is the configuration file for Toil. To set an option, uncomment an "
+        "existing option and set its value. The current values are the defaults. "
+        "If the default configuration file is outdated, it can be refreshed with "
+        "`toil config ~/.toil/default.yaml`.\n\nBASE TOIL OPTIONS\n"
+    )
     all_data.append(toil_base_data)
 
     parser = ArgParser(YAMLConfigFileParser())
@@ -612,40 +642,52 @@ def generate_config(filepath: str) -> None:
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
             f.write("config_version: 1.0\n")
-            yaml = YAML(typ='rt')
+            yaml = YAML(typ="rt")
             for data in all_data:
                 data.pop("config_version", None)
                 yaml.dump(
                     data,
                     f,
-                    transform=lambda s: re.sub(r'^(.)', r'#\1', s, flags=re.MULTILINE),
+                    transform=lambda s: re.sub(r"^(.)", r"#\1", s, flags=re.MULTILINE),
                 )
 
 
 def parser_with_common_options(
-        provisioner_options: bool = False,
-        jobstore_option: bool = True,
-        prog: Optional[str] = None,
-        default_log_level: Optional[int] = None
+    provisioner_options: bool = False,
+    jobstore_option: bool = True,
+    prog: Optional[str] = None,
+    default_log_level: Optional[int] = None,
 ) -> ArgParser:
-    parser = ArgParser(prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter)
+    parser = ArgParser(
+        prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter
+    )
 
     if provisioner_options:
         add_provisioner_options(parser)
 
     if jobstore_option:
-        parser.add_argument('jobStore', type=str, help=JOBSTORE_HELP)
+        parser.add_argument("jobStore", type=str, help=JOBSTORE_HELP)
 
     # always add these
     add_logging_options(parser, default_log_level)
-    parser.add_argument("--version", action='version', version=version)
-    parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str, default=tempfile.gettempdir(),
-                        help="Path to where temporary directory containing all temp files are created, "
-                             "by default generates a fresh tmp dir with 'tempfile.gettempdir()'.")
+    parser.add_argument("--version", action="version", version=version)
+    parser.add_argument(
+        "--tempDirRoot",
+        dest="tempDirRoot",
+        type=str,
+        default=tempfile.gettempdir(),
+        help="Path to where temporary directory containing all temp files are created, "
+        "by default generates a fresh tmp dir with 'tempfile.gettempdir()'.",
+    )
     return parser
 
 
-def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool = False, wdl: bool = False) -> None:
+def addOptions(
+    parser: ArgumentParser,
+    jobstore_as_flag: bool = False,
+    cwl: bool = False,
+    wdl: bool = False,
+) -> None:
     """
     Add all Toil command line options to a parser.
 
@@ -658,10 +700,13 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     :param wdl:  Whether WDL options are expected. If so, WDL options won't be suppressed.
     """
     if cwl and wdl:
-        raise RuntimeError("CWL and WDL cannot both be true at the same time when adding options.")
+        raise RuntimeError(
+            "CWL and WDL cannot both be true at the same time when adding options."
+        )
     if not (isinstance(parser, ArgumentParser) or isinstance(parser, _ArgumentGroup)):
         raise ValueError(
-            f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup.")
+            f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup."
+        )
 
     if isinstance(parser, ArgParser):
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
@@ -671,10 +716,12 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)
-        warnings.warn(f'Using deprecated library argparse for options parsing.'
-                      f'This will not parse config files or use environment variables.'
-                      f'Use configargparse instead or call Job.Runner.getDefaultArgumentParser()',
-                      DeprecationWarning)
+        warnings.warn(
+            f"Using deprecated library argparse for options parsing."
+            f"This will not parse config files or use environment variables."
+            f"Use configargparse instead or call Job.Runner.getDefaultArgumentParser()",
+            DeprecationWarning,
+        )
 
     check_and_create_default_config_file()
     # Check on the config file to make sure it is sensible
@@ -683,16 +730,17 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
         # If we have an empty config file, someone has to manually delete
         # it before we will work again.
         raise RuntimeError(
-            f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}")
+            f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}"
+        )
     try:
-        with open(DEFAULT_CONFIG_FILE, "r") as f:
+        with open(DEFAULT_CONFIG_FILE) as f:
             yaml = YAML(typ="safe")
             s = yaml.load(f)
             logger.debug("Initialized default configuration: %s", json.dumps(s))
     except:
         # Something went wrong reading the default config, so dump its
         # contents to the log.
-        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE, 'r').read())
+        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE).read())
         raise
 
     # Add base toil options
@@ -719,27 +767,41 @@ def addOptions(parser: ArgumentParser, jobstore_as_flag: bool = False, cwl: bool
 
         for action in check_parser._actions:
             action.default = SUPPRESS
-        other_options, _ = check_parser.parse_known_args(sys.argv[1:], ignore_help_args=True)
+        other_options, _ = check_parser.parse_known_args(
+            sys.argv[1:], ignore_help_args=True
+        )
         if len(vars(other_options)) != 0:
-            raise parser.error(f"{'WDL' if typ == 'cwl' else 'CWL'} options are not allowed on the command line.")
+            raise parser.error(
+                f"{'WDL' if typ == 'cwl' else 'CWL'} options are not allowed on the command line."
+            )
 
     # if cwl is set, format the namespace for cwl and check that wdl options are not set on the command line
     if cwl:
         parser.add_argument("cwltool", type=str, help="CWL file to run.")
-        parser.add_argument("cwljob", nargs="*", help="Input file or CWL options. If CWL workflow takes an input, "
-                                                      "the name of the input can be used as an option. "
-                                                      "For example: \"%(prog)s workflow.cwl --file1 file\". "
-                                                      "If an input has the same name as a Toil option, pass '--' before it.")
+        parser.add_argument(
+            "cwljob",
+            nargs="*",
+            help="Input file or CWL options. If CWL workflow takes an input, "
+            "the name of the input can be used as an option. "
+            'For example: "%(prog)s workflow.cwl --file1 file". '
+            "If an input has the same name as a Toil option, pass '--' before it.",
+        )
         check_arguments(typ="cwl")
 
     # if wdl is set, format the namespace for wdl and check that cwl options are not set on the command line
     if wdl:
-        parser.add_argument("wdl_uri", type=str,
-                            help="WDL document URI")
-        parser.add_argument("inputs_uri", type=str, nargs='?',
-                            help="WDL input JSON URI")
-        parser.add_argument("--input", "--inputs", "-i", dest="inputs_uri", type=str,
-                            help="WDL input JSON URI")
+        parser.add_argument("wdl_uri", type=str, help="WDL document URI")
+        parser.add_argument(
+            "inputs_uri", type=str, nargs="?", help="WDL input JSON URI"
+        )
+        parser.add_argument(
+            "--input",
+            "--inputs",
+            "-i",
+            dest="inputs_uri",
+            type=str,
+            help="WDL input JSON URI",
+        )
         check_arguments(typ="wdl")
 
 
@@ -762,15 +824,20 @@ def getNodeID() -> str:
                 with open(idSourceFile) as inp:
                     nodeID = inp.readline().strip()
             except OSError:
-                logger.warning(f"Exception when trying to read ID file {idSourceFile}.  "
-                               f"Will try next method to get node ID.", exc_info=True)
+                logger.warning(
+                    f"Exception when trying to read ID file {idSourceFile}.  "
+                    f"Will try next method to get node ID.",
+                    exc_info=True,
+                )
             else:
                 if len(nodeID.split()) == 1:
                     logger.debug(f"Obtained node ID {nodeID} from file {idSourceFile}")
                     break
                 else:
-                    logger.warning(f"Node ID {nodeID} from file {idSourceFile} contains spaces.  "
-                                   f"Will try next method to get node ID.")
+                    logger.warning(
+                        f"Node ID {nodeID} from file {idSourceFile} contains spaces.  "
+                        f"Will try next method to get node ID."
+                    )
     else:
         nodeIDs = []
         for i_call in range(2):
@@ -784,18 +851,22 @@ def getNodeID() -> str:
             if nodeIDs[0] == nodeIDs[1]:
                 nodeID = nodeIDs[0]
             else:
-                logger.warning(f"Different node IDs {nodeIDs} received from repeated calls to uuid.getnode().  "
-                               f"You should use another method to generate node ID.")
+                logger.warning(
+                    f"Different node IDs {nodeIDs} received from repeated calls to uuid.getnode().  "
+                    f"You should use another method to generate node ID."
+                )
 
             logger.debug(f"Obtained node ID {nodeID} from uuid.getnode()")
     if not nodeID:
-        logger.warning("Failed to generate stable node ID, returning empty string. If you see this message with a "
-                       "work dir on a shared file system when using workers running on multiple nodes, you might "
-                       "experience cryptic job failures")
-    if len(nodeID.replace('-', '')) < UUID_LENGTH:
+        logger.warning(
+            "Failed to generate stable node ID, returning empty string. If you see this message with a "
+            "work dir on a shared file system when using workers running on multiple nodes, you might "
+            "experience cryptic job failures"
+        )
+    if len(nodeID.replace("-", "")) < UUID_LENGTH:
         # Some platforms (Mac) give us not enough actual hex characters.
         # Repeat them so the result is convertible to a uuid.UUID
-        nodeID = nodeID.replace('-', '')
+        nodeID = nodeID.replace("-", "")
         num_repeats = UUID_LENGTH // len(nodeID) + 1
         nodeID = nodeID * num_repeats
         nodeID = nodeID[:UUID_LENGTH]
@@ -808,6 +879,7 @@ class Toil(ContextManager["Toil"]):
 
     Specifically the batch system, job store, and its configuration.
     """
+
     config: Config
     _jobStore: "AbstractJobStore"
     _batchSystem: "AbstractBatchSystem"
@@ -824,7 +896,7 @@ class Toil(ContextManager["Toil"]):
         """
         super().__init__()
         self.options = options
-        self._jobCache: Dict[Union[str, "TemporaryID"], "JobDescription"] = {}
+        self._jobCache: dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager: bool = False
         self._inRestart: bool = False
 
@@ -867,10 +939,10 @@ class Toil(ContextManager["Toil"]):
         return self
 
     def __exit__(
-            self,
-            exc_type: Optional[Type[BaseException]],
-            exc_val: Optional[BaseException],
-            exc_tb: Optional[TracebackType],
+        self,
+        exc_type: Optional[type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
     ) -> Literal[False]:
         """
         Clean up after a workflow invocation.
@@ -878,24 +950,33 @@ class Toil(ContextManager["Toil"]):
         Depending on the configuration, delete the job store.
         """
         try:
-            if (exc_type is not None and self.config.clean == "onError" or
-                    exc_type is None and self.config.clean == "onSuccess" or
-                    self.config.clean == "always"):
+            if (
+                exc_type is not None
+                and self.config.clean == "onError"
+                or exc_type is None
+                and self.config.clean == "onSuccess"
+                or self.config.clean == "always"
+            ):
 
                 try:
                     if self.config.restart and not self._inRestart:
                         pass
                     else:
                         self._jobStore.destroy()
-                        logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+                        logger.info(
+                            "Successfully deleted the job store: %s"
+                            % str(self._jobStore)
+                        )
                 except:
-                    logger.info("Failed to delete the job store: %s" % str(self._jobStore))
+                    logger.info(
+                        "Failed to delete the job store: %s" % str(self._jobStore)
+                    )
                     raise
         except Exception as e:
             if exc_type is None:
                 raise
             else:
-                logger.exception('The following error was raised during clean up:')
+                logger.exception("The following error was raised during clean up:")
         self._inContextManager = False
         self._inRestart = False
         return False  # let exceptions through
@@ -927,8 +1008,10 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.write_leader_node_id()
 
         if self.config.restart:
-            raise ToilRestartException('A Toil workflow can only be started once. Use '
-                                       'Toil.restart() to resume it.')
+            raise ToilRestartException(
+                "A Toil workflow can only be started once. Use "
+                "Toil.restart() to resume it."
+            )
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupAutoDeployment(rootJob.getUserScript())
@@ -941,7 +1024,7 @@ class Toil(ContextManager["Toil"]):
             # a shared file, where we can find and unpickle it at the end of the workflow.
             # Unpickling the promise will automatically substitute the promise for the actual
             # return value.
-            with self._jobStore.write_shared_file_stream('rootJobReturnValue') as fH:
+            with self._jobStore.write_shared_file_stream("rootJobReturnValue") as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
@@ -969,15 +1052,18 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.write_leader_node_id()
 
         if not self.config.restart:
-            raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
-                                       'not restart().')
+            raise ToilRestartException(
+                "A Toil workflow must be initiated with Toil.start(), " "not restart()."
+            )
 
         from toil.job import JobException
+
         try:
             self._jobStore.load_root_job()
         except JobException:
             logger.warning(
-                'Requested restart but the workflow has already been completed; allowing exports to rerun.')
+                "Requested restart but the workflow has already been completed; allowing exports to rerun."
+            )
             return self._jobStore.get_root_job_return_value()
 
         self._batchSystem = self.createBatchSystem(self.config)
@@ -996,12 +1082,14 @@ class Toil(ContextManager["Toil"]):
         if self.config.provisioner is None:
             self._provisioner = None
         else:
-            self._provisioner = cluster_factory(provisioner=self.config.provisioner,
-                                                clusterName=None,
-                                                zone=None,  # read from instance meta-data
-                                                nodeStorage=self.config.nodeStorage,
-                                                nodeStorageOverrides=self.config.nodeStorageOverrides,
-                                                sseKey=self.config.sseKey)
+            self._provisioner = cluster_factory(
+                provisioner=self.config.provisioner,
+                clusterName=None,
+                zone=None,  # read from instance meta-data
+                nodeStorage=self.config.nodeStorage,
+                nodeStorageOverrides=self.config.nodeStorageOverrides,
+                sseKey=self.config.sseKey,
+            )
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
@@ -1014,27 +1102,30 @@ class Toil(ContextManager["Toil"]):
         :return: an instance of a concrete subclass of AbstractJobStore
         """
         name, rest = cls.parseLocator(locator)
-        if name == 'file':
+        if name == "file":
             from toil.jobStores.fileJobStore import FileJobStore
+
             return FileJobStore(rest)
-        elif name == 'aws':
+        elif name == "aws":
             from toil.jobStores.aws.jobStore import AWSJobStore
+
             return AWSJobStore(rest)
-        elif name == 'google':
+        elif name == "google":
             from toil.jobStores.googleJobStore import GoogleJobStore
+
             return GoogleJobStore(rest)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
     @staticmethod
-    def parseLocator(locator: str) -> Tuple[str, str]:
-        if locator[0] in '/.' or ':' not in locator:
-            return 'file', locator
+    def parseLocator(locator: str) -> tuple[str, str]:
+        if locator[0] in "/." or ":" not in locator:
+            return "file", locator
         else:
             try:
-                name, rest = locator.split(':', 1)
+                name, rest = locator.split(":", 1)
             except ValueError:
-                raise RuntimeError('Invalid job store locator syntax.')
+                raise RuntimeError("Invalid job store locator syntax.")
             else:
                 return name, rest
 
@@ -1042,7 +1133,7 @@ class Toil(ContextManager["Toil"]):
     def buildLocator(name: str, rest: str) -> str:
         if ":" in name:
             raise ValueError(f"Can't have a ':' in the name: '{name}'.")
-        return f'{name}:{rest}'
+        return f"{name}:{rest}"
 
     @classmethod
     def resumeJobStore(cls, locator: str) -> "AbstractJobStore":
@@ -1059,30 +1150,39 @@ class Toil(ContextManager["Toil"]):
 
         :return: an instance of a concrete subclass of AbstractBatchSystem
         """
-        kwargs = dict(config=config,
-                      maxCores=config.maxCores,
-                      maxMemory=config.maxMemory,
-                      maxDisk=config.maxDisk)
+        kwargs = dict(
+            config=config,
+            maxCores=config.maxCores,
+            maxMemory=config.maxMemory,
+            maxDisk=config.maxDisk,
+        )
 
         from toil.batchSystems.registry import get_batch_system, get_batch_systems
 
         try:
             batch_system = get_batch_system(config.batchSystem)
         except KeyError:
-            raise RuntimeError(f'Unrecognized batch system: {config.batchSystem}  '
-                               f'(choose from: {", ".join(get_batch_systems())})')
+            raise RuntimeError(
+                f"Unrecognized batch system: {config.batchSystem}  "
+                f'(choose from: {", ".join(get_batch_systems())})'
+            )
 
         if config.caching and not batch_system.supportsWorkerCleanup():
-            raise RuntimeError(f'{config.batchSystem} currently does not support shared caching, because it '
-                               'does not support cleaning up a worker after the last job finishes. Set '
-                               '--caching=false')
+            raise RuntimeError(
+                f"{config.batchSystem} currently does not support shared caching, because it "
+                "does not support cleaning up a worker after the last job finishes. Set "
+                "--caching=false"
+            )
 
-        logger.debug('Using the %s' % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower())
+        logger.debug(
+            "Using the %s"
+            % re.sub("([a-z])([A-Z])", r"\g<1> \g<2>", batch_system.__name__).lower()
+        )
 
         return batch_system(**kwargs)
 
     def _setupAutoDeployment(
-            self, userScript: Optional["ModuleDescriptor"] = None
+        self, userScript: Optional["ModuleDescriptor"] = None
     ) -> None:
         """
         Determine the user script, save it to the job store and inject a reference to the saved copy into the batch system.
@@ -1095,39 +1195,55 @@ class Toil(ContextManager["Toil"]):
         if userScript is not None:
             # This branch is hit when a workflow is being started
             if userScript.belongsToToil:
-                logger.debug('User script %s belongs to Toil. No need to auto-deploy it.', userScript)
+                logger.debug(
+                    "User script %s belongs to Toil. No need to auto-deploy it.",
+                    userScript,
+                )
                 userScript = None
             else:
-                if (self._batchSystem.supportsAutoDeployment() and
-                        not self.config.disableAutoDeployment):
+                if (
+                    self._batchSystem.supportsAutoDeployment()
+                    and not self.config.disableAutoDeployment
+                ):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
-                    with self._jobStore.write_shared_file_stream('userScript') as f:
+                    with self._jobStore.write_shared_file_stream("userScript") as f:
                         pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
-                    from toil.batchSystems.singleMachine import \
-                        SingleMachineBatchSystem
+                    from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warning('Batch system does not support auto-deployment. The user script '
-                                       '%s will have to be present at the same location on every worker.', userScript)
+                        logger.warning(
+                            "Batch system does not support auto-deployment. The user script "
+                            "%s will have to be present at the same location on every worker.",
+                            userScript,
+                        )
                     userScript = None
         else:
             # This branch is hit on restarts
-            if self._batchSystem.supportsAutoDeployment() and not self.config.disableAutoDeployment:
+            if (
+                self._batchSystem.supportsAutoDeployment()
+                and not self.config.disableAutoDeployment
+            ):
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
+
                 try:
-                    with self._jobStore.read_shared_file_stream('userScript') as f:
+                    with self._jobStore.read_shared_file_stream("userScript") as f:
                         userScript = safeUnpickleFromStream(f)
                 except NoSuchFileException:
-                    logger.debug('User script neither set explicitly nor present in the job store.')
+                    logger.debug(
+                        "User script neither set explicitly nor present in the job store."
+                    )
                     userScript = None
         if userScript is None:
-            logger.debug('No user script to auto-deploy.')
+            logger.debug("No user script to auto-deploy.")
         else:
-            logger.debug('Saving user script %s as a resource', userScript)
+            logger.debug("Saving user script %s as a resource", userScript)
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
-            logger.debug('Injecting user script %s into batch system.', userScriptResource)
+            logger.debug(
+                "Injecting user script %s into batch system.", userScriptResource
+            )
             self._batchSystem.setUserScript(userScriptResource)
 
     def url_exists(self, src_uri: str) -> bool:
@@ -1137,47 +1253,46 @@ class Toil(ContextManager["Toil"]):
     # returns a file ID. Explain this to MyPy.
 
     @overload
-    def importFile(self,
-                   srcUrl: str,
-                   sharedFileName: str,
-                   symlink: bool = True) -> None:
-        ...
+    def importFile(
+        self, srcUrl: str, sharedFileName: str, symlink: bool = True
+    ) -> None: ...
 
     @overload
-    def importFile(self,
-                   srcUrl: str,
-                   sharedFileName: None = None,
-                   symlink: bool = True) -> FileID:
-        ...
+    def importFile(
+        self, srcUrl: str, sharedFileName: None = None, symlink: bool = True
+    ) -> FileID: ...
 
-    @deprecated(new_function_name='import_file')
-    def importFile(self,
-                   srcUrl: str,
-                   sharedFileName: Optional[str] = None,
-                   symlink: bool = True) -> Optional[FileID]:
+    @deprecated(new_function_name="import_file")
+    def importFile(
+        self, srcUrl: str, sharedFileName: Optional[str] = None, symlink: bool = True
+    ) -> Optional[FileID]:
         return self.import_file(srcUrl, sharedFileName, symlink)
 
     @overload
-    def import_file(self,
-                    src_uri: str,
-                    shared_file_name: str,
-                    symlink: bool = True,
-                    check_existence: bool = True) -> None:
-        ...
+    def import_file(
+        self,
+        src_uri: str,
+        shared_file_name: str,
+        symlink: bool = True,
+        check_existence: bool = True,
+    ) -> None: ...
 
     @overload
-    def import_file(self,
-                    src_uri: str,
-                    shared_file_name: None = None,
-                    symlink: bool = True,
-                    check_existence: bool = True) -> FileID:
-        ...
+    def import_file(
+        self,
+        src_uri: str,
+        shared_file_name: None = None,
+        symlink: bool = True,
+        check_existence: bool = True,
+    ) -> FileID: ...
 
-    def import_file(self,
-                    src_uri: str,
-                    shared_file_name: Optional[str] = None,
-                    symlink: bool = True,
-                    check_existence: bool = True) -> Optional[FileID]:
+    def import_file(
+        self,
+        src_uri: str,
+        shared_file_name: Optional[str] = None,
+        symlink: bool = True,
+        check_existence: bool = True,
+    ) -> Optional[FileID]:
         """
         Import the file at the given URL into the job store.
 
@@ -1193,7 +1308,9 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
         full_uri = self.normalize_uri(src_uri, check_existence=check_existence)
         try:
-            imported = self._jobStore.import_file(full_uri, shared_file_name=shared_file_name, symlink=symlink)
+            imported = self._jobStore.import_file(
+                full_uri, shared_file_name=shared_file_name, symlink=symlink
+            )
         except FileNotFoundError:
             # TODO: I thought we refactored the different job store import
             # methods to not raise and instead return None, but that looks to
@@ -1210,10 +1327,10 @@ class Toil(ContextManager["Toil"]):
             # We need to protect the caller from missing files.
             # We think a file was missing, and we got None becasuse of it.
             # We didn't get None instead because of usign a shared file name.
-            raise FileNotFoundError(f'Could not find file {src_uri}')
+            raise FileNotFoundError(f"Could not find file {src_uri}")
         return imported
 
-    @deprecated(new_function_name='export_file')
+    @deprecated(new_function_name="export_file")
     def exportFile(self, jobStoreFileID: FileID, dstUrl: str) -> None:
         return self.export_file(jobStoreFileID, dstUrl)
 
@@ -1236,18 +1353,21 @@ class Toil(ContextManager["Toil"]):
         :param check_existence: If set, raise FileNotFoundError if a URI points to
                a local file that does not exist.
         """
-        if urlparse(uri).scheme == 'file':
-            uri = unquote(urlparse(uri).path)  # this should strip off the local file scheme; it will be added back
+        if urlparse(uri).scheme == "file":
+            uri = unquote(
+                urlparse(uri).path
+            )  # this should strip off the local file scheme; it will be added back
 
         # account for the scheme-less case, which should be coerced to a local absolute path
-        if urlparse(uri).scheme == '':
+        if urlparse(uri).scheme == "":
             abs_path = os.path.abspath(uri)
             if not os.path.exists(abs_path) and check_existence:
                 raise FileNotFoundError(
                     f'Could not find local file "{abs_path}" when importing "{uri}".\n'
                     f'Make sure paths are relative to "{os.getcwd()}" or use absolute paths.\n'
-                    f'If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.).')
-            return f'file://{quote(abs_path)}'
+                    f"If this is not a local file, please include the scheme (s3:/, gs:/, ftp://, etc.)."
+                )
+            return f"file://{quote(abs_path)}"
         return uri
 
     def _setBatchSystemEnvVars(self) -> None:
@@ -1259,15 +1379,19 @@ class Toil(ContextManager["Toil"]):
     def _serialiseEnv(self) -> None:
         """Put the environment in a globally accessible pickle file."""
         # Dump out the environment of this process in the environment pickle file.
-        with self._jobStore.write_shared_file_stream("environment.pickle") as fileHandle:
+        with self._jobStore.write_shared_file_stream(
+            "environment.pickle"
+        ) as fileHandle:
             pickle.dump(dict(os.environ), fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.debug("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self) -> None:
         """Download all jobs in the current job store into self.jobCache."""
-        logger.debug('Caching all jobs in job store')
-        self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
-        logger.debug(f'{len(self._jobCache)} jobs downloaded.')
+        logger.debug("Caching all jobs in job store")
+        self._jobCache = {
+            jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()
+        }
+        logger.debug(f"{len(self._jobCache)} jobs downloaded.")
 
     def _cacheJob(self, job: "JobDescription") -> None:
         """
@@ -1289,14 +1413,22 @@ class Toil(ContextManager["Toil"]):
         :param configWorkDir: Value passed to the program using the --workDir flag
         :return: Path to the Toil work directory, constant across all machines
         """
-        workDir = os.getenv('TOIL_WORKDIR_OVERRIDE') or configWorkDir or os.getenv(
-            'TOIL_WORKDIR') or tempfile.gettempdir()
+        workDir = (
+            os.getenv("TOIL_WORKDIR_OVERRIDE")
+            or configWorkDir
+            or os.getenv("TOIL_WORKDIR")
+            or tempfile.gettempdir()
+        )
         if not os.path.exists(workDir):
-            raise RuntimeError(f'The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist.')
+            raise RuntimeError(
+                f"The directory specified by --workDir or TOIL_WORKDIR ({workDir}) does not exist."
+            )
         return workDir
 
     @classmethod
-    def get_toil_coordination_dir(cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]) -> str:
+    def get_toil_coordination_dir(
+        cls, config_work_dir: Optional[str], config_coordination_dir: Optional[str]
+    ) -> str:
         """
         Return a path to a writable directory, which will be in memory if
         convenient. Ought to be used for file locking and coordination.
@@ -1318,32 +1450,43 @@ class Toil(ContextManager["Toil"]):
         # succeeds.
         coordination_dir: Optional[str] = (
             # First try an override env var
-                os.getenv('TOIL_COORDINATION_DIR_OVERRIDE') or
-                # Then the value from the config
-                config_coordination_dir or
-                # Then a normal env var
-                # TODO: why/how would this propagate when not using single machine?
-                os.getenv('TOIL_COORDINATION_DIR') or
-                # Then try a `toil` subdirectory of the XDG runtime directory
-                # (often /var/run/users/<UID>). But only if we are actually in a
-                # session that has the env var set. Otherwise it might belong to a
-                # different set of sessions and get cleaned up out from under us
-                # when that session ends.
-                # We don't think Slurm XDG sessions are trustworthy, depending on
-                # the cluster's PAM configuration, so don't use them.
-                ('XDG_RUNTIME_DIR' in os.environ and 'SLURM_JOBID' not in os.environ and try_path(
-                    os.path.join(os.environ['XDG_RUNTIME_DIR'], 'toil'))) or
-                # Try under /run/lock. It might be a temp dir style sticky directory.
-                try_path('/run/lock') or
-                # Try all possible temp directories, falling back to the current working
-                # directory
-                tempfile.gettempdir() or
-                # Finally, fall back on the work dir and hope it's a legit filesystem.
-                cls.getToilWorkDir(config_work_dir)
+            os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
+            or
+            # Then the value from the config
+            config_coordination_dir
+            or
+            # Then a normal env var
+            # TODO: why/how would this propagate when not using single machine?
+            os.getenv("TOIL_COORDINATION_DIR")
+            or
+            # Then try a `toil` subdirectory of the XDG runtime directory
+            # (often /var/run/users/<UID>). But only if we are actually in a
+            # session that has the env var set. Otherwise it might belong to a
+            # different set of sessions and get cleaned up out from under us
+            # when that session ends.
+            # We don't think Slurm XDG sessions are trustworthy, depending on
+            # the cluster's PAM configuration, so don't use them.
+            (
+                "XDG_RUNTIME_DIR" in os.environ
+                and "SLURM_JOBID" not in os.environ
+                and try_path(os.path.join(os.environ["XDG_RUNTIME_DIR"], "toil"))
+            )
+            or
+            # Try under /run/lock. It might be a temp dir style sticky directory.
+            try_path("/run/lock")
+            or
+            # Try all possible temp directories, falling back to the current working
+            # directory
+            tempfile.gettempdir()
+            or
+            # Finally, fall back on the work dir and hope it's a legit filesystem.
+            cls.getToilWorkDir(config_work_dir)
         )
 
         if coordination_dir is None:
-            raise RuntimeError("Could not determine a coordination directory by any method!")
+            raise RuntimeError(
+                "Could not determine a coordination directory by any method!"
+            )
 
         return coordination_dir
 
@@ -1357,11 +1500,13 @@ class Toil(ContextManager["Toil"]):
 
         :param workflow_id: The ID of the current Toil workflow.
         """
-        return "toilwf-" + str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace('-', '')
+        return "toilwf-" + str(uuid.uuid5(uuid.UUID(getNodeID()), workflow_id)).replace(
+            "-", ""
+        )
 
     @classmethod
     def getLocalWorkflowDir(
-            cls, workflowID: str, configWorkDir: Optional[str] = None
+        cls, workflowID: str, configWorkDir: Optional[str] = None
     ) -> str:
         """
         Return the directory where worker directories and the cache will be located for this workflow on this machine.
@@ -1374,7 +1519,9 @@ class Toil(ContextManager["Toil"]):
 
         # Create a directory unique to each host in case workDir is on a shared FS.
         # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir: str = os.path.join(base, cls.get_workflow_path_component(workflowID))
+        workflowDir: str = os.path.join(
+            base, cls.get_workflow_path_component(workflowID)
+        )
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -1383,15 +1530,17 @@ class Toil(ContextManager["Toil"]):
                 # The directory exists if a previous worker set it up.
                 raise
         else:
-            logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
+            logger.debug(
+                "Created the workflow directory for this machine at %s" % workflowDir
+            )
         return workflowDir
 
     @classmethod
     def get_local_workflow_coordination_dir(
-            cls,
-            workflow_id: str,
-            config_work_dir: Optional[str],
-            config_coordination_dir: Optional[str]
+        cls,
+        workflow_id: str,
+        config_work_dir: Optional[str],
+        config_coordination_dir: Optional[str],
     ) -> str:
         """
         Return the directory where coordination files should be located for
@@ -1425,8 +1574,7 @@ class Toil(ContextManager["Toil"]):
 
         # Don't let it out if it smells like an unacceptable filesystem for locks
         ensure_filesystem_lockable(
-            subdir,
-            hint="Use --coordinationDir to provide a different location."
+            subdir, hint="Use --coordinationDir to provide a different location."
         )
 
         # Return it
@@ -1440,24 +1588,31 @@ class Toil(ContextManager["Toil"]):
         """
         logProcessContext(self.config)
 
-        with RealtimeLogger(self._batchSystem,
-                            level=self.options.logLevel if self.options.realTimeLogging else None):
+        with RealtimeLogger(
+            self._batchSystem,
+            level=self.options.logLevel if self.options.realTimeLogging else "INFO",
+        ):
             # FIXME: common should not import from leader
             from toil.leader import Leader
-            return Leader(config=self.config,
-                          batchSystem=self._batchSystem,
-                          provisioner=self._provisioner,
-                          jobStore=self._jobStore,
-                          rootJob=rootJob,
-                          jobCache=self._jobCache).run()
+
+            return Leader(
+                config=self.config,
+                batchSystem=self._batchSystem,
+                provisioner=self._provisioner,
+                jobStore=self._jobStore,
+                rootJob=rootJob,
+                jobCache=self._jobCache,
+            ).run()
 
     def _shutdownBatchSystem(self) -> None:
         """Shuts down current batch system if it has been created."""
         startTime = time.time()
-        logger.debug('Shutting down batch system ...')
+        logger.debug("Shutting down batch system ...")
         self._batchSystem.shutdown()
-        logger.debug('... finished shutting down the batch system in %s seconds.'
-                     % (time.time() - startTime))
+        logger.debug(
+            "... finished shutting down the batch system in %s seconds."
+            % (time.time() - startTime)
+        )
 
     def _assertContextManagerUsed(self) -> None:
         if not self._inContextManager:
@@ -1472,27 +1627,33 @@ class ToilRestartException(Exception):
 class ToilContextManagerException(Exception):
     def __init__(self) -> None:
         super().__init__(
-            'This method cannot be called outside the "with Toil(...)" context manager.')
+            'This method cannot be called outside the "with Toil(...)" context manager.'
+        )
 
 
 class ToilMetrics:
-    def __init__(self, bus: MessageBus, provisioner: Optional["AbstractProvisioner"] = None) -> None:
+    def __init__(
+        self, bus: MessageBus, provisioner: Optional["AbstractProvisioner"] = None
+    ) -> None:
         clusterName = "none"
         region = "us-west-2"
         if provisioner is not None:
             clusterName = str(provisioner.clusterName)
             if provisioner._zone is not None:
-                if provisioner.cloud == 'aws':
+                if provisioner.cloud == "aws":
                     # lazy import to avoid AWS dependency if the aws extra is not installed
                     from toil.lib.aws import zone_to_region
+
                     # Remove AZ name
                     region = zone_to_region(provisioner._zone)
                 else:
                     region = provisioner._zone
 
-        registry = lookupEnvVar(name='docker registry',
-                                envName='TOIL_DOCKER_REGISTRY',
-                                defaultValue=dockerRegistry)
+        registry = lookupEnvVar(
+            name="docker registry",
+            envName="TOIL_DOCKER_REGISTRY",
+            defaultValue=dockerRegistry,
+        )
 
         self.mtailImage = f"{registry}/toil-mtail:{dockerTag}"
         self.grafanaImage = f"{registry}/toil-grafana:{dockerTag}"
@@ -1509,14 +1670,21 @@ class ToilMetrics:
 
         try:
             self.mtailProc: Optional[subprocess.Popen[bytes]] = subprocess.Popen(
-                ["docker", "run",
-                 "--rm",
-                 "--interactive",
-                 "--net=host",
-                 "--name", "toil_mtail",
-                 "-p", "3903:3903",
-                 self.mtailImage],
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--interactive",
+                    "--net=host",
+                    "--name",
+                    "toil_mtail",
+                    "-p",
+                    "3903:3903",
+                    self.mtailImage,
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
         except subprocess.CalledProcessError:
             logger.warning("Couldn't start toil metrics server.")
             self.mtailProc = None
@@ -1529,20 +1697,32 @@ class ToilMetrics:
         if not provisioner:
             try:
                 self.nodeExporterProc = subprocess.Popen(
-                    ["docker", "run",
-                     "--rm",
-                     "--net=host",
-                     "-p", "9100:9100",
-                     "-v", "/proc:/host/proc",
-                     "-v", "/sys:/host/sys",
-                     "-v", "/:/rootfs",
-                     "quay.io/prometheus/node-exporter:v1.3.1",
-                     "-collector.procfs", "/host/proc",
-                     "-collector.sysfs", "/host/sys",
-                     "-collector.filesystem.ignored-mount-points",
-                     "^/(sys|proc|dev|host|etc)($|/)"])
+                    [
+                        "docker",
+                        "run",
+                        "--rm",
+                        "--net=host",
+                        "-p",
+                        "9100:9100",
+                        "-v",
+                        "/proc:/host/proc",
+                        "-v",
+                        "/sys:/host/sys",
+                        "-v",
+                        "/:/rootfs",
+                        "quay.io/prometheus/node-exporter:v1.3.1",
+                        "-collector.procfs",
+                        "/host/proc",
+                        "-collector.sysfs",
+                        "/host/sys",
+                        "-collector.filesystem.ignored-mount-points",
+                        "^/(sys|proc|dev|host|etc)($|/)",
+                    ]
+                )
             except subprocess.CalledProcessError:
-                logger.warning("Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
+                logger.warning(
+                    "Couldn't start node exporter, won't get RAM and CPU usage for dashboard."
+                )
             except KeyboardInterrupt:
                 if self.nodeExporterProc is not None:
                     self.nodeExporterProc.terminate()
@@ -1559,23 +1739,32 @@ class ToilMetrics:
             JobMissingMessage: self.logMissingJob,
             JobIssuedMessage: self.logIssuedJob,
             JobFailedMessage: self.logFailedJob,
-            JobCompletedMessage: self.logCompletedJob
+            JobCompletedMessage: self.logCompletedJob,
         }
         # The only way to make this inteligible to MyPy is to wrap the dict in
         # a function that can cast.
-        MessageType = TypeVar('MessageType')
+        MessageType = TypeVar("MessageType")
 
-        def get_listener(message_type: Type[MessageType]) -> Callable[[MessageType], None]:
+        def get_listener(
+            message_type: type[MessageType],
+        ) -> Callable[[MessageType], None]:
             return cast(Callable[[MessageType], None], TARGETS[message_type])
 
         # Then set up the listeners.
-        self._listeners = [bus.subscribe(message_type, get_listener(message_type)) for message_type in TARGETS.keys()]
+        self._listeners = [
+            bus.subscribe(message_type, get_listener(message_type))
+            for message_type in TARGETS.keys()
+        ]
 
     @staticmethod
     def _containerRunning(containerName: str) -> bool:
         try:
-            result = subprocess.check_output(["docker", "inspect", "-f",
-                                              "'{{.State.Running}}'", containerName]).decode('utf-8') == "true"
+            result = (
+                subprocess.check_output(
+                    ["docker", "inspect", "-f", "'{{.State.Running}}'", containerName]
+                ).decode("utf-8")
+                == "true"
+            )
         except subprocess.CalledProcessError:
             result = False
         return result
@@ -1587,24 +1776,38 @@ class ToilMetrics:
                     subprocess.check_call(["docker", "rm", "-f", "toil_prometheus"])
                 except subprocess.CalledProcessError:
                     pass
-                subprocess.check_call(["docker", "run",
-                                       "--name", "toil_prometheus",
-                                       "--net=host",
-                                       "-d",
-                                       "-p", "9090:9090",
-                                       self.prometheusImage,
-                                       clusterName,
-                                       zone])
+                subprocess.check_call(
+                    [
+                        "docker",
+                        "run",
+                        "--name",
+                        "toil_prometheus",
+                        "--net=host",
+                        "-d",
+                        "-p",
+                        "9090:9090",
+                        self.prometheusImage,
+                        clusterName,
+                        zone,
+                    ]
+                )
 
             if not self._containerRunning("toil_grafana"):
                 try:
                     subprocess.check_call(["docker", "rm", "-f", "toil_grafana"])
                 except subprocess.CalledProcessError:
                     pass
-                subprocess.check_call(["docker", "run",
-                                       "--name", "toil_grafana",
-                                       "-d", "-p=3000:3000",
-                                       self.grafanaImage])
+                subprocess.check_call(
+                    [
+                        "docker",
+                        "run",
+                        "--name",
+                        "toil_grafana",
+                        "-d",
+                        "-p=3000:3000",
+                        self.grafanaImage,
+                    ]
+                )
         except subprocess.CalledProcessError:
             logger.warning("Could not start prometheus/grafana dashboard.")
             return
@@ -1612,15 +1815,17 @@ class ToilMetrics:
         try:
             self.add_prometheus_data_source()
         except requests.exceptions.ConnectionError:
-            logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+            logger.debug(
+                "Could not add data source to Grafana dashboard - no metrics will be displayed."
+            )
 
     @retry(errors=[requests.exceptions.ConnectionError])
     def add_prometheus_data_source(self) -> None:
         requests.post(
-            'http://localhost:3000/api/datasources',
-            auth=('admin', 'admin'),
+            "http://localhost:3000/api/datasources",
+            auth=("admin", "admin"),
             data='{"name":"DS_PROMETHEUS","type":"prometheus", "url":"http://localhost:9090", "access":"direct"}',
-            headers={'content-type': 'application/json', "access": "direct"}
+            headers={"content-type": "application/json", "access": "direct"},
         )
 
     def log(self, message: str) -> None:
@@ -1631,14 +1836,10 @@ class ToilMetrics:
     # Note: The mtail configuration (dashboard/mtail/toil.mtail) depends on these messages
     # remaining intact
 
-    def logClusterSize(
-            self, m: ClusterSizeMessage
-    ) -> None:
+    def logClusterSize(self, m: ClusterSizeMessage) -> None:
         self.log("current_size '%s' %i" % (m.instance_type, m.current_size))
 
-    def logClusterDesiredSize(
-            self, m: ClusterDesiredSizeMessage
-    ) -> None:
+    def logClusterDesiredSize(self, m: ClusterDesiredSizeMessage) -> None:
         self.log("desired_size '%s' %i" % (m.instance_type, m.desired_size))
 
     def logQueueSize(self, m: QueueSizeMessage) -> None:
@@ -1658,13 +1859,13 @@ class ToilMetrics:
 
     def shutdown(self) -> None:
         if self.mtailProc is not None:
-            logger.debug('Stopping mtail')
+            logger.debug("Stopping mtail")
             self.mtailProc.kill()
-            logger.debug('Stopped mtail')
+            logger.debug("Stopped mtail")
         if self.nodeExporterProc is not None:
-            logger.debug('Stopping node exporter')
+            logger.debug("Stopping node exporter")
             self.nodeExporterProc.kill()
-            logger.debug('Stopped node exporter')
+            logger.debug("Stopped node exporter")
         self._listeners = []
 
 
@@ -1672,7 +1873,7 @@ def cacheDirName(workflowID: str) -> str:
     """
     :return: Name of the cache directory.
     """
-    return f'cache-{workflowID}'
+    return f"cache-{workflowID}"
 
 
 def getDirSizeRecursively(dirPath: str) -> int:
@@ -1698,8 +1899,16 @@ def getDirSizeRecursively(dirPath: str) -> int:
 
     dirPath = os.path.abspath(dirPath)
     try:
-        return int(subprocess.check_output(['du', '-s', dirPath],
-                                           env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
+        return (
+            int(
+                subprocess.check_output(
+                    ["du", "-s", dirPath], env=dict(os.environ, BLOCKSIZE="512")
+                )
+                .decode("utf-8")
+                .split()[0]
+            )
+            * 512
+        )
         # The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
         # --block-size=1 because Apple can't handle it.
     except (OSError, subprocess.CalledProcessError):
@@ -1714,7 +1923,7 @@ def getDirSizeRecursively(dirPath: str) -> int:
         return total_size
 
 
-def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
+def getFileSystemSize(dirPath: str) -> tuple[int, int]:
     """
     Return the free space, and total size of the file system hosting `dirPath`.
 
@@ -1722,7 +1931,7 @@ def getFileSystemSize(dirPath: str) -> Tuple[int, int]:
     :return: free space and total size of file system
     """
     if not os.path.exists(dirPath):
-        raise RuntimeError(f'Could not find dir size for non-existent path: {dirPath}')
+        raise RuntimeError(f"Could not find dir size for non-existent path: {dirPath}")
     diskStats = os.statvfs(dirPath)
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
