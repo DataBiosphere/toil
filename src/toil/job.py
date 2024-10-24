@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import collections
 import copy
 import importlib
@@ -46,6 +48,7 @@ from typing import (TYPE_CHECKING,
 
 from configargparse import ArgParser
 
+from toil import memoize
 from toil.bus import Names
 from toil.lib.compatibility import deprecated
 
@@ -76,7 +79,7 @@ from toil.statsAndLogging import set_logging_from_options
 if TYPE_CHECKING:
     from optparse import OptionParser
 
-    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason, InsufficientSystemResources
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
 
@@ -3482,6 +3485,160 @@ class ServiceHostJob(Job):
 
     def getUserScript(self):
         return self.serviceModule
+
+
+class FileMetadata(NamedTuple):
+    """
+    Metadata for a file.
+    source is the URL to grab the file from
+    parent_dir is parent directory of the source
+    size is the size of the file. Is none if the filesize cannot be retrieved.
+    """
+    source: str
+    parent_dir: str
+    size: Optional[int]
+
+
+class CombineImportsJob(Job):
+    """
+    Combine the outputs of multiple WorkerImportsJob into one promise
+    """
+    def __init__(self, d: Sequence[Promised[Dict[str, FileID]]], **kwargs):
+        """
+        Merge the dicts
+        :param d: Sequence of dictionaries to merge
+        """
+        self._d = d
+        super().__init__(**kwargs)
+
+    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+        d = unwrap_all(self._d)
+        return {k: v for item in d for k, v in item.items()}
+
+
+class WorkerImportJob(Job):
+    """
+    Job to do file imports on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+    For the CWL/WDL runners, this class is only used when runImportsOnWorkers is enabled.
+    """
+    def __init__(self, filenames: List[str], disk_size: Optional[ParseableIndivisibleResource] = None, stream: bool = True, **kwargs: Any):
+        if stream:
+            super().__init__(local=False, **kwargs)
+        else:
+            super().__init__(local=False, disk=disk_size, **kwargs)
+        self.filenames = filenames
+        self.disk_size = disk_size
+
+    @staticmethod
+    def import_files(files: List[str], file_source: "AbstractJobStore") -> Dict[str, FileID]:
+        path_to_fileid = {}
+
+        @memoize
+        def import_filename(filename: str) -> Optional[FileID]:
+            return file_source.import_file(filename, symlink=True)
+
+        for file in files:
+            imported = import_filename(file)
+            if imported is not None:
+                path_to_fileid[file] = imported
+        return path_to_fileid
+
+    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Promise of workflow outputs
+        """
+        try:
+            return self.import_files(self.filenames, file_store.jobStore)
+        except InsufficientSystemResources as e:
+            if e.resource == "disk" and e.requested < self.disk_size:
+                non_streaming_import = WorkerImportJob(self.filenames, self.disk_size, streaming=False)
+                self.addChild(non_streaming_import)
+                return non_streaming_import.rv()
+            else:
+                raise
+
+
+class ImportsJob(Job):
+    """
+    Job to organize and delegate files to individual WorkerImportJobs.
+
+    For the CWL/WDL runners, this is only used when runImportsOnWorkers is enabled
+    """
+    def __init__(self, file_to_data: Dict[str, FileMetadata], import_workers_threshold, **kwargs: Any):
+        """
+        Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+        This class is only used when runImportsOnWorkers is enabled.
+        """
+        super().__init__(local=True, **kwargs)
+        self._file_to_data = file_to_data
+        self._import_workers_threshold = import_workers_threshold
+
+    def run(self, file_store: AbstractFileStore) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Tuple of a mapping from the candidate uri to the file id and a mapping of the source filenames to its metadata. The candidate uri is a field in the file metadata
+        """
+        import_workers_threshold = self._import_workers_threshold
+        file_to_data = self._file_to_data
+        # Run WDL imports on a worker instead
+
+        individual_files = []
+        batch_files = []
+        # Separate out files that will be imported individually and in a batch
+        for filename, (candidate_uri, parent_id, size) in file_to_data.items():
+            if size < import_workers_threshold:
+                batch_files.append(filename)
+            else:
+                individual_files.append(filename)
+
+        # Create individual import jobs
+        import_jobs = []
+        for file in individual_files:
+            filesize = file_to_data[file][2]
+            candidate_uri = file_to_data[file][0]
+            import_jobs.append(WorkerImportJob([candidate_uri], disk_size=filesize))
+
+        # create multiple batch jobs if necessary to not exceed the threshold
+        per_batch_files = []
+        per_batch_size = 0
+        # This list will hold lists of batched filenames
+        to_batch = []
+        while len(batch_files) > 0 or len(per_batch_files) > 0:
+            if len(batch_files) == 0 and len(per_batch_files) > 0:
+                to_batch.append(per_batch_files)
+                break
+
+            filename = batch_files[0]
+            # See if adding this to the queue will make the batch job too big
+            filesize = file_to_data[filename][2]
+            if per_batch_size + filesize >= import_workers_threshold:
+                # batch is too big now, store to schedule the batch
+                to_batch.append(per_batch_files)
+                # reset batching calculation
+                per_batch_size = 0
+            else:
+                per_batch_size += filesize
+                per_batch_files.append(filename)
+                batch_files.pop(0)
+
+        # Create batch import jobs for each group of files
+        for batch in to_batch:
+            candidate_uris = [file_to_data[filename][0] for filename in batch]
+            batch_size = sum(file_to_data[filename][2] for filename in batch)
+            import_jobs.append(WorkerImportJob(candidate_uris, disk_size=batch_size))
+
+        for job in import_jobs:
+            self.addChild(job)
+
+        combine_imports_job = CombineImportsJob([job.rv() for job in import_jobs])
+        for job in import_jobs:
+            job.addFollowOn(combine_imports_job)
+        self.addChild(combine_imports_job)
+
+        return combine_imports_job.rv(), file_to_data
 
 
 class Promise:
