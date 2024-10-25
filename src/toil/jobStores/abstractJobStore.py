@@ -49,6 +49,7 @@ from toil.job import (
     ServiceJobDescription,
 )
 from toil.lib.compatibility import deprecated
+from toil.lib.conversions import strtobool
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize
 from toil.lib.retry import ErrorCondition, retry
@@ -1875,14 +1876,25 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     ftp = None
 
     @classmethod
+    def _setup_ftp(cls) -> None:
+        if cls.ftp is None:
+            cls.ftp = FtpFsAccess(insecure=strtobool(os.environ.get('TOIL_FTP_INSECURE', 'False')) is True)
+
+    @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ("http", "https", "ftp") and not export
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
+        # Deal with FTP first to support user/password auth
+        if url.scheme.lower() == "ftp":
+            cls._setup_ftp()
+            # mypy is unable to understand that ftp must exist by this point
+            assert cls.ftp is not None
+            return cls.ftp.exists(url.geturl())
+
         try:
-            # TODO: Figure out how to HEAD instead of this.
-            with cls._open_url(url):
+            with closing(urlopen(Request(url.geturl(), method="HEAD"))):
                 return True
         except FileNotFoundError:
             return False
@@ -1898,9 +1910,10 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     )
     def _get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == "ftp":
-            if cls.ftp is None:
-                cls.ftp = FtpFsAccess()
-            cls.ftp.size(url.geturl())
+            cls._setup_ftp()
+            # mypy is unable to understand that ftp must exist by this point
+            assert cls.ftp is not None
+            return cls.ftp.size(url.geturl())
 
         # just read the header for content length
         resp = urlopen(Request(url.geturl(), method="HEAD"))
@@ -1938,6 +1951,14 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         ]
     )
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        # Deal with FTP first so we support user/password auth
+        if url.scheme.lower() == "ftp":
+            cls._setup_ftp()
+            # mypy is unable to understand that ftp must exist by this point
+            assert cls.ftp is not None
+            # we open in read mode as write mode is not supported
+            return cls.ftp.open(url.geturl(), mode="r")
+
         try:
             return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
@@ -1989,6 +2010,42 @@ class FtpFsAccess:
         except netrc.NetrcParseError as err:
             logger.debug(err)
 
+    def exists(self, fn: str) -> bool:
+        return self.isfile(fn) or self.isdir(fn)
+
+    def isfile(self, fn: str) -> bool:
+        ftp = self._connect(fn)
+        if ftp:
+            try:
+                if not self.size(fn) is None:
+                    return True
+                else:
+                    return False
+            except ftplib.all_errors:
+                return False
+        return False
+
+    def isdir(self, fn: str) -> bool:
+        ftp = self._connect(fn)
+        if ftp:
+            try:
+                cwd = ftp.pwd()
+                ftp.cwd(urlparse(fn).path)
+                ftp.cwd(cwd)
+                return True
+            except ftplib.all_errors:
+                return False
+        return False
+
+    def open(self, fn: str, mode: str) -> IO[bytes]:
+        if 'r' in mode:
+            host, user, passwd, path = self._parse_url(fn)
+            handle = urlopen(
+                "ftp://{}:{}@{}/{}".format(user, passwd, host, path))
+            return cast(IO[bytes], closing(handle))
+        # TODO: support write mode
+        raise Exception('Write mode FTP not implemented')
+
     def _parse_url(
         self, url: str
     ) -> tuple[Optional[str], Optional[str], Optional[str], str]:
@@ -2026,6 +2083,12 @@ class FtpFsAccess:
             ftp = ftplib.FTP_TLS()
             ftp.set_debuglevel(1 if logger.isEnabledFor(logging.DEBUG) else 0)
             ftp.connect(host)
+            env_user = os.getenv("TOIL_FTP_USER")
+            env_passwd = os.getenv("TOIL_FTP_PASSWORD")
+            if env_user:
+                user = env_user
+            if env_passwd:
+                passwd = env_passwd
             ftp.login(user or "", passwd or "", secure=not self.insecure)
             self.cache[(host, user, passwd)] = ftp
             return ftp
@@ -2045,7 +2108,12 @@ class FtpFsAccess:
             host, user, passwd, path = self._parse_url(fn)
             try:
                 return ftp.size(path)
-            except ftplib.all_errors:
+            except ftplib.all_errors as e:
+                if str(e) == "550 SIZE not allowed in ASCII mode":
+                    # some servers don't allow grabbing size in ascii mode
+                    # https://stackoverflow.com/questions/22090001/get-folder-size-using-ftplib/22093848#22093848
+                    ftp.voidcmd("TYPE I")
+                    return ftp.size(path)
                 if host is None:
                     # no host
                     return None

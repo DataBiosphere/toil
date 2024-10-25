@@ -217,6 +217,17 @@ There are several environment variables that affect the way Toil runs.
 |                                  | to S3 (``True`` by default).                       |
 |                                  | Example: ``TOIL_S3_USE_SSL=False``                 |
 +----------------------------------+----------------------------------------------------+
+| TOIL_FTP_USER                    | The FTP username to override all FTP logins with   |
+|                                  | Example: ``TOIL_FTP_USER=ftp_user``                |
++----------------------------------+----------------------------------------------------+
+| TOIL_FTP_PASSWORD                | The FTP password to override all FTP logins with   |
+|                                  | Example: ``TOIL_FTP_PASSWORD=ftp_password``        |
++----------------------------------+----------------------------------------------------+
+| TOIL_FTP_INSECURE                | Enable or disable connecting to all FTP            |
+|                                  | connections in insecure mode                       |
+|                                  | to S3 (``False`` by default).                      |
+|                                  | Example: ``TOIL_FTP_INSECURE=True``                |
++----------------------------------+----------------------------------------------------+
 | TOIL_WES_BROKER_URL              | An optional broker URL to use to communicate       |
 |                                  | between the WES server and Celery task queue. If   |
 |                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
