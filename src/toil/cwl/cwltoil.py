@@ -3570,7 +3570,6 @@ class CWLInstallImportsJob(Job):
             skip_remote=self.skip_remote,
             bypass_file_store=self.bypass_file_store,
         )
-        # logger.info("Importing tool-associated files...")
         visitSteps(
             tool,
             functools.partial(

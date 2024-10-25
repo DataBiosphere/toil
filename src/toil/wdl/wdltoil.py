@@ -1007,8 +1007,6 @@ def get_file_sizes(
     Resolve relative-URI files in the given environment and them then into absolute normalized URIs. Returns a dictionary of WDL file values to a tuple of the normalized URI,
     parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
 
-    Will set the value of the File to the relative-URI.
-
     :param filenames: list of filenames to evaluate on
     :param file_source: Context to search for files with
     :param task_path: Dotted WDL name of the user-level code doing the
@@ -1104,7 +1102,7 @@ def convert_files(
     task_path: str,
 ) -> None:
     """
-    Resolve relative-URI files in the given environment and import all files.
+    Resolve relative-URI files in the given environment convert the file values to a new value made from a given mapping.
 
     Will set the value of the File to the relative-URI.
 
