@@ -269,7 +269,7 @@ class Conditional:
     """
     Object holding conditional expression until we are ready to evaluate it.
 
-    Evaluation occurs at the moment the encloses step is ready to run.
+    Evaluation occurs before the enclosing step's inputs are type-checked.
     """
 
     def __init__(
@@ -2442,7 +2442,7 @@ class CWLJobWrapper(CWLNamedJob):
         self.cwltool = tool
         self.cwljob = cwljob
         self.runtime_context = runtime_context
-        self.conditional = conditional
+        self.conditional = conditional or Conditional()
         self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
