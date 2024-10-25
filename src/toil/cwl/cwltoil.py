@@ -54,7 +54,8 @@ from typing import (
     TypeVar,
     Union,
     cast,
-    Sequence, Literal,
+    Sequence,
+    Literal,
 )
 from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urlparse, urlsplit
@@ -113,7 +114,6 @@ from toil.common import Toil, addOptions
 from toil.cwl import check_cwltool_version
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
-from toil.wdl.wdltoil import is_url
 
 check_cwltool_version()
 from toil.cwl.utils import (
@@ -136,6 +136,7 @@ from toil.job import (
     unwrap_all,
     ImportsJob,
     FileMetadata,
+    is_url,
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,

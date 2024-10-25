@@ -91,9 +91,12 @@ from toil.job import (
     unwrap,
     unwrap_all,
     ParseableIndivisibleResource,
-    WorkerImportJob,
     ImportsJob,
     FileMetadata,
+    TOIL_URI_SCHEME,
+    is_url,
+    is_standard_url,
+    is_toil_url,
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
@@ -758,16 +761,6 @@ def parse_disks(
     return specified_mount_point, part_size, part_suffix
 
 
-# We define a URI scheme kind of like but not actually compatible with the one
-# we use for CWL. CWL brings along the file basename in its file type, but
-# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
-# the URI.
-# TODO: We need to also make sure files from the same source directory end up
-# in the same destination directory, when dealing with basename conflicts.
-
-TOIL_URI_SCHEME = "toilfile:"
-
-
 def pack_toil_uri(
     file_id: FileID, task_path: str, dir_id: uuid.UUID, file_basename: str
 ) -> str:
@@ -990,27 +983,6 @@ class NonDownloadingSize(WDL.StdLib._Size):
 
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
-
-
-def is_toil_url(filename: str) -> bool:
-    return is_url(filename, schemes=[TOIL_URI_SCHEME])
-
-
-def is_standard_url(filename: str) -> bool:
-    return is_url(filename, ["http:", "https:", "s3:", "gs:", "ftp:"])
-
-
-def is_url(
-    filename: str,
-    schemes: list[str] = ["http:", "https:", "s3:", "gs:", "ftp:", TOIL_URI_SCHEME],
-) -> bool:
-    """
-    Decide if a filename is a known kind of URL
-    """
-    for scheme in schemes:
-        if filename.startswith(scheme):
-            return True
-    return False
 
 
 def extract_workflow_inputs(environment: WDLBindings) -> List[str]:

@@ -91,6 +91,37 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# We define a URI scheme kind of like but not actually compatible with the one
+# we use for CWL. CWL brings along the file basename in its file type, but
+# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
+# the URI.
+# TODO: We need to also make sure files from the same source directory end up
+# in the same destination directory, when dealing with basename conflicts.
+
+TOIL_URI_SCHEME = "toilfile:"
+
+
+def is_toil_url(filename: str) -> bool:
+    return is_url(filename, schemes=[TOIL_URI_SCHEME])
+
+
+def is_standard_url(filename: str) -> bool:
+    return is_url(filename, ["http:", "https:", "s3:", "gs:", "ftp:"])
+
+
+def is_url(
+    filename: str,
+    schemes: list[str] = ["http:", "https:", "s3:", "gs:", "ftp:", TOIL_URI_SCHEME],
+) -> bool:
+    """
+    Decide if a filename is a known kind of URL
+    """
+    for scheme in schemes:
+        if filename.startswith(scheme):
+            return True
+    return False
+
+
 class JobPromiseConstraintError(RuntimeError):
     """
     Error for job being asked to promise its return value, but it not available.
@@ -3875,7 +3906,7 @@ class ImportsJob(Job):
         self,
         file_to_data: Dict[str, FileMetadata],
         import_workers_threshold: ParseableIndivisibleResource,
-        **kwargs: Any
+        **kwargs: Any,
     ):
         """
         Job to take the inputs from the WDL workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
