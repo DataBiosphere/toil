@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import ftplib
 import logging
+import netrc
 import os
 import pickle
 import re
@@ -35,7 +37,7 @@ from typing import (
 )
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from uuid import uuid4
 
 from toil.common import Config, getNodeID, safeUnpickleFromStream
@@ -1870,6 +1872,8 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     stores.
     """
 
+    ftp = None
+
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ("http", "https", "ftp") and not export
@@ -1894,11 +1898,14 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     )
     def _get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == "ftp":
-            return None
-        with closing(urlopen(url.geturl())) as readable:
-            # just read the header for content length
-            size = readable.info().get("content-length")
-            return int(size) if size is not None else None
+            if cls.ftp is None:
+                cls.ftp = FtpFsAccess()
+            cls.ftp.size(url.geturl())
+
+        # just read the header for content length
+        resp = urlopen(Request(url.geturl(), method="HEAD"))
+        size = resp.info().get("content-length")
+        return int(size) if size is not None else None
 
     @classmethod
     def _read_from_url(
@@ -1958,3 +1965,95 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     def _list_url(cls, url: ParseResult) -> list[str]:
         # TODO: Implement HTTP index parsing and FTP directory listing
         raise NotImplementedError("HTTP and FTP URLs cannot yet be listed")
+
+
+class FtpFsAccess:
+    """
+    FTP access with upload.
+
+    Taken and modified from https://github.com/ohsu-comp-bio/cwl-tes/blob/03f0096f9fae8acd527687d3460a726e09190c3a/cwl_tes/ftp.py#L8
+    """
+
+    def __init__(
+        self, cache: Optional[dict[Any, ftplib.FTP]] = None, insecure: bool = False
+    ):
+        self.cache = cache or {}
+        self.netrc = None
+        self.insecure = insecure
+        try:
+            if "HOME" in os.environ:
+                if os.path.exists(os.path.join(os.environ["HOME"], ".netrc")):
+                    self.netrc = netrc.netrc(os.path.join(os.environ["HOME"], ".netrc"))
+            elif os.path.exists(os.path.join(os.curdir, ".netrc")):
+                self.netrc = netrc.netrc(os.path.join(os.curdir, ".netrc"))
+        except netrc.NetrcParseError as err:
+            logger.debug(err)
+
+    def _parse_url(
+        self, url: str
+    ) -> tuple[Optional[str], Optional[str], Optional[str], str]:
+        parse = urlparse(url)
+        user = parse.username
+        passwd = parse.password
+        host = parse.hostname
+        path = parse.path
+        if parse.scheme == "ftp":
+            if not user and self.netrc:
+                if host is not None:
+                    creds = self.netrc.authenticators(host)
+                    if creds:
+                        user, _, passwd = creds
+        if not user:
+            if host is not None:
+                user, passwd = self._recall_credentials(host)
+                if passwd is None:
+                    passwd = "anonymous@"
+                    if user is None:
+                        user = "anonymous"
+
+        return host, user, passwd, path
+
+    def _connect(self, url: str) -> Optional[ftplib.FTP]:
+        parse = urlparse(url)
+        if parse.scheme == "ftp":
+            host, user, passwd, _ = self._parse_url(url)
+            if host is None:
+                # there has to be a host
+                return None
+            if (host, user, passwd) in self.cache:
+                if self.cache[(host, user, passwd)].pwd():
+                    return self.cache[(host, user, passwd)]
+            ftp = ftplib.FTP_TLS()
+            ftp.set_debuglevel(1 if logger.isEnabledFor(logging.DEBUG) else 0)
+            ftp.connect(host)
+            ftp.login(user or "", passwd or "", secure=not self.insecure)
+            self.cache[(host, user, passwd)] = ftp
+            return ftp
+        return None
+
+    def _recall_credentials(
+        self, desired_host: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        for host, user, passwd in self.cache:
+            if desired_host == host:
+                return user, passwd
+        return None, None
+
+    def size(self, fn: str) -> Optional[int]:
+        ftp = self._connect(fn)
+        if ftp:
+            host, user, passwd, path = self._parse_url(fn)
+            try:
+                return ftp.size(path)
+            except ftplib.all_errors:
+                if host is None:
+                    # no host
+                    return None
+                handle = urlopen("ftp://{}:{}@{}/{}".format(user, passwd, host, path))
+                info = handle.info()
+                handle.close()
+                if "Content-length" in info:
+                    return int(info["Content-length"])
+                return None
+
+        return None
