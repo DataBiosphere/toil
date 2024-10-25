@@ -63,7 +63,7 @@ else:
 
 from functools import partial
 from urllib.error import HTTPError
-from urllib.parse import quote, unquote, urljoin, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit, urlparse
 
 import WDL.Error
 import WDL.runtime.config
@@ -1668,7 +1668,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         else:
             # Otherwise this is a local file and we want to fake it as a Toil file store file
             # Make it an absolute path
-            if self.execution_dir is not None:
+            parsed = urlparse(filename)
+            if parsed.scheme == "file":
+                # conversion was already done by normalize_uri
+                abs_filename = unquote(parsed.path)
+            elif self.execution_dir is not None:
                 # To support relative paths from execution directory, join the execution dir and filename
                 # If filename is already an abs path, join() will not do anything
                 abs_filename = os.path.join(self.execution_dir, filename)
