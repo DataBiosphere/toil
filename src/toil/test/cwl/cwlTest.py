@@ -61,7 +61,7 @@ from toil.test import (
     needs_lsf,
     needs_mesos,
     needs_online,
-    needs_singularity_or_docker
+    needs_singularity_or_docker,
     needs_slurm,
     needs_torque,
     needs_wes_server,
