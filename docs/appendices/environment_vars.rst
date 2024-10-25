@@ -225,7 +225,7 @@ There are several environment variables that affect the way Toil runs.
 +----------------------------------+----------------------------------------------------+
 | TOIL_FTP_INSECURE                | Enable or disable connecting to all FTP            |
 |                                  | connections in insecure mode                       |
-|                                  | to S3 (``False`` by default).                      |
+|                                  | (``False`` by default).                            |
 |                                  | Example: ``TOIL_FTP_INSECURE=True``                |
 +----------------------------------+----------------------------------------------------+
 | TOIL_WES_BROKER_URL              | An optional broker URL to use to communicate       |
