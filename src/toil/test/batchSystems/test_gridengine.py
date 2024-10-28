@@ -31,8 +31,9 @@ class FakeBatchSystem:
         """
         config = Config()
         from uuid import uuid4
+
         config.workflowID = str(uuid4())
-        config.cleanWorkDir = 'always'
+        config.cleanWorkDir = "always"
         return config
 
     def with_retries(self, operation, *args, **kwargs):
@@ -45,13 +46,18 @@ class FakeBatchSystem:
 def call_qstat_or_qacct(args, **_):
     # example outputs taken from https://2021.help.altair.com/2021.1/AltairGridEngine/8.7.0/UsersGuideGE.pdf
     qacct_info = {}
-    job_id_info = {1: {"failed": True, "exit_code": 0, "completed": True}, 2: {"failed": True, "exit_code": 2, "completed": True},
-                   3: {"failed": False, "exit_code": 0, "completed": True}, 4: {"failed": False, "exit_code": 10, "completed": True},
-                   5: {"failed": False, "exit_code": 0, "completed": False}}
+    job_id_info = {
+        1: {"failed": True, "exit_code": 0, "completed": True},
+        2: {"failed": True, "exit_code": 2, "completed": True},
+        3: {"failed": False, "exit_code": 0, "completed": True},
+        4: {"failed": False, "exit_code": 10, "completed": True},
+        5: {"failed": False, "exit_code": 0, "completed": False},
+    }
     for job_id, status_info in job_id_info.items():
         failed = 1 if status_info["failed"] else 0
         exit_status = status_info["exit_code"]
-        qacct_info[job_id] = textwrap.dedent(f"""\
+        qacct_info[job_id] = textwrap.dedent(
+            f"""\
             ==============================================================
             qname all.q
             hostname kailua
@@ -78,7 +84,8 @@ def call_qstat_or_qacct(args, **_):
             ru_ixrss 0
             ru_ismrss 0
             ru_idrss 0
-        """)
+        """
+        )
     if args[0] == "qstat":
         # This is guess for what qstat will return given a job. I'm unable to find an example for qstat.
         # This also assumes the second argument args[1] is -j, as that is what we try to use
@@ -113,27 +120,36 @@ class GridEngineTest(ToilTest):
 
     def setUp(self):
         self.monkeypatch = pytest.MonkeyPatch()
-        self.worker = toil.batchSystems.gridengine.GridEngineBatchSystem.GridEngineThread(
-            newJobsQueue=Queue(),
-            updatedJobsQueue=Queue(),
-            killQueue=Queue(),
-            killedJobsQueue=Queue(),
-            boss=FakeBatchSystem())
+        self.worker = (
+            toil.batchSystems.gridengine.GridEngineBatchSystem.GridEngineThread(
+                newJobsQueue=Queue(),
+                updatedJobsQueue=Queue(),
+                killQueue=Queue(),
+                killedJobsQueue=Queue(),
+                boss=FakeBatchSystem(),
+            )
+        )
 
     ###
     ### Tests for coalesce_job_exit_codes for gridengine.
     ###
 
     def test_coalesce_job_exit_codes_one_exists(self):
-        self.monkeypatch.setattr(toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct)
-        job_ids = ['1']  # FAILED
+        self.monkeypatch.setattr(
+            toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct
+        )
+        job_ids = ["1"]  # FAILED
         expected_result = [1]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
 
     def test_coalesce_job_exit_codes_one_still_running(self):
-        self.monkeypatch.setattr(toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct)
-        job_ids = ['5']  # Still running. We currently raise an exception when this happens
+        self.monkeypatch.setattr(
+            toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct
+        )
+        job_ids = [
+            "5"
+        ]  # Still running. We currently raise an exception when this happens
         try:
             self.worker.coalesce_job_exit_codes(job_ids)
         except ExceededRetryAttempts:
@@ -142,18 +158,16 @@ class GridEngineTest(ToilTest):
             raise RuntimeError("Test did not raise an exception!")
 
     def test_coalesce_job_exit_codes_many_all_exist(self):
-        self.monkeypatch.setattr(toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct)
-        job_ids = ['1',  # FAILED,
-                   '2',  # FAILED (with exit code that we ignore),
-                   '3',  # SUCCEEDED,
-                   '4']  # EXIT CODE 10
+        self.monkeypatch.setattr(
+            toil.batchSystems.gridengine, "call_command", call_qstat_or_qacct
+        )
+        job_ids = [
+            "1",  # FAILED,
+            "2",  # FAILED (with exit code that we ignore),
+            "3",  # SUCCEEDED,
+            "4",
+        ]  # EXIT CODE 10
         # RUNNING and PENDING jobs should return None
-        expected_result = [
-            1,
-            1,
-            0,
-            10
-        ]
+        expected_result = [1, 1, 0, 10]
         result = self.worker.coalesce_job_exit_codes(job_ids)
         assert result == expected_result, f"{result} != {expected_result}"
-

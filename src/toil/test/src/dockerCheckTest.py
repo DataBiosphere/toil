@@ -14,7 +14,8 @@
 import unittest
 
 from docker.errors import ImageNotFound
-from toil import checkDockerImageExists, parseDockerAppliance, retry
+from toil import checkDockerImageExists, parseDockerAppliance
+from toil.lib.retry import retry
 from toil.test import ToilTest, needs_docker
 
 
@@ -22,81 +23,87 @@ from toil.test import ToilTest, needs_docker
 class DockerCheckTest(ToilTest):
     """Tests checking whether a docker image exists or not."""
 
-    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
+    @unittest.skip("Consumes unauthenticated Docker Hub pulls if run")
     def testOfficialUbuntuRepo(self):
         """Image exists.  This should pass."""
-        ubuntu_repo = 'ubuntu:latest'
+        ubuntu_repo = "ubuntu:latest"
         assert checkDockerImageExists(ubuntu_repo)
 
-    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
+    @unittest.skip("Consumes unauthenticated Docker Hub pulls if run")
     def testBroadDockerRepo(self):
         """Image exists.  This should pass."""
-        broad_repo = 'broadinstitute/genomes-in-the-cloud:2.0.0'
+        broad_repo = "broadinstitute/genomes-in-the-cloud:2.0.0"
         assert checkDockerImageExists(broad_repo)
 
-    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
+    @unittest.skip("Consumes unauthenticated Docker Hub pulls if run")
     def testBroadDockerRepoBadTag(self):
         """Bad tag.  This should raise."""
-        broad_repo = 'broadinstitute/genomes-in-the-cloud:-----'
+        broad_repo = "broadinstitute/genomes-in-the-cloud:-----"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(broad_repo)
 
-    @unittest.skip('Consumes unauthenticated Docker Hub pulls if run')
+    @unittest.skip("Consumes unauthenticated Docker Hub pulls if run")
     def testNonexistentRepo(self):
         """Bad image.  This should raise."""
-        nonexistent_repo = '------:-----'
+        nonexistent_repo = "------:-----"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_repo)
 
     def testToilQuayRepo(self):
         """Image exists.  Should pass."""
-        toil_repo = 'quay.io/ucsc_cgl/toil:latest'
+        toil_repo = "quay.io/ucsc_cgl/toil:latest"
         assert checkDockerImageExists(toil_repo)
 
     def testBadQuayRepoNTag(self):
         """Bad repo and tag.  This should raise."""
-        nonexistent_quay_repo = 'quay.io/--------:---'
+        nonexistent_quay_repo = "quay.io/--------:---"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
 
     def testBadQuayRepo(self):
         """Bad repo.  This should raise."""
-        nonexistent_quay_repo = 'quay.io/--------:latest'
+        nonexistent_quay_repo = "quay.io/--------:latest"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
 
     def testBadQuayTag(self):
         """Bad tag.  This should raise."""
-        nonexistent_quay_repo = 'quay.io/ucsc_cgl/toil:---'
+        nonexistent_quay_repo = "quay.io/ucsc_cgl/toil:---"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
 
     def testGoogleRepo(self):
         """Image exists.  Should pass."""
-        google_repo = 'gcr.io/google-containers/busybox:latest'
+        google_repo = "gcr.io/google-containers/busybox:latest"
         assert checkDockerImageExists(google_repo)
 
-    @retry(errors=[TimeoutError])  # see: https://github.com/DataBiosphere/toil/issues/4902
+    @retry(
+        errors=[TimeoutError]
+    )  # see: https://github.com/DataBiosphere/toil/issues/4902
     def testBadGoogleRepo(self):
         """Bad repo and tag.  This should raise."""
-        nonexistent_google_repo = 'gcr.io/google-containers/--------:---'
+        nonexistent_google_repo = "gcr.io/google-containers/--------:---"
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_google_repo)
 
     def testApplianceParser(self):
         """Test that a specified appliance is parsed correctly."""
-        docker_list = ['ubuntu:latest',
-                       'ubuntu',
-                       'broadinstitute/genomes-in-the-cloud:2.0.0',
-                       'quay.io/ucsc_cgl/toil:latest',
-                       'gcr.io/google-containers/busybox:latest']
+        docker_list = [
+            "ubuntu:latest",
+            "ubuntu",
+            "broadinstitute/genomes-in-the-cloud:2.0.0",
+            "quay.io/ucsc_cgl/toil:latest",
+            "gcr.io/google-containers/busybox:latest",
+        ]
         parsings = []
         for image in docker_list:
             registryName, imageName, tag = parseDockerAppliance(image)
             parsings.append([registryName, imageName, tag])
-        expected_parsings = [['docker.io', 'ubuntu', 'latest'],
-                             ['docker.io', 'ubuntu', 'latest'],
-                             ['docker.io', 'broadinstitute/genomes-in-the-cloud', '2.0.0'],
-                             ['quay.io', 'ucsc_cgl/toil', 'latest'],
-                             ['gcr.io', 'google-containers/busybox', 'latest']]
+        expected_parsings = [
+            ["docker.io", "ubuntu", "latest"],
+            ["docker.io", "ubuntu", "latest"],
+            ["docker.io", "broadinstitute/genomes-in-the-cloud", "2.0.0"],
+            ["quay.io", "ucsc_cgl/toil", "latest"],
+            ["gcr.io", "google-containers/busybox", "latest"],
+        ]
         assert parsings == expected_parsings

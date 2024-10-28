@@ -23,16 +23,10 @@ import sys
 import unittest
 import uuid
 import zipfile
-
 from functools import partial
 from io import StringIO
 from pathlib import Path
-from typing import (TYPE_CHECKING,
-                    Callable,
-                    Dict,
-                    List,
-                    Optional,
-                    cast)
+from typing import TYPE_CHECKING, Callable, Optional, cast
 from unittest.mock import Mock, call
 from urllib.request import urlretrieve
 
@@ -46,32 +40,32 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from schema_salad.exceptions import ValidationException
 
-from toil.cwl.utils import (DirectoryStructure,
-                            download_structure,
-                            visit_cwl_class_and_reduce,
-                            visit_top_cwl_class)
+from toil.cwl.utils import (
+    DirectoryStructure,
+    download_structure,
+    visit_cwl_class_and_reduce,
+    visit_top_cwl_class,
+)
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
-from toil.provisioners import cluster_factory
-from toil.test import (ToilTest,
-                       needs_aws_ec2,
-                       needs_aws_s3,
-                       needs_cwl,
-                       needs_docker,
-                       needs_docker_cuda,
-                       needs_env_var,
-                       needs_fetchable_appliance,
-                       needs_gridengine,
-                       needs_kubernetes,
-                       needs_local_cuda,
-                       needs_lsf,
-                       needs_mesos,
-                       needs_online,
-                       needs_slurm,
-                       needs_torque,
-                       needs_wes_server,
-                       slow)
+from toil.test import (
+    ToilTest,
+    needs_aws_s3,
+    needs_cwl,
+    needs_docker,
+    needs_docker_cuda,
+    needs_gridengine,
+    needs_kubernetes,
+    needs_local_cuda,
+    needs_lsf,
+    needs_mesos,
+    needs_online,
+    needs_slurm,
+    needs_torque,
+    needs_wes_server,
+    slow,
+)
 
 log = logging.getLogger(__name__)
 CONFORMANCE_TEST_TIMEOUT = 10000
@@ -86,7 +80,7 @@ def run_conformance_tests(
     selected_tests: Optional[str] = None,
     selected_tags: Optional[str] = None,
     skipped_tests: Optional[str] = None,
-    extra_args: Optional[List[str]] = None,
+    extra_args: Optional[list[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
 ) -> None:
@@ -147,7 +141,7 @@ def run_conformance_tests(
             "--relax-path-checks",
             # Defaults to 20s but we can't start hundreds of nodejs processes that fast on our CI potatoes
             "--eval-timeout=600",
-            f"--caching={caching}"
+            f"--caching={caching}",
         ]
 
         if extra_args:
@@ -181,14 +175,16 @@ def run_conformance_tests(
         cmd.extend(["--"] + args_passed_directly_to_runner)
 
         log.info("Running: '%s'", "' '".join(cmd))
-        output_lines: List[str] = []
+        output_lines: list[str] = []
         try:
-            child = subprocess.Popen(cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            child = subprocess.Popen(
+                cmd, cwd=workDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            )
 
             if child.stdout is not None:
                 for line_bytes in child.stdout:
                     # Pass through all the logs
-                    line_text = line_bytes.decode('utf-8', errors='replace').rstrip()
+                    line_text = line_bytes.decode("utf-8", errors="replace").rstrip()
                     output_lines.append(line_text)
                     log.info(line_text)
 
@@ -197,7 +193,7 @@ def run_conformance_tests(
             log.info("CWL tests finished with exit code %s", child.returncode)
             if child.returncode != 0:
                 # Act like check_output and raise an error.
-                raise subprocess.CalledProcessError(child.returncode, ' '.join(cmd))
+                raise subprocess.CalledProcessError(child.returncode, " ".join(cmd))
         finally:
             if job_store_override:
                 # Clean up the job store we used for all the tests, if it is still there.
@@ -218,12 +214,15 @@ def run_conformance_tests(
                     only_unsupported = True
                     break
         if (not only_unsupported) or must_support_all_features:
-            log.error("CWL tests gave unacceptable output:\n%s", '\n'.join(output_lines))
+            log.error(
+                "CWL tests gave unacceptable output:\n%s", "\n".join(output_lines)
+            )
             raise e
         log.info("Unsuccessful return code is OK")
 
 
 TesterFuncType = Callable[[str, str, "CWLObjectType"], None]
+
 
 @needs_cwl
 class CWLWorkflowTest(ToilTest):
@@ -238,11 +237,14 @@ class CWLWorkflowTest(ToilTest):
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
         self.rootDir = self._projectRootPath()
+        self.jobStoreDir = f"./jobstore-{str(uuid.uuid4())}"
 
     def tearDown(self) -> None:
         """Clean up outputs."""
         if os.path.exists(self.outDir):
             shutil.rmtree(self.outDir)
+        if os.path.exists(self.jobStoreDir):
+            shutil.rmtree(self.jobStoreDir)
         unittest.TestCase.tearDown(self)
 
     def test_cwl_cmdline_input(self) -> None:
@@ -250,6 +252,7 @@ class CWLWorkflowTest(ToilTest):
         Test that running a CWL workflow with inputs specified on the command line passes.
         """
         from toil.cwl import cwltoil
+
         cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
         args = [cwlfile, "--message", "str", "--sleep", "2"]
         st = StringIO()
@@ -261,7 +264,7 @@ class CWLWorkflowTest(ToilTest):
         cwlfile: str,
         jobfile: str,
         expect: "CWLObjectType",
-        main_args: List[str] = [],
+        main_args: list[str] = [],
         out_name: str = "output",
         output_here: bool = False,
     ) -> None:
@@ -271,13 +274,7 @@ class CWLWorkflowTest(ToilTest):
         main_args = main_args[:]
         if not output_here:
             # Don't just dump output in the working directory.
-            main_args.extend(
-                [
-                    "--logDebug",
-                    "--outdir",
-                    self.outDir
-                ]
-            )
+            main_args.extend(["--logDebug", "--outdir", self.outDir])
         main_args.extend(
             [
                 os.path.join(self.rootDir, cwlfile),
@@ -292,7 +289,12 @@ class CWLWorkflowTest(ToilTest):
         self.assertEqual(out, expect)
 
         for k, v in expect.items():
-            if isinstance(v, dict) and "class" in v and v["class"] == "File" and "path" in v:
+            if (
+                isinstance(v, dict)
+                and "class" in v
+                and v["class"] == "File"
+                and "path" in v
+            ):
                 # This is a top-level output file.
                 # None of our output files should be executable.
                 self.assertTrue(os.path.exists(v["path"]))
@@ -442,7 +444,7 @@ class CWLWorkflowTest(ToilTest):
                 "src/toil/test/cwl/empty.json",
                 self._expected_glob_dir_output(os.getcwd()),
                 main_args=["--bypass-file-store"],
-                output_here=True 
+                output_here=True,
             )
         finally:
             # Clean up anything we made in the current directory.
@@ -450,6 +452,56 @@ class CWLWorkflowTest(ToilTest):
                 shutil.rmtree(os.path.join(os.getcwd(), "shouldmake"))
             except FileNotFoundError:
                 pass
+
+    @needs_slurm
+    def test_slurm_node_memory(self) -> None:
+        pass
+
+        # Run the workflow. This will either finish quickly and tell us the
+        # memory we got, or take a long time because it requested a whole
+        # node's worth of memory and no nodes are free right now. We need to
+        # support both.
+
+        # And if we run out of time we need to stop the workflow gracefully and
+        # cancel the Slurm jobs.
+
+        main_args = [
+            f"--jobStore={self.jobStoreDir}",
+            # Avoid racing to toil kill before the jobstore is removed
+            "--clean=never",
+            "--batchSystem=slurm",
+            "--no-cwl-default-ram",
+            "--slurmDefaultAllMem=True",
+            "--outdir",
+            self.outDir,
+            os.path.join(self.rootDir, "src/toil/test/cwl/measure_default_memory.cwl"),
+        ]
+        try:
+            log.debug("Start test workflow")
+            child = subprocess.Popen(
+                ["toil-cwl-runner"] + main_args, stdout=subprocess.PIPE
+            )
+            output, _ = child.communicate(timeout=60)
+        except subprocess.TimeoutExpired:
+            # The job didn't finish quickly; presumably waiting for a full node.
+            # Stop the workflow
+            log.debug("Workflow might be waiting for a full node. Stop it.")
+            subprocess.check_call(["toil", "kill", self.jobStoreDir])
+            # Wait another little bit for it to clean up, making sure to collect output in case it is blocked on writing
+            child.communicate(timeout=20)
+            # Kill it off in case it is still running
+            child.kill()
+            # Reap it
+            child.wait()
+            # The test passes
+        else:
+            out = json.loads(output)
+            log.debug("Workflow output: %s", out)
+            memory_string = out["memory"]
+            log.debug("Observed memory: %s", memory_string)
+            result = int(memory_string)
+            # We should see more than the CWL default or the Toil default, assuming Slurm nodes of reasonable size (3 GiB).
+            self.assertGreater(result, 3 * 1024 * 1024)
 
     @needs_aws_s3
     def test_download_s3(self) -> None:
@@ -462,7 +514,10 @@ class CWLWorkflowTest(ToilTest):
         self.download("download_https.json", self._tester)
 
     def test_download_https_reference(self) -> None:
-        self.download("download_https.json", partial(self._tester, main_args=["--reference-inputs"]))
+        self.download(
+            "download_https.json",
+            partial(self._tester, main_args=["--reference-inputs"]),
+        )
 
     def test_download_file(self) -> None:
         self.download("download_file.json", self._tester)
@@ -473,7 +528,10 @@ class CWLWorkflowTest(ToilTest):
 
     @needs_aws_s3
     def test_download_directory_s3_reference(self) -> None:
-        self.download_directory("download_directory_s3.json", partial(self._tester, main_args=["--reference-inputs"]))
+        self.download_directory(
+            "download_directory_s3.json",
+            partial(self._tester, main_args=["--reference-inputs"]),
+        )
 
     def test_download_directory_file(self) -> None:
         self.download_directory("download_directory_file.json", self._tester)
@@ -518,7 +576,10 @@ class CWLWorkflowTest(ToilTest):
             "src/toil/test/cwl/seqtk_seq.cwl",
             "src/toil/test/cwl/seqtk_seq_job.json",
             self._expected_seqtk_output(self.outDir),
-            main_args=["--default-container", "quay.io/biocontainers/seqtk:1.4--he4a0461_1"],
+            main_args=[
+                "--default-container",
+                "quay.io/biocontainers/seqtk:1.4--he4a0461_1",
+            ],
             out_name="output1",
         )
 
@@ -582,7 +643,11 @@ class CWLWorkflowTest(ToilTest):
         # Force a failure by trying to use an incorrect version of `rev` from the PATH
         os.environ["PATH"] = path_with_bogus_rev()
         try:
-            subprocess.check_output(["toil-cwl-runner"] + cmd, env=os.environ.copy(), stderr=subprocess.STDOUT)
+            subprocess.check_output(
+                ["toil-cwl-runner"] + cmd,
+                env=os.environ.copy(),
+                stderr=subprocess.STDOUT,
+            )
             self.fail("Expected problem job with incorrect PATH did not fail")
         except subprocess.CalledProcessError:
             pass
@@ -592,13 +657,17 @@ class CWLWorkflowTest(ToilTest):
         cwltoil.main(cmd)
         # Should fail because previous job completed successfully
         try:
-            subprocess.check_output(["toil-cwl-runner"] + cmd, env=os.environ.copy(), stderr=subprocess.STDOUT)
+            subprocess.check_output(
+                ["toil-cwl-runner"] + cmd,
+                env=os.environ.copy(),
+                stderr=subprocess.STDOUT,
+            )
             self.fail("Restart with missing directory did not fail")
         except subprocess.CalledProcessError:
             pass
 
     @needs_aws_s3
-    def test_streamable(self, extra_args: Optional[List[str]] = None) -> None:
+    def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
         """
         Test that a file with 'streamable'=True is a named pipe.
         This is a CWL1.2 feature.
@@ -682,7 +751,6 @@ class CWLWorkflowTest(ToilTest):
         except ValidationException as e:
             # Make sure we chastise the user appropriately.
             assert "expressions are not allowed" in str(e)
-        
 
     @staticmethod
     def _expected_seqtk_output(outDir: str) -> "CWLObjectType":
@@ -739,7 +807,7 @@ class CWLWorkflowTest(ToilTest):
                 "size": 0,
                 "class": "File",
                 "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
-                "path": path
+                "path": path,
             }
         }
 
@@ -766,9 +834,9 @@ class CWLWorkflowTest(ToilTest):
                         "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709",
                         "size": 0,
                         "nameroot": "test",
-                        "nameext": ".txt"
+                        "nameext": ".txt",
                     }
-                ]
+                ],
             }
         }
 
@@ -801,7 +869,7 @@ class CWLWorkflowTest(ToilTest):
                         "size": 1111,
                         "nameroot": "whale",
                         "nameext": ".txt",
-                        "path": f"{path}/whale.txt"
+                        "path": f"{path}/whale.txt",
                     }
                 ],
             }
@@ -869,7 +937,7 @@ class CWLv10Test(ToilTest):
         caching: bool = False,
         selected_tests: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
     ) -> None:
         run_conformance_tests(
             workDir=self.workDir,
@@ -997,7 +1065,7 @@ class CWLv11Test(ToilTest):
         caching: bool = False,
         batchSystem: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
     ) -> None:
         run_conformance_tests(
             workDir=self.cwlSpec,
@@ -1071,7 +1139,7 @@ class CWLv12Test(ToilTest):
         batchSystem: Optional[str] = None,
         selected_tests: Optional[str] = None,
         skipped_tests: Optional[str] = None,
-        extra_args: Optional[List[str]] = None,
+        extra_args: Optional[list[str]] = None,
         must_support_all_features: bool = False,
         junit_file: Optional[str] = None,
     ) -> None:
@@ -1095,9 +1163,7 @@ class CWLv12Test(ToilTest):
     def test_run_conformance_with_caching(self) -> None:
         self.test_run_conformance(
             caching=True,
-            junit_file = os.path.join(
-                self.rootDir, "caching-conformance-1.2.junit.xml"
-            )
+            junit_file=os.path.join(self.rootDir, "caching-conformance-1.2.junit.xml"),
         )
 
     @slow
@@ -1109,10 +1175,11 @@ class CWLv12Test(ToilTest):
         features.
         """
         self.test_run_conformance(
-            extra_args=["--bypass-file-store"], must_support_all_features=True,
-            junit_file = os.path.join(
+            extra_args=["--bypass-file-store"],
+            must_support_all_features=True,
+            junit_file=os.path.join(
                 self.rootDir, "in-place-update-conformance-1.2.junit.xml"
-            )
+            ),
         )
 
     @slow
@@ -1287,6 +1354,7 @@ def test_log_dir_echo_stderr(tmp_path: Path) -> None:
     output = open(result).read()
     assert output == "hello\n"
 
+
 # TODO: It's not clear how this test tests filename conflict resolution; it
 # seems like it runs a python script to copy some files and makes sure the
 # workflow doesn't fail.
@@ -1312,6 +1380,7 @@ def test_filename_conflict_resolution(tmp_path: Path) -> None:
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
 
+
 @needs_cwl
 @pytest.mark.cwl_small_log_dir
 def test_filename_conflict_resolution_3_or_more(tmp_path: Path) -> None:
@@ -1321,15 +1390,16 @@ def test_filename_conflict_resolution_3_or_more(tmp_path: Path) -> None:
         f"--outdir={out_dir}",
         "--clean=always",
     ]
-    cwl = os.path.join(
-        os.path.dirname(__file__), "scatter_duplicate_outputs.cwl"
-    )
+    cwl = os.path.join(os.path.dirname(__file__), "scatter_duplicate_outputs.cwl")
     cmd = [toil] + options + [cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
     assert b"Finished toil run successfully" in stderr
     assert p.returncode == 0
-    assert len(os.listdir(out_dir)) == 9, "All 9 files made by the scatter should be in the directory"
+    assert (
+        len(os.listdir(out_dir)) == 9
+    ), "All 9 files made by the scatter should be in the directory"
+
 
 @needs_cwl
 @needs_docker
@@ -1352,6 +1422,7 @@ def test_filename_conflict_detection(tmp_path: Path) -> None:
     stdout, stderr = p.communicate()
     assert b"File staging conflict" in stderr
     assert p.returncode != 0
+
 
 @needs_cwl
 @needs_docker
@@ -1394,7 +1465,10 @@ def test_pick_value_with_one_null_value(caplog: pytest.LogCaptureFixture) -> Non
     with caplog.at_level(logging.WARNING, logger="toil.cwl.cwltoil"):
         cwltoil.main(args)
         for line in caplog.messages:
-            assert "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input." not in line
+            assert (
+                "You had a conditional step that did not run, but you did not use pickValue to handle the skipped input."
+                not in line
+            )
 
 
 @needs_cwl
@@ -1542,7 +1616,7 @@ def test_visit_cwl_class_and_reduce() -> None:
     up_count = 0
     up_child_count = 0
 
-    def op_up(thing: "CWLObjectType", down_value: int, child_results: List[str]) -> str:
+    def op_up(thing: "CWLObjectType", down_value: int, child_results: list[str]) -> str:
         """
         Check the down return value and the up return values, and count
         what we visit going up and what child relationships we have.
@@ -1596,9 +1670,9 @@ def test_download_structure(tmp_path: Path) -> None:
     # These will be populated.
     # TODO: This cache seems unused. Remove it?
     # This maps filesystem path to CWL URI
-    index: Dict[str, str] = {}
+    index: dict[str, str] = {}
     # This maps CWL URI to filesystem path
-    existing: Dict[str, str] = {}
+    existing: dict[str, str] = {}
 
     # Do the download
     download_structure(file_store, index, existing, structure, to_dir)
@@ -1652,15 +1726,19 @@ def test_download_structure(tmp_path: Path) -> None:
         any_order=True,
     )
 
+
 @needs_cwl
 @pytest.mark.timeout(300)
 def test_import_on_workers() -> None:
-    args = ["src/toil/test/cwl/download.cwl",
-            "src/toil/test/cwl/download_file.json",
-            "--runImportsOnWorkers",
-            "--importWorkersDisk=10MiB",
-            "--realTimeLogging=True",
-            "--logLevel=INFO", "--logColors=False"]
+    args = [
+        "src/toil/test/cwl/download.cwl",
+        "src/toil/test/cwl/download_file.json",
+        "--runImportsOnWorkers",
+        "--importWorkersDisk=10MiB",
+        "--realTimeLogging=True",
+        "--logLevel=INFO",
+        "--logColors=False",
+    ]
     from toil.cwl import cwltoil
 
     detector = ImportWorkersMessageHandler()
@@ -1676,9 +1754,12 @@ def test_import_on_workers() -> None:
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
+
     _stream_handler = logging.StreamHandler[SupportsWrite[str]]
 else:
     _stream_handler = logging.StreamHandler
+
+
 class ImportWorkersMessageHandler(_stream_handler):
     """
     Detect the import workers log message and set a flag.
@@ -1690,5 +1771,7 @@ class ImportWorkersMessageHandler(_stream_handler):
         super().__init__(sys.stderr)
 
     def emit(self, record: logging.LogRecord) -> None:
-        if (record.msg % record.args).startswith("Issued job 'CWLImportJob' CWLImportJob"):
+        if (record.msg % record.args).startswith(
+            "Issued job 'CWLImportJob' CWLImportJob"
+        ):
             self.detected = True

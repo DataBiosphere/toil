@@ -1,13 +1,16 @@
 import unittest
-
-from toil.test.provisioners.clusterTest import AbstractClusterTest
 from uuid import uuid4
 
 import pytest
 
 from toil.provisioners import cluster_factory
-from toil.test import (slow, integrative)
-from toil.test.wdl.wdltoil_test import WDL_CONFORMANCE_TEST_REPO, WDL_CONFORMANCE_TEST_COMMIT
+from toil.test import integrative, slow
+from toil.test.provisioners.clusterTest import AbstractClusterTest
+from toil.test.wdl.wdltoil_test import (
+    WDL_CONFORMANCE_TEST_COMMIT,
+    WDL_CONFORMANCE_TEST_REPO,
+)
+
 
 @integrative
 @slow
@@ -19,7 +22,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
 
     def __init__(self, name):
         super().__init__(name)
-        self.clusterName = 'wdl-integration-test-' + str(uuid4())
+        self.clusterName = "wdl-integration-test-" + str(uuid4())
         # t2.medium is the minimum t2 instance that permits Kubernetes
         self.leaderNodeType = "t2.medium"
         self.instanceTypes = ["t2.medium"]
@@ -27,13 +30,21 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
 
     def setUp(self) -> None:
         super().setUp()
-        self.jobStore = f'aws:{self.awsRegion()}:wdl-test-{uuid4()}'
+        self.jobStore = f"aws:{self.awsRegion()}:wdl-test-{uuid4()}"
 
     def launchCluster(self) -> None:
-        self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
-                                     '--nodeTypes', ",".join(self.instanceTypes),
-                                     '-w', ",".join(self.numWorkers),
-                                     '--nodeStorage', str(self.requestedLeaderStorage)])
+        self.createClusterUtil(
+            args=[
+                "--leaderStorage",
+                str(self.requestedLeaderStorage),
+                "--nodeTypes",
+                ",".join(self.instanceTypes),
+                "-w",
+                ",".join(self.numWorkers),
+                "--nodeStorage",
+                str(self.requestedLeaderStorage),
+            ]
+        )
 
     def test_wdl_kubernetes_cluster(self):
         """
@@ -54,22 +65,26 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
         wdl_dir = "wdl_conformance_tests"
 
         # get the wdl-conformance-tests repo to get WDL tasks to run
-        self.sshUtil([
-            "bash",
-            "-c",
-            f"git clone {WDL_CONFORMANCE_TEST_REPO} {wdl_dir} && cd {wdl_dir} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}"
-        ])
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"git clone {WDL_CONFORMANCE_TEST_REPO} {wdl_dir} && cd {wdl_dir} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}",
+            ]
+        )
 
         # run on kubernetes batchsystem
-        toil_options = ['--batchSystem=kubernetes',
-                        f"--jobstore={self.jobStore}"]
+        toil_options = ["--batchSystem=kubernetes", f"--jobstore={self.jobStore}"]
 
         # run WDL workflow that will run singularity
         test_options = [f"tests/md5sum/md5sum.wdl", f"tests/md5sum/md5sum.json"]
-        self.sshUtil([
-            "bash",
-            "-c",
-            f"cd {wdl_dir} && toil-wdl-runner {' '.join(test_options)} {' '.join(toil_options)}"])
+        self.sshUtil(
+            [
+                "bash",
+                "-c",
+                f"cd {wdl_dir} && toil-wdl-runner {' '.join(test_options)} {' '.join(toil_options)}",
+            ]
+        )
 
 
 if __name__ == "__main__":

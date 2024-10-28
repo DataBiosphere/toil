@@ -18,6 +18,7 @@ collect_ignore = []
 
 try:
     import boto3
+
     print(boto3.__file__)  # prevent this import from being removed
 except ImportError:
     collect_ignore.append("aws")

@@ -52,9 +52,11 @@ class UserDefinedJobArgTypeTest(ToilTest):
         self._testFromMain()
 
     def _testFromMain(self):
-        testMethodName = self.id().split('.')[-1]
-        self.assertTrue(testMethodName.endswith('FromMain'))
-        subprocess.check_call([sys.executable, '-m', self.__module__, testMethodName[:-8]])
+        testMethodName = self.id().split(".")[-1]
+        self.assertTrue(testMethodName.endswith("FromMain"))
+        subprocess.check_call(
+            [sys.executable, "-m", self.__module__, testMethodName[:-8]]
+        )
 
 
 class JobClass(Job):
@@ -66,8 +68,9 @@ class JobClass(Job):
     def run(self, fileStore):
         self.foo.assertIsCopy()
         if self.level < 2:
-            self.addChildJobFn(jobFunction, self.level + 1, Foo(), cores=1, memory="1M",
-                               disk="300M")
+            self.addChildJobFn(
+                jobFunction, self.level + 1, Foo(), cores=1, memory="1M", disk="300M"
+            )
 
 
 def jobFunction(job, level, foo):

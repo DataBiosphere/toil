@@ -34,15 +34,18 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Dict, Iterator, List, Optional, Set, Union
+from collections.abc import Iterator
+from typing import Any, Optional, Union
 
 from botocore.exceptions import ClientError
 
 from toil import applianceSelf
-from toil.batchSystems.abstractBatchSystem import (EXIT_STATUS_UNAVAILABLE_VALUE,
-                                                   BatchJobExitReason,
-                                                   InsufficientSystemResources,
-                                                   UpdatedBatchJobInfo)
+from toil.batchSystems.abstractBatchSystem import (
+    EXIT_STATUS_UNAVAILABLE_VALUE,
+    BatchJobExitReason,
+    InsufficientSystemResources,
+    UpdatedBatchJobInfo,
+)
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
 from toil.batchSystems.options import OptionSetter
@@ -60,9 +63,9 @@ logger = logging.getLogger(__name__)
 
 
 # Map from AWS Batch terminal states to Toil batch job exit reasons
-STATE_TO_EXIT_REASON: Dict[str, BatchJobExitReason] = {
-    'SUCCEEDED': BatchJobExitReason.FINISHED,
-    'FAILED': BatchJobExitReason.FAILED
+STATE_TO_EXIT_REASON: dict[str, BatchJobExitReason] = {
+    "SUCCEEDED": BatchJobExitReason.FINISHED,
+    "FAILED": BatchJobExitReason.FAILED,
 }
 
 # What's the max polling list size?
@@ -73,53 +76,62 @@ MIN_REQUESTABLE_MIB = 4
 # AWS batch won't accept API requests asking for less than this many CPUs.
 MIN_REQUESTABLE_CORES = 1
 
+
 class AWSBatchBatchSystem(BatchSystemCleanupSupport):
     @classmethod
     def supportsAutoDeployment(cls) -> bool:
         return True
 
-    def __init__(self, config: Config, maxCores: float, maxMemory: int, maxDisk: int) -> None:
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # Determine region to use.
         # Either it's set specifically or maybe we can get it from the "best" zone.
         # TODO: Parse it from a full queue ARN?
-        self.region = getattr(config, 'aws_batch_region')
+        self.region = getattr(config, "aws_batch_region")
         if self.region is None:
             self.region = get_current_aws_region()
             if self.region is None:
                 # Can't proceed without a real region
-                raise RuntimeError('To use AWS Batch, specify --awsBatchRegion or '
-                                   'TOIL_AWS_REGION or TOIL_AWS_ZONE, or configure '
-                                   'a default zone in boto')
+                raise RuntimeError(
+                    "To use AWS Batch, specify --awsBatchRegion or "
+                    "TOIL_AWS_REGION or TOIL_AWS_ZONE, or configure "
+                    "a default zone in boto"
+                )
 
         # Connect to AWS Batch.
         # TODO: Use a global AWSConnectionManager so we can share a client
         # cache with provisioners, etc.
-        self.client = establish_boto3_session(self.region).client('batch')
+        self.client = establish_boto3_session(self.region).client("batch")
 
         # Determine our batch queue
-        self.queue = getattr(config, 'aws_batch_queue')
+        self.queue = getattr(config, "aws_batch_queue")
         if self.queue is None:
             # Make sure we actually have a queue
-            raise RuntimeError("To use AWS Batch, --awsBatchQueue or TOIL_AWS_BATCH_QUEUE must be set")
+            raise RuntimeError(
+                "To use AWS Batch, --awsBatchQueue or TOIL_AWS_BATCH_QUEUE must be set"
+            )
         # And the role, if any, jobs should assume
-        self.job_role_arn = getattr(config, 'aws_batch_job_role_arn')
+        self.job_role_arn = getattr(config, "aws_batch_job_role_arn")
         # And the Owner tag value, if any, to apply to things we create
-        self.owner_tag = os.environ.get('TOIL_OWNER_TAG')
+        self.owner_tag = os.environ.get("TOIL_OWNER_TAG")
 
         # Try and guess what Toil work dir the workers will use.
         # We need to be able to provision (possibly shared) space there.
         # TODO: Deduplicate with Kubernetes batch system.
         self.worker_work_dir = Toil.getToilWorkDir(config.workDir)
-        if (config.workDir is None and
-            os.getenv('TOIL_WORKDIR') is None and
-            self.worker_work_dir == tempfile.gettempdir()):
+        if (
+            config.workDir is None
+            and os.getenv("TOIL_WORKDIR") is None
+            and self.worker_work_dir == tempfile.gettempdir()
+        ):
 
             # We defaulted to the system temp directory. But we think the
             # worker Dockerfiles will make them use /var/lib/toil instead.
             # TODO: Keep this in sync with the Dockerfile.
-            self.worker_work_dir = '/var/lib/toil'
+            self.worker_work_dir = "/var/lib/toil"
 
         # We assign job names based on a numerical job ID. This functionality
         # is managed by the BatchSystemLocalSupport.
@@ -136,27 +148,39 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         self.job_definition: Optional[str] = None
 
         # We need a way to map between our batch system ID numbers, and AWS Batch job IDs from the server.
-        self.bs_id_to_aws_id: Dict[int, str] = {}
-        self.aws_id_to_bs_id: Dict[str, int] = {}
+        self.bs_id_to_aws_id: dict[int, str] = {}
+        self.aws_id_to_bs_id: dict[str, int] = {}
         # We need to track if jobs were killed so they don't come out as updated
-        self.killed_job_aws_ids: Set[str] = set()
+        self.killed_job_aws_ids: set[str] = set()
 
     def setUserScript(self, user_script: Resource) -> None:
-        logger.debug(f'Setting user script for deployment: {user_script}')
+        logger.debug(f"Setting user script for deployment: {user_script}")
         self.user_script = user_script
 
     # setEnv is provided by BatchSystemSupport, updates self.environment
 
     def _check_accelerator_request(self, requirer: Requirer) -> None:
         for accelerator in requirer.accelerators:
-            if accelerator['kind'] != 'gpu' or accelerator.get('brand', 'nvidia') != 'nvidia':
+            if (
+                accelerator["kind"] != "gpu"
+                or accelerator.get("brand", "nvidia") != "nvidia"
+            ):
                 # We can only provide GPUs, and of those only nvidia ones.
-                raise InsufficientSystemResources(requirer, 'accelerators', details=[
-                    f'The accelerator {accelerator} could not be provided.',
-                    'AWS Batch can only provide nvidia gpu accelerators.'
-                ])
+                raise InsufficientSystemResources(
+                    requirer,
+                    "accelerators",
+                    details=[
+                        f"The accelerator {accelerator} could not be provided.",
+                        "AWS Batch can only provide nvidia gpu accelerators.",
+                    ],
+                )
 
-    def issueBatchJob(self, command: str, job_desc: JobDescription, job_environment: Optional[Dict[str, str]] = None) -> int:
+    def issueBatchJob(
+        self,
+        command: str,
+        job_desc: JobDescription,
+        job_environment: Optional[dict[str, str]] = None,
+    ) -> int:
         # Try the job as local
         local_id = self.handleLocalJob(command, job_desc)
         if local_id is not None:
@@ -188,41 +212,54 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
             # Compose a job spec to submit
             job_spec = {
-                'jobName': job_name,
-                'jobQueue': self.queue,
-                'jobDefinition': self._get_or_create_job_definition(),
-                'containerOverrides': {
-                    'command': command_list,
-                    'environment': [{'name': k, 'value': v} for k, v in environment.items()],
-                    'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(job_desc.memory))))},
-                        {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(job_desc.cores)))}
-                    ]
-                }
+                "jobName": job_name,
+                "jobQueue": self.queue,
+                "jobDefinition": self._get_or_create_job_definition(),
+                "containerOverrides": {
+                    "command": command_list,
+                    "environment": [
+                        {"name": k, "value": v} for k, v in environment.items()
+                    ],
+                    "resourceRequirements": [
+                        {
+                            "type": "MEMORY",
+                            "value": str(
+                                max(
+                                    MIN_REQUESTABLE_MIB,
+                                    math.ceil(b_to_mib(job_desc.memory)),
+                                )
+                            ),
+                        },
+                        {
+                            "type": "VCPU",
+                            "value": str(
+                                max(MIN_REQUESTABLE_CORES, math.ceil(job_desc.cores))
+                            ),
+                        },
+                    ],
+                },
             }
             gpus_needed = 0
             for accelerator in job_desc.accelerators:
-                if accelerator['kind'] == 'gpu':
+                if accelerator["kind"] == "gpu":
                     # We just assume that all GPUs are equivalent when running
                     # on AWS Batch because there's no way to tell AWS Batch to
                     # send us to one or another.
-                    gpus_needed += accelerator['count']
+                    gpus_needed += accelerator["count"]
                 # Other accelerators are rejected by check_resource_request
             if gpus_needed > 0:
                 # We need some GPUs so ask for them.
-                job_spec['containerOverrides']['resourceRequirements'].append({
-                    'type': 'GPU',
-                    'value': gpus_needed
-                })
+                job_spec["containerOverrides"]["resourceRequirements"].append(
+                    {"type": "GPU", "value": gpus_needed}
+                )
             if self.owner_tag:
                 # We are meant to tag everything with an owner
-                job_spec['tags'] = {'Owner': self.owner_tag}
-
+                job_spec["tags"] = {"Owner": self.owner_tag}
 
             # Launch it and get back the AWS ID that we can use to poll the task.
             # TODO: retry!
             response = self.client.submit_job(**job_spec)
-            aws_id = response['jobId']
+            aws_id = response["jobId"]
 
             # Tie it to the numeric ID
             self.bs_id_to_aws_id[bs_id] = aws_id
@@ -230,8 +267,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
             if self._outbox is not None:
                 # Specify relationship between toil batch ID and aws ID in message bus
-                self._outbox.publish(ExternalBatchIdMessage(bs_id, aws_id, self.__class__.__name__))
-            logger.debug('Launched job: %s', job_name)
+                self._outbox.publish(
+                    ExternalBatchIdMessage(bs_id, aws_id, self.__class__.__name__)
+                )
+            logger.debug("Launched job: %s", job_name)
 
             return bs_id
 
@@ -250,16 +289,16 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Do replacements to enhance readability
         input_name = input_name.replace(" ", "-")
         # Keep only acceptable characters
-        kept_chars = [c for c in input_name if c.isalnum() or c == '-' or c == '_']
+        kept_chars = [c for c in input_name if c.isalnum() or c == "-" or c == "_"]
         if len(kept_chars) == 0 or not kept_chars[0].isalnum():
             # Make sure we start with something alphanumeric
-            kept_chars = ['j'] + kept_chars
+            kept_chars = ["j"] + kept_chars
         # Keep no more than the limit of them
         kept_chars = kept_chars[:128]
         # And re-compose them into a string
-        return ''.join(kept_chars)
+        return "".join(kept_chars)
 
-    def _get_runtime(self, job_detail: Dict[str, Any]) -> Optional[float]:
+    def _get_runtime(self, job_detail: dict[str, Any]) -> Optional[float]:
         """
         Internal function. Should not be called outside this class.
 
@@ -269,20 +308,25 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         Takes an AWS JobDetail as a dict.
         """
 
-        if 'status' not in job_detail or job_detail['status'] not in ['STARTING', 'RUNNING', 'SUCCEEDED', 'FAILED']:
+        if "status" not in job_detail or job_detail["status"] not in [
+            "STARTING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+        ]:
             # Job is not running yet.
             logger.info("Runtime unavailable because job is still waiting")
             return None
 
-        if 'startedAt' not in job_detail:
+        if "startedAt" not in job_detail:
             # Job has no known start time
             logger.info("Runtime unavailable because job has no start time")
             return None
 
-        start_ms = job_detail['startedAt']
+        start_ms = job_detail["startedAt"]
 
-        if 'stoppedAt' in job_detail:
-            end_ms = job_detail['stoppedAt']
+        if "stoppedAt" in job_detail:
+            end_ms = job_detail["stoppedAt"]
         else:
             end_ms = unix_now_ms()
 
@@ -291,7 +335,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # Return the time it has been running for.
         return runtime
 
-    def _get_exit_code(self, job_detail: Dict[str, Any]) -> int:
+    def _get_exit_code(self, job_detail: dict[str, Any]) -> int:
         """
         Internal function. Should not be called outside this class.
 
@@ -299,12 +343,18 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         EXIT_STATUS_UNAVAILABLE_VALUE if it cannot be gotten.
         """
 
-        return int(job_detail.get('container', {}).get('exitCode', EXIT_STATUS_UNAVAILABLE_VALUE))
+        return int(
+            job_detail.get("container", {}).get(
+                "exitCode", EXIT_STATUS_UNAVAILABLE_VALUE
+            )
+        )
 
     def getUpdatedBatchJob(self, maxWait: int) -> Optional[UpdatedBatchJobInfo]:
         # Remember when we started, for respecting the timeout
         entry = datetime.datetime.now()
-        while ((datetime.datetime.now() - entry).total_seconds() < maxWait or not maxWait):
+        while (
+            datetime.datetime.now() - entry
+        ).total_seconds() < maxWait or not maxWait:
             result = self.getUpdatedLocalJob(0)
             if result:
                 return result
@@ -315,9 +365,9 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 acknowledged = []
 
                 for job_detail in self._describe_jobs_in_batches():
-                    if job_detail.get('status') in ['SUCCEEDED', 'FAILED']:
+                    if job_detail.get("status") in ["SUCCEEDED", "FAILED"]:
                         # This job is done!
-                        aws_id = job_detail['jobId']
+                        aws_id = job_detail["jobId"]
                         bs_id = self.aws_id_to_bs_id[aws_id]
 
                         # Acknowledge it
@@ -325,7 +375,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
                         if aws_id in self.killed_job_aws_ids:
                             # Killed jobs aren't allowed to appear as updated.
-                            logger.debug('Job %s was killed so skipping it', bs_id)
+                            logger.debug("Job %s was killed so skipping it", bs_id)
                             continue
 
                         # Otherwise, it stopped running and it wasn't our fault.
@@ -334,21 +384,33 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                         runtime = self._get_runtime(job_detail)
 
                         # Determine if it succeeded
-                        exit_reason = STATE_TO_EXIT_REASON[job_detail['status']]
+                        exit_reason = STATE_TO_EXIT_REASON[job_detail["status"]]
 
                         # Get its exit code
                         exit_code = self._get_exit_code(job_detail)
 
-                        if job_detail['status'] == 'FAILED' and 'statusReason' in job_detail:
+                        if (
+                            job_detail["status"] == "FAILED"
+                            and "statusReason" in job_detail
+                        ):
                             # AWS knows why the job failed, so log the error
-                            logger.error('Job %s failed because: %s', bs_id, job_detail['statusReason'])
+                            logger.error(
+                                "Job %s failed because: %s",
+                                bs_id,
+                                job_detail["statusReason"],
+                            )
 
                         # Compose a result
-                        return UpdatedBatchJobInfo(jobID=bs_id, exitStatus=exit_code, wallTime=runtime, exitReason=exit_reason)
+                        return UpdatedBatchJobInfo(
+                            jobID=bs_id,
+                            exitStatus=exit_code,
+                            wallTime=runtime,
+                            exitReason=exit_reason,
+                        )
 
             finally:
                 # Drop all the records for tasks we acknowledged
-                for (aws_id, bs_id) in acknowledged:
+                for aws_id, bs_id in acknowledged:
                     del self.aws_id_to_bs_id[aws_id]
                     del self.bs_id_to_aws_id[bs_id]
                     if aws_id in self.killed_job_aws_ids:
@@ -357,7 +419,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
             if maxWait:
                 # Wait a bit and poll again
-                time.sleep(min(maxWait/2, 1.0))
+                time.sleep(min(maxWait / 2, 1.0))
             else:
                 # Only poll once
                 break
@@ -390,7 +452,7 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         # later.
         self.killed_job_aws_ids.add(aws_id)
         # Kill the AWS Batch job
-        self.client.terminate_job(jobId=aws_id, reason='Killed by Toil')
+        self.client.terminate_job(jobId=aws_id, reason="Killed by Toil")
 
     @retry(errors=[ClientError])
     def _wait_until_stopped(self, aws_id: str) -> None:
@@ -406,16 +468,19 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         while True:
             # Poll the job
             response = self.client.describe_jobs(jobs=[aws_id])
-            jobs = response.get('jobs', [])
+            jobs = response.get("jobs", [])
             if len(jobs) == 0:
                 # Job no longer exists at all
                 return
             job = jobs[0]
-            if job.get('status') and job['status'] in ['SUCCEEDED', 'FAILED']:
+            if job.get("status") and job["status"] in ["SUCCEEDED", "FAILED"]:
                 # The job has stopped
                 return
             # Otherwise the job is still going. Wait for it to stop.
-            logger.info('Waiting for killed job %s to stop', self.aws_id_to_bs_id.get(aws_id, aws_id))
+            logger.info(
+                "Waiting for killed job %s to stop",
+                self.aws_id_to_bs_id.get(aws_id, aws_id),
+            )
             time.sleep(2)
 
     @retry(errors=[ClientError])
@@ -429,56 +494,76 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         if self.job_definition is None:
             # First work out what volume mounts to make, because the type
             # system is happiest this way
-            volumes: List[Dict[str, Union[str, Dict[str, str]]]] = []
-            mount_points: List[Dict[str, str]] = []
-            for i, shared_path in enumerate({
-                '/var/lib/toil',
-                '/var/lib/docker',
-                '/var/lib/cwl',
-                '/var/run/docker.sock',
-                '/var/run/user',
-                '/tmp',
-                self.worker_work_dir
-            }):
+            volumes: list[dict[str, Union[str, dict[str, str]]]] = []
+            mount_points: list[dict[str, str]] = []
+            for i, shared_path in enumerate(
+                {
+                    "/var/lib/toil",
+                    "/var/lib/docker",
+                    "/var/lib/cwl",
+                    "/var/run/docker.sock",
+                    "/var/run/user",
+                    "/tmp",
+                    self.worker_work_dir,
+                }
+            ):
                 # For every path we want to be the same on the host and the
                 # container, choose a name
-                vol_name = f'mnt{i}'
+                vol_name = f"mnt{i}"
                 # Make a volume for that path
-                volumes.append({'name': vol_name, 'host': {'sourcePath': shared_path}})
+                volumes.append({"name": vol_name, "host": {"sourcePath": shared_path}})
                 # Mount the volume at that path
-                mount_points.append({'containerPath': shared_path, 'sourceVolume': vol_name})
+                mount_points.append(
+                    {"containerPath": shared_path, "sourceVolume": vol_name}
+                )
 
             job_def_spec = {
-                'jobDefinitionName': 'toil-' + str(uuid.uuid4()),
-                'type': 'container',
-                'containerProperties': {
-                    'image': self.docker_image,
-                    'volumes': volumes,
-                    'mountPoints': mount_points,
+                "jobDefinitionName": "toil-" + str(uuid.uuid4()),
+                "type": "container",
+                "containerProperties": {
+                    "image": self.docker_image,
+                    "volumes": volumes,
+                    "mountPoints": mount_points,
                     # Requirements will always be overridden but must be present anyway
-                    'resourceRequirements': [
-                        {'type': 'MEMORY', 'value': str(max(MIN_REQUESTABLE_MIB, math.ceil(b_to_mib(self.config.defaultMemory))))},
-                        {'type': 'VCPU', 'value': str(max(MIN_REQUESTABLE_CORES, math.ceil(self.config.defaultCores)))}
+                    "resourceRequirements": [
+                        {
+                            "type": "MEMORY",
+                            "value": str(
+                                max(
+                                    MIN_REQUESTABLE_MIB,
+                                    math.ceil(b_to_mib(self.config.defaultMemory)),
+                                )
+                            ),
+                        },
+                        {
+                            "type": "VCPU",
+                            "value": str(
+                                max(
+                                    MIN_REQUESTABLE_CORES,
+                                    math.ceil(self.config.defaultCores),
+                                )
+                            ),
+                        },
                     ],
                     # Be privileged because we can. And we'd like Singularity
                     # to work even if we do have the Docker socket. See
                     # <https://github.com/moby/moby/issues/42441>.
-                    'privileged': True
+                    "privileged": True,
                 },
-                'retryStrategy': {'attempts': 1},
-                'propagateTags': True  # This will propagate to ECS task but not to job!
+                "retryStrategy": {"attempts": 1},
+                "propagateTags": True,  # This will propagate to ECS task but not to job!
             }
             if self.job_role_arn:
                 # We need to give the job a role.
                 # We might not be able to do much job store access without this!
-                container_properties = job_def_spec['containerProperties']
+                container_properties = job_def_spec["containerProperties"]
                 assert isinstance(container_properties, dict)
-                container_properties['jobRoleArn'] = self.job_role_arn
+                container_properties["jobRoleArn"] = self.job_role_arn
             if self.owner_tag:
                 # We are meant to tag everything with an owner
-                job_def_spec['tags'] = {'Owner': self.owner_tag}
+                job_def_spec["tags"] = {"Owner": self.owner_tag}
             response = self.client.register_job_definition(**job_def_spec)
-            self.job_definition = response['jobDefinitionArn']
+            self.job_definition = response["jobDefinitionArn"]
 
         return self.job_definition
 
@@ -494,10 +579,10 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
             # TODO: How do we tolerate it not existing anymore?
             self.job_definition = None
 
-    def getIssuedBatchJobIDs(self) -> List[int]:
+    def getIssuedBatchJobIDs(self) -> list[int]:
         return self.getIssuedLocalJobIDs() + list(self.bs_id_to_aws_id.keys())
 
-    def _describe_jobs_in_batches(self) -> Iterator[Dict[str, Any]]:
+    def _describe_jobs_in_batches(self) -> Iterator[dict[str, Any]]:
         """
         Internal function. Should not be called outside this class.
 
@@ -506,28 +591,30 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
         """
 
         # Get all the AWS IDs to poll
-        to_check = list(aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items())
+        to_check = list(
+            aws_and_bs_id[0] for aws_and_bs_id in self.aws_id_to_bs_id.items()
+        )
 
         while len(to_check) > 0:
             # Go through jobs we want to poll in batches of the max size
             check_batch = to_check[-MAX_POLL_COUNT:]
             # And pop them off the end of the list of jobs to check
-            to_check = to_check[:-len(check_batch)]
+            to_check = to_check[: -len(check_batch)]
 
             # TODO: retry
             response = self.client.describe_jobs(jobs=check_batch)
 
             # Yield each returned JobDetail
-            yield from response.get('jobs', [])
+            yield from response.get("jobs", [])
 
-    def getRunningBatchJobIDs(self) -> Dict[int, float]:
+    def getRunningBatchJobIDs(self) -> dict[int, float]:
         # We need a dict from job_id (integer) to seconds it has been running
         bs_id_to_runtime = {}
 
         for job_detail in self._describe_jobs_in_batches():
-            if job_detail.get('status') == 'RUNNING':
+            if job_detail.get("status") == "RUNNING":
                 runtime = self._get_runtime(job_detail)
-                aws_id = job_detail['jobId']
+                aws_id = job_detail["jobId"]
                 bs_id = self.aws_id_to_bs_id[aws_id]
                 if runtime:
                     # We can measure a runtime
@@ -535,12 +622,17 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
                 else:
                     # If we can't find a runtime, we can't say it's running
                     # because we can't say how long it has been running for.
-                    logger.warning("Job %s is %s but has no runtime: %s", bs_id, job_detail['status'], job_detail)
+                    logger.warning(
+                        "Job %s is %s but has no runtime: %s",
+                        bs_id,
+                        job_detail["status"],
+                        job_detail,
+                    )
 
         # Give back the times all our running jobs have been running for.
         return bs_id_to_runtime
 
-    def killBatchJobs(self, job_ids: List[int]) -> None:
+    def killBatchJobs(self, job_ids: list[int]) -> None:
         # Kill all the ones that are local
         self.killLocalJobs(job_ids)
 
@@ -559,14 +651,31 @@ class AWSBatchBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
-        parser.add_argument("--awsBatchRegion", dest="aws_batch_region", default=None, env_var="TOIL_AWS_REGION",
-                            help="The AWS region containing the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchQueue", dest="aws_batch_queue", default=None, env_var="TOIL_AWS_BATCH_QUEUE",
-                            help="The name or ARN of the AWS Batch queue to submit to.")
-        parser.add_argument("--awsBatchJobRoleArn", dest="aws_batch_job_role_arn", default=None, env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
-                            help=("The ARN of an IAM role to run AWS Batch jobs as, so they "
-                                  "can e.g. access a job store. Must be assumable by "
-                                  "ecs-tasks.amazonaws.com."))
+        parser.add_argument(
+            "--awsBatchRegion",
+            dest="aws_batch_region",
+            default=None,
+            env_var="TOIL_AWS_REGION",
+            help="The AWS region containing the AWS Batch queue to submit to.",
+        )
+        parser.add_argument(
+            "--awsBatchQueue",
+            dest="aws_batch_queue",
+            default=None,
+            env_var="TOIL_AWS_BATCH_QUEUE",
+            help="The name or ARN of the AWS Batch queue to submit to.",
+        )
+        parser.add_argument(
+            "--awsBatchJobRoleArn",
+            dest="aws_batch_job_role_arn",
+            default=None,
+            env_var="TOIL_AWS_BATCH_JOB_ROLE_ARN",
+            help=(
+                "The ARN of an IAM role to run AWS Batch jobs as, so they "
+                "can e.g. access a job store. Must be assumable by "
+                "ecs-tasks.amazonaws.com."
+            ),
+        )
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:

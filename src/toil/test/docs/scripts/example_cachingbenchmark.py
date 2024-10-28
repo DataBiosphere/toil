@@ -32,10 +32,13 @@ from toil.realtimeLogger import RealtimeLogger
 
 
 def main():
-    parser = ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-    parser.add_argument('--minSleep', type=int, default=1,
-                        help="Minimum seconds to sleep")
+    parser.add_argument(
+        "--minSleep", type=int, default=1, help="Minimum seconds to sleep"
+    )
 
     Job.Runner.addToilOptions(parser)
 
@@ -53,8 +56,10 @@ def main():
 def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
-        stream.write(b"This is a test of the Toil file caching system. "
-                     b"Had this been an actual file, its contents would have been more interesting.")
+        stream.write(
+            b"This is a test of the Toil file caching system. "
+            b"Had this been an actual file, its contents would have been more interesting."
+        )
 
     child_rvs = []
     for i in range(100):
@@ -65,14 +70,16 @@ def root(job, options):
     return job.addFollowOnJobFn(report, child_rvs).rv()
 
 
-def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
+def poll(job, options, file_id, number, cores=0.1, disk="200M", memory="512M"):
 
     # Wait a random amount of time before grabbing the file for others to cache it
     time.sleep(random.randint(options.minSleep, options.minSleep + 10))
 
     # Read the file. Don't accept a symlink because then we might just have the
     # filestore's copy, even if caching is not happening.
-    local_file = job.fileStore.readGlobalFile(file_id, cache=True, mutable=False, symlink=False)
+    local_file = job.fileStore.readGlobalFile(
+        file_id, cache=True, mutable=False, symlink=False
+    )
 
     # Wait a random amount of after before grabbing the file for others to use it
     time.sleep(random.randint(options.minSleep, options.minSleep + 10))
@@ -83,7 +90,9 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
     # Check what machine we are
     hostname = socket.gethostname()
 
-    RealtimeLogger.info(f'Job {number} on host {hostname} sees file at device {stats.st_dev} inode {stats.st_ino}')
+    RealtimeLogger.info(
+        f"Job {number} on host {hostname} sees file at device {stats.st_dev} inode {stats.st_ino}"
+    )
 
     # Return a tuple representing our view of the file.
     # Drop hostname since hostnames are unique per pod.
@@ -96,12 +105,12 @@ def report(job, views):
     for v in views:
         counts[v] += 1
 
-    report = [f'{len(counts)} distinct views, most frequent:']
+    report = [f"{len(counts)} distinct views, most frequent:"]
 
     for view, count in counts.most_common(10):
-        report.append(f'{view}: {count}')
+        report.append(f"{view}: {count}")
 
-    return '\n'.join(report)
+    return "\n".join(report)
 
 
 if __name__ == "__main__":
