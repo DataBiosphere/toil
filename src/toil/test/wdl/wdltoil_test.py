@@ -66,11 +66,11 @@ WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     59,  # will be fixed in #5001
     66,  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
     67,  # same as above
-    68,  # Bug
+    68,  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
     69,  # Same as 68
     87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
     97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    105, # miniwdl (and toil) bug, unserializable json is serialized
+    105, # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
     107, # object not supported
     108, # object not supported
     109, # object not supported
@@ -127,10 +127,12 @@ class WDLConformanceTests(BaseWDLTest):
     @slow
     def test_unit_tests_v11(self):
         # There are still some bugs with the WDL spec, use a fixed version until
+        # See comments of https://github.com/openwdl/wdl/pull/669
         repo_url = "https://github.com/stxue1/wdl.git"
         repo_branch = "wdl-1.1.3-fixes"
         command = f"{exactPython} setup_unit_tests.py -v 1.1 --extra-patch-data unit_tests_patch_data.yaml --repo {repo_url} --branch {repo_branch} --force-pull"
         p = subprocess.run(command.split(" "), capture_output=True)
+        self.check(p)
         command = f"{exactPython} run_unit.py -r toil-wdl-runner -v 1.1 --progress --exclude-numbers {','.join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL])}"
         p = subprocess.run(command.split(" "), capture_output=True)
         self.check(p)
