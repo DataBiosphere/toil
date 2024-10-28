@@ -50,15 +50,32 @@ class ToilStatus:
         print("# This graph was created from job-store: %s" % self.jobStoreName)
 
         # Make job IDs to node names map
-        jobsToNodeNames: dict[str, str] = dict(
-            map(lambda job: (str(job.jobStoreID), job.jobName), self.jobsToReport)
-        )
+        def id_to_name(job_id: str) -> str:
+            """
+            Change a job ID into a GraphViz node name.
+            """
+            replacements = [
+                ("_", "_u_"),
+                ("/", "_s_"),
+                ("-", "_d_")
+            ]
+            result = job_id
+            for char, replacement in replacements:
+                result = result.replace(char, replacement)
+            return result
+        id_strings = [str(job.jobStoreID) for job in self.jobsToReport]
+        jobsToNodeNames = {
+            s: id_to_name(s) for s in id_strings
+        }
 
         # Print the nodes
         for job in set(self.jobsToReport):
             print(
-                '{} [label="{} {}"];'.format(
-                    jobsToNodeNames[str(job.jobStoreID)], job.jobName, job.jobStoreID
+                '{} [label="{} {}" color="{}"];'.format(
+                    jobsToNodeNames[str(job.jobStoreID)],
+                    job.jobName,
+                    job.displayName,
+                    "black" if job.has_body() else "green"
                 )
             )
 
