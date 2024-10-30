@@ -34,7 +34,7 @@ import uuid
 from collections.abc import Generator, Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
-from tempfile import mkstemp, gettempdir
+from tempfile import mkstemp
 from typing import (
     Any,
     Callable,
@@ -45,16 +45,13 @@ from typing import (
     List,
     Optional,
     Sequence,
-    Set,
     Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
     TypedDict,
     IO,
-    NamedTuple,
-    Protocol
+    Protocol,
 )
 
 if sys.version_info < (3, 11):
@@ -96,9 +93,11 @@ from toil.job import (
     ImportsJob,
     FileMetadata,
     TOIL_URI_SCHEME,
-    is_url,
     is_standard_url,
     is_toil_url,
+    is_any_url,
+    is_remote_url,
+    is_file_url,
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
@@ -116,6 +115,7 @@ from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
 
 logger = logging.getLogger(__name__)
+
 
 # We want to use hashlib.file_digest to avoid a 3-line hashing loop like
 # MiniWDL has. But it is only in 3.11+
@@ -140,16 +140,20 @@ class ReadableFileObj(Protocol):
     Would extend the protocol from Typeshed for hashlib but those are only
     declared for 3.11+.
     """
+
     def readinto(self, buf: bytearray, /) -> int: ...
     def readable(self) -> bool: ...
     def read(self, number: int) -> bytes: ...
+
 
 class FileDigester(Protocol):
     """
     Protocol for the features we need from hashlib.file_digest.
     """
+
     # We need __ prefixes here or the name of the argument becomes part of the required interface.
     def __call__(self, __f: ReadableFileObj, __alg_name: str) -> hashlib._Hash: ...
+
 
 try:
     # Don't do a direct conditional import to the final name here because then
@@ -162,7 +166,8 @@ try:
     #
     # TODO: Change to checking sys.version_info because MyPy understands that
     # better?
-    from hashlib import file_digest as file_digest_impl # type: ignore[attr-defined,unused-ignore]
+    from hashlib import file_digest as file_digest_impl  # type: ignore[attr-defined,unused-ignore]
+
     file_digest: FileDigester = file_digest_impl
 except ImportError:
     # Polyfill file_digest from 3.11+
@@ -174,6 +179,7 @@ except ImportError:
             hasher.update(buffer)
             buffer = f.read(BUFFER_SIZE)
         return hasher
+
     file_digest = file_digest_fallback_impl
 
 # WDL options to pass into the WDL jobs and standard libraries
@@ -878,6 +884,7 @@ def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
 
     return file_id, task_path, parent_id, file_basename
 
+
 ###
 # Caching machinery and file accessors
 ###
@@ -887,6 +894,7 @@ def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
 # We store the shared FS path in an attribute on the WDL File.
 SHARED_PATH_ATTR = "_shared_fs_path"
 
+
 def clone_metadata(old_file: WDL.Value.File, new_file: WDL.Value.File) -> None:
     """
     Copy all Toil metadata from one WDL File to another.
@@ -894,6 +902,7 @@ def clone_metadata(old_file: WDL.Value.File, new_file: WDL.Value.File) -> None:
     for attribute in ["virtualized_value", "nonexistent", SHARED_PATH_ATTR]:
         if hasattr(old_file, attribute):
             setattr(new_file, attribute, getattr(old_file, attribute))
+
 
 def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     """
@@ -904,6 +913,7 @@ def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     clone_metadata(file, new_file)
     return new_file
 
+
 def set_file_nonexistent(file: WDL.Value.File, nonexistent: bool) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the nonexistent flag set to the given value.
@@ -913,13 +923,17 @@ def set_file_nonexistent(file: WDL.Value.File, nonexistent: bool) -> WDL.Value.F
     setattr(new_file, "nonexistent", nonexistent)
     return new_file
 
+
 def get_file_nonexistent(file: WDL.Value.File) -> bool:
     """
     Return the nonexistent flag for a file.
     """
     return cast(bool, getattr(file, "nonexistent", False))
 
-def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> WDL.Value.File:
+
+def set_file_virtualized_value(
+    file: WDL.Value.File, virtualized_value: str
+) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the virtualized_value attribute set to the given value.
     """
@@ -928,11 +942,13 @@ def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> 
     setattr(new_file, "virtualized_value", virtualized_value)
     return new_file
 
+
 def get_file_virtualized_value(file: WDL.Value.File) -> Optional[str]:
     """
     Get the virtualized storage location for a file.
     """
     return cast(Optional[str], getattr(file, "virtualized_value", None))
+
 
 def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
     """
@@ -942,9 +958,12 @@ def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
     """
     if hasattr(file, SHARED_PATH_ATTR):
         result = cast(str, getattr(file, SHARED_PATH_ATTR))
-        assert not result.startswith("file://"), f"Found URI shared FS path of {result} on {file}"
+        assert not result.startswith(
+            "file://"
+        ), f"Found URI shared FS path of {result} on {file}"
         return result
     return None
+
 
 def set_shared_fs_path(file: WDL.Value.File, path: str) -> WDL.Value.File:
     """
@@ -953,28 +972,39 @@ def set_shared_fs_path(file: WDL.Value.File, path: str) -> WDL.Value.File:
     This should be the path it was initially imported from, or the path that it has in the call cache.
     """
     # We should not have URLs here, only real paths.
-    assert not path.startswith("file://"), f"Cannot assign URI shared FS path of {path} to {file}"
+    assert not path.startswith(
+        "file://"
+    ), f"Cannot assign URI shared FS path of {path} to {file}"
     new_file = WDL.Value.File(file.value, file.expr)
     clone_metadata(file, new_file)
     setattr(new_file, SHARED_PATH_ATTR, path)
     return new_file
 
-def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.Bindings[WDL.Value.Base]:
+
+def view_shared_fs_paths(
+    bindings: WDL.Env.Bindings[WDL.Value.Base],
+) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
     Given WDL bindings, return a copy where all files have their shared filesystem paths as their values.
     """
+
     def file_path_to_use(file: WDL.Value.File) -> WDL.Value.File:
         """
         Return a File at the shared FS path if we have one, or the original File otherwise.
         """
         shared_path = get_shared_fs_path(file)
         result_path = shared_path or file.value
-        assert not result_path.startswith("file://"), f"Found file URI {result_path} instead of a path for file {file}"
+        assert not result_path.startswith(
+            "file://"
+        ), f"Found file URI {result_path} instead of a path for file {file}"
         return set_file_value(file, result_path)
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
 
-def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings) -> tuple[WDLBindings | None, str]:
+
+def poll_execution_cache(
+    node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings
+) -> tuple[WDLBindings | None, str]:
     """
     Return the cached result of calling this workflow or task, and its key.
 
@@ -986,12 +1016,14 @@ def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings
     transformed_bindings = view_shared_fs_paths(bindings)
     log_bindings(logger.debug, "Digesting input bindings:", [transformed_bindings])
     input_digest = WDL.Value.digest_env(transformed_bindings)
-    cache_key=f"{node.name}/{node.digest}/{input_digest}"
+    cache_key = f"{node.name}/{node.digest}/{input_digest}"
     miniwdl_logger = logging.getLogger("MiniWDL")
     # TODO: Ship config from leader? It might not see the right environment.
     miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
     miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-    cached_result: Optional[WDLBindings] = miniwdl_cache.get(cache_key, transformed_bindings, node.effective_outputs)
+    cached_result: Optional[WDLBindings] = miniwdl_cache.get(
+        cache_key, transformed_bindings, node.effective_outputs
+    )
     if cached_result is not None:
         logger.info("Found call in cache")
         return cached_result, cache_key
@@ -999,7 +1031,15 @@ def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings
         logger.debug("No cache hit for %s", cache_key)
         return None, cache_key
 
-def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_store: AbstractFileStore, wdl_options: WDLContext, miniwdl_logger: Optional[logging.Logger] = None, miniwdl_config: Optional[WDL.runtime.config.Loader] = None) -> WDLBindings:
+
+def fill_execution_cache(
+    cache_key: str,
+    output_bindings: WDLBindings,
+    file_store: AbstractFileStore,
+    wdl_options: WDLContext,
+    miniwdl_logger: Optional[logging.Logger] = None,
+    miniwdl_config: Optional[WDL.runtime.config.Loader] = None,
+) -> WDLBindings:
     """
     Cache the result of calling a workflow or task.
 
@@ -1034,7 +1074,9 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
     #
     # In that case we just pout up with useless/unreferenced files in the
     # cache.
-    output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4()))
+    output_directory = os.path.join(
+        miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4())
+    )
 
     # Adjust all files in the output bindings to have shared FS paths outside the job store.
     def assign_shared_fs_path(file: WDL.Value.File) -> WDL.Value.File:
@@ -1055,7 +1097,9 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
             if virtualized is None:
                 # TODO: If we're passing things around by URL reference and
                 # some of them are file: is this actually allowed?
-                raise RuntimeError(f"File {file} caught escaping from task unvirtualized")
+                raise RuntimeError(
+                    f"File {file} caught escaping from task unvirtualized"
+                )
 
             # We need to save this file somewhere.
             # This needs to exist before we can export to it. And now we know
@@ -1071,13 +1115,14 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
                 wdl_options,
                 devirtualized_to_virtualized,
                 virtualized_to_devirtualized,
-                export=True
+                export=True,
             )
 
             # Remember where it went
             file = set_shared_fs_path(file, exported_path)
 
         return file
+
     output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
 
     # Save the bindings to the cache, representing all files with their shared filesystem paths.
@@ -1264,9 +1309,6 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
-STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
-REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
-ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
 def extract_workflow_inputs(environment: WDLBindings) -> List[str]:
     filenames = list()
@@ -1277,11 +1319,7 @@ def extract_workflow_inputs(environment: WDLBindings) -> List[str]:
 
     map_over_files_in_bindings(environment, add_filename)
     return filenames
-def is_toil_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
 
-def is_file_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, ["file:"])
 
 def get_file_sizes(
     filenames: List[str],
@@ -1313,7 +1351,7 @@ def get_file_sizes(
         ):
             tried.append(candidate_uri)
             try:
-                if not import_remote_files and is_url(candidate_uri):
+                if not import_remote_files and is_remote_url(candidate_uri):
                     # Use remote URIs in place. But we need to find the one that exists.
                     if not file_source.url_exists(candidate_uri):
                         # Wasn't found there
@@ -1358,7 +1396,7 @@ def get_file_sizes(
                 )
 
             # Was actually found
-            if is_url(candidate_uri):
+            if is_remote_url(candidate_uri):
                 # Might be a file URI or other URI.
                 # We need to make sure file URIs and local paths that point to
                 # the same place are treated the same.
@@ -1425,33 +1463,6 @@ def convert_files(
 
     map_over_files_in_bindings(environment, convert_file_to_uri)
 
-def is_standard_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, STANDARD_SCHEMES)
-
-
-def is_remote_url(filename: str) -> bool:
-    """
-    Decide if a filename is a known, non-file kind of URL
-    """
-    return is_url_with_scheme(filename, REMOTE_SCHEMES)
-
-def is_any_url(filename: str) -> bool:
-    """
-    Decide if a string is a URI like http:// or file://.
-
-    Otherwise it might be a bare path.
-    """
-    return is_url_with_scheme(filename, ALL_SCHEMES)
-
-def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
-    """
-    Return True if filename is a URL with any of the given schemes and False otherwise.
-    """
-    # TODO: "http:myfile.dat" is a valid filename and *not* a valid URL
-    for scheme in schemes:
-        if filename.startswith(scheme):
-            return True
-    return False
 
 def convert_remote_files(
     environment: WDLBindings,
@@ -1610,8 +1621,12 @@ def convert_remote_files(
             # Was actually found and imported
             assert candidate_uri is not None
             assert toil_uri is not None
-            new_file = set_file_virtualized_value(set_file_value(file, candidate_uri), toil_uri)
-        if candidate_uri is not None and (is_file_url(candidate_uri) or not is_any_url(candidate_uri)):
+            new_file = set_file_virtualized_value(
+                set_file_value(file, candidate_uri), toil_uri
+            )
+        if candidate_uri is not None and (
+            is_file_url(candidate_uri) or not is_any_url(candidate_uri)
+        ):
             # We imported a file so we have a local path
             assert candidate_uri is not None
             if is_file_url(candidate_uri):
@@ -1737,8 +1752,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # but I need to virtualize as well, so I can't remove one or the other.
         def _f(file: WDL.Value.File) -> WDL.Value.Base:
             if get_file_virtualized_value(file) is None:
-                file = set_file_virtualized_value(file, self._virtualize_filename(file.value))
-            with open(self._devirtualize_filename(get_file_virtualized_value(file)), "r") as infile:
+                file = set_file_virtualized_value(
+                    file, self._virtualize_filename(file.value)
+                )
+            with open(
+                self._devirtualize_filename(get_file_virtualized_value(file)), "r"
+            ) as infile:
                 return parse(infile.read())
 
         return _f
@@ -1772,7 +1791,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         if virtualized_filename is not None:
             devirtualized_path = self._devirtualize_filename(virtualized_filename)
             file = set_file_value(file, devirtualized_path)
-            logger.debug("For virtualized filename %s got devirtualized file %s", virtualized_filename, file)
+            logger.debug(
+                "For virtualized filename %s got devirtualized file %s",
+                virtualized_filename,
+                file,
+            )
         else:
             logger.debug("File has no virtualized value so not changing value")
         return file
@@ -1803,7 +1826,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 logger.debug("File appears nonexistent so marking it nonexistent")
                 return set_file_nonexistent(file, True)
         virtualized_filename = self._virtualize_filename(file.value)
-        logger.debug('For file %s got virtualized filename %s', file, virtualized_filename)
+        logger.debug(
+            "For file %s got virtualized filename %s", file, virtualized_filename
+        )
         marked_file = set_file_virtualized_value(file, virtualized_filename)
         return marked_file
 
@@ -1878,9 +1903,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     file_id, dest_path, mutable=False, symlink=True
                 )
             else:
-                raise RuntimeError(
-                    f"Unsupported file source: {file_source}"
-                )
+                raise RuntimeError(f"Unsupported file source: {file_source}")
         else:
             # Download to a local file with the right name and execute bit.
             # Open it exclusively
@@ -2070,6 +2093,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             self._virtualized_to_devirtualized[result] = abs_filename
             return result
 
+
 class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
     """
     Standard library implementation for workflow scope.
@@ -2118,21 +2142,29 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                 miniwdl_logger = logging.getLogger("MiniWDL")
                 # TODO: Ship config from leader? It might not see the right environment.
                 miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
-                self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+                self._miniwdl_cache = WDL.runtime.cache.new(
+                    miniwdl_config, miniwdl_logger
+                )
 
             # TODO: If we did this before the _virtualize_filename call in the
             # base _write we wouldn't need to immediately devirtualize. But we
             # have internal caches to lean on.
             devirtualized_filename = self._devirtualize_filename(virtualized_file.value)
             # Hash the file to hex
-            hex_digest = file_digest(open(devirtualized_filename, "rb"), "sha256").hexdigest()
+            hex_digest = file_digest(
+                open(devirtualized_filename, "rb"), "sha256"
+            ).hexdigest()
             file_input_bindings = WDL.Env.Bindings(
-                WDL.Env.Binding("file_sha256", cast(WDL.Value.Base, WDL.Value.String(hex_digest)))
+                WDL.Env.Binding(
+                    "file_sha256", cast(WDL.Value.Base, WDL.Value.String(hex_digest))
+                )
             )
             # Make an environment of "file_sha256" to that as a WDL string, and
             # digest that, and make a write_ cache key. No need to transform to
             # shared FS paths sonce no paths are in it.
-            log_bindings(logger.debug, "Digesting file bindings:", [file_input_bindings])
+            log_bindings(
+                logger.debug, "Digesting file bindings:", [file_input_bindings]
+            )
             input_digest = WDL.Value.digest_env(file_input_bindings)
             file_cache_key = "write_/" + input_digest
             # Construct a description of the types we expect to get from the
@@ -2173,7 +2205,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     self._wdl_options,
                     {},
                     {},
-                    export=True
+                    export=True,
                 )
 
                 # Save the cache entry pointing to it
@@ -2181,7 +2213,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     file_cache_key,
                     WDL.Env.Bindings(
                         WDL.Env.Binding("file", WDL.Value.File(exported_path))
-                    )
+                    ),
                 )
 
                 # Apply the shared filesystem path to the virtualized file
@@ -2725,6 +2757,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
+
 def drop_if_missing(
     file: WDL.Value.File, standard_library: ToilWDLStdLibBase
 ) -> WDL.Value.File | None:
@@ -2887,7 +2920,9 @@ def map_over_typed_files_in_value(
         # This is a file so we need to process it
         orig_file_value = value.value
         new_file = transform(value)
-        assert value.value == orig_file_value, "Transformation mutated the original File"
+        assert (
+            value.value == orig_file_value
+        ), "Transformation mutated the original File"
         if new_file is None:
             # Assume the transform checked types if we actually care about the
             # result.
@@ -3218,7 +3253,11 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # TODO: What if the same file is passed through several tasks, and
             # we get cache hits on those tasks? Won't we upload it several
             # times?
-            return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
+            return self.postprocess(
+                virtualize_files(
+                    cached_result, standard_library, enforce_existence=False
+                )
+            )
 
         if self._task.inputs:
             logger.debug("Evaluating task code")
@@ -3729,7 +3768,9 @@ class WDLTaskJob(WDLBaseJob):
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
             singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            miniwdl_singularity_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
+            miniwdl_singularity_cache = os.path.join(
+                os.path.expanduser("~"), ".cache/miniwdl"
+            )
 
             # Cache Singularity's layers somewhere known to have space
             os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
@@ -4168,7 +4209,14 @@ class WDLTaskJob(WDLBaseJob):
 
         if self._cache_key is not None:
             # We might need to save to the execution cache
-            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options, miniwdl_logger=miniwdl_logger, miniwdl_config=miniwdl_config)
+            output_bindings = fill_execution_cache(
+                self._cache_key,
+                output_bindings,
+                file_store,
+                self._wdl_options,
+                miniwdl_logger=miniwdl_logger,
+                miniwdl_config=miniwdl_config,
+            )
 
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
@@ -5185,7 +5233,11 @@ class WDLWorkflowJob(WDLSectionJob):
         # or calculated inputs filled in).
         cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
         if cached_result is not None:
-            return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
+            return self.postprocess(
+                virtualize_files(
+                    cached_result, standard_library, enforce_existence=False
+                )
+            )
 
         if self._workflow.inputs:
             try:
@@ -5212,7 +5264,7 @@ class WDLWorkflowJob(WDLSectionJob):
             sink.rv(),
             wdl_options=self._wdl_options,
             cache_key=cache_key,
-            local=True
+            local=True,
         )
         sink.addFollowOn(outputs_job)
         # Caller is responsible for making sure namespaces are applied
@@ -5333,7 +5385,9 @@ class WDLOutputsJob(WDLBaseJob):
         )
 
         if self._cache_key is not None:
-            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options)
+            output_bindings = fill_execution_cache(
+                self._cache_key, output_bindings, file_store, self._wdl_options
+            )
 
         return self.postprocess(output_bindings)
 

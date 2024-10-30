@@ -50,11 +50,9 @@ from typing import (
     Optional,
     TextIO,
     Tuple,
-    Type,
     TypeVar,
     Union,
     cast,
-    Sequence,
     Literal,
 )
 from urllib.error import HTTPError
@@ -132,11 +130,9 @@ from toil.job import (
     Promise,
     Promised,
     unwrap,
-    ParseableIndivisibleResource,
-    unwrap_all,
     ImportsJob,
     FileMetadata,
-    is_url,
+    is_remote_url,
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
@@ -3678,7 +3674,7 @@ def get_file_sizes(
     file_to_data = {}
     for filename in filenames:
         try:
-            if not import_remote_files and is_url(filename):
+            if not import_remote_files and is_remote_url(filename):
                 if not file_source.url_exists(filename):
                     continue
             filesize = file_source.get_size(filename)

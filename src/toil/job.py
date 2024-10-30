@@ -101,25 +101,42 @@ logger = logging.getLogger(__name__)
 TOIL_URI_SCHEME = "toilfile:"
 
 
-def is_toil_url(filename: str) -> bool:
-    return is_url(filename, schemes=[TOIL_URI_SCHEME])
-
+STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
+REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
+ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
 def is_standard_url(filename: str) -> bool:
-    return is_url(filename, ["http:", "https:", "s3:", "gs:", "ftp:"])
+    return is_url_with_scheme(filename, STANDARD_SCHEMES)
 
+def is_remote_url(filename: str) -> bool:
+    """
+    Decide if a filename is a known, non-file kind of URL
+    """
+    return is_url_with_scheme(filename, REMOTE_SCHEMES)
 
-def is_url(
-    filename: str,
-    schemes: list[str] = ["http:", "https:", "s3:", "gs:", "ftp:", TOIL_URI_SCHEME],
-) -> bool:
+def is_any_url(filename: str) -> bool:
     """
-    Decide if a filename is a known kind of URL
+    Decide if a string is a URI like http:// or file://.
+
+    Otherwise it might be a bare path.
     """
+    return is_url_with_scheme(filename, ALL_SCHEMES)
+
+def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
+    """
+    Return True if filename is a URL with any of the given schemes and False otherwise.
+    """
+    # TODO: "http:myfile.dat" is a valid filename and *not* a valid URL
     for scheme in schemes:
         if filename.startswith(scheme):
             return True
     return False
+
+def is_toil_url(filename: str) -> bool:
+    return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
+
+def is_file_url(filename: str) -> bool:
+    return is_url_with_scheme(filename, ["file:"])
 
 
 class JobPromiseConstraintError(RuntimeError):
