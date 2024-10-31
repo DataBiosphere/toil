@@ -2367,7 +2367,12 @@ def toilStageFiles(
                         # Probably staging and bypassing file store. Just copy.
                         logger.log(log_level, "Saving %s...", dest_url)
                         os.makedirs(os.path.dirname(p.target), exist_ok=True)
-                        shutil.copyfile(p.resolved, p.target)
+                        try:
+                            shutil.copyfile(p.resolved, p.target)
+                        except shutil.SameFileError:
+                            # If outdir isn't set and we're passing through an input file/directory as the output,
+                            # the file doesn't need to be copied because it is already there
+                            pass
                     else:
                         uri = p.resolved
                         if not uri.startswith("toilfile:"):
