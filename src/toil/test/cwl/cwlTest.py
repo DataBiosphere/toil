@@ -453,6 +453,14 @@ class CWLWorkflowTest(ToilTest):
             except FileNotFoundError:
                 pass
 
+    def test_required_input_condition_protection(self) -> None:
+        # This doesn't run containerized
+        self._tester(
+            "src/toil/test/cwl/not_run_required_input.cwl",
+            "src/toil/test/cwl/empty.json",
+            {},
+        )
+
     @needs_slurm
     def test_slurm_node_memory(self) -> None:
         pass

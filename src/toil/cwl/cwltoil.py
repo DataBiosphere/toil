@@ -269,7 +269,7 @@ class Conditional:
     """
     Object holding conditional expression until we are ready to evaluate it.
 
-    Evaluation occurs at the moment the encloses step is ready to run.
+    Evaluation occurs before the enclosing step's inputs are type-checked.
     """
 
     def __init__(
@@ -2447,23 +2447,28 @@ class CWLJobWrapper(CWLNamedJob):
         self.cwltool = tool
         self.cwljob = cwljob
         self.runtime_context = runtime_context
-        self.conditional = conditional
+        self.conditional = conditional or Conditional()
         self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
         """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
+
+        # Check confitional to license full evaluation of job inputs.
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+
         fill_in_defaults(
             self.cwltool.tool["inputs"],
             cwljob,
             self.runtime_context.make_fs_access(self.runtime_context.basedir or ""),
         )
+        # Don't forward the conditional. We checked it already.
         realjob = CWLJob(
             tool=self.cwltool,
             cwljob=cwljob,
             runtime_context=self.runtime_context,
             parent_name=self.parent_name,
-            conditional=self.conditional,
         )
         self.addChild(realjob)
         return realjob.rv()
