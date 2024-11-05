@@ -49,7 +49,7 @@ class BaseWDLTest(ToilTest):
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
-WDL_CONFORMANCE_TEST_COMMIT = "2d617b703a33791f75f30a9db43c3740a499cd89"
+WDL_CONFORMANCE_TEST_COMMIT = "baf44bcc7e6f6927540adf77d91b26a5558ae4b7"
 # These tests are known to require things not implemented by
 # Toil and will not be run in CI.
 WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
@@ -58,6 +58,29 @@ WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL = [
     64,  # Legacy test for as_map_as_input; It looks like MiniWDL does not have the function as_map()
     77,  # Test that array cannot coerce to a string. WDL 1.1 does not allow compound types to coerce into a string. This should return a TypeError.
 ]
+WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
+    14,  # test_object, Objects are not supported
+    19,  # map_to_struct, miniwdl cannot coerce map to struct, https://github.com/chanzuckerberg/miniwdl/issues/712
+    52,  # relative_and_absolute, needs root to run
+    58,  # test_gpu, needs gpu to run, else warning
+    59,  # will be fixed in #5001
+    66,  # This needs way too many resources (and actually doesn't work?), see https://github.com/DataBiosphere/wdl-conformance-tests/blob/2d617b703a33791f75f30a9db43c3740a499cd89/README_UNIT.md?plain=1#L8
+    67,  # same as above
+    68,  # Bug, see #https://github.com/DataBiosphere/toil/issues/4993
+    69,  # Same as 68
+    87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
+    97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
+    105, # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
+    107, # object not supported
+    108, # object not supported
+    109, # object not supported
+    110, # object not supported
+    120, # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
+    131, # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
+    134, # same as 131
+    144  # miniwdl and toil bug
+]
+
 
 
 class WDLConformanceTests(BaseWDLTest):
@@ -100,6 +123,19 @@ class WDLConformanceTests(BaseWDLTest):
             )
 
         p.check_returncode()
+
+    @slow
+    def test_unit_tests_v11(self):
+        # There are still some bugs with the WDL spec, use a fixed version until
+        # See comments of https://github.com/openwdl/wdl/pull/669
+        repo_url = "https://github.com/stxue1/wdl.git"
+        repo_branch = "wdl-1.1.3-fixes"
+        command = f"{exactPython} setup_unit_tests.py -v 1.1 --extra-patch-data unit_tests_patch_data.yaml --repo {repo_url} --branch {repo_branch} --force-pull"
+        p = subprocess.run(command.split(" "), capture_output=True)
+        self.check(p)
+        command = f"{exactPython} run_unit.py -r toil-wdl-runner -v 1.1 --progress --exclude-numbers {','.join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL])}"
+        p = subprocess.run(command.split(" "), capture_output=True)
+        self.check(p)
 
     # estimated running time: 10 minutes
     @slow
@@ -970,7 +1006,6 @@ class WDLToilBenchTests(ToilTest):
         self.assertEqual(specified_mount_point, "MOUNT_POINT")
         self.assertEqual(part_size, 2)
         self.assertEqual(part_suffix, "MB")
-
 
 if __name__ == "__main__":
     unittest.main()  # run all tests
