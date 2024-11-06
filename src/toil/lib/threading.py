@@ -252,7 +252,7 @@ def cpu_count() -> int:
         return cast(int, cached)
 
     # Get the fallback answer of all the CPUs on the machine
-    psutil_cpu_count = cast(Optional[int], psutil.cpu_count(logical=True))
+    psutil_cpu_count: int | None = psutil.cpu_count(logical=True)
     if psutil_cpu_count is None:
         logger.debug("Could not retrieve the logical CPU count.")
 
