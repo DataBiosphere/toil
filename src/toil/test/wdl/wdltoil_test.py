@@ -7,7 +7,7 @@ import shutil
 import string
 import subprocess
 import unittest
-from typing import Any, Optional, Union
+from typing import Any
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -472,7 +472,7 @@ class WDLTests(BaseWDLTest):
         )
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self, extra_args: Optional[list[str]] = None) -> None:
+    def test_miniwdl_self_test(self, extra_args: list[str] | None = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         wdl_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/self_test.wdl")
         json_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/inputs.json")
@@ -545,7 +545,7 @@ class WDLTests(BaseWDLTest):
 
     @pytest.mark.integrative
     @needs_singularity_or_docker
-    def test_dockstore_trs(self, extra_args: Optional[List[str]] = None) -> None:
+    def test_dockstore_trs(self, extra_args: list[str] | None = None) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
         json_input = json.dumps({"hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"})
@@ -786,7 +786,7 @@ class WDLToilBenchTests(ToilTest):
 
         pos = WDL.Error.SourcePosition("nowhere", "nowhere", 0, 0, 0, 0)
 
-        parts: list[Union[str, WDL.Expr.Placeholder]] = re.split("(~{[^}]*})", to_parse)
+        parts: list[str | WDL.Expr.Placeholder] = re.split("(~{[^}]*})", to_parse)
         for i in range(1, len(parts), 2):
             parts[i] = WDL.Expr.Placeholder(pos, {}, WDL.Expr.Null(pos))
 
