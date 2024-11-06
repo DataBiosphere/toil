@@ -379,14 +379,22 @@ class UtilsTest(ToilTest):
         )
 
     def check_status(self, status, status_fn, seconds=20):
-        i = 0.0
-        while status_fn(self.toilDir) != status:
+        time_elapsed = 0.0
+        current_status = status_fn(self.toilDir)
+        while current_status != status:
+            logger.debug(
+                "Workflow is %s; waiting for %s (%s/%s elapsed)",
+                current_status,
+                status,
+                time_elapsed,
+                seconds
+            )
             time.sleep(0.5)
-            i += 0.5
-            if i > seconds:
-                s = status_fn(self.toilDir)
+            time_elapsed += 0.5
+            current_status = status_fn(self.toilDir)
+            if time_elapsed > seconds:
                 self.assertEqual(
-                    s,
+                    current_status,
                     status,
                     f"Waited {seconds} seconds without status reaching {status}; stuck at {s}",
                 )
@@ -422,6 +430,7 @@ class UtilsTest(ToilTest):
         # --badWorker is set to force failure.
         cmd = [
             "toil-cwl-runner",
+            "--logDebug",
             "--jobStore",
             self.toilDir,
             "--clean=never",
@@ -432,6 +441,7 @@ class UtilsTest(ToilTest):
             "src/toil/test/cwl/whale.txt",
             f"--outdir={self.tempDir}",
         ]
+        logger.info("Run command: %s", " ".join(cmd))
         wf = subprocess.Popen(cmd)
         self.check_status("RUNNING", status_fn=ToilStatus.getStatus, seconds=60)
         wf.wait()
@@ -464,6 +474,7 @@ class UtilsTest(ToilTest):
         # Run a workflow that will always fail
         cmd = [
             "toil-cwl-runner",
+            "--logDebug",
             "--jobStore",
             self.toilDir,
             "--clean=never",
@@ -471,6 +482,7 @@ class UtilsTest(ToilTest):
             "--message",
             "Testing",
         ]
+        logger.info("Run command: %s", " ".join(cmd))
         wf = subprocess.Popen(cmd)
         wf.wait()
         # print log and check output
