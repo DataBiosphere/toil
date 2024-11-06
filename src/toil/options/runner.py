@@ -33,6 +33,6 @@ def add_runner_options(
         dest="import_workers_threshold",
         type=lambda x: human2bytes(str(x)),
         default="1 GiB",
-        help="Specify the file size threshold that determines if the file import will happen in its own job. All files below the threshold "
-        "will go into a batch import job. This should be set in conjunction with the argument --runImportsOnWorkers."
+        help="Specify the file size threshold that determines how many files go into a batched import. As many files will go into a batch import job until this threshold"
+             "is reached. This should be set in conjunction with the argument --runImportsOnWorkers."
     )

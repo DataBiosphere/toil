@@ -92,12 +92,9 @@ from toil.job import (
     ParseableIndivisibleResource,
     ImportsJob,
     FileMetadata,
-    TOIL_URI_SCHEME,
-    is_standard_url,
-    is_toil_url,
-    is_any_url,
     is_remote_url,
-    is_file_url,
+    potential_absolute_uris,
+    get_file_sizes
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
@@ -107,7 +104,7 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
-from toil.lib.io import mkdtemp
+from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -115,6 +112,15 @@ from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
 
 logger = logging.getLogger(__name__)
+
+
+# In regards to "toilfile:" URIs:
+# We define a URI scheme kind of like but not actually compatible with the one
+# we use for CWL. CWL brings along the file basename in its file type, but
+# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
+# the URI.
+# TODO: We need to also make sure files from the same source directory end up
+# in the same destination directory, when dealing with basename conflicts.
 
 
 # We want to use hashlib.file_digest to avoid a 3-line hashing loop like
@@ -485,81 +491,6 @@ def remove_common_leading_whitespace(
     # TODO: Make MiniWDL expose a real way to do this?
     modified._type = expression._type
     return modified
-
-
-def potential_absolute_uris(
-    uri: str,
-    path: list[str],
-    importer: WDL.Tree.Document | None = None,
-    execution_dir: str | None = None,
-) -> Iterator[str]:
-    """
-    Get potential absolute URIs to check for an imported file.
-
-    Given a URI or bare path, yield in turn all the URIs, with schemes, where we
-    should actually try to find it, given that we want to search under/against
-    the given paths or URIs, the current directory, and the given importing WDL
-    document if any.
-    """
-
-    if uri == "":
-        # Empty URIs can't come from anywhere.
-        return
-
-    # We need to brute-force find this URI relative to:
-    #
-    # 1. Itself if a full URI.
-    #
-    # 2. Importer's URL, if importer is a URL and this is a
-    #    host-root-relative URL starting with / or scheme-relative
-    #    starting with //, or just plain relative.
-    #
-    # 3. Current directory, if a relative path.
-    #
-    # 4. All the prefixes in "path".
-    #
-    # If it can't be found anywhere, we ought to (probably) throw
-    # FileNotFoundError like the MiniWDL implementation does, with a
-    # correct errno.
-    #
-    # To do this, we have AbstractFileStore.read_from_url, which can read a
-    # URL into a binary-mode writable, or throw some kind of unspecified
-    # exception if the source doesn't exist or can't be fetched.
-
-    # This holds scheme-applied full URIs for all the places to search.
-    full_path_list = []
-
-    if importer is not None:
-        # Add the place the imported file came form, to search first.
-        full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
-
-    # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
-    # When importing on a worker, the cwd will be a tmpdir and will result in FileNotFoundError after os.path.abspath, so override with the execution dir
-    full_path_list.append(Toil.normalize_uri(execution_dir or ".") + "/.")
-
-    # Then the specified paths.
-    # TODO:
-    # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1479-L1482
-    # seems backward actually and might do these first!
-    full_path_list += [Toil.normalize_uri(p) for p in path]
-
-    # This holds all the URIs we tried and failed with.
-    failures: set[str] = set()
-
-    for candidate_base in full_path_list:
-        # Try fetching based off each base URI
-        candidate_uri = urljoin(candidate_base, uri)
-        if candidate_uri in failures:
-            # Already tried this one, maybe we have an absolute uri input.
-            continue
-        logger.debug(
-            "Consider %s which is %s off of %s", candidate_uri, uri, candidate_base
-        )
-
-        # Try it
-        yield candidate_uri
-        # If we come back it didn't work
-        failures.add(candidate_uri)
 
 
 async def toil_read_source(
@@ -1310,7 +1241,7 @@ class NonDownloadingSize(WDL.StdLib._Size):
         return WDL.Value.Float(total_size)
 
 
-def extract_workflow_inputs(environment: WDLBindings) -> List[str]:
+def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
     filenames = list()
 
     def add_filename(file: WDL.Value.File) -> WDL.Value.File:
@@ -1321,117 +1252,19 @@ def extract_workflow_inputs(environment: WDLBindings) -> List[str]:
     return filenames
 
 
-def get_file_sizes(
-    filenames: List[str],
-    file_source: AbstractJobStore,
-    search_paths: Optional[List[str]] = None,
-    import_remote_files: bool = True,
-    execution_dir: Optional[str] = None,
-) -> Dict[str, FileMetadata]:
-    """
-    Resolve relative-URI files in the given environment and them then into absolute normalized URIs. Returns a dictionary of WDL file values to a tuple of the normalized URI,
-    parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
-
-    :param filenames: list of filenames to evaluate on
-    :param file_source: Context to search for files with
-    :param task_path: Dotted WDL name of the user-level code doing the
-        importing (probably the workflow name).
-    :param search_paths: If set, try resolving input location relative to the URLs or
-        directories in this list.
-    :param import_remote_files: If set, import files from remote locations. Else leave them as URI references.
-    """
-
-    @memoize
-    def get_filename_size(filename: str) -> FileMetadata:
-        tried = []
-        for candidate_uri in potential_absolute_uris(
-            filename,
-            search_paths if search_paths is not None else [],
-            execution_dir=execution_dir,
-        ):
-            tried.append(candidate_uri)
-            try:
-                if not import_remote_files and is_remote_url(candidate_uri):
-                    # Use remote URIs in place. But we need to find the one that exists.
-                    if not file_source.url_exists(candidate_uri):
-                        # Wasn't found there
-                        continue
-
-                # Now we know this exists, so pass it through
-                # Get filesizes
-                filesize = file_source.get_size(candidate_uri)
-
-            except UnimplementedURLException as e:
-                # We can't find anything that can even support this URL scheme.
-                # Report to the user, they are probably missing an extra.
-                logger.critical("Error: " + str(e))
-                raise
-            except HTTPError as e:
-                # Something went wrong looking for it there.
-                logger.warning(
-                    "Checked URL %s but got HTTP status %s", candidate_uri, e.code
-                )
-                # Try the next location.
-                continue
-            except FileNotFoundError:
-                # Wasn't found there
-                continue
-            except Exception:
-                # Something went wrong besides the file not being found. Maybe
-                # we have no auth.
-                logger.error(
-                    "Something went wrong when testing for existence of %s",
-                    candidate_uri,
-                )
-                raise
-
-            # Work out what the basename for the file was
-            file_basename = os.path.basename(urlsplit(candidate_uri).path)
-
-            if file_basename == "":
-                # We can't have files with no basename because we need to
-                # download them at that basename later.
-                raise RuntimeError(
-                    f"File {candidate_uri} has no basename and so cannot be a WDL File"
-                )
-
-            # Was actually found
-            if is_remote_url(candidate_uri):
-                # Might be a file URI or other URI.
-                # We need to make sure file URIs and local paths that point to
-                # the same place are treated the same.
-                parsed = urlsplit(candidate_uri)
-                if parsed.scheme == "file:":
-                    # This is a local file URI. Convert to a path for source directory tracking.
-                    parent_dir = os.path.dirname(unquote(parsed.path))
-                else:
-                    # This is some other URL. Get the URL to the parent directory and use that.
-                    parent_dir = urljoin(candidate_uri, ".")
-            else:
-                # Must be a local path
-                parent_dir = os.path.dirname(candidate_uri)
-
-            return cast(FileMetadata, (candidate_uri, parent_dir, filesize))
-        # Not found
-        raise RuntimeError(
-            f"Could not find {filename} at any of: {list(potential_absolute_uris(filename, search_paths if search_paths is not None else []))}"
-        )
-
-    return {k: get_filename_size(k) for k in filenames}
-
-
 def convert_files(
     environment: WDLBindings,
     file_to_id: Dict[str, FileID],
     file_to_data: Dict[str, FileMetadata],
     task_path: str,
-) -> None:
+) -> WDLBindings:
     """
     Resolve relative-URI files in the given environment convert the file values to a new value made from a given mapping.
 
-    Will set the value of the File to the relative-URI.
+    Will return bindings with file values set to their corresponding relative-URI.
 
     :param environment: Bindings to evaluate on
+    :return: new bindings object
     """
     dir_ids = {t[1] for t in file_to_data.values()}
     dir_to_id = {k: uuid.uuid4() for k in dir_ids}
@@ -1461,14 +1294,14 @@ def convert_files(
         file.value = candidate_uri
         return file
 
-    map_over_files_in_bindings(environment, convert_file_to_uri)
+    return map_over_files_in_bindings(environment, convert_file_to_uri)
 
 
 def convert_remote_files(
     environment: WDLBindings,
     file_source: AbstractJobStore,
     task_path: str,
-    search_paths: Optional[List[str]] = None,
+    search_paths: Optional[list[str]] = None,
     import_remote_files: bool = True,
     execution_dir: Optional[str] = None,
 ) -> WDLBindings:
@@ -5401,7 +5234,7 @@ class WDLStartJob(WDLSectionJob):
 
     def __init__(
         self,
-        target: Union[WDL.Tree.Workflow, WDL.Tree.Task],
+        target: WDL.Tree.Workflow | WDL.Tree.Task,
         inputs: Promised[WDLBindings],
         wdl_options: WDLContext,
         **kwargs: Any,
@@ -5474,8 +5307,7 @@ class WDLInstallImportsJob(Job):
         """
         candidate_to_fileid = unwrap(self._import_data)[0]
         file_to_data = unwrap(self._import_data)[1]
-        convert_files(self._inputs, candidate_to_fileid, file_to_data, self._task_path)
-        return self._inputs
+        return convert_files(self._inputs, candidate_to_fileid, file_to_data, self._task_path)
 
 
 class WDLImportWrapper(WDLSectionJob):
@@ -5491,7 +5323,7 @@ class WDLImportWrapper(WDLSectionJob):
         target: Union[WDL.Tree.Workflow, WDL.Tree.Task],
         inputs: WDLBindings,
         wdl_options: WDLContext,
-        inputs_search_path: List[str],
+        inputs_search_path: list[str],
         import_remote_files: bool,
         import_workers_threshold: ParseableIndivisibleResource,
         **kwargs: Any,
@@ -5514,7 +5346,7 @@ class WDLImportWrapper(WDLSectionJob):
             filenames,
             file_store.jobStore,
             self._inputs_search_path,
-            import_remote_files=self._import_remote_files,
+            include_remote_files=self._import_remote_files,
         )
         imports_job = ImportsJob(file_to_data, self._import_workers_threshold)
         self.addChild(imports_job)
@@ -5536,7 +5368,7 @@ class WDLImportWrapper(WDLSectionJob):
 def make_root_job(
     target: WDL.Tree.Workflow | WDL.Tree.Task,
     inputs: WDLBindings,
-    inputs_search_path: List[str],
+    inputs_search_path: list[str],
     toil: Toil,
     wdl_options: WDLContext,
     options: Namespace,
