@@ -545,7 +545,7 @@ class WDLTests(BaseWDLTest):
 
     @pytest.mark.integrative
     @needs_singularity_or_docker
-    def test_dockstore_trs(self, extra_args: Optional[List[str]] = None) -> None:
+    def test_dockstore_trs(self, extra_args: Optional[list[str]] = None) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
         json_input = json.dumps({"hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"})
