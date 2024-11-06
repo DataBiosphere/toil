@@ -24,7 +24,7 @@ import shutil
 import sys
 import tempfile
 import zipfile
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any
 
 from urllib.parse import urlparse, unquote, quote
 import requests
@@ -74,7 +74,7 @@ def find_trs_spec(workflow: str) -> str:
 
     return trs_spec
 
-def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
+def parse_trs_spec(trs_spec: str) -> tuple[str, str | None]:
     """
     Parse a TRS ID to workflow and optional version.
     """
@@ -89,7 +89,7 @@ def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
     return trs_workflow_id, trs_version
 
 @retry(errors=[requests.exceptions.ConnectionError])
-def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
+def get_workflow_root_from_dockstore(workflow: str, supported_languages: set[str] | None = None) -> str:
     """
     Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow.
 
@@ -200,9 +200,9 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     trs_files_document = session.get(trs_files_url).json()
 
     # Find the information we need to ID the primary descriptor file
-    primary_descriptor_path: Optional[str] = None
-    primary_descriptor_hash_algorithm: Optional[str] = None
-    primary_descriptor_hash: Optional[str] = None
+    primary_descriptor_path: str | None = None
+    primary_descriptor_hash_algorithm: str | None = None
+    primary_descriptor_hash: str | None = None
     for file_info in trs_files_document:
         if file_info["file_type"] == "PRIMARY_DESCRIPTOR":
             primary_descriptor_path = file_info["path"]
@@ -288,7 +288,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
                 logger.debug("Workflow cached at %s by someone else while we were donwloading it", cache_workflow_dir)
 
     # Hunt throught he directory for a file with the right basename and hash
-    found_path: Optional[str] = None
+    found_path: str | None = None
     for containing_dir, subdirectories, files in os.walk(cache_workflow_dir):
         for filename in files:
             if filename == primary_descriptor_basename:
@@ -312,7 +312,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
     return found_path
 
-def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
+def resolve_workflow(workflow: str, supported_languages: set[str] | None = None) -> str:
     """
     Find the real workflow URL or filename from a command line argument.
 
