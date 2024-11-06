@@ -74,7 +74,7 @@ def find_trs_spec(workflow: str) -> str:
 
     return trs_spec
 
-def parse_trs_spec(trs_spec: str) -> Tuple[str, Optional[str]]:
+def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
     """
     Parse a TRS ID to workflow and optional version.
     """
@@ -89,7 +89,7 @@ def parse_trs_spec(trs_spec: str) -> Tuple[str, Optional[str]]:
     return trs_workflow_id, trs_version
 
 @retry(errors=[requests.exceptions.ConnectionError])
-def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[Set[str]] = None) -> str:
+def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
     """
     Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow.
 
@@ -122,15 +122,15 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     # Make a map from version to version info. We will need the
     # "descriptor_type" array to find eligible languages, and the "url" field
     # to get the version's base URL.
-    workflow_versions: Dict[str, Dict[str, Any]] = {}
+    workflow_versions: dict[str, dict[str, Any]] = {}
 
     # We also check which we actually know how to run
-    eligible_workflow_versions: Set[str] = set()
+    eligible_workflow_versions: set[str] = set()
 
     for version_info in trs_workflow_document.get("versions", []):
         version_name: str = version_info["name"]
         workflow_versions[version_name] = version_info
-        version_languages: List[str] = version_info["descriptor_type"]
+        version_languages: list[str] = version_info["descriptor_type"]
         if supported_languages is not None:
             # Filter to versions that have a language we know
             has_supported_language = False
@@ -160,7 +160,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
 
     # If we don't like what we found we compose a useful error message.
-    problems: List[str] = []
+    problems: list[str] = []
     if trs_version is None:
         problems.append(f"Workflow {workflow} does not specify a version")
     elif trs_version not in workflow_versions:
@@ -186,7 +186,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
     assert trs_version is not None
 
     # Select the language we will actually run
-    chosen_version_languages: List[str] = workflow_versions[trs_version]["descriptor_type"]
+    chosen_version_languages: list[str] = workflow_versions[trs_version]["descriptor_type"]
     for candidate_language in chosen_version_languages:
         if supported_languages is None or candidate_language in supported_languages:
             language = candidate_language
@@ -312,7 +312,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
     return found_path
 
-def resolve_workflow(workflow: str, supported_languages: Optional[Set[str]] = None) -> str:
+def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
     """
     Find the real workflow URL or filename from a command line argument.
 
