@@ -92,7 +92,6 @@ from toil.job import (
     ParseableIndivisibleResource,
     ImportsJob,
     FileMetadata,
-    is_remote_url,
     potential_absolute_uris,
     get_file_sizes
 )
@@ -104,7 +103,7 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
-from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url
+from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor

@@ -45,7 +45,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
-    overload,
+    overload, TypedDict, Literal,
 )
 from urllib.error import HTTPError
 from urllib.parse import urlsplit, unquote, urljoin

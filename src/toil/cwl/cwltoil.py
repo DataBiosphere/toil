@@ -55,7 +55,6 @@ from typing import (
     cast,
     Literal, Protocol,
 )
-from urllib.error import HTTPError
 from urllib.parse import quote, unquote, urlparse, urlsplit
 
 import cwl_utils.errors
@@ -131,8 +130,7 @@ from toil.job import (
     Promised,
     unwrap,
     ImportsJob,
-    FileMetadata,
-    is_remote_url, get_file_sizes,
+    get_file_sizes,
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
