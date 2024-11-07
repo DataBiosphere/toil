@@ -3841,21 +3841,17 @@ def generate_default_job_store(
 
 usage_message = "\n\n" + textwrap.dedent(
     """
-            NOTE:
+            NOTE: If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
 
-              * Workflow arguments must be specified with --option=value syntax.
+            Usage: toil-cwl-runner [options] <workflow> [<input file>] [workflow options]
 
-              * If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
-
-              Usage: toil-cwl-runner [options] <workflow> [<input file>] [workflow options]
-
-              Example: toil-cwl-runner \\
-                       --jobStore aws:us-west-2:jobstore \\
-                       --realTimeLogging \\
-                       --logInfo \\
-                       example.cwl \\
-                       example-job.yaml \\
-                       --wf_input="hello world"
+            Example: toil-cwl-runner \\
+                     --jobStore aws:us-west-2:jobstore \\
+                     --realTimeLogging \\
+                     --logInfo \\
+                     example.cwl \\
+                     example-job.yaml \\
+                     --wf_input="hello world"
     """[
         1:
     ]
