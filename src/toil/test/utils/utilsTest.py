@@ -396,7 +396,7 @@ class UtilsTest(ToilTest):
                 self.assertEqual(
                     current_status,
                     status,
-                    f"Waited {seconds} seconds without status reaching {status}; stuck at {s}",
+                    f"Waited {seconds} seconds without status reaching {status}; stuck at {current_status}",
                 )
 
     def testGetPIDStatus(self):
