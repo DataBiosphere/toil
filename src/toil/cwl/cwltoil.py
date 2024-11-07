@@ -51,6 +51,8 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
+# This is also in configargparse but MyPy doesn't know it
+from argparse import RawDescriptionHelpFormatter
 from configargparse import ArgParser, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
@@ -3839,17 +3841,22 @@ def generate_default_job_store(
 
 usage_message = "\n\n" + textwrap.dedent(
     """
-            * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
-              Note: If you're trying to specify a jobstore, please use --jobStore.
+            NOTE:
 
-                  Usage: toil-cwl-runner [options] example.cwl example-job.yaml
-                  Example: toil-cwl-runner \\
-                           --jobStore aws:us-west-2:jobstore \\
-                           --realTimeLogging \\
-                           --logInfo \\
-                           example.cwl \\
-                           example-job.yaml
-            """[
+              * Workflow arguments must be specified with --option=value syntax.
+
+              * If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
+
+              Usage: toil-cwl-runner [options] <workflow> [<input file>] [workflow options]
+
+              Example: toil-cwl-runner \\
+                       --jobStore aws:us-west-2:jobstore \\
+                       --realTimeLogging \\
+                       --logInfo \\
+                       example.cwl \\
+                       example-job.yaml \\
+                       --wf_input="hello world"
+    """[
         1:
     ]
 )
@@ -3861,11 +3868,34 @@ def get_options(args: list[str]) -> Namespace:
     :param args: List of args from command line
     :return: options namespace
     """
-    parser = ArgParser()
+    # We can't allow abbreviations in case the workflow defines an option that
+    # is a prefix of a Toil option.
+    parser = ArgParser(
+        allow_abbrev=False,
+        usage="%(prog)s [options] WORKFLOW [INFILE] [WF_OPTIONS...]",
+        description=textwrap.dedent("""
+            positional arguments:
+              
+              WORKFLOW              CWL file to run.
+
+              INFILE                YAML or JSON file of workflow inputs.
+              
+              WF_OPTIONS            Additional inputs to the workflow as command-line
+                                    flags. If CWL workflow takes an input, the name of the
+                                    input can be used as an option. For example:
+                                    
+                                      %(prog)s workflow.cwl --file1 file
+
+                                    If an input has the same name as a Toil option, pass
+                                    '--' before it.
+        """),
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    
     addOptions(parser, jobstore_as_flag=True, cwl=True)
     options: Namespace
-    options, cwl_options = parser.parse_known_args(args)
-    options.cwljob.extend(cwl_options)
+    options, extra = parser.parse_known_args(args)
+    options.cwljob = extra
 
     return options
 
@@ -3879,6 +3909,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         args = sys.argv[1:]
 
     options = get_options(args)
+    print(options)
 
     # Take care of incompatible arguments related to file imports
     if options.run_imports_on_workers is True and options.import_workers_disk is None:
@@ -4121,7 +4152,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 if err.code == 2:  # raised by argparse's parse_args() function
                     print(
                         "\nIf both a CWL file and an input object (YAML/JSON) file were "
-                        "provided, this may be the argument order." + usage_message,
+                        "provided, the problem may be the argument order." + usage_message,
                         file=sys.stderr,
                     )
                 raise

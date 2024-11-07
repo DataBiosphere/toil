@@ -777,15 +777,25 @@ def addOptions(
 
     # if cwl is set, format the namespace for cwl and check that wdl options are not set on the command line
     if cwl:
-        parser.add_argument("cwltool", type=str, help="CWL file to run.")
-        parser.add_argument(
-            "cwljob",
-            nargs="*",
-            help="Input file or CWL options. If CWL workflow takes an input, "
-            "the name of the input can be used as an option. "
-            'For example: "%(prog)s workflow.cwl --file1 file". '
-            "If an input has the same name as a Toil option, pass '--' before it.",
-        )
+        # So we can manually write out the help for this and the inputs
+        # file/workflow options in the argument parser description, we suppress
+        # help for this option.
+        parser.add_argument("cwltool", metavar="WORKFLOW", type=str, help=SUPPRESS)
+        # We also need a "cwljob" command line argument, holding possibly a
+        # positional input file and possibly a whole string of option flags
+        # only known to the workflow.
+        #
+        # We don't want to try and parse out the positional argument here
+        # since, on Python 3.12, we can grab what's really supposed to be an
+        # argument to a workflow-defined option.
+        #
+        # We don't want to use the undocumented argparse.REMAINDER, since that
+        # will eat any Toil-defined option flags after the first positional
+        # argument.
+        #
+        # So we just use parse_known_args and dump all unknown args into it,
+        # and manually write help text in the argparse description. So don't
+        # define it here.
         check_arguments(typ="cwl")
 
     # if wdl is set, format the namespace for wdl and check that cwl options are not set on the command line

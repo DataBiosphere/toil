@@ -378,10 +378,18 @@ class UtilsTest(ToilTest):
             "Some jobs are not represented in the stats.",
         )
 
-    def check_status(self, status, status_fn, seconds=20):
+    def check_status(self, status, status_fn, process=None, seconds=20):
         time_elapsed = 0.0
+        has_stopped = process.poll() is not None if process else False
         current_status = status_fn(self.toilDir)
         while current_status != status:
+            if has_stopped:
+                # If the process has stopped and the stratus is wrong, it will never be right.
+                self.assertEqual(
+                    current_status,
+                    status,
+                    f"Process returned {process.returncode} without status reaching {status}; stuck at {current_status}",
+                )
             logger.debug(
                 "Workflow is %s; waiting for %s (%s/%s elapsed)",
                 current_status,
@@ -391,6 +399,7 @@ class UtilsTest(ToilTest):
             )
             time.sleep(0.5)
             time_elapsed += 0.5
+            has_stopped = process.poll() is not None if process else False
             current_status = status_fn(self.toilDir)
             if time_elapsed > seconds:
                 self.assertEqual(
@@ -402,14 +411,14 @@ class UtilsTest(ToilTest):
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getPIDStatus, seconds=60)
+        self.check_status("RUNNING", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
         wf.wait()
-        self.check_status("COMPLETED", status_fn=ToilStatus.getPIDStatus, seconds=60)
+        self.check_status("COMPLETED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, "files/shared/pid.log"))
-        self.check_status("QUEUED", status_fn=ToilStatus.getPIDStatus, seconds=60)
+        self.check_status("QUEUED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
 
     def testGetStatusFailedToilWF(self):
         """
@@ -419,9 +428,9 @@ class UtilsTest(ToilTest):
         """
         # --badWorker is set to force failure.
         wf = subprocess.Popen(self.sort_workflow_cmd + ["--badWorker=1"])
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
         wf.wait()
-        self.check_status("ERROR", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
 
     @needs_cwl
     @needs_docker
@@ -443,9 +452,9 @@ class UtilsTest(ToilTest):
         ]
         logger.info("Run command: %s", " ".join(cmd))
         wf = subprocess.Popen(cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
         wf.wait()
-        self.check_status("ERROR", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
 
     @needs_cwl
     @needs_docker
@@ -463,9 +472,9 @@ class UtilsTest(ToilTest):
             f"--outdir={self.tempDir}",
         ]
         wf = subprocess.Popen(cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
         wf.wait()
-        self.check_status("COMPLETED", status_fn=ToilStatus.getStatus, seconds=60)
+        self.check_status("COMPLETED", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
 
     @needs_cwl
     @patch("builtins.print")
