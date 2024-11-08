@@ -287,7 +287,7 @@ def serviceTest(job, outFile, messageInt):
         serviceAccessor,
         job.addService(ToyService(messageInt + to_subtract)),
         outFile,
-        randInt,
+        to_subtract,
     )
 
 
@@ -298,20 +298,20 @@ def serviceTestRecursive(job, outFile, messages):
     if len(messages) > 0:
         # Clean out out-file
         open(outFile, "w").close()
-        randInt = random.randint(1, sys.maxsize)
-        service = ToyService(messages[0] + randInt)
+        to_add = random.randint(1, sys.maxsize)
+        service = ToyService(messages[0] + to_add)
         child = job.addChildJobFn(
-            serviceAccessor, job.addService(service), outFile, randInt
+            serviceAccessor, job.addService(service), outFile, to_add
         )
 
         for i in range(1, len(messages)):
-            randInt = random.randint(1, sys.maxsize)
-            service2 = ToyService(messages[i] + randInt, cores=0.1)
+            to_add = random.randint(1, sys.maxsize)
+            service2 = ToyService(messages[i] + to_add, cores=0.1)
             child = child.addChildJobFn(
                 serviceAccessor,
                 job.addService(service2, parentService=service),
                 outFile,
-                randInt,
+                to_add,
                 cores=0.1,
             )
             service = service2
@@ -325,20 +325,20 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
         # Clean out out-file
         open(outFile, "w").close()
         if len(messages) > 0:
-            randInt = random.randint(1, sys.maxsize)
-            service = ToyService(messages[0] + randInt)
+            to_add = random.randint(1, sys.maxsize)
+            service = ToyService(messages[0] + to_add)
             child = job.addChildJobFn(
-                serviceAccessor, job.addService(service), outFile, randInt
+                serviceAccessor, job.addService(service), outFile, to_add
             )
 
             for i in range(1, len(messages)):
-                randInt = random.randint(1, sys.maxsize)
-                service2 = ToyService(messages[i] + randInt, cores=0.1)
+                to_add = random.randint(1, sys.maxsize)
+                service2 = ToyService(messages[i] + to_add, cores=0.1)
                 child = child.addChildJobFn(
                     serviceAccessor,
                     job.addService(service2, parentService=service),
                     outFile,
-                    randInt,
+                    to_add,
                     cores=0.1,
                 )
                 service = service2
