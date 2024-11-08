@@ -255,10 +255,9 @@ class PerfectServiceTest(JobServiceTest):
         """
         Let us run all the tests in the other service test class, but without worker failures.
         """
-        del kwargs["badWorker"]
+        kwargs["badWorker"] = 0
         super().runToil(
             *args,
-            badWorker=0,
             **kwargs
         )
 
