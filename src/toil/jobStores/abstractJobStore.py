@@ -46,7 +46,7 @@ from toil.job import (
     JobException,
     ServiceJobDescription,
 )
-from toil.jobStores.ftp_utils import FtpFsAccess
+from toil.lib.ftp_utils import FtpFsAccess
 from toil.lib.compatibility import deprecated
 from toil.lib.conversions import strtobool
 from toil.lib.io import WriteWatchingStream
@@ -1874,12 +1874,9 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     stores.
     """
 
-    ftp = None
-
     @classmethod
-    def _setup_ftp(cls) -> None:
-        if cls.ftp is None:
-            cls.ftp = FtpFsAccess(insecure=strtobool(os.environ.get('TOIL_FTP_USE_SSL', 'True')) is False)
+    def _setup_ftp(cls) -> FtpFsAccess:
+        return FtpFsAccess(insecure=strtobool(os.environ.get('TOIL_FTP_USE_SSL', 'False')) is False)
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
@@ -1889,10 +1886,8 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     def _url_exists(cls, url: ParseResult) -> bool:
         # Deal with FTP first to support user/password auth
         if url.scheme.lower() == "ftp":
-            cls._setup_ftp()
-            # mypy is unable to understand that ftp must exist by this point
-            assert cls.ftp is not None
-            return cls.ftp.exists(url.geturl())
+            ftp = cls._setup_ftp()
+            return ftp.exists(url.geturl())
 
         try:
             with closing(urlopen(Request(url.geturl(), method="HEAD"))):
@@ -1911,10 +1906,8 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     )
     def _get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == "ftp":
-            cls._setup_ftp()
-            # mypy is unable to understand that ftp must exist by this point
-            assert cls.ftp is not None
-            return cls.ftp.size(url.geturl())
+            ftp = cls._setup_ftp()
+            return ftp.size(url.geturl())
 
         # just read the header for content length
         resp = urlopen(Request(url.geturl(), method="HEAD"))
@@ -1954,11 +1947,9 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
         # Deal with FTP first so we support user/password auth
         if url.scheme.lower() == "ftp":
-            cls._setup_ftp()
-            # mypy is unable to understand that ftp must exist by this point
-            assert cls.ftp is not None
+            ftp = cls._setup_ftp()
             # we open in read mode as write mode is not supported
-            return cls.ftp.open(url.geturl(), mode="r")
+            return ftp.open(url.geturl(), mode="r")
 
         try:
             return cast(IO[bytes], closing(urlopen(url.geturl())))
