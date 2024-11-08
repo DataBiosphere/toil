@@ -4048,11 +4048,12 @@ class WorkerImportJob(Job):
         """
         try:
             return self.import_files(self.filenames, file_store.jobStore)
-        except InsufficientSystemResources as e:
+        except OSError as e:
             # If the worker crashes due to running out of disk space and was not trying to
             # stream the file import, then try a new import job without streaming by actually giving
             # the worker enough disk space
-            if e.resource == "disk" and e.requested < self.disk_size and self.stream is True:
+            # OSError 28 is no space left on device
+            if e.errno == 28 and self.stream is True:
                 non_streaming_import = WorkerImportJob(
                     self.filenames, self.disk_size, stream=False
                 )
