@@ -3918,9 +3918,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     tmpdir_prefix = options.tmpdir_prefix = (
         options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
     )
-    tmp_outdir_prefix = options.tmp_outdir_prefix = (
-        options.tmp_outdir_prefix or tmpdir_prefix
-    )
+    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
     workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:
