@@ -1533,6 +1533,8 @@ def test_workflow_echo_string_scatter_capture_stdout() -> None:
     cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
+    log.debug("Workflow standard output: %s", stdout)
+    assert len(stdout) > 0
     outputs = json.loads(stdout)
     out_list = outputs["list_out"]
     assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"

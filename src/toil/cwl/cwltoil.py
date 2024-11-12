@@ -3905,7 +3905,6 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         args = sys.argv[1:]
 
     options = get_options(args)
-    print(options)
 
     # Take care of incompatible arguments related to file imports
     if options.run_imports_on_workers is True and options.import_workers_disk is None:
