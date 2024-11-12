@@ -801,8 +801,15 @@ def addOptions(
     # if wdl is set, format the namespace for wdl and check that cwl options are not set on the command line
     if wdl:
         parser.add_argument("wdl_uri", type=str, help="WDL document URI")
+        # We want to have an inputs_url that can be either a positional or a flag.
+        # We can't just have them share a single-item dest in Python 3.12;
+        # argparse does not guarantee that will work, and we can get the
+        # positional default value clobbering the flag. See
+        # <https://stackoverflow.com/a/60531838>.
+        # So we make them accumulate to the same list.
+        # Note that we will get a None in the list when there's no positional inputs.
         parser.add_argument(
-            "inputs_uri", type=str, nargs="?", help="WDL input JSON URI"
+            "inputs_uri", type=str, nargs='?', action="append", help="WDL input JSON URI"
         )
         parser.add_argument(
             "--input",
@@ -810,6 +817,7 @@ def addOptions(
             "-i",
             dest="inputs_uri",
             type=str,
+            action="append",
             help="WDL input JSON URI",
         )
         check_arguments(typ="wdl")
