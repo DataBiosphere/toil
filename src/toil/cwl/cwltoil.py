@@ -3923,10 +3923,6 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     )
     workdir = options.workDir or tmp_outdir_prefix
 
-    # We need a workdir for the CWL runtime contexts.
-    if options.workDir is None:
-        workdir = cwltool.utils.create_tmp_dir(workdir)
-
     if options.jobStore is None:
         jobstore = cwltool.utils.create_tmp_dir(tmp_outdir_prefix)
         # Make sure directory doesn't exist so it can be a job store
