@@ -3928,7 +3928,9 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         workdir = cwltool.utils.create_tmp_dir(workdir)
 
     if options.jobStore is None:
-        jobstore = os.path.join(workdir, "jobstore")
+        jobstore = cwltool.utils.create_tmp_dir(tmp_outdir_prefix)
+        # Make sure directory doesn't exist so it can be a job store
+        os.rmdir(jobstore)
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
