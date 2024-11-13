@@ -4109,7 +4109,7 @@ class ImportsJob(Job):
         # List of filenames for each batch
         per_batch_files = []
         per_batch_size = 0
-        while len(filenames) > 0 or len(per_batch_files) > 0:
+        while len(filenames) > 0:
             filename = filenames.pop(0)
             # See if adding this to the queue will make the batch job too big
             filesize = file_to_data[filename][2]
