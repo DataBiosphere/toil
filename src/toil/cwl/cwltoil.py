@@ -51,6 +51,8 @@ import cwltool.load_tool
 import cwltool.main
 import cwltool.resolver
 import schema_salad.ref_resolver
+# This is also in configargparse but MyPy doesn't know it
+from argparse import RawDescriptionHelpFormatter
 from configargparse import ArgParser, Namespace
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
@@ -90,8 +92,9 @@ from schema_salad.sourceline import SourceLine
 
 from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
-from toil.common import Toil, addOptions
+from toil.common import Config, Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.integration import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
@@ -3525,7 +3528,7 @@ def import_workflow_inputs(
     # We cast this because import_file is overloaded depending on if we
     # pass a shared file name or not, and we know the way we call it we
     # always get a FileID out.
-    file_import_function = cast(
+    input_import_function = cast(
         Callable[[str], FileID],
         functools.partial(jobstore.import_file, symlink=True),
     )
@@ -3535,7 +3538,7 @@ def import_workflow_inputs(
     logger.info("Importing input files...")
     fs_access = ToilFsAccess(options.basedir)
     import_files(
-        file_import_function,
+        input_import_function,
         fs_access,
         fileindex,
         existing,
@@ -3545,6 +3548,15 @@ def import_workflow_inputs(
         bypass_file_store=options.bypass_file_store,
         log_level=logging.INFO,
     )
+
+    # Make another function for importing tool files. This one doesn't allow
+    # symlinking, since the tools might be coming from storage not accessible
+    # to all nodes.
+    tool_import_function = cast(
+        Callable[[str], FileID],
+        functools.partial(jobstore.import_file, symlink=False),
+    )
+
     # Import all the files associated with tools (binaries, etc.).
     # Not sure why you would have an optional secondary file here, but
     # the spec probably needs us to support them.
@@ -3553,7 +3565,7 @@ def import_workflow_inputs(
         tool,
         functools.partial(
             import_files,
-            file_import_function,
+            tool_import_function,
             fs_access,
             fileindex,
             existing,
@@ -3829,17 +3841,18 @@ def generate_default_job_store(
 
 usage_message = "\n\n" + textwrap.dedent(
     """
-            * All positional arguments [cwl, yml_or_json] must always be specified last for toil-cwl-runner.
-              Note: If you're trying to specify a jobstore, please use --jobStore.
+            NOTE: If you're trying to specify a jobstore, you must use --jobStore, not a positional argument.
 
-                  Usage: toil-cwl-runner [options] example.cwl example-job.yaml
-                  Example: toil-cwl-runner \\
-                           --jobStore aws:us-west-2:jobstore \\
-                           --realTimeLogging \\
-                           --logInfo \\
-                           example.cwl \\
-                           example-job.yaml
-            """[
+            Usage: toil-cwl-runner [options] <workflow> [<input file>] [workflow options]
+
+            Example: toil-cwl-runner \\
+                     --jobStore aws:us-west-2:jobstore \\
+                     --realTimeLogging \\
+                     --logInfo \\
+                     example.cwl \\
+                     example-job.yaml \\
+                     --wf_input="hello world"
+    """[
         1:
     ]
 )
@@ -3851,11 +3864,34 @@ def get_options(args: list[str]) -> Namespace:
     :param args: List of args from command line
     :return: options namespace
     """
-    parser = ArgParser()
+    # We can't allow abbreviations in case the workflow defines an option that
+    # is a prefix of a Toil option.
+    parser = ArgParser(
+        allow_abbrev=False,
+        usage="%(prog)s [options] WORKFLOW [INFILE] [WF_OPTIONS...]",
+        description=textwrap.dedent("""
+            positional arguments:
+              
+              WORKFLOW              CWL file to run.
+
+              INFILE                YAML or JSON file of workflow inputs.
+              
+              WF_OPTIONS            Additional inputs to the workflow as command-line
+                                    flags. If CWL workflow takes an input, the name of the
+                                    input can be used as an option. For example:
+                                    
+                                      %(prog)s workflow.cwl --file1 file
+
+                                    If an input has the same name as a Toil option, pass
+                                    '--' before it.
+        """),
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    
     addOptions(parser, jobstore_as_flag=True, cwl=True)
     options: Namespace
-    options, cwl_options = parser.parse_known_args(args)
-    options.cwljob.extend(cwl_options)
+    options, extra = parser.parse_known_args(args)
+    options.cwljob = extra
 
     return options
 
@@ -3987,177 +4023,190 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         runtime_context.research_obj = research_obj
 
     try:
+
+        if not options.restart:
+            # Make a version of the config based on the initial options, for
+            # setting up CWL option stuff
+            expected_config = Config()
+            expected_config.setOptions(options)
+
+            # Before showing the options to any cwltool stuff that wants to
+            # load the workflow, transform options.cwltool, where our
+            # argument for what to run is, to handle Dockstore workflows.
+            options.cwltool = resolve_workflow(options.cwltool)
+
+            # TODO: why are we doing this? Does this get applied to all
+            # tools as a default or something?
+            loading_context.hints = [
+                {
+                    "class": "ResourceRequirement",
+                    "coresMin": expected_config.defaultCores,
+                    # Don't include any RAM requirement because we want to
+                    # know when tools don't manually ask for RAM.
+                    "outdirMin": expected_config.defaultDisk / (2**20),
+                    "tmpdirMin": 0,
+                }
+            ]
+            loading_context.construct_tool_object = toil_make_tool
+            loading_context.strict = not options.not_strict
+            options.workflow = options.cwltool
+            options.job_order = options.cwljob
+
+            try:
+                uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
+                    options.cwltool,
+                    loading_context.resolver,
+                    loading_context.fetcher_constructor,
+                )
+            except ValidationException:
+                print(
+                    "\nYou may be getting this error because your arguments are incorrect or out of order."
+                    + usage_message,
+                    file=sys.stderr,
+                )
+                raise
+
+            # Attempt to prepull the containers
+            if not options.no_prepull:
+                if not options.enable_ext:
+                    # The CWL utils parser does not support cwltool extensions and will crash if encountered, so don't prepull if extensions are enabled
+                    # See https://github.com/common-workflow-language/cwl-utils/issues/309
+                    try_prepull(uri, runtime_context, expected_config.batchSystem)
+                else:
+                    logger.debug(
+                        "Not prepulling containers as cwltool extensions are not supported."
+                    )
+
+            options.tool_help = None
+            options.debug = options.logLevel == "DEBUG"
+            job_order_object, options.basedir, jobloader = (
+                cwltool.main.load_job_order(
+                    options,
+                    sys.stdin,
+                    loading_context.fetcher_constructor,
+                    loading_context.overrides_list,
+                    tool_file_uri,
+                )
+            )
+            if options.overrides:
+                loading_context.overrides_list.extend(
+                    cwltool.load_tool.load_overrides(
+                        schema_salad.ref_resolver.file_uri(
+                            os.path.abspath(options.overrides)
+                        ),
+                        tool_file_uri,
+                    )
+                )
+
+            loading_context, workflowobj, uri = cwltool.load_tool.fetch_document(
+                uri, loading_context
+            )
+            loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
+                loading_context, workflowobj, uri
+            )
+            if not loading_context.loader:
+                raise RuntimeError("cwltool loader is not set.")
+            processobj, metadata = loading_context.loader.resolve_ref(uri)
+            processobj = cast(Union[CommentedMap, CommentedSeq], processobj)
+
+            document_loader = loading_context.loader
+
+            if options.provenance and runtime_context.research_obj:
+                cwltool.cwlprov.writablebagfile.packed_workflow(
+                    runtime_context.research_obj,
+                    cwltool.main.print_pack(loading_context, uri),
+                )
+
+            try:
+                tool = cwltool.load_tool.make_tool(uri, loading_context)
+                scan_for_unsupported_requirements(
+                    tool, bypass_file_store=options.bypass_file_store
+                )
+            except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:
+                logging.error(err)
+                return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
+            runtime_context.secret_store = SecretStore()
+
+            try:
+                # Get the "order" for the execution of the root job. CWLTool
+                # doesn't document this much, but this is an "order" in the
+                # sense of a "specification" for running a single job. It
+                # describes the inputs to the workflow.
+                initialized_job_order = cwltool.main.init_job_order(
+                    job_order_object,
+                    options,
+                    tool,
+                    jobloader,
+                    sys.stdout,
+                    make_fs_access=runtime_context.make_fs_access,
+                    input_basedir=options.basedir,
+                    secret_store=runtime_context.secret_store,
+                    input_required=True,
+                )
+            except SystemExit as err:
+                if err.code == 2:  # raised by argparse's parse_args() function
+                    print(
+                        "\nIf both a CWL file and an input object (YAML/JSON) file were "
+                        "provided, the problem may be the argument order." + usage_message,
+                        file=sys.stderr,
+                    )
+                raise
+
+            # Leave the defaults un-filled in the top-level order. The tool or
+            # workflow will fill them when it runs
+
+            for inp in tool.tool["inputs"]:
+                if (
+                    shortname(inp["id"]) in initialized_job_order
+                    and inp["type"] == "File"
+                ):
+                    cast(
+                        CWLObjectType, initialized_job_order[shortname(inp["id"])]
+                    )["streamable"] = inp.get("streamable", False)
+                    # TODO also for nested types that contain streamable Files
+
+            runtime_context.use_container = not options.no_container
+            runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
+            runtime_context.job_script_provider = job_script_provider
+            runtime_context.force_docker_pull = options.force_docker_pull
+            runtime_context.no_match_user = options.no_match_user
+            runtime_context.no_read_only = options.no_read_only
+            runtime_context.basedir = options.basedir
+            if not options.bypass_file_store:
+                # If we're using the file store we need to start moving output
+                # files now.
+                runtime_context.move_outputs = "move"
+
+            # We instantiate an early builder object here to populate indirect
+            # secondaryFile references using cwltool's library because we need
+            # to resolve them before toil imports them into the filestore.
+            # A second builder will be built in the job's run method when toil
+            # actually starts the cwl job.
+            # Note that this accesses input files for tools, so the
+            # ToilFsAccess needs to be set up if we want to be able to use
+            # URLs.
+            builder = tool._init_job(initialized_job_order, runtime_context)
+
+            # make sure this doesn't add listing items; if shallow_listing is
+            # selected, it will discover dirs one deep and then again later on
+            # (probably when the cwltool builder gets ahold of the job in the
+            # CWL job's run()), producing 2+ deep listings instead of only 1.
+            builder.loadListing = "no_listing"
+
+            builder.bind_input(
+                tool.inputs_record_schema,
+                initialized_job_order,
+                discover_secondaryFiles=True,
+            )
+
+            logger.info("Creating root job")
+            logger.debug("Root tool: %s", tool)
+            tool = remove_pickle_problems(tool)
+
         with Toil(options) as toil:
             if options.restart:
                 outobj = toil.restart()
             else:
-                # TODO: why are we doing this? Does this get applied to all
-                # tools as a default or something?
-                loading_context.hints = [
-                    {
-                        "class": "ResourceRequirement",
-                        "coresMin": toil.config.defaultCores,
-                        # Don't include any RAM requirement because we want to
-                        # know when tools don't manually ask for RAM.
-                        "outdirMin": toil.config.defaultDisk / (2**20),
-                        "tmpdirMin": 0,
-                    }
-                ]
-                loading_context.construct_tool_object = toil_make_tool
-                loading_context.strict = not options.not_strict
-                options.workflow = options.cwltool
-                options.job_order = options.cwljob
-
-                try:
-                    uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
-                        options.cwltool,
-                        loading_context.resolver,
-                        loading_context.fetcher_constructor,
-                    )
-                except ValidationException:
-                    print(
-                        "\nYou may be getting this error because your arguments are incorrect or out of order."
-                        + usage_message,
-                        file=sys.stderr,
-                    )
-                    raise
-
-                # Attempt to prepull the containers
-                if not options.no_prepull:
-                    if not options.enable_ext:
-                        # The CWL utils parser does not support cwltool extensions and will crash if encountered, so don't prepull if extensions are enabled
-                        # See https://github.com/common-workflow-language/cwl-utils/issues/309
-                        try_prepull(uri, runtime_context, toil.config.batchSystem)
-                    else:
-                        logger.debug(
-                            "Not prepulling containers as cwltool extensions are not supported."
-                        )
-
-                options.tool_help = None
-                options.debug = options.logLevel == "DEBUG"
-                job_order_object, options.basedir, jobloader = (
-                    cwltool.main.load_job_order(
-                        options,
-                        sys.stdin,
-                        loading_context.fetcher_constructor,
-                        loading_context.overrides_list,
-                        tool_file_uri,
-                    )
-                )
-                if options.overrides:
-                    loading_context.overrides_list.extend(
-                        cwltool.load_tool.load_overrides(
-                            schema_salad.ref_resolver.file_uri(
-                                os.path.abspath(options.overrides)
-                            ),
-                            tool_file_uri,
-                        )
-                    )
-
-                loading_context, workflowobj, uri = cwltool.load_tool.fetch_document(
-                    uri, loading_context
-                )
-                loading_context, uri = cwltool.load_tool.resolve_and_validate_document(
-                    loading_context, workflowobj, uri
-                )
-                if not loading_context.loader:
-                    raise RuntimeError("cwltool loader is not set.")
-                processobj, metadata = loading_context.loader.resolve_ref(uri)
-                processobj = cast(Union[CommentedMap, CommentedSeq], processobj)
-
-                document_loader = loading_context.loader
-
-                if options.provenance and runtime_context.research_obj:
-                    cwltool.cwlprov.writablebagfile.packed_workflow(
-                        runtime_context.research_obj,
-                        cwltool.main.print_pack(loading_context, uri),
-                    )
-
-                try:
-                    tool = cwltool.load_tool.make_tool(uri, loading_context)
-                    scan_for_unsupported_requirements(
-                        tool, bypass_file_store=options.bypass_file_store
-                    )
-                except CWL_UNSUPPORTED_REQUIREMENT_EXCEPTION as err:
-                    logging.error(err)
-                    return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
-                runtime_context.secret_store = SecretStore()
-
-                try:
-                    # Get the "order" for the execution of the root job. CWLTool
-                    # doesn't document this much, but this is an "order" in the
-                    # sense of a "specification" for running a single job. It
-                    # describes the inputs to the workflow.
-                    initialized_job_order = cwltool.main.init_job_order(
-                        job_order_object,
-                        options,
-                        tool,
-                        jobloader,
-                        sys.stdout,
-                        make_fs_access=runtime_context.make_fs_access,
-                        input_basedir=options.basedir,
-                        secret_store=runtime_context.secret_store,
-                        input_required=True,
-                    )
-                except SystemExit as err:
-                    if err.code == 2:  # raised by argparse's parse_args() function
-                        print(
-                            "\nIf both a CWL file and an input object (YAML/JSON) file were "
-                            "provided, this may be the argument order." + usage_message,
-                            file=sys.stderr,
-                        )
-                    raise
-
-                # Leave the defaults un-filled in the top-level order. The tool or
-                # workflow will fill them when it runs
-
-                for inp in tool.tool["inputs"]:
-                    if (
-                        shortname(inp["id"]) in initialized_job_order
-                        and inp["type"] == "File"
-                    ):
-                        cast(
-                            CWLObjectType, initialized_job_order[shortname(inp["id"])]
-                        )["streamable"] = inp.get("streamable", False)
-                        # TODO also for nested types that contain streamable Files
-
-                runtime_context.use_container = not options.no_container
-                runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
-                runtime_context.job_script_provider = job_script_provider
-                runtime_context.force_docker_pull = options.force_docker_pull
-                runtime_context.no_match_user = options.no_match_user
-                runtime_context.no_read_only = options.no_read_only
-                runtime_context.basedir = options.basedir
-                if not options.bypass_file_store:
-                    # If we're using the file store we need to start moving output
-                    # files now.
-                    runtime_context.move_outputs = "move"
-
-                # We instantiate an early builder object here to populate indirect
-                # secondaryFile references using cwltool's library because we need
-                # to resolve them before toil imports them into the filestore.
-                # A second builder will be built in the job's run method when toil
-                # actually starts the cwl job.
-                # Note that this accesses input files for tools, so the
-                # ToilFsAccess needs to be set up if we want to be able to use
-                # URLs.
-                builder = tool._init_job(initialized_job_order, runtime_context)
-
-                # make sure this doesn't add listing items; if shallow_listing is
-                # selected, it will discover dirs one deep and then again later on
-                # (probably when the cwltool builder gets ahold of the job in the
-                # CWL job's run()), producing 2+ deep listings instead of only 1.
-                builder.loadListing = "no_listing"
-
-                builder.bind_input(
-                    tool.inputs_record_schema,
-                    initialized_job_order,
-                    discover_secondaryFiles=True,
-                )
-
-                logger.info("Creating root job")
-                logger.debug("Root tool: %s", tool)
-                tool = remove_pickle_problems(tool)
                 try:
                     wf1 = makeRootJob(
                         tool=tool,
