@@ -1892,8 +1892,6 @@ def extract_file_uri_once(
                 rp = os.path.realpath(location)
             else:
                 rp = location
-            fileindex[rp] = rp
-            existing[rp] = rp
             return rp
     return None
 
