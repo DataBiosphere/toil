@@ -34,11 +34,17 @@ class ToilStatus:
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
         if specifiedJobs is None:
-            rootJob = self.fetchRootJob()
-            logger.info(
-                "Traversing the job graph gathering jobs. This may take a couple of minutes."
-            )
-            self.jobsToReport = self.traverseJobGraph(rootJob)
+            try:
+                rootJob = self.fetchRootJob()
+                logger.info(
+                    "Traversing the job graph gathering jobs. This may take a couple of minutes."
+                )
+                self.jobsToReport = self.traverseJobGraph(rootJob)
+            except JobException:
+                # Root job isn't set.
+                logger.warning("Workflow does not have a root job (yet? anymore?). Cannot look for jobs.")
+                self.jobsToReport = []
+
         else:
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
