@@ -28,7 +28,8 @@ pip = f'{python} -m pip'
 python_packages = {'python3.9': ['python3.9-distutils', 'python3.9-venv'],
                    'python3.10': ['python3.10-distutils', 'python3.10-venv'],
                    'python3.11': ['python3.11-distutils', 'python3.11-venv'],
-                   'python3.12': ['python3.12-distutils', 'python3.12-venv']}
+                   'python3.12': ['python3.12-distutils', 'python3.12-venv'],
+                   'python3.13': ['python3.13-venv']}  # python3.13 removed distutils
 
 dependencies = ' '.join(python_packages[python] +
                         ['libffi-dev',  # For client side encryption for extras with PyNACL
