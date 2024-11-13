@@ -1,13 +1,15 @@
+import hashlib
 import logging
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from io import BytesIO
-from typing import IO, Any, Callable, Optional, Union
+from typing import IO, Any, Callable, Optional, Protocol, Union
 
 logger = logging.getLogger(__name__)
 
@@ -349,3 +351,31 @@ class WriteWatchingStream:
         """
 
         self.backingStream.close()
+
+class ReadableFileObj(Protocol):
+    """
+    Protocol that is more specific than what file_digest takes as an argument.
+    Also guarantees a read() method.
+    Would extend the protocol from Typeshed for hashlib but those are only
+    declared for 3.11+.
+    """
+    def readinto(self, buf: bytearray, /) -> int: ...
+    def readable(self) -> bool: ...
+    def read(self, number: int) -> bytes: ...
+
+# hashlib._Hash seems to not appear at runtime
+def file_digest(f: ReadableFileObj, alg_name: str) -> "hashlib._Hash":
+    """
+    Polyfilled hashlib.file_digest that works on Python <3.11.
+    """
+    if sys.version_info >= (3, 11):
+        return hashlib.file_digest(f, alg_name)
+    BUFFER_SIZE = 1024 * 1024
+    hasher = hashlib.new(alg_name)
+    buffer = f.read(BUFFER_SIZE)
+    while buffer:
+        hasher.update(buffer)
+        buffer = f.read(BUFFER_SIZE)
+    return hasher
+
+

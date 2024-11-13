@@ -777,22 +777,39 @@ def addOptions(
 
     # if cwl is set, format the namespace for cwl and check that wdl options are not set on the command line
     if cwl:
-        parser.add_argument("cwltool", type=str, help="CWL file to run.")
-        parser.add_argument(
-            "cwljob",
-            nargs="*",
-            help="Input file or CWL options. If CWL workflow takes an input, "
-            "the name of the input can be used as an option. "
-            'For example: "%(prog)s workflow.cwl --file1 file". '
-            "If an input has the same name as a Toil option, pass '--' before it.",
-        )
+        # So we can manually write out the help for this and the inputs
+        # file/workflow options in the argument parser description, we suppress
+        # help for this option.
+        parser.add_argument("cwltool", metavar="WORKFLOW", type=str, help=SUPPRESS)
+        # We also need a "cwljob" command line argument, holding possibly a
+        # positional input file and possibly a whole string of option flags
+        # only known to the workflow.
+        #
+        # We don't want to try and parse out the positional argument here
+        # since, on Python 3.12, we can grab what's really supposed to be an
+        # argument to a workflow-defined option.
+        #
+        # We don't want to use the undocumented argparse.REMAINDER, since that
+        # will eat any Toil-defined option flags after the first positional
+        # argument.
+        #
+        # So we just use parse_known_args and dump all unknown args into it,
+        # and manually write help text in the argparse description. So don't
+        # define it here.
         check_arguments(typ="cwl")
 
     # if wdl is set, format the namespace for wdl and check that cwl options are not set on the command line
     if wdl:
         parser.add_argument("wdl_uri", type=str, help="WDL document URI")
+        # We want to have an inputs_url that can be either a positional or a flag.
+        # We can't just have them share a single-item dest in Python 3.12;
+        # argparse does not guarantee that will work, and we can get the
+        # positional default value clobbering the flag. See
+        # <https://stackoverflow.com/a/60531838>.
+        # So we make them accumulate to the same list.
+        # Note that we will get a None in the list when there's no positional inputs.
         parser.add_argument(
-            "inputs_uri", type=str, nargs="?", help="WDL input JSON URI"
+            "inputs_uri", type=str, nargs='?', action="append", help="WDL input JSON URI"
         )
         parser.add_argument(
             "--input",
@@ -800,6 +817,7 @@ def addOptions(
             "-i",
             dest="inputs_uri",
             type=str,
+            action="append",
             help="WDL input JSON URI",
         )
         check_arguments(typ="wdl")

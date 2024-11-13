@@ -104,6 +104,7 @@ from toil.jobStores.abstractJobStore import (
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
 from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
+from toil.lib.integration import resolve_workflow
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -5413,6 +5414,15 @@ def main() -> None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(mkdtemp(), "tree")
 
+    # Having an nargs=? option can put a None in our inputs list, so drop that.
+    input_sources = [x for x in options.inputs_uri if x is not None]
+    if len(input_sources) > 1:
+        raise RuntimeError(
+            f"Workflow inputs cannot be specified with both the -i/--input/--inputs flag "
+            f"and as a positional argument at the same time. Cannot use both "
+            f"\"{input_sources[0]}\" and \"{input_sources[1]}\"."
+        )
+
     # Make sure we have an output directory (or URL prefix) and we don't need
     # to ever worry about a None, and MyPy knows it.
     # If we don't have a directory assigned, make one in the current directory.
@@ -5427,9 +5437,14 @@ def main() -> None:
             if options.restart:
                 output_bindings = toil.restart()
             else:
+                # TODO: Move all the input parsing outside the Toil context
+                # manager to avoid leaving a job store behind if the workflow
+                # can't start.
+
                 # Load the WDL document
                 document: WDL.Tree.Document = WDL.load(
-                    options.wdl_uri, read_source=toil_read_source
+                    resolve_workflow(options.wdl_uri, supported_languages={"WDL"}),
+                    read_source=toil_read_source,
                 )
 
                 # See if we're going to run a workflow or a task
@@ -5468,30 +5483,49 @@ def main() -> None:
                         )
                         options.all_call_outputs = True
 
-                if options.inputs_uri:
+                # If our input really comes from a URI or path, remember it.
+                input_source_uri = None
+                # Also remember where we need to report JSON parse errors as
+                # coming from if there's no actual URI/path.
+                input_source_name = "empty input"
+
+                if input_sources:
+                    input_source = input_sources[0]
                     # Load the inputs. Use the same loading mechanism, which means we
                     # have to break into async temporarily.
-                    if options.inputs_uri[0] == "{":
-                        input_json = options.inputs_uri
-                    elif options.inputs_uri == "-":
+                    if input_source[0] == "{":
+                        input_json = input_source
+                        input_source_name = "inline JSON"
+                    elif input_source == "-":
                         input_json = sys.stdin.read()
+                        input_source_name = "standard input"
                     else:
+                        input_source_uri = input_source
+                        input_source_name = input_source_uri
                         input_json = asyncio.run(
-                            toil_read_source(options.inputs_uri, [], None)
+                            toil_read_source(input_source_uri, [], None)
                         ).source_text
                     try:
                         inputs = json.loads(input_json)
                     except json.JSONDecodeError as e:
                         # Complain about the JSON document.
+
                         # We need the absolute path or URL to raise the error
-                        inputs_abspath = (
-                            options.inputs_uri
-                            if not os.path.exists(options.inputs_uri)
-                            else os.path.abspath(options.inputs_uri)
-                        )
+                        if input_source_uri is not None:
+                            # If this is a local fike, use that as the abspath.
+                            # Otherwise just pass through a URL.
+                            inputs_abspath = (
+                                input_source_uri
+                                if not os.path.exists(input_source_uri)
+                                else os.path.abspath(input_source_uri)
+                            )
+                        else:
+                            # There's no local file and no URL.
+                            inputs_abspath = input_source_name
+
                         raise WDL.Error.ValidationError(
                             WDL.Error.SourcePosition(
-                                options.inputs_uri,
+                                input_source_name,
                                 inputs_abspath,
                                 e.lineno,
                                 e.colno,
@@ -5521,12 +5555,12 @@ def main() -> None:
 
                 # Determine where to look for files referenced in the inputs, in addition to here.
                 inputs_search_path = []
-                if options.inputs_uri:
-                    inputs_search_path.append(options.inputs_uri)
+                if input_source_uri:
+                    inputs_search_path.append(input_source_uri)
 
                     match = re.match(
                         r"https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/",
-                        options.inputs_uri,
+                        input_source_uri,
                     )
                     if match:
                         # Special magic for Github repos to make e.g.
