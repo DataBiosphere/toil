@@ -61,6 +61,7 @@ from toil.test import (
     needs_lsf,
     needs_mesos,
     needs_online,
+    needs_singularity_or_docker,
     needs_slurm,
     needs_torque,
     needs_wes_server,
@@ -433,6 +434,24 @@ class CWLWorkflowTest(ToilTest):
             self._expected_colon_output(self.outDir),
             out_name="result",
         )
+    
+    @pytest.mark.integrative
+    @needs_singularity_or_docker
+    def test_run_dockstore_trs(self) -> None:
+        from toil.cwl import cwltoil
+
+        stdout = StringIO()
+        main_args = [
+            "--outdir",
+            self.outDir,
+            "#workflow/github.com/dockstore-testing/md5sum-checker",
+            "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/refs/heads/master/md5sum/md5sum-input-cwl.json"
+        ]
+        cwltoil.main(main_args, stdout=stdout)
+        out = json.loads(stdout.getvalue())
+        with open(out.get("output_file", {}).get("location")[len("file://") :]) as f:
+            computed_hash = f.read().strip()
+        self.assertEqual(computed_hash, "00579a00e3e7fa0674428ac7049423e2")
 
     def test_glob_dir_bypass_file_store(self) -> None:
         self.maxDiff = 1000
@@ -1514,6 +1533,8 @@ def test_workflow_echo_string_scatter_capture_stdout() -> None:
     cmd = [toil, jobstore, option_1, option_2, option_3, cwl]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
+    log.debug("Workflow standard output: %s", stdout)
+    assert len(stdout) > 0
     outputs = json.loads(stdout)
     out_list = outputs["list_out"]
     assert len(out_list) == 2, f"outList shoud have two file elements {out_list}"
