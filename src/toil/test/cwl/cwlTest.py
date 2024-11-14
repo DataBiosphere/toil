@@ -526,7 +526,12 @@ class CWLWorkflowTest(ToilTest):
             log.debug("Workflow output: %s", out)
             memory_string = out["memory"]
             log.debug("Observed memory: %s", memory_string)
-            result = int(memory_string)
+            # If there's no memory limit enforced, Slurm will return "unlimited".
+            # Set result to something sensible.
+            if memory_string.strip() == "unlimited":
+                result = 4 * 1024 * 1024
+            else:
+                result = int(memory_string)
             # We should see more than the CWL default or the Toil default, assuming Slurm nodes of reasonable size (3 GiB).
             self.assertGreater(result, 3 * 1024 * 1024)
 
