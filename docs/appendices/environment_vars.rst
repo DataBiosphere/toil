@@ -223,7 +223,7 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_FTP_PASSWORD                | The FTP password to override all FTP logins with   |
 |                                  | Example: ``TOIL_FTP_PASSWORD=ftp_password``        |
 +----------------------------------+----------------------------------------------------+
-| TOIL_FTP_USE_SSL                 | Enable or disable usage of SSL for connecting to   |
+| TOIL_FTP_USE_SSL                 | Enforce usage of SSL for connecting to             |
 |                                  | FTP servers                                        |
 |                                  | (``False`` by default).                            |
 |                                  | Example: ``TOIL_FTP_USE_SSL=True``                 |
