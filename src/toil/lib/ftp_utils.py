@@ -125,6 +125,9 @@ class FtpFsAccess:
         user = parse.username
         passwd = parse.password
         host = parse.hostname
+        if parse.port is not None:
+            # Don't forget the port
+            host += f":{parse.port}"
         path = parse.path
         if parse.scheme == "ftp":
             if not user and self.netrc:
@@ -167,6 +170,8 @@ class FtpFsAccess:
             if env_passwd:
                 passwd = env_passwd
             ftp.login(user or "", passwd or "", secure=not self.insecure)
+            if self.insecure is False:
+                ftp.prot_p()
             self.cache[(host, user, passwd)] = ftp
             return ftp
         return None

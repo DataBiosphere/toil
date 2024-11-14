@@ -1892,8 +1892,11 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         try:
             with closing(urlopen(Request(url.geturl(), method="HEAD"))):
                 return True
-        except FileNotFoundError:
-            return False
+        except HTTPError as e:
+            if e.code in (404, 410):
+                return False
+            else:
+                raise
         # Any other errors we should pass through because something really went
         # wrong (e.g. server is broken today but file may usually exist)
 
