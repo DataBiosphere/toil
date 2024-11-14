@@ -14,7 +14,7 @@ types-aws-xray-sdk
 types-boto<2.49.18.20241020
 types-Flask-Cors
 types-requests
-types-psutil
+types-psutil>=6.1.0.20241102
 types-python-dateutil
 types-setuptools
 types-xmltodict
