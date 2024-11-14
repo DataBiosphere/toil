@@ -506,7 +506,7 @@ async def toil_read_source(
     # We track our own failures for debugging
     tried = []
 
-    for candidate_uri in potential_absolute_uris(uri, path, importer):
+    for candidate_uri in potential_absolute_uris(uri, path, importer=importer.pos.abspath if importer else None):
         # For each place to try in order
         destination_buffer = io.BytesIO()
         logger.debug("Fetching %s", candidate_uri)

@@ -40,21 +40,18 @@ from typing import (
     NamedTuple,
     Optional,
     Sequence,
-    Set,
     Tuple,
     TypeVar,
     Union,
     cast,
-    overload, TypedDict, Literal,
+    overload,
+    TypedDict,
+    Literal,
 )
 from urllib.error import HTTPError
 from urllib.parse import urlsplit, unquote, urljoin
 
-from configargparse import ArgParser
-
 from toil import memoize
-from toil.bus import Names
-from toil.lib.compatibility import deprecated
 
 import dill
 from configargparse import ArgParser
@@ -81,11 +78,13 @@ if TYPE_CHECKING:
     from optparse import OptionParser
 
     from toil.batchSystems.abstractBatchSystem import (
-        BatchJobExitReason,
-        InsufficientSystemResources,
+        BatchJobExitReason
     )
     from toil.fileStores.abstractFileStore import AbstractFileStore
-    from toil.jobStores.abstractJobStore import AbstractJobStore, UnimplementedURLException
+    from toil.jobStores.abstractJobStore import (
+        AbstractJobStore,
+        UnimplementedURLException,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -3793,7 +3792,7 @@ class FileMetadata(NamedTuple):
 def potential_absolute_uris(
     uri: str,
     path: list[str],
-    importer: WDL.Tree.Document | None = None,
+    importer: str | None = None,
     execution_dir: str | None = None,
 ) -> Iterator[str]:
     """
@@ -3834,7 +3833,7 @@ def potential_absolute_uris(
 
     if importer is not None:
         # Add the place the imported file came form, to search first.
-        full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
+        full_path_list.append(Toil.normalize_uri(importer))
 
     # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
     # When importing on a worker, the cwd will be a tmpdir and will result in FileNotFoundError after os.path.abspath, so override with the execution dir
