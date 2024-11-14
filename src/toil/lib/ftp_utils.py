@@ -161,6 +161,7 @@ class FtpFsAccess:
                 if self.cache[(host, user, passwd)].pwd():
                     return self.cache[(host, user, passwd)]
             ftp = ftplib.FTP_TLS()
+            # Note: the FTP lib logger handles logging itself and doesn't go through our logging implementation
             ftp.set_debuglevel(1 if logger.isEnabledFor(logging.DEBUG) else 0)
             ftp.connect(host)
             env_user = os.getenv("TOIL_FTP_USER")
@@ -169,9 +170,19 @@ class FtpFsAccess:
                 user = env_user
             if env_passwd:
                 passwd = env_passwd
-            ftp.login(user or "", passwd or "", secure=not self.insecure)
-            if self.insecure is False:
-                ftp.prot_p()
+            try:
+                # Always try a SSL connection first
+                ftp.login(user or "", passwd or "", secure=True)
+                if self.insecure is False:
+                    ftp.prot_p()
+            except ftplib.error_perm as e:
+                # SSL failed, consult the insecure flag
+                if self.insecure:
+                    # If the user has not forced toil to always use SSL, fallback to insecure
+                    ftp.login(user or "", passwd or "", secure=False)
+                else:
+                    # Else raise an error
+                    raise
             self.cache[(host, user, passwd)] = ftp
             return ftp
         return None
