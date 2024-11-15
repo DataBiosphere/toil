@@ -3820,13 +3820,11 @@ def visitSteps(
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
         return op(cmdline_tool.tool)
-    else:
-        raise RuntimeError(
-            f"Unsupported type encountered in workflow "
-            f"traversal: {type(cmdline_tool)}"
-        )
-    # Satisfy mypy, but this branch should never be reached in practice
-    return []
+    raise RuntimeError(
+        f"Unsupported type encountered in workflow "
+        f"traversal: {type(cmdline_tool)}"
+    )
+
 
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
