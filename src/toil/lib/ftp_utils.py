@@ -107,15 +107,15 @@ class FtpFsAccess:
         :return:
         """
         if "r" in mode:
-            host, user, passwd, path = self._parse_url(fn)
-            handle = urlopen("ftp://{}:{}@{}/{}".format(user, passwd, host, path))
+            host, port, user, passwd, path = self._parse_url(fn)
+            handle = urlopen("ftp://{}:{}@{}:{}/{}".format(user, passwd, host, port, path))
             return cast(IO[bytes], closing(handle))
         # TODO: support write mode
         raise Exception("Write mode FTP not implemented")
 
     def _parse_url(
         self, url: str
-    ) -> tuple[Optional[str], Optional[str], Optional[str], str]:
+    ) -> tuple[str, int, Optional[str], Optional[str], str]:
         """
         Parse an FTP url into hostname, username, password, and path
         :param url:
@@ -125,10 +125,14 @@ class FtpFsAccess:
         user = parse.username
         passwd = parse.password
         host = parse.hostname
-        if parse.port is not None:
-            # Don't forget the port
-            host += f":{parse.port}"
+        port = parse.port
         path = parse.path
+        if host is None:
+            # The URL we connect to must have a host
+            raise RuntimeError(f"FTP URL does not contain a host: {url}")
+        # default port is 21
+        if port is None:
+            port = 21
         if parse.scheme == "ftp":
             if not user and self.netrc:
                 if host is not None:
@@ -142,8 +146,7 @@ class FtpFsAccess:
                     passwd = "anonymous@"
                     if user is None:
                         user = "anonymous"
-
-        return host, user, passwd, path
+        return host, port, user, passwd, path
 
     def _connect(self, url: str) -> Optional[ftplib.FTP]:
         """
@@ -153,7 +156,7 @@ class FtpFsAccess:
         """
         parse = urlparse(url)
         if parse.scheme == "ftp":
-            host, user, passwd, _ = self._parse_url(url)
+            host, port, user, passwd, _ = self._parse_url(url)
             if host is None:
                 # there has to be a host
                 return None
@@ -163,7 +166,7 @@ class FtpFsAccess:
             ftp = ftplib.FTP_TLS()
             # Note: the FTP lib logger handles logging itself and doesn't go through our logging implementation
             ftp.set_debuglevel(1 if logger.isEnabledFor(logging.DEBUG) else 0)
-            ftp.connect(host)
+            ftp.connect(host, port)
             env_user = os.getenv("TOIL_FTP_USER")
             env_passwd = os.getenv("TOIL_FTP_PASSWORD")
             if env_user:
@@ -208,7 +211,7 @@ class FtpFsAccess:
         """
         ftp = self._connect(fn)
         if ftp:
-            host, user, passwd, path = self._parse_url(fn)
+            host, port, user, passwd, path = self._parse_url(fn)
             try:
                 return ftp.size(path)
             except ftplib.all_errors as e:
@@ -217,10 +220,7 @@ class FtpFsAccess:
                     # https://stackoverflow.com/questions/22090001/get-folder-size-using-ftplib/22093848#22093848
                     ftp.voidcmd("TYPE I")
                     return ftp.size(path)
-                if host is None:
-                    # no host
-                    return None
-                handle = urlopen("ftp://{}:{}@{}/{}".format(user, passwd, host, path))
+                handle = urlopen("ftp://{}:{}@{}:{}/{}".format(user, passwd, host, port, path))
                 info = handle.info()
                 handle.close()
                 if "Content-length" in info:
