@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import pytest
 import re
 import shutil
 import string
@@ -541,6 +542,23 @@ class WDLTests(BaseWDLTest):
         Test if the MiniWDL self test works when passing input files by URL reference.
         """
         self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
+
+    @pytest.mark.integrative
+    @needs_singularity_or_docker
+    def test_dockstore_trs(self, extra_args: Optional[list[str]] = None) -> None:
+        wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
+        # Needs an input but doesn't provide a good one.
+        json_input = json.dumps({"hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"})
+
+        result_json = subprocess.check_output(
+            self.base_command + [wdl_file, json_input, '--logDebug', '-o', self.output_dir, '--outputDialect',
+                                 'miniwdl'] + (extra_args or []))
+        result = json.loads(result_json)
+
+        with open(result.get("outputs", {}).get("hello_world.helloFile")) as f:
+            result_text = f.read().strip()
+
+        self.assertEqual(result_text, "Hello World!\nMy name is potato.")
 
     @slow
     @needs_docker_cuda
