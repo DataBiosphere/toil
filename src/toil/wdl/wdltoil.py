@@ -97,10 +97,10 @@ from toil.job import (
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
-    UnimplementedURLException,
     InvalidImportExportUrlException,
     LocatorException,
 )
+from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
 from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
@@ -1290,9 +1290,10 @@ def convert_files(
             file_id, task_path, dir_to_id[file_to_data[file.value][1]], file_basename
         )
 
-        setattr(file, "virtualized_value", toil_uri)
-        file.value = candidate_uri
-        return file
+        # Don't mutate the original file object
+        new_file = WDL.Value.File(file.value)
+        setattr(new_file, "virtualized_value", toil_uri)
+        return new_file
 
     return map_over_files_in_bindings(environment, convert_file_to_uri)
 
@@ -5326,6 +5327,7 @@ class WDLImportWrapper(WDLSectionJob):
         inputs_search_path: list[str],
         import_remote_files: bool,
         import_workers_threshold: ParseableIndivisibleResource,
+        import_workers_disk: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
         """
@@ -5339,6 +5341,7 @@ class WDLImportWrapper(WDLSectionJob):
         self._inputs_search_path = inputs_search_path
         self._import_remote_files = import_remote_files
         self._import_workers_threshold = import_workers_threshold
+        self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
         filenames = extract_workflow_inputs(self._inputs)
@@ -5347,8 +5350,9 @@ class WDLImportWrapper(WDLSectionJob):
             file_store.jobStore,
             self._inputs_search_path,
             include_remote_files=self._import_remote_files,
+            execution_dir=self._wdl_options.get("execution_dir")
         )
-        imports_job = ImportsJob(file_to_data, self._import_workers_threshold)
+        imports_job = ImportsJob(file_to_data, self._import_workers_threshold, self._import_workers_disk)
         self.addChild(imports_job)
         install_imports_job = WDLInstallImportsJob(
             self._target.name, self._inputs, imports_job.rv()
@@ -5381,6 +5385,7 @@ def make_root_job(
             inputs_search_path=inputs_search_path,
             import_remote_files=options.reference_inputs,
             import_workers_threshold=options.import_workers_threshold,
+            import_workers_disk=options.import_workers_disk
         )
     else:
         # Run WDL imports on leader

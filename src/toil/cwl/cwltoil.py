@@ -140,8 +140,8 @@ from toil.jobStores.abstractJobStore import (
     NoSuchFileException,
     InvalidImportExportUrlException,
     LocatorException,
-    UnimplementedURLException,
 )
+from toil.lib.exceptions import UnimplementedURLException
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
@@ -3622,7 +3622,7 @@ class CWLImportWrapper(CWLNamedJob):
         file_to_data = get_file_sizes(
             filenames, file_store.jobStore, include_remote_files=self.options.reference_inputs
         )
-        imports_job = ImportsJob(file_to_data, self.options.import_workers_threshold)
+        imports_job = ImportsJob(file_to_data, self.options.import_workers_threshold, self.options.import_workers_disk)
         self.addChild(imports_job)
         install_imports_job = CWLInstallImportsJob(
             initialized_job_order=self.initialized_job_order,

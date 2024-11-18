@@ -74,6 +74,8 @@ from toil.lib.resources import ResourceMonitor
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
+from toil.lib.exceptions import UnimplementedURLException
+
 if TYPE_CHECKING:
     from optparse import OptionParser
 
@@ -81,10 +83,7 @@ if TYPE_CHECKING:
         BatchJobExitReason
     )
     from toil.fileStores.abstractFileStore import AbstractFileStore
-    from toil.jobStores.abstractJobStore import (
-        AbstractJobStore,
-        UnimplementedURLException,
-    )
+    from toil.jobStores.abstractJobStore import AbstractJobStore
 
 logger = logging.getLogger(__name__)
 
@@ -3994,25 +3993,16 @@ class WorkerImportJob(Job):
         self,
         filenames: List[str],
         disk_size: Optional[ParseableIndivisibleResource] = None,
-        stream: bool = True,
-        **kwargs: Any,
+        **kwargs: Any
     ):
         """
         Setup importing files on a worker.
         :param filenames: List of file URIs to import
         :param disk_size: Designated disk space the worker can use when importing. Disregarded if stream is enabled.
-        :param stream: Whether to stream a file import or not. We don't have machinery to ensure
-        streaming, so if true, assume streaming works and don't give the worker a lot of disk space to work with.
-        If streaming fails, the worker will run out of resources and allocate a child job to handle the import with enough disk space.
         :param kwargs: args for the superclass
         """
-        if stream:
-            super().__init__(local=False, **kwargs)
-        else:
-            super().__init__(local=False, disk=disk_size, **kwargs)
         self.filenames = filenames
-        self.disk_size = disk_size
-        self.stream = stream
+        super().__init__(local=False, disk=disk_size, **kwargs)
 
     @staticmethod
     def import_files(
@@ -4045,21 +4035,7 @@ class WorkerImportJob(Job):
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
         """
-        try:
-            return self.import_files(self.filenames, file_store.jobStore)
-        except OSError as e:
-            # If the worker crashes due to running out of disk space and was not trying to
-            # stream the file import, then try a new import job without streaming by actually giving
-            # the worker enough disk space
-            # OSError 28 is no space left on device
-            if e.errno == 28 and self.stream is True:
-                non_streaming_import = WorkerImportJob(
-                    self.filenames, self.disk_size, stream=False
-                )
-                self.addChild(non_streaming_import)
-                return non_streaming_import.rv()
-            else:
-                raise
+        return self.import_files(self.filenames, file_store.jobStore)
 
 
 class ImportsJob(Job):
@@ -4073,6 +4049,7 @@ class ImportsJob(Job):
         self,
         file_to_data: Dict[str, FileMetadata],
         max_batch_size: ParseableIndivisibleResource,
+        import_worker_disk: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
         """
@@ -4086,6 +4063,7 @@ class ImportsJob(Job):
         super().__init__(local=True, **kwargs)
         self._file_to_data = file_to_data
         self._max_batch_size = max_batch_size
+        self._import_worker_disk = import_worker_disk
 
     def run(
         self, file_store: AbstractFileStore
@@ -4130,8 +4108,7 @@ class ImportsJob(Job):
         # Create batch import jobs for each group of files
         for batch in file_batches:
             candidate_uris = [file_to_data[filename][0] for filename in batch]
-            batch_size = sum(file_to_data[filename][2] for filename in batch)
-            import_jobs.append(WorkerImportJob(candidate_uris, disk_size=batch_size))
+            import_jobs.append(WorkerImportJob(candidate_uris, disk_size=self._import_worker_disk))
 
         for job in import_jobs:
             self.addChild(job)
