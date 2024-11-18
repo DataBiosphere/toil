@@ -3932,9 +3932,9 @@ def get_file_sizes(
 
             if file_basename == "":
                 # We can't have files with no basename because we need to
-                # download them at that basename later.
+                # download them at that basename later in WDL.
                 raise RuntimeError(
-                    f"File {candidate_uri} has no basename and so cannot be a WDL File"
+                    f"File {candidate_uri} has no basename"
                 )
 
             # Was actually found
