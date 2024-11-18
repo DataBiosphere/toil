@@ -3791,8 +3791,8 @@ class FileMetadata(NamedTuple):
 def potential_absolute_uris(
     uri: str,
     path: list[str],
-    importer: str | None = None,
-    execution_dir: str | None = None,
+    importer: Optional[str] = None,
+    execution_dir: Optional[str] = None,
 ) -> Iterator[str]:
     """
     Get potential absolute URIs to check for an imported file.
