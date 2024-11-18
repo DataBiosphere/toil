@@ -3820,13 +3820,11 @@ def visitSteps(
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
         return op(cmdline_tool.tool)
-    else:
-        raise RuntimeError(
-            f"Unsupported type encountered in workflow "
-            f"traversal: {type(cmdline_tool)}"
-        )
-    # Satisfy mypy, but this branch should never be reached in practice
-    return []
+    raise RuntimeError(
+        f"Unsupported type encountered in workflow "
+        f"traversal: {type(cmdline_tool)}"
+    )
+
 
 
 def rm_unprocessed_secondary_files(job_params: Any) -> None:
@@ -4396,6 +4394,16 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # ToilFsAccess needs to be set up if we want to be able to use
             # URLs.
             builder = tool._init_job(initialized_job_order, runtime_context)
+            if not isinstance(tool, cwltool.workflow.Workflow):
+                # make sure this doesn't add listing items; if shallow_listing is
+                # selected, it will discover dirs one deep and then again later on
+                # (when the cwltool builder gets constructed from the job in the
+                # CommandLineTool's job() method,
+                # see https://github.com/common-workflow-language/cwltool/blob/9cda157cb4380e9d30dec29f0452c56d0c10d064/cwltool/command_line_tool.py#L951),
+                # producing 2+ deep listings instead of only 1.
+                # ExpressionTool also uses a builder, see https://github.com/common-workflow-language/cwltool/blob/9cda157cb4380e9d30dec29f0452c56d0c10d064/cwltool/command_line_tool.py#L207
+                # Workflows don't need this because they don't go through CommandLineTool or ExpressionTool
+                builder.loadListing = "no_listing"
 
             # make sure this doesn't add listing items; if shallow_listing is
             # selected, it will discover dirs one deep and then again later on
