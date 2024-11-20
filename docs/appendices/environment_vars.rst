@@ -223,11 +223,6 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_FTP_PASSWORD                | The FTP password to override all FTP logins with   |
 |                                  | Example: ``TOIL_FTP_PASSWORD=ftp_password``        |
 +----------------------------------+----------------------------------------------------+
-| TOIL_FTP_USE_SSL                 | Enforce usage of SSL for connecting to             |
-|                                  | FTP servers                                        |
-|                                  | (``False`` by default).                            |
-|                                  | Example: ``TOIL_FTP_USE_SSL=True``                 |
-+----------------------------------+----------------------------------------------------+
 | TOIL_WES_BROKER_URL              | An optional broker URL to use to communicate       |
 |                                  | between the WES server and Celery task queue. If   |
 |                                  | unset, ``amqp://guest:guest@localhost:5672//`` is  |
