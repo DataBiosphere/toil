@@ -5,7 +5,7 @@ To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki
 
 ## Reviewer Checklist
 
-<!-- To be kept in sync with docs/contributing/checklist.rst -->
+<!-- To be kept in sync with docs/contributing/checklists.rst -->
 
  * [ ] Make sure it is coming from `issues/XXXX-fix-the-thing` in the Toil repo, or from an external repo.
     * [ ] If it is coming from an external repo, make sure to pull it in for CI with:
@@ -26,10 +26,10 @@ To be copied to the [draft changelog](https://github.com/DataBiosphere/toil/wiki
 
 ## Merger Checklist
 
-<!-- To be kept in sync with docs/contributing/checklist.rst -->
+<!-- To be kept in sync with docs/contributing/checklists.rst -->
 
-* [ ] Make sure the PR passes tests.
-* [ ] Make sure the PR has been reviewed **since its last modification**. If not, review it.
+* [ ] Make sure the PR passed tests, including the Gitlab tests, for the most recent commit in its branch.
+* [ ] Make sure the PR has been reviewed. If not, review it. If it has been reviewed and any requested changes seem to have been addressed, proceed.
 * [ ] Merge with the Github "Squash and merge" feature.
     * [ ] If there are multiple authors' commits, add [Co-authored-by](https://github.blog/2018-01-29-commit-together-with-co-authors/) to give credit to all contributing authors.
 * [ ] Copy its recommended changelog entry to the [Draft Changelog](https://github.com/DataBiosphere/toil/wiki/Draft-Changelog).

@@ -43,8 +43,8 @@ This checklist is to be kept in sync with the checklist in the pull request temp
 
 When merging a PR, do the following:
 
-* |X| Make sure the PR passes tests.
-* |X| Make sure the PR has been reviewed **since its last modification**. If not, review it.
+* |X| Make sure the PR passed tests, including the Gitlab tests, for the most recent commit in its branch.
+* |X| Make sure the PR has been reviewed. If not, review it. If it has been reviewed and any requested changes seem to have been addressed, proceed.
 * |X| Merge with the Github "Squash and merge" feature.
     * |X| If there are multiple authors' commits, add `Co-authored-by`_ to give credit to all contributing authors.
         .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
