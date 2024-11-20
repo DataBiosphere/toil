@@ -1876,7 +1876,9 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
 
     @classmethod
     def _setup_ftp(cls) -> FtpFsAccess:
-        return FtpFsAccess(insecure=strtobool(os.environ.get('TOIL_FTP_USE_SSL', 'False')) is False)
+        # FTP connections are not reused. Ideally, a thread should watch any reused FTP connections
+        # and close them when necessary
+        return FtpFsAccess()
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:

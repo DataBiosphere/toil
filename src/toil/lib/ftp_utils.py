@@ -33,19 +33,18 @@ class FtpFsAccess:
 
     Taken and modified from https://github.com/ohsu-comp-bio/cwl-tes/blob/03f0096f9fae8acd527687d3460a726e09190c3a/cwl_tes/ftp.py#L37-L251
     """
+    # TODO: Properly support FTP over SSL
 
     def __init__(
-        self, cache: Optional[dict[Any, ftplib.FTP]] = None, insecure: bool = False
+        self, cache: Optional[dict[Any, ftplib.FTP]] = None
     ):
         """
         FTP object to handle FTP connections. By default, connect over FTP with TLS.
 
         :param cache: cache of generated FTP objects
-        :param insecure: Whether to connect over FTP with TLS
         """
         self.cache = cache or {}
         self.netrc = None
-        self.insecure = insecure
         try:
             if "HOME" in os.environ:
                 if os.path.exists(os.path.join(os.environ["HOME"], ".netrc")):
@@ -173,19 +172,7 @@ class FtpFsAccess:
                 user = env_user
             if env_passwd:
                 passwd = env_passwd
-            try:
-                # Always try a SSL connection first
-                ftp.login(user or "", passwd or "", secure=True)
-                if self.insecure is False:
-                    ftp.prot_p()
-            except ftplib.error_perm as e:
-                # SSL failed, consult the insecure flag
-                if self.insecure:
-                    # If the user has not forced toil to always use SSL, fallback to insecure
-                    ftp.login(user or "", passwd or "", secure=False)
-                else:
-                    # Else raise an error
-                    raise
+            ftp.login(user or "", passwd or "", secure=False)
             self.cache[(host, user, passwd)] = ftp
             return ftp
         return None
