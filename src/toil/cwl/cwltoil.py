@@ -1832,8 +1832,8 @@ def path_to_loc(obj: CWLObjectType) -> None:
 
 
 def extract_file_uri_once(
-    fileindex: Dict[str, str],
-    existing: Dict[str, str],
+    fileindex: dict[str, str],
+    existing: dict[str, str],
     file_metadata: CWLObjectType,
     mark_broken: bool = False,
     skip_remote: bool = False,
@@ -1909,7 +1909,7 @@ def visit_files(
     mark_broken: bool = False,
     skip_remote: bool = False,
     bypass_file_store: bool = False,
-) -> List[V]:
+) -> list[V]:
     """
     Prepare all files and directories.
 
@@ -1955,7 +1955,7 @@ def visit_files(
 
     :param log_level: Log imported files at the given level.
     """
-    func_return: List[Any] = list()
+    func_return: list[Any] = list()
     tool_id = cwl_object.get("id", str(cwl_object)) if cwl_object else ""
 
     logger.debug("Importing files for %s", tool_id)
@@ -3521,7 +3521,7 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: Promised[Dict[str, FileID]],
+        import_data: Promised[dict[str, FileID]],
         **kwargs: Any,
     ) -> None:
         """
@@ -3543,7 +3543,7 @@ class CWLInstallImportsJob(Job):
         Convert the filenames in the workflow inputs into the URIs
         :return: Promise of transformed workflow inputs. A tuple of the job order and process
         """
-        candidate_to_fileid = unwrap(self.import_data)
+        candidate_to_fileid: dict[str, FileID] = unwrap(self.import_data)
 
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
@@ -3554,8 +3554,8 @@ class CWLInstallImportsJob(Job):
 
         file_convert_function = functools.partial(extract_and_convert_file_to_toil_uri, convert_file)
         fs_access = ToilFsAccess(self.basedir)
-        fileindex: Dict[str, str] = {}
-        existing: Dict[str, str] = {}
+        fileindex: dict[str, str] = {}
+        existing: dict[str, str] = {}
         visit_files(
             file_convert_function,
             fs_access,
@@ -3683,8 +3683,8 @@ def extract_workflow_inputs(
     :param tool: tool object
     :return:
     """
-    fileindex: Dict[str, str] = {}
-    existing: Dict[str, str] = {}
+    fileindex: dict[str, str] = {}
+    existing: dict[str, str] = {}
 
     # Extract out all the input files' filenames
     logger.info("Collecting input files...")
@@ -3736,8 +3736,8 @@ def import_workflow_inputs(
     :param log_level: log level
     :return:
     """
-    fileindex: Dict[str, str] = {}
-    existing: Dict[str, str] = {}
+    fileindex: dict[str, str] = {}
+    existing: dict[str, str] = {}
 
     # Define something we can call to import a file and get its file
     # ID.
@@ -3799,8 +3799,8 @@ def import_workflow_inputs(
 T = TypeVar("T")
 def visitSteps(
     cmdline_tool: Process,
-    op: Callable[[CommentedMap], List[T]],
-) -> List[T]:
+    op: Callable[[CommentedMap], list[T]],
+) -> list[T]:
     """
     Iterate over a CWL Process object, running the op on each tool description
     CWL object.
