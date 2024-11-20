@@ -3992,17 +3992,15 @@ class WorkerImportJob(Job):
     def __init__(
         self,
         filenames: List[str],
-        disk_size: Optional[ParseableIndivisibleResource] = None,
         **kwargs: Any
     ):
         """
         Setup importing files on a worker.
         :param filenames: List of file URIs to import
-        :param disk_size: Designated disk space the worker can use when importing. Disregarded if stream is enabled.
         :param kwargs: args for the superclass
         """
         self.filenames = filenames
-        super().__init__(local=False, disk=disk_size, **kwargs)
+        super().__init__(local=False, **kwargs)
 
     @staticmethod
     def import_files(
@@ -4108,7 +4106,7 @@ class ImportsJob(Job):
         # Create batch import jobs for each group of files
         for batch in file_batches:
             candidate_uris = [file_to_data[filename][0] for filename in batch]
-            import_jobs.append(WorkerImportJob(candidate_uris, disk_size=self._import_worker_disk))
+            import_jobs.append(WorkerImportJob(candidate_uris, disk=self._import_worker_disk))
 
         for job in import_jobs:
             self.addChild(job)
