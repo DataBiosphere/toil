@@ -35,7 +35,7 @@ from typing import (
 )
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from uuid import uuid4
 
 from toil.common import Config, getNodeID, safeUnpickleFromStream
@@ -46,7 +46,9 @@ from toil.job import (
     JobException,
     ServiceJobDescription,
 )
+from toil.lib.ftp_utils import FtpFsAccess
 from toil.lib.compatibility import deprecated
+from toil.lib.conversions import strtobool
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize
 from toil.lib.retry import ErrorCondition, retry
@@ -1873,17 +1875,30 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     """
 
     @classmethod
+    def _setup_ftp(cls) -> FtpFsAccess:
+        # FTP connections are not reused. Ideally, a thread should watch any reused FTP connections
+        # and close them when necessary
+        return FtpFsAccess()
+
+    @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() in ("http", "https", "ftp") and not export
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
+        # Deal with FTP first to support user/password auth
+        if url.scheme.lower() == "ftp":
+            ftp = cls._setup_ftp()
+            return ftp.exists(url.geturl())
+
         try:
-            # TODO: Figure out how to HEAD instead of this.
-            with cls._open_url(url):
+            with closing(urlopen(Request(url.geturl(), method="HEAD"))):
                 return True
-        except FileNotFoundError:
-            return False
+        except HTTPError as e:
+            if e.code in (404, 410):
+                return False
+            else:
+                raise
         # Any other errors we should pass through because something really went
         # wrong (e.g. server is broken today but file may usually exist)
 
@@ -1896,11 +1911,13 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
     )
     def _get_size(cls, url: ParseResult) -> Optional[int]:
         if url.scheme.lower() == "ftp":
-            return None
-        with closing(urlopen(url.geturl())) as readable:
-            # just read the header for content length
-            size = readable.info().get("content-length")
-            return int(size) if size is not None else None
+            ftp = cls._setup_ftp()
+            return ftp.size(url.geturl())
+
+        # just read the header for content length
+        resp = urlopen(Request(url.geturl(), method="HEAD"))
+        size = resp.info().get("content-length")
+        return int(size) if size is not None else None
 
     @classmethod
     def _read_from_url(
@@ -1933,6 +1950,12 @@ class JobStoreSupport(AbstractJobStore, metaclass=ABCMeta):
         ]
     )
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
+        # Deal with FTP first so we support user/password auth
+        if url.scheme.lower() == "ftp":
+            ftp = cls._setup_ftp()
+            # we open in read mode as write mode is not supported
+            return ftp.open(url.geturl(), mode="r")
+
         try:
             return cast(IO[bytes], closing(urlopen(url.geturl())))
         except HTTPError as e:
