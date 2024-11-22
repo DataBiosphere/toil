@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, cast
 from urllib.parse import ParseResult
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
+from toil.lib.conversions import strtobool
 from toil.lib.misc import printq
 from toil.lib.retry import (
     DEFAULT_DELAYS,
@@ -363,7 +364,7 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
     host = os.environ.get("TOIL_S3_HOST", None)
     port = os.environ.get("TOIL_S3_PORT", None)
     protocol = "https"
-    if os.environ.get("TOIL_S3_USE_SSL", True) == "False":
+    if strtobool(os.environ.get("TOIL_S3_USE_SSL", 'True')) is False:
         protocol = "http"
     if host:
         endpoint_url = f"{protocol}://{host}" + f":{port}" if port else ""
@@ -425,7 +426,7 @@ def list_objects_for_url(url: ParseResult) -> list[str]:
     host = os.environ.get("TOIL_S3_HOST", None)
     port = os.environ.get("TOIL_S3_PORT", None)
     protocol = "https"
-    if os.environ.get("TOIL_S3_USE_SSL", True) == "False":
+    if strtobool(os.environ.get("TOIL_S3_USE_SSL", 'True')) is False:
         protocol = "http"
     if host:
         endpoint_url = f"{protocol}://{host}" + f":{port}" if port else ""
