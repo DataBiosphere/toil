@@ -3776,7 +3776,7 @@ def import_workflow_inputs(
         tool,
         functools.partial(
             visit_files,
-            import_function,
+            tool_import_function,
             fs_access,
             fileindex,
             existing,
@@ -3818,10 +3818,11 @@ def visitSteps(
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
         return op(cmdline_tool.tool)
-    raise RuntimeError(
-        f"Unsupported type encountered in workflow "
-        f"traversal: {type(cmdline_tool)}"
-    )
+    else:
+        raise RuntimeError(
+            f"Unsupported type encountered in workflow "
+            f"traversal: {type(cmdline_tool)}"
+        )
 
 
 
