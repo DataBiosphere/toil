@@ -3763,10 +3763,8 @@ def import_workflow_inputs(
     # Make another function for importing tool files. This one doesn't allow
     # symlinking, since the tools might be coming from storage not accessible
     # to all nodes.
-    tool_import_function = cast(
-        Callable[[str], FileID],
-        functools.partial(jobstore.import_file, symlink=False),
-    )
+    tool_import_function = functools.partial(extract_and_convert_file_to_toil_uri,
+                                             cast(Callable[[str], FileID], functools.partial(jobstore.import_file, symlink=False)))
 
     # Import all the files associated with tools (binaries, etc.).
     # Not sure why you would have an optional secondary file here, but
@@ -3818,11 +3816,10 @@ def visitSteps(
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
         return op(cmdline_tool.tool)
-    else:
-        raise RuntimeError(
-            f"Unsupported type encountered in workflow "
-            f"traversal: {type(cmdline_tool)}"
-        )
+    raise RuntimeError(
+        f"Unsupported type encountered in workflow "
+        f"traversal: {type(cmdline_tool)}"
+    )
 
 
 
