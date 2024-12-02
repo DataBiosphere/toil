@@ -3918,24 +3918,18 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     tmpdir_prefix = options.tmpdir_prefix = (
         options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
     )
-
-    # We need a workdir for the CWL runtime contexts.
-    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX:
-        # if tmpdir_prefix is not the default value, move
-        # workdir and the default job store under it
-        workdir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
-    else:
-        # Use a directory in the default tmpdir
-        workdir = mkdtemp()
-    # Make sure workdir doesn't exist so it can be a job store
-    os.rmdir(workdir)
+    tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
+    workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:
+        jobstore = cwltool.utils.create_tmp_dir(tmp_outdir_prefix)
+        # Make sure directory doesn't exist so it can be a job store
+        os.rmdir(jobstore)
         # Pick a default job store specifier appropriate to our choice of batch
         # system and provisioner and installed modules, given this available
         # local directory name. Fail if no good default can be used.
         options.jobStore = generate_default_job_store(
-            options.batchSystem, options.provisioner, workdir
+            options.batchSystem, options.provisioner, jobstore
         )
 
     options.doc_cache = True
@@ -3943,17 +3937,6 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     options.do_validate = True
     options.pack = False
     options.print_subgraph = False
-    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.workDir is None:
-        # We need to override workDir because by default Toil will pick
-        # somewhere under the system temp directory if unset, ignoring
-        # --tmpdir-prefix.
-        #
-        # If set, workDir needs to exist, so we directly use the prefix
-        options.workDir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
-    if tmpdir_prefix != DEFAULT_TMPDIR_PREFIX and options.coordination_dir is None:
-        # override coordination_dir as default Toil will pick somewhere else
-        # ignoring --tmpdir_prefix
-        options.coordination_dir = cwltool.utils.create_tmp_dir(tmpdir_prefix)
 
     if options.batchSystem == "kubernetes":
         # Containers under Kubernetes can only run in Singularity
@@ -3971,9 +3954,6 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     logger.debug(f"Final job store {options.jobStore} and workDir {options.workDir}")
 
     outdir = os.path.abspath(options.outdir or os.getcwd())
-    tmp_outdir_prefix = os.path.abspath(
-        options.tmp_outdir_prefix or DEFAULT_TMPDIR_PREFIX
-    )
     conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)
     use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)
     job_script_provider = None
