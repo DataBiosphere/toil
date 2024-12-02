@@ -4,7 +4,18 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
+    ignore:
+      # htcondor is not under CI
+      - dependency-name: "htcondor"
+      # Google cloud/storage is not under CI
+      - dependency-name: "apache-libcloud"
+      - dependency-name: "google-cloud-storage"
+      - dependency-name: "google-auth"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+# Don't constantly rebase all the dependency bump PRs whenever anything else
+# merges; this causes too many CI runs.
+rebase-strategy: ignore
+
