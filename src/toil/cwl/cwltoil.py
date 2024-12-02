@@ -4261,8 +4261,12 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
+    if options.cachedir is not None:
+        runtime_context.cachedir = os.path.abspath(options.cachedir)
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
+    if cwltool.main.check_working_directories(runtime_context) is not None:
+        return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)
