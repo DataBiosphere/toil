@@ -31,3 +31,4 @@ docutils>=0.16,<0.22
 pyupgrade
 pytest-xdist
 build
+check-jsonschema

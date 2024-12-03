@@ -1,3 +1,5 @@
+# Dependabot configuration file
+# Validate with: check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
 version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
@@ -11,13 +13,11 @@ updates:
       - dependency-name: "apache-libcloud"
       - dependency-name: "google-cloud-storage"
       - dependency-name: "google-auth"
-    # Don't constantly rebase all the dependency bump PRs whenever anything else
-    # merges; this causes too many CI runs.
-    rebase-strategy: ignore
+    rebase-strategy: disabled
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    rebase-strategy: ignore
+    rebase-strategy: disabled
     
 
