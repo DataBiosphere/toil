@@ -11,11 +11,13 @@ updates:
       - dependency-name: "apache-libcloud"
       - dependency-name: "google-cloud-storage"
       - dependency-name: "google-auth"
+    # Don't constantly rebase all the dependency bump PRs whenever anything else
+    # merges; this causes too many CI runs.
+    rebase-strategy: ignore
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-# Don't constantly rebase all the dependency bump PRs whenever anything else
-# merges; this causes too many CI runs.
-rebase-strategy: ignore
+    rebase-strategy: ignore
+    
 
