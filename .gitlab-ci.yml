@@ -71,6 +71,7 @@ lint:
     - ${MAIN_PYTHON_PKG} --version
     - make mypy
     - make docs
+    - check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
     # - make diff_pydocstyle_report
 
 cwl_dependency_is_stand_alone:
