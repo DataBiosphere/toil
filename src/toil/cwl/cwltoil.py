@@ -3805,13 +3805,14 @@ def visitSteps(
     """
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         # For workflows we need to dispatch on steps
+        ret = []
         for step in cmdline_tool.steps:
             # Handle the step's tool
-            ret = op(step.tool)
+            ret.extend(op(step.tool))
             # Recures on the embedded tool; maybe it's a workflow.
             recurse_ret = visitSteps(step.embedded_tool, op)
             ret.extend(recurse_ret)
-            return ret
+        return ret
     elif isinstance(cmdline_tool, cwltool.process.Process):
         # All CWL Process objects (including CommandLineTool) will have tools
         # if they bothered to run the Process __init__.
