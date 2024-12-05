@@ -35,7 +35,24 @@ from collections.abc import Generator, Iterable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from graphlib import TopologicalSorter
 from tempfile import mkstemp
-from typing import IO, Any, Callable, Optional, Protocol, TypedDict, TypeVar, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+    TypedDict,
+    IO,
+    Protocol,
+)
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -66,24 +83,28 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.job import (
     AcceleratorRequirement,
     Job,
-    ParseableIndivisibleResource,
     Promise,
     Promised,
     TemporaryID,
     parse_accelerator,
     unwrap,
     unwrap_all,
+    ParseableIndivisibleResource,
+    ImportsJob,
+    FileMetadata,
+    potential_absolute_uris,
+    get_file_sizes
 )
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
     InvalidImportExportUrlException,
     LocatorException,
-    UnimplementedURLException,
 )
+from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
+from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
 from toil.lib.integration import resolve_workflow
-from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -91,6 +112,16 @@ from toil.lib.threading import global_mutex
 from toil.provisioners.clusterScaler import JobTooBigError
 
 logger = logging.getLogger(__name__)
+
+
+# In regards to "toilfile:" URIs:
+# We define a URI scheme kind of like but not actually compatible with the one
+# we use for CWL. CWL brings along the file basename in its file type, but
+# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
+# the URI.
+# TODO: We need to also make sure files from the same source directory end up
+# in the same destination directory, when dealing with basename conflicts.
+
 
 # We want to use hashlib.file_digest to avoid a 3-line hashing loop like
 # MiniWDL has. But it is only in 3.11+
@@ -115,16 +146,20 @@ class ReadableFileObj(Protocol):
     Would extend the protocol from Typeshed for hashlib but those are only
     declared for 3.11+.
     """
+
     def readinto(self, buf: bytearray, /) -> int: ...
     def readable(self) -> bool: ...
     def read(self, number: int) -> bytes: ...
+
 
 class FileDigester(Protocol):
     """
     Protocol for the features we need from hashlib.file_digest.
     """
+
     # We need __ prefixes here or the name of the argument becomes part of the required interface.
     def __call__(self, __f: ReadableFileObj, __alg_name: str) -> hashlib._Hash: ...
+
 
 try:
     # Don't do a direct conditional import to the final name here because then
@@ -137,7 +172,8 @@ try:
     #
     # TODO: Change to checking sys.version_info because MyPy understands that
     # better?
-    from hashlib import file_digest as file_digest_impl # type: ignore[attr-defined,unused-ignore]
+    from hashlib import file_digest as file_digest_impl  # type: ignore[attr-defined,unused-ignore]
+
     file_digest: FileDigester = file_digest_impl
 except ImportError:
     # Polyfill file_digest from 3.11+
@@ -149,6 +185,7 @@ except ImportError:
             hasher.update(buffer)
             buffer = f.read(BUFFER_SIZE)
         return hasher
+
     file_digest = file_digest_fallback_impl
 
 # WDL options to pass into the WDL jobs and standard libraries
@@ -456,81 +493,6 @@ def remove_common_leading_whitespace(
     return modified
 
 
-def potential_absolute_uris(
-    uri: str,
-    path: list[str],
-    importer: WDL.Tree.Document | None = None,
-    execution_dir: str | None = None,
-) -> Iterator[str]:
-    """
-    Get potential absolute URIs to check for an imported file.
-
-    Given a URI or bare path, yield in turn all the URIs, with schemes, where we
-    should actually try to find it, given that we want to search under/against
-    the given paths or URIs, the current directory, and the given importing WDL
-    document if any.
-    """
-
-    if uri == "":
-        # Empty URIs can't come from anywhere.
-        return
-
-    # We need to brute-force find this URI relative to:
-    #
-    # 1. Itself if a full URI.
-    #
-    # 2. Importer's URL, if importer is a URL and this is a
-    #    host-root-relative URL starting with / or scheme-relative
-    #    starting with //, or just plain relative.
-    #
-    # 3. Current directory, if a relative path.
-    #
-    # 4. All the prefixes in "path".
-    #
-    # If it can't be found anywhere, we ought to (probably) throw
-    # FileNotFoundError like the MiniWDL implementation does, with a
-    # correct errno.
-    #
-    # To do this, we have AbstractFileStore.read_from_url, which can read a
-    # URL into a binary-mode writable, or throw some kind of unspecified
-    # exception if the source doesn't exist or can't be fetched.
-
-    # This holds scheme-applied full URIs for all the places to search.
-    full_path_list = []
-
-    if importer is not None:
-        # Add the place the imported file came form, to search first.
-        full_path_list.append(Toil.normalize_uri(importer.pos.abspath))
-
-    # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
-    # When importing on a worker, the cwd will be a tmpdir and will result in FileNotFoundError after os.path.abspath, so override with the execution dir
-    full_path_list.append(Toil.normalize_uri(execution_dir or ".") + "/.")
-
-    # Then the specified paths.
-    # TODO:
-    # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1479-L1482
-    # seems backward actually and might do these first!
-    full_path_list += [Toil.normalize_uri(p) for p in path]
-
-    # This holds all the URIs we tried and failed with.
-    failures: set[str] = set()
-
-    for candidate_base in full_path_list:
-        # Try fetching based off each base URI
-        candidate_uri = urljoin(candidate_base, uri)
-        if candidate_uri in failures:
-            # Already tried this one, maybe we have an absolute uri input.
-            continue
-        logger.debug(
-            "Consider %s which is %s off of %s", candidate_uri, uri, candidate_base
-        )
-
-        # Try it
-        yield candidate_uri
-        # If we come back it didn't work
-        failures.add(candidate_uri)
-
-
 async def toil_read_source(
     uri: str, path: list[str], importer: WDL.Tree.Document | None
 ) -> ReadSourceResult:
@@ -544,7 +506,7 @@ async def toil_read_source(
     # We track our own failures for debugging
     tried = []
 
-    for candidate_uri in potential_absolute_uris(uri, path, importer):
+    for candidate_uri in potential_absolute_uris(uri, path, importer=importer.pos.abspath if importer else None):
         # For each place to try in order
         destination_buffer = io.BytesIO()
         logger.debug("Fetching %s", candidate_uri)
@@ -806,16 +768,6 @@ def parse_disks(
     return specified_mount_point, part_size, part_suffix
 
 
-# We define a URI scheme kind of like but not actually compatible with the one
-# we use for CWL. CWL brings along the file basename in its file type, but
-# WDL.Value.File doesn't. So we need to make sure we stash that somewhere in
-# the URI.
-# TODO: We need to also make sure files from the same source directory end up
-# in the same destination directory, when dealing with basename conflicts.
-
-TOIL_URI_SCHEME = "toilfile:"
-
-
 def pack_toil_uri(
     file_id: FileID, task_path: str, dir_id: uuid.UUID, file_basename: str
 ) -> str:
@@ -863,6 +815,7 @@ def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
 
     return file_id, task_path, parent_id, file_basename
 
+
 ###
 # Caching machinery and file accessors
 ###
@@ -872,6 +825,7 @@ def unpack_toil_uri(toil_uri: str) -> tuple[FileID, str, str, str]:
 # We store the shared FS path in an attribute on the WDL File.
 SHARED_PATH_ATTR = "_shared_fs_path"
 
+
 def clone_metadata(old_file: WDL.Value.File, new_file: WDL.Value.File) -> None:
     """
     Copy all Toil metadata from one WDL File to another.
@@ -879,6 +833,7 @@ def clone_metadata(old_file: WDL.Value.File, new_file: WDL.Value.File) -> None:
     for attribute in ["virtualized_value", "nonexistent", SHARED_PATH_ATTR]:
         if hasattr(old_file, attribute):
             setattr(new_file, attribute, getattr(old_file, attribute))
+
 
 def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     """
@@ -889,6 +844,7 @@ def set_file_value(file: WDL.Value.File, new_value: str) -> WDL.Value.File:
     clone_metadata(file, new_file)
     return new_file
 
+
 def set_file_nonexistent(file: WDL.Value.File, nonexistent: bool) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the nonexistent flag set to the given value.
@@ -898,13 +854,17 @@ def set_file_nonexistent(file: WDL.Value.File, nonexistent: bool) -> WDL.Value.F
     setattr(new_file, "nonexistent", nonexistent)
     return new_file
 
+
 def get_file_nonexistent(file: WDL.Value.File) -> bool:
     """
     Return the nonexistent flag for a file.
     """
     return cast(bool, getattr(file, "nonexistent", False))
 
-def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> WDL.Value.File:
+
+def set_file_virtualized_value(
+    file: WDL.Value.File, virtualized_value: str
+) -> WDL.Value.File:
     """
     Return a copy of a WDL File with all metadata intact but the virtualized_value attribute set to the given value.
     """
@@ -913,11 +873,13 @@ def set_file_virtualized_value(file: WDL.Value.File, virtualized_value: str) -> 
     setattr(new_file, "virtualized_value", virtualized_value)
     return new_file
 
+
 def get_file_virtualized_value(file: WDL.Value.File) -> Optional[str]:
     """
     Get the virtualized storage location for a file.
     """
     return cast(Optional[str], getattr(file, "virtualized_value", None))
+
 
 def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
     """
@@ -927,9 +889,12 @@ def get_shared_fs_path(file: WDL.Value.File) -> Optional[str]:
     """
     if hasattr(file, SHARED_PATH_ATTR):
         result = cast(str, getattr(file, SHARED_PATH_ATTR))
-        assert not result.startswith("file://"), f"Found URI shared FS path of {result} on {file}"
+        assert not result.startswith(
+            "file://"
+        ), f"Found URI shared FS path of {result} on {file}"
         return result
     return None
+
 
 def set_shared_fs_path(file: WDL.Value.File, path: str) -> WDL.Value.File:
     """
@@ -938,28 +903,39 @@ def set_shared_fs_path(file: WDL.Value.File, path: str) -> WDL.Value.File:
     This should be the path it was initially imported from, or the path that it has in the call cache.
     """
     # We should not have URLs here, only real paths.
-    assert not path.startswith("file://"), f"Cannot assign URI shared FS path of {path} to {file}"
+    assert not path.startswith(
+        "file://"
+    ), f"Cannot assign URI shared FS path of {path} to {file}"
     new_file = WDL.Value.File(file.value, file.expr)
     clone_metadata(file, new_file)
     setattr(new_file, SHARED_PATH_ATTR, path)
     return new_file
 
-def view_shared_fs_paths(bindings: WDL.Env.Bindings[WDL.Value.Base]) -> WDL.Env.Bindings[WDL.Value.Base]:
+
+def view_shared_fs_paths(
+    bindings: WDL.Env.Bindings[WDL.Value.Base],
+) -> WDL.Env.Bindings[WDL.Value.Base]:
     """
     Given WDL bindings, return a copy where all files have their shared filesystem paths as their values.
     """
+
     def file_path_to_use(file: WDL.Value.File) -> WDL.Value.File:
         """
         Return a File at the shared FS path if we have one, or the original File otherwise.
         """
         shared_path = get_shared_fs_path(file)
         result_path = shared_path or file.value
-        assert not result_path.startswith("file://"), f"Found file URI {result_path} instead of a path for file {file}"
+        assert not result_path.startswith(
+            "file://"
+        ), f"Found file URI {result_path} instead of a path for file {file}"
         return set_file_value(file, result_path)
 
     return map_over_files_in_bindings(bindings, file_path_to_use)
 
-def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings) -> tuple[WDLBindings | None, str]:
+
+def poll_execution_cache(
+    node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings: WDLBindings
+) -> tuple[WDLBindings | None, str]:
     """
     Return the cached result of calling this workflow or task, and its key.
 
@@ -971,12 +947,14 @@ def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings
     transformed_bindings = view_shared_fs_paths(bindings)
     log_bindings(logger.debug, "Digesting input bindings:", [transformed_bindings])
     input_digest = WDL.Value.digest_env(transformed_bindings)
-    cache_key=f"{node.name}/{node.digest}/{input_digest}"
+    cache_key = f"{node.name}/{node.digest}/{input_digest}"
     miniwdl_logger = logging.getLogger("MiniWDL")
     # TODO: Ship config from leader? It might not see the right environment.
     miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
     miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
-    cached_result: Optional[WDLBindings] = miniwdl_cache.get(cache_key, transformed_bindings, node.effective_outputs)
+    cached_result: Optional[WDLBindings] = miniwdl_cache.get(
+        cache_key, transformed_bindings, node.effective_outputs
+    )
     if cached_result is not None:
         logger.info("Found call in cache")
         return cached_result, cache_key
@@ -984,7 +962,15 @@ def poll_execution_cache(node: Union[WDL.Tree.Workflow, WDL.Tree.Task], bindings
         logger.debug("No cache hit for %s", cache_key)
         return None, cache_key
 
-def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_store: AbstractFileStore, wdl_options: WDLContext, miniwdl_logger: Optional[logging.Logger] = None, miniwdl_config: Optional[WDL.runtime.config.Loader] = None) -> WDLBindings:
+
+def fill_execution_cache(
+    cache_key: str,
+    output_bindings: WDLBindings,
+    file_store: AbstractFileStore,
+    wdl_options: WDLContext,
+    miniwdl_logger: Optional[logging.Logger] = None,
+    miniwdl_config: Optional[WDL.runtime.config.Loader] = None,
+) -> WDLBindings:
     """
     Cache the result of calling a workflow or task.
 
@@ -1019,7 +1005,9 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
     #
     # In that case we just pout up with useless/unreferenced files in the
     # cache.
-    output_directory = os.path.join(miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4()))
+    output_directory = os.path.join(
+        miniwdl_cache._call_cache_dir, cache_key, str(uuid.uuid4())
+    )
 
     # Adjust all files in the output bindings to have shared FS paths outside the job store.
     def assign_shared_fs_path(file: WDL.Value.File) -> WDL.Value.File:
@@ -1040,7 +1028,9 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
             if virtualized is None:
                 # TODO: If we're passing things around by URL reference and
                 # some of them are file: is this actually allowed?
-                raise RuntimeError(f"File {file} caught escaping from task unvirtualized")
+                raise RuntimeError(
+                    f"File {file} caught escaping from task unvirtualized"
+                )
 
             # We need to save this file somewhere.
             # This needs to exist before we can export to it. And now we know
@@ -1056,13 +1046,14 @@ def fill_execution_cache(cache_key: str, output_bindings: WDLBindings, file_stor
                 wdl_options,
                 devirtualized_to_virtualized,
                 virtualized_to_devirtualized,
-                export=True
+                export=True,
             )
 
             # Remember where it went
             file = set_shared_fs_path(file, exported_path)
 
         return file
+
     output_bindings = map_over_files_in_bindings(output_bindings, assign_shared_fs_path)
 
     # Save the bindings to the cache, representing all files with their shared filesystem paths.
@@ -1249,51 +1240,71 @@ class NonDownloadingSize(WDL.StdLib._Size):
         # Return the result as a WDL float value
         return WDL.Value.Float(total_size)
 
-STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
-REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
-ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
-def is_toil_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
+def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
+    filenames = list()
 
-def is_file_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, ["file:"])
+    def add_filename(file: WDL.Value.File) -> WDL.Value.File:
+        filenames.append(file.value)
+        return file
 
-def is_standard_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, STANDARD_SCHEMES)
+    map_over_files_in_bindings(environment, add_filename)
+    return filenames
 
 
-def is_remote_url(filename: str) -> bool:
+def convert_files(
+    environment: WDLBindings,
+    file_to_id: Dict[str, FileID],
+    file_to_data: Dict[str, FileMetadata],
+    task_path: str,
+) -> WDLBindings:
     """
-    Decide if a filename is a known, non-file kind of URL
-    """
-    return is_url_with_scheme(filename, REMOTE_SCHEMES)
+    Resolve relative-URI files in the given environment convert the file values to a new value made from a given mapping.
 
-def is_any_url(filename: str) -> bool:
-    """
-    Decide if a string is a URI like http:// or file://.
+    Will return bindings with file values set to their corresponding relative-URI.
 
-    Otherwise it might be a bare path.
+    :param environment: Bindings to evaluate on
+    :return: new bindings object
     """
-    return is_url_with_scheme(filename, ALL_SCHEMES)
+    dir_ids = {t[1] for t in file_to_data.values()}
+    dir_to_id = {k: uuid.uuid4() for k in dir_ids}
 
-def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
-    """
-    Return True if filename is a URL with any of the given schemes and False otherwise.
-    """
-    # TODO: "http:myfile.dat" is a valid filename and *not* a valid URL
-    for scheme in schemes:
-        if filename.startswith(scheme):
-            return True
-    return False
+    def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
+        """
+        Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
+        """
+        candidate_uri = file_to_data[file.value][0]
+        file_id = file_to_id[candidate_uri]
+
+        # Work out what the basename for the file was
+        file_basename = os.path.basename(urlsplit(candidate_uri).path)
+
+        if file_basename == "":
+            # We can't have files with no basename because we need to
+            # download them at that basename later.
+            raise RuntimeError(
+                f"File {candidate_uri} has no basename and so cannot be a WDL File"
+            )
+
+        toil_uri = pack_toil_uri(
+            file_id, task_path, dir_to_id[file_to_data[file.value][1]], file_basename
+        )
+
+        # Don't mutate the original file object
+        new_file = WDL.Value.File(file.value)
+        setattr(new_file, "virtualized_value", toil_uri)
+        return new_file
+
+    return map_over_files_in_bindings(environment, convert_file_to_uri)
+
 
 def convert_remote_files(
     environment: WDLBindings,
     file_source: AbstractJobStore,
     task_path: str,
-    search_paths: list[str] | None = None,
+    search_paths: Optional[list[str]] = None,
     import_remote_files: bool = True,
-    execution_dir: str | None = None,
+    execution_dir: Optional[str] = None,
 ) -> WDLBindings:
     """
     Resolve relative-URI files in the given environment and import all files.
@@ -1444,8 +1455,12 @@ def convert_remote_files(
             # Was actually found and imported
             assert candidate_uri is not None
             assert toil_uri is not None
-            new_file = set_file_virtualized_value(set_file_value(file, candidate_uri), toil_uri)
-        if candidate_uri is not None and (is_file_url(candidate_uri) or not is_any_url(candidate_uri)):
+            new_file = set_file_virtualized_value(
+                set_file_value(file, candidate_uri), toil_uri
+            )
+        if candidate_uri is not None and (
+            is_file_url(candidate_uri) or not is_any_url(candidate_uri)
+        ):
             # We imported a file so we have a local path
             assert candidate_uri is not None
             if is_file_url(candidate_uri):
@@ -1571,8 +1586,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         # but I need to virtualize as well, so I can't remove one or the other.
         def _f(file: WDL.Value.File) -> WDL.Value.Base:
             if get_file_virtualized_value(file) is None:
-                file = set_file_virtualized_value(file, self._virtualize_filename(file.value))
-            with open(self._devirtualize_filename(get_file_virtualized_value(file)), "r") as infile:
+                file = set_file_virtualized_value(
+                    file, self._virtualize_filename(file.value)
+                )
+            with open(
+                self._devirtualize_filename(get_file_virtualized_value(file)), "r"
+            ) as infile:
                 return parse(infile.read())
 
         return _f
@@ -1606,7 +1625,11 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         if virtualized_filename is not None:
             devirtualized_path = self._devirtualize_filename(virtualized_filename)
             file = set_file_value(file, devirtualized_path)
-            logger.debug("For virtualized filename %s got devirtualized file %s", virtualized_filename, file)
+            logger.debug(
+                "For virtualized filename %s got devirtualized file %s",
+                virtualized_filename,
+                file,
+            )
         else:
             logger.debug("File has no virtualized value so not changing value")
         return file
@@ -1637,7 +1660,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 logger.debug("File appears nonexistent so marking it nonexistent")
                 return set_file_nonexistent(file, True)
         virtualized_filename = self._virtualize_filename(file.value)
-        logger.debug('For file %s got virtualized filename %s', file, virtualized_filename)
+        logger.debug(
+            "For file %s got virtualized filename %s", file, virtualized_filename
+        )
         marked_file = set_file_virtualized_value(file, virtualized_filename)
         return marked_file
 
@@ -1712,9 +1737,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     file_id, dest_path, mutable=False, symlink=True
                 )
             else:
-                raise RuntimeError(
-                    f"Unsupported file source: {file_source}"
-                )
+                raise RuntimeError(f"Unsupported file source: {file_source}")
         else:
             # Download to a local file with the right name and execute bit.
             # Open it exclusively
@@ -1904,6 +1927,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             self._virtualized_to_devirtualized[result] = abs_filename
             return result
 
+
 class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
     """
     Standard library implementation for workflow scope.
@@ -1952,21 +1976,29 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                 miniwdl_logger = logging.getLogger("MiniWDL")
                 # TODO: Ship config from leader? It might not see the right environment.
                 miniwdl_config = WDL.runtime.config.Loader(miniwdl_logger)
-                self._miniwdl_cache = WDL.runtime.cache.new(miniwdl_config, miniwdl_logger)
+                self._miniwdl_cache = WDL.runtime.cache.new(
+                    miniwdl_config, miniwdl_logger
+                )
 
             # TODO: If we did this before the _virtualize_filename call in the
             # base _write we wouldn't need to immediately devirtualize. But we
             # have internal caches to lean on.
             devirtualized_filename = self._devirtualize_filename(virtualized_file.value)
             # Hash the file to hex
-            hex_digest = file_digest(open(devirtualized_filename, "rb"), "sha256").hexdigest()
+            hex_digest = file_digest(
+                open(devirtualized_filename, "rb"), "sha256"
+            ).hexdigest()
             file_input_bindings = WDL.Env.Bindings(
-                WDL.Env.Binding("file_sha256", cast(WDL.Value.Base, WDL.Value.String(hex_digest)))
+                WDL.Env.Binding(
+                    "file_sha256", cast(WDL.Value.Base, WDL.Value.String(hex_digest))
+                )
             )
             # Make an environment of "file_sha256" to that as a WDL string, and
             # digest that, and make a write_ cache key. No need to transform to
             # shared FS paths sonce no paths are in it.
-            log_bindings(logger.debug, "Digesting file bindings:", [file_input_bindings])
+            log_bindings(
+                logger.debug, "Digesting file bindings:", [file_input_bindings]
+            )
             input_digest = WDL.Value.digest_env(file_input_bindings)
             file_cache_key = "write_/" + input_digest
             # Construct a description of the types we expect to get from the
@@ -2007,7 +2039,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     self._wdl_options,
                     {},
                     {},
-                    export=True
+                    export=True,
                 )
 
                 # Save the cache entry pointing to it
@@ -2015,7 +2047,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
                     file_cache_key,
                     WDL.Env.Bindings(
                         WDL.Env.Binding("file", WDL.Value.File(exported_path))
-                    )
+                    ),
                 )
 
                 # Apply the shared filesystem path to the virtualized file
@@ -2559,6 +2591,7 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
+
 def drop_if_missing(
     file: WDL.Value.File, standard_library: ToilWDLStdLibBase
 ) -> WDL.Value.File | None:
@@ -2721,7 +2754,9 @@ def map_over_typed_files_in_value(
         # This is a file so we need to process it
         orig_file_value = value.value
         new_file = transform(value)
-        assert value.value == orig_file_value, "Transformation mutated the original File"
+        assert (
+            value.value == orig_file_value
+        ), "Transformation mutated the original File"
         if new_file is None:
             # Assume the transform checked types if we actually care about the
             # result.
@@ -3052,7 +3087,11 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # TODO: What if the same file is passed through several tasks, and
             # we get cache hits on those tasks? Won't we upload it several
             # times?
-            return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
+            return self.postprocess(
+                virtualize_files(
+                    cached_result, standard_library, enforce_existence=False
+                )
+            )
 
         if self._task.inputs:
             logger.debug("Evaluating task code")
@@ -3563,7 +3602,9 @@ class WDLTaskJob(WDLBaseJob):
             # A current limitation with the singularity/miniwdl cache is it cannot check for image updates if the
             # filename is the same
             singularity_cache = os.path.join(os.path.expanduser("~"), ".singularity")
-            miniwdl_singularity_cache = os.path.join(os.path.expanduser("~"), ".cache/miniwdl")
+            miniwdl_singularity_cache = os.path.join(
+                os.path.expanduser("~"), ".cache/miniwdl"
+            )
 
             # Cache Singularity's layers somewhere known to have space
             os.environ["SINGULARITY_CACHEDIR"] = os.environ.get(
@@ -4002,7 +4043,14 @@ class WDLTaskJob(WDLBaseJob):
 
         if self._cache_key is not None:
             # We might need to save to the execution cache
-            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options, miniwdl_logger=miniwdl_logger, miniwdl_config=miniwdl_config)
+            output_bindings = fill_execution_cache(
+                self._cache_key,
+                output_bindings,
+                file_store,
+                self._wdl_options,
+                miniwdl_logger=miniwdl_logger,
+                miniwdl_config=miniwdl_config,
+            )
 
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
@@ -5019,7 +5067,11 @@ class WDLWorkflowJob(WDLSectionJob):
         # or calculated inputs filled in).
         cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
         if cached_result is not None:
-            return self.postprocess(virtualize_files(cached_result, standard_library, enforce_existence=False))
+            return self.postprocess(
+                virtualize_files(
+                    cached_result, standard_library, enforce_existence=False
+                )
+            )
 
         if self._workflow.inputs:
             try:
@@ -5046,7 +5098,7 @@ class WDLWorkflowJob(WDLSectionJob):
             sink.rv(),
             wdl_options=self._wdl_options,
             cache_key=cache_key,
-            local=True
+            local=True,
         )
         sink.addFollowOn(outputs_job)
         # Caller is responsible for making sure namespaces are applied
@@ -5167,7 +5219,9 @@ class WDLOutputsJob(WDLBaseJob):
         )
 
         if self._cache_key is not None:
-            output_bindings = fill_execution_cache(self._cache_key, output_bindings, file_store, self._wdl_options)
+            output_bindings = fill_execution_cache(
+                self._cache_key, output_bindings, file_store, self._wdl_options
+            )
 
         return self.postprocess(output_bindings)
 
@@ -5182,7 +5236,7 @@ class WDLStartJob(WDLSectionJob):
     def __init__(
         self,
         target: WDL.Tree.Workflow | WDL.Tree.Task,
-        inputs: WDLBindings,
+        inputs: Promised[WDLBindings],
         wdl_options: WDLContext,
         **kwargs: Any,
     ) -> None:
@@ -5200,13 +5254,14 @@ class WDLStartJob(WDLSectionJob):
         """
         Actually build the subgraph.
         """
+        inputs = unwrap(self._inputs)
         super().run(file_store)
         if isinstance(self._target, WDL.Tree.Workflow):
             # Create a workflow job. We rely in this to handle entering the input
             # namespace if needed, or handling free-floating inputs.
             job: WDLBaseJob = WDLWorkflowJob(
                 self._target,
-                [self._inputs],
+                [inputs],
                 [self._target.name],
                 wdl_options=self._wdl_options,
                 local=True,
@@ -5215,7 +5270,7 @@ class WDLStartJob(WDLSectionJob):
             # There is no workflow. Create a task job.
             job = WDLTaskWrapperJob(
                 self._target,
-                [self._inputs],
+                [inputs],
                 [self._target.name],
                 wdl_options=self._wdl_options,
                 local=True,
@@ -5227,15 +5282,52 @@ class WDLStartJob(WDLSectionJob):
         return job.rv()
 
 
-class WDLImportJob(WDLSectionJob):
+class WDLInstallImportsJob(Job):
     def __init__(
         self,
-        target: WDL.Tree.Workflow | WDL.Tree.Task,
+        task_path: str,
+        inputs: WDLBindings,
+        import_data: Promised[Tuple[Dict[str, FileID], Dict[str, FileMetadata]]],
+        **kwargs: Any,
+    ) -> None:
+        """
+        Job to take the inputs from the WDL workflow and a mapping of filenames to imported URIs
+        to convert all file locations to URIs in each binding.
+
+        This class is only used when runImportsOnWorkers is enabled.
+        """
+        super().__init__(local=True, **kwargs)
+        self._import_data = import_data
+        self._inputs = inputs
+        self._task_path = task_path
+
+    def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
+        """
+        Convert the filenames in the workflow inputs ito the URIs
+        :return: Promise of transformed workflow inputs
+        """
+        candidate_to_fileid = unwrap(self._import_data)[0]
+        file_to_data = unwrap(self._import_data)[1]
+        return convert_files(self._inputs, candidate_to_fileid, file_to_data, self._task_path)
+
+
+class WDLImportWrapper(WDLSectionJob):
+    """
+    Job to organize importing files on workers instead of the leader. Responsible for extracting filenames and metadata,
+    calling ImportsJob, applying imports to input bindings, and scheduling the start workflow job
+
+    This class is only used when runImportsOnWorkers is enabled.
+    """
+
+    def __init__(
+        self,
+        target: Union[WDL.Tree.Workflow, WDL.Tree.Task],
         inputs: WDLBindings,
         wdl_options: WDLContext,
-        path: list[str] | None = None,
-        skip_remote: bool = False,
-        disk_size: ParseableIndivisibleResource | None = None,
+        inputs_search_path: list[str],
+        import_remote_files: bool,
+        import_workers_threshold: ParseableIndivisibleResource,
+        import_workers_disk: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
         """
@@ -5243,30 +5335,38 @@ class WDLImportJob(WDLSectionJob):
 
         This class is only used when runImportsOnWorkers is enabled.
         """
-        super().__init__(wdl_options=wdl_options, local=False, disk=disk_size, **kwargs)
-        self._target = target
+        super().__init__(local=True, wdl_options=wdl_options, **kwargs)
         self._inputs = inputs
-        self._path = path
-        self._skip_remote = skip_remote
+        self._target = target
+        self._inputs_search_path = inputs_search_path
+        self._import_remote_files = import_remote_files
+        self._import_workers_threshold = import_workers_threshold
+        self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
-        """
-        Import the workflow inputs and then create and run the workflow.
-        :return: Promise of workflow outputs
-        """
-        imported_inputs = convert_remote_files(
-            self._inputs,
+        filenames = extract_workflow_inputs(self._inputs)
+        file_to_data = get_file_sizes(
+            filenames,
             file_store.jobStore,
-            self._target.name,
-            self._path,
-            self._skip_remote,
-            self._wdl_options.get("execution_dir")
+            self._inputs_search_path,
+            include_remote_files=self._import_remote_files,
+            execution_dir=self._wdl_options.get("execution_dir")
         )
-        root_job = WDLStartJob(
-            self._target, imported_inputs, wdl_options=self._wdl_options
+        imports_job = ImportsJob(file_to_data, self._import_workers_threshold, self._import_workers_disk)
+        self.addChild(imports_job)
+        install_imports_job = WDLInstallImportsJob(
+            self._target.name, self._inputs, imports_job.rv()
         )
-        self.addChild(root_job)
-        return root_job.rv()
+        self.addChild(install_imports_job)
+        imports_job.addFollowOn(install_imports_job)
+
+        start_job = WDLStartJob(
+            self._target, install_imports_job.rv(), wdl_options=self._wdl_options
+        )
+        self.addChild(start_job)
+        install_imports_job.addFollowOn(start_job)
+
+        return start_job.rv()
 
 
 def make_root_job(
@@ -5278,14 +5378,14 @@ def make_root_job(
     options: Namespace,
 ) -> WDLSectionJob:
     if options.run_imports_on_workers:
-        # Run WDL imports on a worker instead
-        root_job: WDLSectionJob = WDLImportJob(
+        root_job: WDLSectionJob = WDLImportWrapper(
             target,
             inputs,
             wdl_options=wdl_options,
-            path=inputs_search_path,
-            skip_remote=options.reference_inputs,
-            disk_size=options.import_workers_disk,
+            inputs_search_path=inputs_search_path,
+            import_remote_files=options.reference_inputs,
+            import_workers_threshold=options.import_workers_threshold,
+            import_workers_disk=options.import_workers_disk
         )
     else:
         # Run WDL imports on leader
@@ -5318,12 +5418,6 @@ def main() -> None:
     if options.jobStore is None:
         # TODO: Move cwltoil's generate_default_job_store where we can use it
         options.jobStore = os.path.join(mkdtemp(), "tree")
-
-    # Take care of incompatible arguments related to file imports
-    if options.run_imports_on_workers is True and options.import_workers_disk is None:
-        raise RuntimeError(
-            "Commandline arguments --runImportsOnWorkers and --importWorkersDisk must both be set to run file imports on workers."
-        )
 
     # Having an nargs=? option can put a None in our inputs list, so drop that.
     input_sources = [x for x in options.inputs_uri if x is not None]
@@ -5487,14 +5581,6 @@ def main() -> None:
                 # Get the execution directory
                 execution_dir = os.getcwd()
 
-                imported_inputs = convert_remote_files(
-                    input_bindings,
-                    toil._jobStore,
-                    task_path=target.name,
-                    search_paths=inputs_search_path,
-                    import_remote_files=options.reference_inputs,
-                )
-
                 # Configure workflow interpreter options
                 wdl_options: WDLContext = {
                     "execution_dir": execution_dir,
@@ -5508,7 +5594,7 @@ def main() -> None:
                 # Run the workflow and get its outputs namespaced with the workflow name.
                 root_job = make_root_job(
                     target,
-                    imported_inputs,
+                    input_bindings,
                     inputs_search_path,
                     toil,
                     wdl_options,
