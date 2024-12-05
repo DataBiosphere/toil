@@ -20,7 +20,7 @@ import urllib.request
 from urllib.error import URLError
 
 from toil.lib.retry import retry
-from toil.lib.integration import get_workflow_root_from_dockstore
+from toil.lib.integration import find_workflow_on_dockstore, fetch_workflow_from_dockstore, get_workflow_root_from_dockstore
 from toil.test import ToilTest, needs_online
 
 logger = logging.getLogger(__name__)
@@ -55,50 +55,95 @@ class DockstoreLookupTest(ToilTest):
 
     def test_lookup_from_page_url(self) -> None:
         PAGE_URL = "https://dockstore.org/workflows/github.com/dockstore/bcc2020-training/HelloWorld:master?tab=info"
-        # If we go in through the website we get an extra refs/heads/ on the branch name.
-        WORKFLOW_URL = "https://raw.githubusercontent.com/dockstore/bcc2020-training/master/wdl-training/exercise1/HelloWorld.wdl"
-        looked_up = get_workflow_root_from_dockstore(PAGE_URL)
+        trs_id, trs_version, language = find_workflow_on_dockstore(PAGE_URL)
 
-        data_from_lookup = self.read_result(looked_up).read()
-        data_from_source = self.read_result(WORKFLOW_URL).read()
-        self.assertEqual(data_from_lookup, data_from_source)
+        self.assertEqual(trs_id, "#workflow/github.com/dockstore/bcc2020-training/HelloWorld")
+        self.assertEqual(trs_version, "master")
+        self.assertEqual(language, "WDL")
 
     def test_lookup_from_trs(self) -> None:
         TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
+        trs_id, trs_version, language = find_workflow_on_dockstore(TRS_ID)
+        
+        self.assertEqual(trs_id, TRS_ID)
+        self.assertEqual(trs_version, "master")
+        self.assertEqual(language, "CWL")
+
+    def test_get(self) -> None:
+        TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
+        TRS_VERSION = "master"
+        LANGUAGE = "CWL"
         # Despite "-checker" in the ID, this actually refers to the base md5sum
         # workflow that just happens to have a checker *available*, not to the
         # checker workflow itself.
         WORKFLOW_URL = "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/master/md5sum/md5sum-workflow.cwl"
-        looked_up = get_workflow_root_from_dockstore(TRS_ID)
+        looked_up = fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
         
         data_from_lookup = self.read_result(looked_up).read()
         data_from_source = self.read_result(WORKFLOW_URL).read()
         self.assertEqual(data_from_lookup, data_from_source)
 
-    def test_lookup_from_trs_cached(self) -> None:
+    def test_get_from_trs_cached(self) -> None:
         TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
+        TRS_VERSION = "master"
+        LANGUAGE = "CWL"
         WORKFLOW_URL = "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/master/md5sum/md5sum-workflow.cwl"
         # This lookup may or may not be cached
-        get_workflow_root_from_dockstore(TRS_ID)
+        fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
         # This lookup is definitely cached
-        looked_up = get_workflow_root_from_dockstore(TRS_ID)
+        looked_up = fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
         
         data_from_lookup = self.read_result(looked_up).read()
         data_from_source = self.read_result(WORKFLOW_URL).read()
         self.assertEqual(data_from_lookup, data_from_source)
 
     def test_lookup_from_trs_with_version(self) -> None:
-        TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:workflowWithHTTPImport"
-        WORKFLOW_URL = "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/workflowWithHTTPImport/md5sum/md5sum-workflow.cwl"
-        looked_up = get_workflow_root_from_dockstore(TRS_ID)
+        TRS_VERSIONED_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:workflowWithHTTPImport"
+        trs_id, trs_version, language = find_workflow_on_dockstore(TRS_VERSIONED_ID)
         
-        data_from_lookup = self.read_result(looked_up).read()
-        data_from_source = self.read_result(WORKFLOW_URL).read()
-        self.assertEqual(data_from_lookup, data_from_source)
+        parts = TRS_VERSIONED_ID.split(":")
+
+        self.assertEqual(trs_id, parts[0])
+        self.assertEqual(trs_version, parts[1])
+        self.assertEqual(language, "CWL")
+
+    def test_lookup_from_trs_nonexistent_workflow(self) -> None:
+        TRS_VERSIONED_ID = "#workflow/github.com/adamnovak/veryfakerepo:notARealVersion"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = find_workflow_on_dockstore(TRS_VERSIONED_ID)
+
+    def test_lookup_from_trs_nonexistent_workflow_bad_format(self) -> None:
+        TRS_VERSIONED_ID = "#workflow/AbsoluteGarbage:notARealVersion"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = find_workflow_on_dockstore(TRS_VERSIONED_ID)
 
     def test_lookup_from_trs_nonexistent_version(self) -> None:
-        TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:notARealVersion"
-        with self.assertRaises(RuntimeError):
-            looked_up = get_workflow_root_from_dockstore(TRS_ID)
+        TRS_VERSIONED_ID = "#workflow/github.com/dockstore-testing/md5sum-checker:notARealVersion"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = find_workflow_on_dockstore(TRS_VERSIONED_ID)
+    
+    def test_get_nonexistent_workflow(self) -> None:
+        TRS_ID = "#workflow/github.com/adamnovak/veryfakerepo"
+        TRS_VERSION = "notARealVersion"
+        LANGUAGE = "CWL"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
+
+    def test_get_nonexistent_version(self) -> None:
+        TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
+        TRS_VERSION = "notARealVersion"
+        LANGUAGE = "CWL"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
+
+    def test_get_nonexistent_workflow_bad_format(self) -> None:
+        # Dockstore enforces an ID pattern and blames your request if you ask
+        # about something that doesn't follow it. So don't follow it.
+        TRS_ID = "#workflow/AbsoluteGarbage"
+        TRS_VERSION = "notARealVersion"
+        LANGUAGE = "CWL"
+        with self.assertRaises(FileNotFoundError):
+            looked_up = fetch_workflow_from_dockstore(TRS_ID, TRS_VERSION, LANGUAGE)
+
 
 

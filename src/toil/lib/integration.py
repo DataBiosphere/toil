@@ -101,6 +101,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
+    :raises FileNotFoundError: if the workflow or version doesn't exist.
     """
 
     trs_workflow_id, trs_version, language = find_workflow_on_dockstore(workflow, supported_languages)
@@ -121,6 +122,7 @@ def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[
 
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
+    :raises FileNotFoundError: if the workflow or version doesn't exist.
     """
 
     if supported_languages is not None and len(supported_languages) == 0:
@@ -136,7 +138,12 @@ def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[
     # Fetch the main TRS document.
     # See e.g. https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fdockstore-testing%2Fmd5sum-checker
     trs_workflow_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
-    trs_workflow_document = session.get(trs_workflow_url).json()
+    trs_workflow_response = session.get(trs_workflow_url)
+    if trs_workflow_response.status_code in (400, 404):
+        # If the workflow ID isn't in Dockstore's accepted format (and also thus doesn't exist), we can get a 400
+        raise FileNotFoundError(f"Workflow {trs_workflow_id} does not exist.")
+    trs_workflow_response.raise_for_status()
+    trs_workflow_document = trs_workflow_response.json()
 
     # Make a map from version to version info. We will need the
     # "descriptor_type" array to find eligible languages, and the "url" field
@@ -180,26 +187,30 @@ def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[
 
     # If we don't like what we found we compose a useful error message.
     problems: list[str] = []
+    problem_type = RuntimeError
     if trs_version is None:
         problems.append(f"Workflow {workflow} does not specify a version")
     elif trs_version not in workflow_versions:
         problems.append(f"Workflow version {trs_version} from {workflow} does not exist")
+        problem_type = FileNotFoundError
     elif trs_version not in eligible_workflow_versions:
         message = f"Workflow version {trs_version} from {workflow} is not available"
         if supported_languages is not None:
             message += f" in any of: {', '.join(supported_languages)}"
         problems.append(message)
+        problem_type = FileNotFoundError
     if len(problems) > 0:
         if len(eligible_workflow_versions) == 0:
             message = "No versions of the workflow are available"
             if supported_languages is not None:
                 message += f" in any of: {', '.join(supported_languages)}"
             problems.append(message)
+            problem_type = FileNotFoundError
         elif trs_version is None:
             problems.append(f"Add ':' and the name of a workflow version ({', '.join(eligible_workflow_versions)}) after '{trs_workflow_id}'")
         else:
             problems.append(f"Replace '{trs_version}' with one of ({', '.join(eligible_workflow_versions)})")
-        raise RuntimeError("; ".join(problems))
+        raise problem_type("; ".join(problems))
 
     # Tell MyPy we now have a version, or we would have raised
     assert trs_version is not None
@@ -215,11 +226,13 @@ def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[
     return trs_workflow_id, trs_version, language
     
 @retry(errors=[requests.exceptions.ConnectionError])
-def fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language) -> str:
+def fetch_workflow_from_dockstore(trs_workflow_id: str, trs_version: str, language: str) -> str:
     """
     Returns a URL or local path to a workflow's primary descriptor file.
 
     The file will be in context with its required files so it can actually run.
+
+    :raises FileNotFoundError: if the workflow or version doesn't exist.
     """
 
     # TODO: We should probably use HATEOAS and pull this from the worflow
@@ -229,7 +242,15 @@ def fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language) -> str
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
     logger.debug("Workflow files URL: %s", trs_files_url)
-    trs_files_document = session.get(trs_files_url).json()
+    trs_files_response = session.get(trs_files_url)
+    if trs_files_response.status_code in (204, 400, 404):
+        # We can get a 204 No Content response if the version doesn't exist.
+        # That's successful, so we need to handle it specifically. See
+        # <https://github.com/dockstore/dockstore/issues/6048>
+        # We can also get a 400 if the workflow ID is not in Dockstore's expected format (3 slash-separated segments).
+        raise FileNotFoundError(f"Workflow {trs_workflow_id} version {trs_version} in language {language} does not exist.")
+    trs_files_response.raise_for_status()
+    trs_files_document = trs_files_response.json()
 
     # Find the information we need to ID the primary descriptor file
     primary_descriptor_path: Optional[str] = None
@@ -242,7 +263,7 @@ def fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language) -> str
             primary_descriptor_hash = file_info["checksum"]["checksum"]
             break
     if primary_descriptor_path is None or primary_descriptor_hash is None or primary_descriptor_hash_algorithm is None:
-        raise RuntimeError("Could not find a primary descriptor file for the workflow")
+        raise RuntimeError(f"Could not find a primary descriptor file for workflow {trs_workflow_id} version {trs_version} in language {language}")
     primary_descriptor_basename = os.path.basename(primary_descriptor_path)
 
     # Work out how to compute the hash we are looking for. See
@@ -340,7 +361,7 @@ def fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language) -> str
                     logger.debug("Rejected %s because its %s hash %s is not %s", file_path, python_hash_name, file_hash, primary_descriptor_hash)
     if found_path is None:
         # We couldn't find the promised primary descriptor
-        raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash}")
+        raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash} for workflow {trs_workflow_id} version {trs_version} in language {language}")
 
     return found_path
 
@@ -350,6 +371,8 @@ def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = No
 
     Transform a workflow URL or path that might actually be a Dockstore page
     URL or TRS specifier to an actual URL or path to a workflow document.
+
+    :raises FileNotFoundError: if the workflow or version should be in Dockstore but doesn't seem to exist.
     """
 
     if is_dockstore_workflow(workflow):
