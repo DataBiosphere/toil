@@ -88,10 +88,29 @@ def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
         trs_version = None
     return trs_workflow_id, trs_version
 
-@retry(errors=[requests.exceptions.ConnectionError])
 def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
     """
-    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow.
+    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL/path for the workflow.
+
+    Accepts inputs like:
+
+        - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
+        - #workflow/github.com/dockstore-testing/md5sum-checker
+
+    Assumes the input is actually one of the supported formats. See is_dockstore_workflow().
+
+    TODO: Needs to handle multi-workflow files if Dockstore can.
+
+    """
+
+    trs_workflow_id, trs_version, language = find_workflow_on_dockstore(workflow, supported_languages)
+    return fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language)
+
+
+@retry(errors=[requests.exceptions.ConnectionError])
+def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, str, str]:
+    """
+    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow, along with the TRS workflow ID and version.
 
     Accepts inputs like:
 
@@ -192,7 +211,20 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             language = candidate_language
 
     logger.debug("Going to use %s version %s in %s", trs_workflow_id, trs_version, language)
-    trs_version_url = workflow_versions[trs_version]["url"]
+
+    return trs_workflow_id, trs_version, language
+    
+@retry(errors=[requests.exceptions.ConnectionError])
+def fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language) -> str:
+    """
+    Returns a URL or local path to a workflow's primary descriptor file.
+
+    The file will be in context with its required files so it can actually run.
+    """
+
+    # TODO: We should probably use HATEOAS and pull this from the worflow
+    # document we probably already fetched but aren't passing.
+    trs_version_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}"
 
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
