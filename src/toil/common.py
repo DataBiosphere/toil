@@ -424,9 +424,9 @@ class Config:
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
         if os.getenv("TOIL_WORKDIR_OVERRIDE") is not None:
             self.workDir = os.getenv("TOIL_WORKDIR_OVERRIDE")
-        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        # Override coordination_dir with value of TOIL_COORDINATION_DIR_OVERRIDE if it exists
         if os.getenv("TOIL_COORDINATION_DIR_OVERRIDE") is not None:
-            self.workDir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
+            self.coordination_dir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
 
         self.check_configuration_consistency()
 
