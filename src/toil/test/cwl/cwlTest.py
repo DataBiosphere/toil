@@ -698,6 +698,29 @@ class CWLWorkflowTest(ToilTest):
         except subprocess.CalledProcessError:
             pass
 
+    def test_caching(self) -> None:
+        log.info("Running CWL Test Cache.")
+        from toil.cwl import cwltoil
+
+        outDir = self._createTempDir()
+        cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
+        cmd = [
+            "--outdir",
+            outDir,
+            "--jobStore",
+            os.path.join(outDir, "jobStore"),
+            "--no-container",
+            "--cachedir",
+            "cache",
+            os.path.join(cwlDir, "revsort.cwl"),
+            os.path.join(cwlDir, "revsort-job.json"),
+        ]
+        # Finish the job with a correct PATH
+        st = StringIO()
+        cwltoil.main(cmd, stdout=st)
+        # cwltool hashes certain steps into directories, ensure it exists
+        assert os.path.exists(os.path.join(cwlDir, "cache", "92f7d79ad270b174174343085c5456c6"))
+
     @needs_aws_s3
     def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
         """
