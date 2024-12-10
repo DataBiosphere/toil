@@ -14,7 +14,7 @@ from toil.test.wdl.wdltoil_test import (
 
 @integrative
 @slow
-@pytest.mark.timeout(600)
+@pytest.mark.timeout(1800)
 class WDLKubernetesClusterTest(AbstractClusterTest):
     """
     Ensure WDL works on the Kubernetes batchsystem.
