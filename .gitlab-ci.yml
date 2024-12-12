@@ -509,7 +509,7 @@ cactus_integration:
           - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
   script:
-    - export CACTUS_COMMIT_SHA=2d706d9c6637c85116533477693e6c73ed5b8a53
+    - export CACTUS_COMMIT_SHA=03295e9af99e2e9168ccd02e78a9f4c0c8dcd490
     - set -e
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
