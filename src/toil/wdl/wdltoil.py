@@ -82,7 +82,7 @@ from toil.jobStores.abstractJobStore import (
 )
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
-from toil.lib.integration import resolve_workflow
+from toil.lib.trs import resolve_workflow
 from toil.lib.io import mkdtemp
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name

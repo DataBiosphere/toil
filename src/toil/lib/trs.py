@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Contains functions for integrating Toil with external services such as
-Dockstore.
+Contains functions for integrating Toil with GA4GH Tool Registry Service
+servers, for fetching workflows.
 """
 
 import datetime
@@ -33,17 +33,10 @@ import requests
 
 from toil.lib.retry import retry
 from toil.lib.io import file_digest, robust_rmtree
+from toil.lib.web import session
 from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
-
-# We manage a Requests session at the module level in case we're supposed to be
-# doing cookies, and to send a sensible user agent.
-# We expect the Toil and Python version to not be personally identifiable even
-# in theory (someone might make a new Toil version first, buit there's no way
-# to know for sure that nobody else did the same thing).
-session = requests.Session()
-session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})
 
 def is_dockstore_workflow(workflow: str) -> bool:
     """
@@ -90,28 +83,8 @@ def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
         trs_version = None
     return trs_workflow_id, trs_version
 
-def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
-    """
-    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL/path for the workflow.
-
-    Accepts inputs like:
-
-        - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
-        - #workflow/github.com/dockstore-testing/md5sum-checker
-
-    Assumes the input is actually one of the supported formats. See is_dockstore_workflow().
-
-    TODO: Needs to handle multi-workflow files if Dockstore can.
-
-    :raises FileNotFoundError: if the workflow or version doesn't exist.
-    """
-
-    trs_workflow_id, trs_version, language = find_workflow_on_dockstore(workflow, supported_languages)
-    return fetch_workflow_from_dockstore(trs_workflow_id, trs_version, language)
-
-
 @retry(errors=[requests.exceptions.ConnectionError])
-def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, str, str]:
+def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, str, str]:
     """
     Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow, along with the TRS workflow ID and version.
 
@@ -228,7 +201,7 @@ def find_workflow_on_dockstore(workflow: str, supported_languages: Optional[set[
     return trs_workflow_id, trs_version, language
     
 @retry(errors=[requests.exceptions.ConnectionError])
-def fetch_workflow_from_dockstore(trs_workflow_id: str, trs_version: str, language: str) -> str:
+def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str:
     """
     Returns a URL or local path to a workflow's primary descriptor file.
 
@@ -374,76 +347,25 @@ def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = No
     Transform a workflow URL or path that might actually be a Dockstore page
     URL or TRS specifier to an actual URL or path to a workflow document.
 
+    Accepts inputs like
+
+        - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
+        - #workflow/github.com/dockstore-testing/md5sum-checker
+        - ./local.cwl
+        - https://example.com/~myuser/workflow/main.cwl
+
     :raises FileNotFoundError: if the workflow or version should be in Dockstore but doesn't seem to exist.
     """
 
     if is_dockstore_workflow(workflow):
         # Ask Dockstore where to find Dockstore-y things
-        resolved = get_workflow_root_from_dockstore(workflow, supported_languages=supported_languages)
+        trs_workflow_id, trs_version, language = find_workflow(workflow, supported_languages)
+        resolved = fetch_workflow(trs_workflow_id, trs_version, language)
         logger.info("Resolved Dockstore workflow %s to %s", workflow, resolved)
         return resolved
     else:
         # Pass other things through.
         return workflow
-
-# TODO: This is a https://schema.org/CompletedActionStatus
-# But what are the possible values?
-ExecutionStatus = Union[Literal["SUCCESSFUL"], Literal["FAILED"]]
-
-class RunExecution(TypedDict):
-    """
-    Dockstore metrics data for a workflow run.
-    """
-    executionId: str
-    """
-    Executor-generated unique execution ID.
-    """
-    dateExecuted: str
-    """
-    ISO 8601 UTC timestamp whr when the execution happend.
-
-    TODO: Is this start or end?
-    """
-
-    executionStatus: ExecutionStatus
-    """
-    Did the execution work?
-    """
-
-    # TODO: additionalProperties
-
-
-def send_workflow_metrics_to_dockstore(trs_workflow_id: str, trs_version: str, execution_id: uuid.UUID, succeeded: bool) -> None:
-    """
-    Send the status of a workflow execution to Dockstore.
-    
-    Assumes the workflow was executed now.
-    """
-
-    # Pack up into a RunExecution
-    execution = RunExecution(
-        executionId=str(execution_id),
-        dateExecuted=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        executionStatus="SUCCESSFUL" if succeeded else "FAILED"
-    )
-
-    # Aggregate into a submission
-    to_post = {
-        "runExecutions": [execution],
-        "taskExecutions": [],
-        "validationExecutions": []
-    }
-
-    # Set the submission query string metadata
-    submission_params = {
-        "platform": "OTHER", # TODO: Should this be TOIL?
-        "description": "Workflow status from Toil"
-    }
-    
-    # TODO: Point at QA
-    endpoint_url = f"https://dockstore.org/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/executions"
-
-    requests.post(endpoint_url, params=submission_params, json=to_post)
 
 
 
