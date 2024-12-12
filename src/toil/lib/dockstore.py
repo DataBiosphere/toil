@@ -13,58 +13,141 @@
 # limitations under the License.
 
 """
-Contains functions for integrating Toil with GA4GH Tool Registry Service
-servers, for fetching workflows.
+Contains functions for integrating Toil with UCSC Dockstore, for reporting metrics.
+
+For basic TRS functionality for fetching workflows, see trs.py.
 """
 
 import datetime
-import hashlib
 import logging
 import os
-import shutil
 import sys
-import tempfile
 import uuid
-import zipfile
 from typing import Any, Literal, Optional, Union, TypedDict, cast
 
 from urllib.parse import urlparse, unquote, quote
 import requests
 
+from toil.lib.trs import TRS_ROOT
 from toil.lib.retry import retry
 from toil.lib.web import session
 from toil.version import baseVersion
 
+if sys.version_info < (3, 11):
+    from typing_extensions import NotRequired
+else:
+    from typing import NotRequired
+
 logger = logging.getLogger(__name__)
 
-# TODO: This is a https://schema.org/CompletedActionStatus
-# But what are the possible values?
-ExecutionStatus = Union[Literal["SUCCESSFUL"], Literal["FAILED"]]
+# We assume TRS_ROOT is actually a Dockstore instance.
+
+# How shoudl we authenticate our Dockstore requests?
+DOCKSTORE_TOKEN = None if "TOIL_DOCKSTORE_TOKEN" not in os.environ else os.environ["TOIL_DOCKSTORE_TOKEN"]
+
+
+# This is a https://schema.org/CompletedActionStatus
+# The values here are from expanding the type info in the Docksotre docs at
+# <https://dockstore.org/api/static/swagger-ui/index.html#/extendedGA4GH/executionMetricsPost>
+ExecutionStatus = Union[Literal["ALL"], Literal["SUCCESSFUL"], Literal["FAILED"], Literal["FAILED_SEMANTIC_INVALID"], Literal["FAILED_RUNTIME_INVALID"], Literal["ABORTED"]]
+
+class Cost(TypedDict):
+    """
+    Representation of the cost of running something.
+    """
+
+    value: float
+    """
+    Cost in US Dollars.
+    """
 
 class RunExecution(TypedDict):
     """
-    Dockstore metrics data for a workflow run.
+    Dockstore metrics data for a workflow or task run.
     """
+    
     executionId: str
     """
     Executor-generated unique execution ID.
     """
+    
+    # TODO: Is this start or end?
     dateExecuted: str
     """
-    ISO 8601 UTC timestamp whr when the execution happend.
-
-    TODO: Is this start or end?
+    ISO 8601 UTC timestamp when the execution happend.
     """
 
     executionStatus: ExecutionStatus
     """
     Did the execution work?
     """
+    
+    executionTime: NotRequired[str]
+    """
+    Total time of the run in ISO 8601 duration format.
+    """
 
-    # TODO: additionalProperties
+    # TODO: Is this meant to be actual usage or amount provided?
+    memoryRequirementsGB: NotRequired[float]
+    """
+    Memory required for the execution in gigabytes (not GiB).
+    """
+
+    cpuRequirements: NotRequired[int]
+    """
+    Number of CPUs required.
+    """
+
+    cost: NotRequired[Cost]
+    """
+    How much the execution cost to run.
+    """
+
+    # TODO: What if two cloud providers have the same region naming scheme?
+    region: NotRequired[str]
+    """
+    The (cloud) region the workflow was executed in.
+    """
+
+    additionalProperties: NotRequired[dict[str, str]]
+    """
+    Any additional properties to send.
+    
+    Dockstore can take any JSON-able structured data, but we only use strings.
+    """
+
+class TaskExecutions(TypedDict):
+    """
+    Dockstore metrics data for all the tasks in a workflow.
+    """
+    
+    # TODO: Should this match executionId for the whole workflow's RunExecution?
+    executionId: str
+    """
+    Executor-generated unique execution ID.
+    """
+
+    # TODO: Is this start or end?
+    dateExecuted: str
+    """
+    ISO 8601 UTC timestamp when the execution happend.
+    """
+
+    taskExecutions: list[RunExecution]
+    """
+    Individual executions of each task in the workflow.
+    """
+
+    additionalProperties: NotRequired[dict[str, str]]
+    """
+    Any additional properties to send.
+    
+    Dockstore can take any JSON-able structured data, but we only use strings.
+    """
 
 
-def send_workflow_metrics_to_dockstore(trs_workflow_id: str, trs_version: str, execution_id: uuid.UUID, succeeded: bool) -> None:
+
+def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: uuid.UUID, succeeded: bool) -> None:
     """
     Send the status of a workflow execution to Dockstore.
     
@@ -87,13 +170,27 @@ def send_workflow_metrics_to_dockstore(trs_workflow_id: str, trs_version: str, e
 
     # Set the submission query string metadata
     submission_params = {
-        "platform": "OTHER", # TODO: Should this be TOIL?
+        "platform": "OTHER",
         "description": "Workflow status from Toil"
     }
-    
-    # TODO: Point at QA
-    endpoint_url = f"https://dockstore.org/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/executions"
 
-    session.post(endpoint_url, params=submission_params, json=to_post)
+    # Set the headers. Even though user agent isn't in here, it still gets
+    # sent.
+    headers = {}
+    if DOCKSTORE_TOKEN is not None:
+        headers["Authorization"] = f"Bearer {DOCKSTORE_TOKEN}"
+    
+    endpoint_url = f"{TRS_ROOT}/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/executions"
+
+    logger.info("Sending workflow metrics to %s", endpoint_url)
+    logger.debug("With data: %s", to_post)
+    logger.debug("With headers: %s", headers)
+    
+    try:
+        result = session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
+        result.raise_for_status()
+    except:
+        logging.exception("Submitting workflow metrics failed")
+        logging.warning("Workflow metrics were not accepted by Dockstore")
 
 

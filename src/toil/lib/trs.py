@@ -17,14 +17,12 @@ Contains functions for integrating Toil with GA4GH Tool Registry Service
 servers, for fetching workflows.
 """
 
-import datetime
 import hashlib
 import logging
 import os
 import shutil
 import sys
 import tempfile
-import uuid
 import zipfile
 from typing import Any, Literal, Optional, Union, TypedDict, cast
 
@@ -34,20 +32,21 @@ import requests
 from toil.lib.retry import retry
 from toil.lib.io import file_digest, robust_rmtree
 from toil.lib.web import session
-from toil.version import baseVersion
 
 logger = logging.getLogger(__name__)
 
-def is_dockstore_workflow(workflow: str) -> bool:
+TRS_ROOT = "https://dockstore.org" if "TOIL_TRS_ROOT" not in os.environ else os.environ["TOIL_TRS_ROOT"]
+
+def is_trs_workflow(workflow: str) -> bool:
     """
-    Returns True if a workflow string smells Dockstore-y.
+    Returns True if a workflow string smells like TRS.
 
     Detects Dockstore page URLs and strings that could be Dockstore TRS IDs.
     """
 
-    return workflow.startswith("https://dockstore.org/workflows/") or workflow.startswith("#workflow/")
+    return workflow.startswith(f"{TRS_ROOT}/workflows/") or workflow.startswith("#workflow/")
 
-def find_trs_spec(workflow: str) -> str:
+def extract_trs_spec(workflow: str) -> str:
     """
     Parse a Dockstore workflow URL or TSR ID to a string that is definitely a TRS ID.
     """
@@ -58,9 +57,9 @@ def find_trs_spec(workflow: str) -> str:
         logger.debug("Workflow %s is a TRS specifier already", workflow)
         trs_spec = workflow
     else:
-        # We need to get the right TRS ID from the Docstore URL
+        # We need to get the right TRS ID from the Dockstore URL
         parsed = urlparse(workflow)
-        # TODO: We assume the Docksotre page URL structure and the TRS IDs are basically the same.
+        # TODO: We assume the Dockstore page URL structure and the TRS IDs are basically the same.
         page_path = unquote(parsed.path)
         if not page_path.startswith("/workflows/"):
             raise RuntimeError("Cannot parse Dockstore URL " + workflow)
@@ -93,7 +92,7 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
         - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
         - #workflow/github.com/dockstore-testing/md5sum-checker
 
-    Assumes the input is actually one of the supported formats. See is_dockstore_workflow().
+    Assumes the input is actually one of the supported formats. See is_trs_workflow().
 
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
@@ -104,7 +103,7 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
         raise ValueError("Set of supported languages must be nonempty if provided.")
 
     # Get the TRS id[:version] string from what might be a Dockstore URL
-    trs_spec = find_trs_spec(workflow)
+    trs_spec = extract_trs_spec(workflow)
     # Parse out workflow and possible version
     trs_workflow_id, trs_version = parse_trs_spec(trs_spec)
 
@@ -112,7 +111,7 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
 
     # Fetch the main TRS document.
     # See e.g. https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fdockstore-testing%2Fmd5sum-checker
-    trs_workflow_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
+    trs_workflow_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
     trs_workflow_response = session.get(trs_workflow_url)
     if trs_workflow_response.status_code in (400, 404):
         # If the workflow ID isn't in Dockstore's accepted format (and also thus doesn't exist), we can get a 400
@@ -212,7 +211,7 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
 
     # TODO: We should probably use HATEOAS and pull this from the worflow
     # document we probably already fetched but aren't passing.
-    trs_version_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}"
+    trs_version_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}"
 
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
@@ -357,11 +356,11 @@ def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = No
     :raises FileNotFoundError: if the workflow or version should be in Dockstore but doesn't seem to exist.
     """
 
-    if is_dockstore_workflow(workflow):
-        # Ask Dockstore where to find Dockstore-y things
+    if is_trs_workflow(workflow):
+        # Ask TRS host where to find TRS-looking things
         trs_workflow_id, trs_version, language = find_workflow(workflow, supported_languages)
         resolved = fetch_workflow(trs_workflow_id, trs_version, language)
-        logger.info("Resolved Dockstore workflow %s to %s", workflow, resolved)
+        logger.info("Resolved TRS workflow %s to %s", workflow, resolved)
         return resolved
     else:
         # Pass other things through.
