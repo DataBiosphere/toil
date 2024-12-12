@@ -69,7 +69,9 @@ from toil.bus import (
 )
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
+from toil.lib.history import HistoryManager
 from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
+from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
 from toil.options.common import JOBSTORE_HELP, add_base_toil_options
@@ -883,6 +885,7 @@ class Toil(ContextManager["Toil"]):
     _jobStore: "AbstractJobStore"
     _batchSystem: "AbstractBatchSystem"
     _provisioner: Optional["AbstractProvisioner"]
+    _start_time: float
 
     def __init__(self, options: Namespace) -> None:
         """
@@ -921,7 +924,9 @@ class Toil(ContextManager["Toil"]):
         if not config.restart:
             config.prepare_start()
             jobStore.initialize(config)
-            
+            assert config.workflowID is not None
+            # Record that there is a workflow beign run
+            HistoryManager.record_workflow_creation(config.workflowID, config.jobStore)
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -931,6 +936,7 @@ class Toil(ContextManager["Toil"]):
             jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
+        self._start_time = time.time()
         self._inContextManager = True
 
         # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
@@ -950,6 +956,11 @@ class Toil(ContextManager["Toil"]):
         Depending on the configuration, delete the job store.
         """
         try:
+            if self.config.workflowID is not None:
+                # Record that this attempt to run the workflow succeeded or failed.
+                # TODO: Get ahold of the timing from statsAndLogging instead of redoing it here!
+                HistoryManager.record_workflow_attempt(self.config.workflowID, self.config.workflowAttemptNumber, exc_type is None, self._start_time, time.time() - self._start_time)
+                
             if (
                 exc_type is not None
                 and self.config.clean == "onError"
@@ -981,7 +992,7 @@ class Toil(ContextManager["Toil"]):
         self._inRestart = False
         return False  # let exceptions through
 
-    def start(self, rootJob: "Job") -> Any:
+    def start(self, rootJob: "Job", workflow_name: Optional[str] = None) -> Any:
         """
         Invoke a Toil workflow with the given job as the root for an initial run.
 
@@ -990,9 +1001,19 @@ class Toil(ContextManager["Toil"]):
         that has not finished.
 
         :param rootJob: The root job of the workflow
+        :param workflow_name: A filename or TRS specifier for the workflow being run.
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+   
+        # Log that the workflow is starting in the Toil history.
+        if workflow_name is None:
+            # Try to use the entrypoint file.
+            import __main__
+            if hasattr(__main__, '__file__'):
+                workflow_name = __main__.__file__
+        assert self.config.workflowID is not None
+        HistoryManager.record_workflow_metadata(self.config.workflowID, workflow_name or "<interactive>")
 
         from toil.job import Job
 

@@ -11,6 +11,8 @@ from contextlib import contextmanager
 from io import BytesIO
 from typing import IO, Any, Callable, Optional, Protocol, Union
 
+from toil.lib.memoize import memoize
+
 logger = logging.getLogger(__name__)
 
 @memoize

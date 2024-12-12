@@ -24,6 +24,7 @@ from typing import IO, TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando
+from toil.lib.history import HistoryManager
 from toil.lib.resources import ResourceMonitor
 
 if TYPE_CHECKING:
@@ -168,6 +169,7 @@ class StatsAndLogging:
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
         """
+
         #  Overall timing
         startTime = time.time()
         startClock = ResourceMonitor.get_total_cpu_time()
@@ -230,6 +232,19 @@ class StatsAndLogging:
                     message="Received Toil worker log. Disable debug level logging to hide this output",
                 )
                 cls.writeLogFiles(jobNames, messages, config=config)
+
+            try:
+                jobs = stats.jobs
+            except AttributeError:
+                pass
+            else:
+                for job in jobs:
+                    assert config.workflowID is not None
+                    # Here we're talking to job._executor which fills in these stats.
+                    # TODO: Only successful jobs show up here. To get failed ones we need to watch the message bus!
+                    # TODO: Bring through CPU and memory usage.
+                    # TODO: Use better names!
+                    HistoryManager.record_job_attempt(config.workflowID, config.workflowAttemptNumber, job.class_name, True, job.start, job.time)
 
         while True:
             # This is an indirect way of getting a message to the thread to exit

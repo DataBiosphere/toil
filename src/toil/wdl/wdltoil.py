@@ -5343,9 +5343,8 @@ def main() -> None:
         else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
     )
 
-    exit_code = 0
-    with Toil(options) as toil:
-        try:
+    try:
+        with Toil(options) as toil:
             if options.restart:
                 output_bindings = toil.restart()
             else:
@@ -5353,9 +5352,11 @@ def main() -> None:
                 # manager to avoid leaving a job store behind if the workflow
                 # can't start.
 
+                wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
+
                 # Load the WDL document
                 document: WDL.Tree.Document = WDL.load(
-                    resolve_workflow(options.wdl_uri, supported_languages={"WDL"}),
+                    wdl_uri,
                     read_source=toil_read_source,
                 )
 
@@ -5515,7 +5516,7 @@ def main() -> None:
                     wdl_options,
                     options,
                 )
-                output_bindings = toil.start(root_job)
+                output_bindings = toil.start(root_job, workflow_name=trs_spec or wdl_uri)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
 
@@ -5571,11 +5572,9 @@ def main() -> None:
                 os.remove(filename)
                 # Export it into place
                 toil.export_file(file_id, options.output_file)
-        except FailedJobsException as e:
-            logger.error("WDL job failed: %s", e)
-            exit_code = e.exit_code
-
-    sys.exit(exit_code)
+    except FailedJobsException as e:
+        logger.error("WDL job failed: %s", e)
+        sys.exit(e.exit_code)
 
 
 if __name__ == "__main__":

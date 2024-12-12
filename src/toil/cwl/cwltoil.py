@@ -4013,7 +4013,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # Before showing the options to any cwltool stuff that wants to
             # load the workflow, transform options.cwltool, where our
             # argument for what to run is, to handle Dockstore workflows.
-            options.cwltool = resolve_workflow(options.cwltool)
+            options.cwltool, trs_spec = resolve_workflow(options.cwltool)
 
             # TODO: why are we doing this? Does this get applied to all
             # tools as a default or something?
@@ -4210,7 +4210,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     logging.error(err)
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 logger.info("Starting workflow")
-                outobj = toil.start(wf1)
+                outobj = toil.start(wf1, workflow_name=trs_spec or options.cwltool)
 
             # Now the workflow has completed. We need to make sure the outputs (and
             # inputs) end up where the user wants them to be.

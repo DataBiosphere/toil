@@ -345,12 +345,13 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
 
     return found_path
 
-def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
+def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, Optional[str]]:
     """
     Find the real workflow URL or filename from a command line argument.
 
     Transform a workflow URL or path that might actually be a Dockstore page
-    URL or TRS specifier to an actual URL or path to a workflow document.
+    URL or TRS specifier to an actual URL or path to a workflow document, and
+    optional TRS specifier.
 
     Accepts inputs like
 
@@ -367,10 +368,11 @@ def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = No
         trs_workflow_id, trs_version, language = find_workflow(workflow, supported_languages)
         resolved = fetch_workflow(trs_workflow_id, trs_version, language)
         logger.info("Resolved TRS workflow %s to %s", workflow, resolved)
-        return resolved
+        return resolved, compose_trs_spec(trs_workflow_id, trs_version)
     else:
         # Pass other things through.
-        return workflow
+        # TODO: Find out if they have TRS names.
+        return workflow, None
 
 
 
