@@ -3155,6 +3155,7 @@ class Job:
             )
             stats.jobs.append(
                 Expando(
+                    start=startTime,
                     time=str(time.time() - startTime),
                     clock=str(totalCpuTime - startClock),
                     class_name=self._jobName(),

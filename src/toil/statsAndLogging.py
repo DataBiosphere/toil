@@ -232,7 +232,7 @@ class StatsAndLogging:
                 cls.writeLogFiles(jobNames, messages, config=config)
 
         while True:
-            # This is a indirect way of getting a message to the thread to exit
+            # This is an indirect way of getting a message to the thread to exit
             if stop.is_set():
                 jobStore.read_logs(callback)
                 break
