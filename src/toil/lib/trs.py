@@ -82,6 +82,12 @@ def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
         trs_version = None
     return trs_workflow_id, trs_version
 
+def compose_trs_spec(trs_workflow_id: str, trs_version: str) -> str:
+    """
+    Compose a TRS ID from a workflow ID and version ID.
+    """
+    return f"{trs_workflow_id}:{trs_version}"
+
 @retry(errors=[requests.exceptions.ConnectionError])
 def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, str, str]:
     """

@@ -362,12 +362,13 @@ def add_base_toil_options(
         action="store_true",
         help="Do not capture standard output and error from batch system jobs.",
     )
+    # TODO: Should this be deprecated since we always save stats now for history tracking?
     core_options.add_argument(
         "--stats",
         dest="stats",
         default=False,
         action="store_true",
-        help="Records statistics about the toil workflow to be used by 'toil stats'.",
+        help="Keep statistics about the toil workflow to be used by 'toil stats'.",
     )
     clean_choices = ["always", "onError", "never", "onSuccess"]
     core_options.add_argument(

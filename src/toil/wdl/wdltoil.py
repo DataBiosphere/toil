@@ -5343,8 +5343,9 @@ def main() -> None:
         else mkdtemp(prefix="wdl-out-", dir=os.getcwd())
     )
 
-    try:
-        with Toil(options) as toil:
+    exit_code = 0
+    with Toil(options) as toil:
+        try:
             if options.restart:
                 output_bindings = toil.restart()
             else:
@@ -5570,9 +5571,11 @@ def main() -> None:
                 os.remove(filename)
                 # Export it into place
                 toil.export_file(file_id, options.output_file)
-    except FailedJobsException as e:
-        logger.error("WDL job failed: %s", e)
-        sys.exit(e.exit_code)
+        except FailedJobsException as e:
+            logger.error("WDL job failed: %s", e)
+            exit_code = e.exit_code
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

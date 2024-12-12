@@ -68,7 +68,7 @@ class RunExecution(TypedDict):
     
     executionId: str
     """
-    Executor-generated unique execution ID.
+    Executor-generated unique execution ID for this workflow or task.
     """
     
     # TODO: Is this start or end?

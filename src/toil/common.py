@@ -69,7 +69,7 @@ from toil.bus import (
 )
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.io import AtomicFileCreate, try_path
+from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
 from toil.options.common import JOBSTORE_HELP, add_base_toil_options
@@ -92,11 +92,14 @@ if TYPE_CHECKING:
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
-# TODO: should this use an XDG config directory or ~/.config to not clutter the
-# base home directory?
-TOIL_HOME_DIR: str = os.path.join(os.path.expanduser("~"), ".toil")
-DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
+@memoize
+def get_default_config_path() -> str:
+    """
+    Get the default path where the Toil configuration file lives.
 
+    The file at the path will not necessarily exist.
+    """
+    return os.path.join(get_toil_home(), "default.yaml")
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
@@ -463,44 +466,20 @@ class Config:
     def __hash__(self) -> int:
         return self.__dict__.__hash__()  # type: ignore
 
-
-def check_and_create_toil_home_dir() -> None:
+def ensure_config(filepath: str) -> None:
     """
-    Ensure that TOIL_HOME_DIR exists.
+    If the config file at the filepath does not exist, create it.
+    The parent directory should be created prior to calling this.
 
-    Raises an error if it does not exist and cannot be created. Safe to run
-    simultaneously in multiple processes.
-    """
-
-    dir_path = try_path(TOIL_HOME_DIR)
-    if dir_path is None:
-        raise RuntimeError(
-            f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}"
-        )
-
-
-def check_and_create_default_config_file() -> None:
-    """
-    If the default config file does not exist, create it in the Toil home directory. Create the Toil home directory
-    if needed
-
-    Raises an error if the default config file cannot be created.
+    Raises an error if the config file cannot be created.
     Safe to run simultaneously in multiple processes. If this process runs
-    this function, it will always see the default config file existing with
+    this function, it will always see the config file existing with
     parseable contents, even if other processes are racing to create it.
 
-    No process will see an empty or partially-written default config file.
-    """
-    check_and_create_toil_home_dir()
-    # The default config file did not appear to exist when we checked.
-    # It might exist now, though. Try creating it.
-    check_and_create_config_file(DEFAULT_CONFIG_FILE)
+    No process will see a new empty or partially-written config file. The
+    caller should still check to make sure there isn't a preexisting empty file
+    here.
 
-
-def check_and_create_config_file(filepath: str) -> None:
-    """
-    If the config file at the filepath does not exist, try creating it.
-    The parent directory should be created prior to calling this
     :param filepath: path to config file
     :return: None
     """
@@ -708,11 +687,13 @@ def addOptions(
             f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup."
         )
 
+    config_path = get_default_config_path()
+
     if isinstance(parser, ArgParser):
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         # this forces configargparser to process the config file in YAML rather than in it's own format
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
-        parser._default_config_files = [DEFAULT_CONFIG_FILE]  # type: ignore[misc]
+        parser._default_config_files = [config_path]  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)
@@ -723,24 +704,24 @@ def addOptions(
             DeprecationWarning,
         )
 
-    check_and_create_default_config_file()
+    ensure_config(config_path)
     # Check on the config file to make sure it is sensible
-    config_status = os.stat(DEFAULT_CONFIG_FILE)
+    config_status = os.stat(config_path)
     if config_status.st_size == 0:
         # If we have an empty config file, someone has to manually delete
         # it before we will work again.
         raise RuntimeError(
-            f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}"
+            f"Config file {config_path} exists but is empty. Delete it! Stat says: {config_status}"
         )
     try:
-        with open(DEFAULT_CONFIG_FILE) as f:
+        with open(config_path) as f:
             yaml = YAML(typ="safe")
             s = yaml.load(f)
             logger.debug("Initialized default configuration: %s", json.dumps(s))
     except:
         # Something went wrong reading the default config, so dump its
         # contents to the log.
-        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE).read())
+        logger.info("Configuration file contents: %s", open(config_path).read())
         raise
 
     # Add base toil options
@@ -940,6 +921,7 @@ class Toil(ContextManager["Toil"]):
         if not config.restart:
             config.prepare_start()
             jobStore.initialize(config)
+            
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
