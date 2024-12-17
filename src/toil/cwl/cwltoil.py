@@ -4253,14 +4253,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Attempt to prepull the containers
             if not options.no_prepull:
-                if not options.enable_ext:
-                    # The CWL utils parser does not support cwltool extensions and will crash if encountered, so don't prepull if extensions are enabled
-                    # See https://github.com/common-workflow-language/cwl-utils/issues/309
-                    try_prepull(uri, runtime_context, expected_config.batchSystem)
-                else:
-                    logger.debug(
-                        "Not prepulling containers as cwltool extensions are not supported."
-                    )
+                try_prepull(uri, runtime_context, expected_config.batchSystem)
 
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
