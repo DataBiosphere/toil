@@ -424,9 +424,9 @@ class Config:
         # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
         if os.getenv("TOIL_WORKDIR_OVERRIDE") is not None:
             self.workDir = os.getenv("TOIL_WORKDIR_OVERRIDE")
-        # Override workDir with value of TOIL_WORKDIR_OVERRIDE if it exists
+        # Override coordination_dir with value of TOIL_COORDINATION_DIR_OVERRIDE if it exists
         if os.getenv("TOIL_COORDINATION_DIR_OVERRIDE") is not None:
-            self.workDir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
+            self.coordination_dir = os.getenv("TOIL_COORDINATION_DIR_OVERRIDE")
 
         self.check_configuration_consistency()
 
@@ -750,7 +750,7 @@ def addOptions(
     add_cwl_options(parser, suppress=not cwl)
     add_wdl_options(parser, suppress=not wdl)
     # Add shared runner options
-    add_runner_options(parser)
+    add_runner_options(parser, cwl=cwl, wdl=wdl)
 
     def check_arguments(typ: str) -> None:
         """
@@ -764,7 +764,7 @@ def addOptions(
             add_cwl_options(check_parser)
         if typ == "cwl":
             add_wdl_options(check_parser)
-        add_runner_options(check_parser)
+
         for action in check_parser._actions:
             action.default = SUPPRESS
         other_options, _ = check_parser.parse_known_args(
