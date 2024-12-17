@@ -74,8 +74,8 @@ class HistoryManager:
         :raises HistoryDatabaseSchemaTooNewError: If the schema is newer than the current version.
         """
         
-        # We want everything to be in a transaction with the migration read.
-        cur.execute("BEGIN DEFERRED")
+        # Python already puts us in a transaction.
+        
         # TODO: Do a try-and-fall-back to avoid sending the table schema for
         # this every time we do anything.
         cur.execute("""
@@ -107,10 +107,10 @@ class HistoryManager:
                         id TEXT NOT NULL PRIMARY KEY,
                         workflow_id TEXT NOT NULL,
                         workflow_attempt_number INT NOT NULL,
-                        job_name: TEXT NOT NULL,
-                        succeeded: INTEGER NOT NULL,
-                        start_time: REAL NOT NULL,
-                        runtime: REAL NOT NULL,
+                        job_name TEXT NOT NULL,
+                        succeeded INTEGER NOT NULL,
+                        start_time REAL NOT NULL,
+                        runtime REAL NOT NULL,
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
                     """,
@@ -118,9 +118,9 @@ class HistoryManager:
                     CREATE TABLE workflow_attempts (
                         workflow_id TEXT NOT NULL,
                         attempt_number INTEGER NOT NULL,
-                        succeeded: INTEGER NOT NULL,
-                        start_time: REAL NOT NULL,
-                        runtime: REAL NOT NULL,
+                        succeeded INTEGER NOT NULL,
+                        start_time REAL NOT NULL,
+                        runtime REAL NOT NULL,
                         PRIMARY KEY(workflow_id,attempt_number),
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
@@ -132,13 +132,17 @@ class HistoryManager:
         if db_version + 1 > len(migrations):
             raise HistoryDatabaseSchemaTooNewError(f"History database version is {db_version}, but known migrations only go up to {len(migrations) - 1}")
 
-        for i in range(db_version + 1, len(migrations)):
-            for statement in migrations[i][1]:
+        for migration_number in range(db_version + 1, len(migrations)):
+            for statement_number, statement in enumerate(migrations[migration_number][1]):
                 # Run all the migration commands.
                 # We don't use executescript() because (on old Pythons?) it
                 # commits the current transactrion first.
-                cur.execute(statement)
-            cur.execute("INSERT INTO migrations VALUES (?, ?)", (i, migrations[i][0]))
+                try:
+                    cur.execute(statement)
+                except sqlite3.OperationalError:
+                    logger.exception("Could not execute migration %s statement %s: %s", migration_number, statement_number, statement)
+                    raise
+            cur.execute("INSERT INTO migrations VALUES (?, ?)", (migration_number, migrations[migration_number][0]))
 
         # If we did have to migrate, leave everything else we do as part of the migration transaction.
         
