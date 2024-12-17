@@ -6,4 +6,4 @@ ruamel.yaml>=0.15,<=0.19
 ruamel.yaml.clib>=0.2.6
 networkx!=2.8.1,<4
 CacheControl[filecache]
-cwl-utils>=0.32
+cwl-utils>=0.36
