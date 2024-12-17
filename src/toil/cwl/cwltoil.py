@@ -4252,7 +4252,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 raise
 
             # Attempt to prepull the containers
-            if not options.no_prepull:
+            if not options.no_prepull and not options.no_container:
                 try_prepull(uri, runtime_context, expected_config.batchSystem)
 
             options.tool_help = None
