@@ -4447,7 +4447,12 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if not options.bypass_file_store:
                 # If we're using the file store we need to start moving output
                 # files now.
-                runtime_context.move_outputs = "move"
+                # But if caching is enabled we have to leave files in the cache directory,
+                # so do a copy if so.
+                if runtime_context.cachedir is not None:
+                    runtime_context.move_outputs = "copy"
+                else:
+                    runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need
