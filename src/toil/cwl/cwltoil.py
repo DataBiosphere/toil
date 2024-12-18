@@ -2969,7 +2969,7 @@ def makeRootJob(
             filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
-        # files with a associated filesize that are valid to be imported on workers
+        # files with an associated filesize that are valid to be imported on workers
         valid_files_to_data = dict()
         # files without an associated filesize that should be imported on the leader
         leftover_files_to_data = dict()
