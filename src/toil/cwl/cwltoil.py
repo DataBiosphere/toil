@@ -2969,24 +2969,26 @@ def makeRootJob(
             filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
-        # files with an associated filesize that are valid to be imported on workers
-        valid_files_to_data = dict()
-        # files without an associated filesize that should be imported on the leader
-        leftover_files_to_data = dict()
+        # Mapping of files to metadata for files that will be imported on the worker
+        # This will consist of files that we were able to get a file size for
+        worker_files_to_data: dict[str, FileMetadata] = dict()
+        # Mapping of files to metadata for files that will be imported on the leader
+        # This will consist of files that we were not able to get a file size for
+        leader_files_to_data = dict()
         for filename, file_data in files_to_data.items():
             if file_data.size is None:
-                leftover_files_to_data[filename] = file_data
+                leader_files_to_data[filename] = file_data
             else:
-                valid_files_to_data[filename] = file_data
+                worker_files_to_data[filename] = file_data
 
         # import the files for the leader first
         path_to_fileid = WorkerImportJob.import_files(
-            list(leftover_files_to_data.keys()), toil._jobStore
+            list(leader_files_to_data.keys()), toil._jobStore
         )
 
         # then install the imported files before importing the other files
         # this way the control flow can fall from the leader to workers
-        tool, initialized_job_order = CWLInstallImportsJob.convert_files(
+        tool, initialized_job_order = CWLInstallImportsJob.fill_in_files(
             initialized_job_order,
             tool,
             path_to_fileid,
@@ -2996,7 +2998,7 @@ def makeRootJob(
         )
 
         import_job = CWLImportWrapper(
-            initialized_job_order, tool, runtime_context, valid_files_to_data, options
+            initialized_job_order, tool, runtime_context, worker_files_to_data, options
         )
         return import_job
     else:
@@ -3586,7 +3588,7 @@ class CWLInstallImportsJob(Job):
         self.import_data = import_data
 
     @staticmethod
-    def convert_files(
+    def fill_in_files(
         initialized_job_order: CWLObjectType,
         tool: Process,
         candidate_to_fileid: dict[str, FileID],
@@ -3594,12 +3596,17 @@ class CWLInstallImportsJob(Job):
         skip_remote: bool,
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
-        def convert_file(filename: str) -> FileID:
-            fileid = candidate_to_fileid[filename]
-            return fileid
+        """
+        Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
+        """
+        def fill_in_file(filename: str) -> FileID:
+            """
+            Return the file name's associated Toil file ID
+            """
+            return candidate_to_fileid[filename]
 
         file_convert_function = functools.partial(
-            extract_and_convert_file_to_toil_uri, convert_file
+            extract_and_convert_file_to_toil_uri, fill_in_file
         )
         fs_access = ToilFsAccess(basedir)
         fileindex: dict[str, str] = {}
@@ -3647,7 +3654,7 @@ class CWLInstallImportsJob(Job):
 
         initialized_job_order = unwrap(self.initialized_job_order)
         tool = unwrap(self.tool)
-        return CWLInstallImportsJob.convert_files(
+        return CWLInstallImportsJob.fill_in_files(
             initialized_job_order,
             tool,
             candidate_to_fileid,
