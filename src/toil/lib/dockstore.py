@@ -28,6 +28,7 @@ from typing import Any, Literal, Optional, Union, TypedDict, cast
 from urllib.parse import urlparse, unquote, quote
 import requests
 
+from toil.lib.misc import unix_seconds_to_timestamp, seconds_to_duration
 from toil.lib.trs import TRS_ROOT
 from toil.lib.retry import retry
 from toil.lib.web import session
@@ -145,19 +146,21 @@ class TaskExecutions(TypedDict):
     Dockstore can take any JSON-able structured data, but we only use strings.
     """
 
-
-
-def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: uuid.UUID, succeeded: bool) -> None:
+def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, start_time: float, runtime: float, succeeded: bool):
     """
     Send the status of a workflow execution to Dockstore.
     
-    Assumes the workflow was executed now.
+    :param execution_id: Unique ID for the workflow execution.
+    :param start_time: Execution start time in seconds since the Unix epoch.
+    :param rutime: Execution duration in seconds.
+    :raises requests.HTTPError: if Dockstore does not accept the metrics.
     """
 
     # Pack up into a RunExecution
     execution = RunExecution(
-        executionId=str(execution_id),
-        dateExecuted=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        executionId=execution_id,
+        dateExecuted=unix_seconds_to_timestamp(start_time),
+        executionTime=seconds_to_duration(runtime),
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
 
@@ -189,8 +192,8 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: uuid.UUID
     try:
         result = session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
         result.raise_for_status()
-    except:
-        logging.exception("Submitting workflow metrics failed")
+    except requests.HTTPError:
         logging.warning("Workflow metrics were not accepted by Dockstore")
+        raise
 
 

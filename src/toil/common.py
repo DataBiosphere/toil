@@ -992,7 +992,7 @@ class Toil(ContextManager["Toil"]):
         self._inRestart = False
         return False  # let exceptions through
 
-    def start(self, rootJob: "Job", workflow_name: Optional[str] = None) -> Any:
+    def start(self, rootJob: "Job", workflow_name: Optional[str] = None, trs_spec: Optional[str] = None) -> Any:
         """
         Invoke a Toil workflow with the given job as the root for an initial run.
 
@@ -1001,7 +1001,10 @@ class Toil(ContextManager["Toil"]):
         that has not finished.
 
         :param rootJob: The root job of the workflow
-        :param workflow_name: A filename or TRS specifier for the workflow being run.
+        :param workflow_name: A human-readable name (probably a filename, URL,
+            or TRS specifier) for the workflow being run.
+        :param trs_spec: A TRS id:version string for the workflow being run, if
+            any.
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
@@ -1013,7 +1016,7 @@ class Toil(ContextManager["Toil"]):
             if hasattr(__main__, '__file__'):
                 workflow_name = __main__.__file__
         assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(self.config.workflowID, workflow_name or "<interactive>")
+        HistoryManager.record_workflow_metadata(self.config.workflowID, workflow_name or "<interactive>", trs_spec)
 
         from toil.job import Job
 

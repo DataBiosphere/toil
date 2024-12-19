@@ -4210,7 +4210,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     logging.error(err)
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 logger.info("Starting workflow")
-                outobj = toil.start(wf1, workflow_name=trs_spec or options.cwltool)
+                outobj = toil.start(wf1, workflow_name=trs_spec or options.cwltool, trs_spec=trs_spec)
 
             # Now the workflow has completed. We need to make sure the outputs (and
             # inputs) end up where the user wants them to be.

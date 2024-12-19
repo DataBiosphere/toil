@@ -21,7 +21,8 @@ import os
 import sqlite3
 import threading
 import uuid
-from typing import Any, Literal, Optional, Union, TypedDict, cast
+from dataclasses import dataclass
+from typing import Iterable, Optional
 
 from toil.lib.io import get_toil_home
 
@@ -55,11 +56,14 @@ class HistoryManager:
         ensure_tables() to protect reads and updates.
         """
         con = sqlite3.connect(
-            cls.database_path()
+            cls.database_path(),
+            isolation_level="DEFERRED"
         )
         # This doesn't much matter given the default isolation level settings,
         # but is recommended.
         con.autocommit = False
+        # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
+        con.row_factory = sqlite3.Row
         # We use foreign keys
         con.execute("PRAGMA foreign_keys = ON")
         return con
@@ -73,9 +77,9 @@ class HistoryManager:
 
         :raises HistoryDatabaseSchemaTooNewError: If the schema is newer than the current version.
         """
-        
+
         # Python already puts us in a transaction.
-        
+
         # TODO: Do a try-and-fall-back to avoid sending the table schema for
         # this every time we do anything.
         cur.execute("""
@@ -127,6 +131,14 @@ class HistoryManager:
                     """
                 ]
             ),
+            (
+                "Add Dockstore submission status and TRS info",
+                [
+                    "ALTER TABLE workflows ADD COLUMN trs_spec TEXT",
+                    "ALTER TABLE job_attempts ADD COLUMN submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE",
+                    "ALTER TABLE workflow_attempts ADD COLUMN submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE",
+                ]
+            ),
         ]
 
         if db_version + 1 > len(migrations):
@@ -145,7 +157,11 @@ class HistoryManager:
             cur.execute("INSERT INTO migrations VALUES (?, ?)", (migration_number, migrations[migration_number][0]))
 
         # If we did have to migrate, leave everything else we do as part of the migration transaction.
-        
+
+    ##
+    # Write Methods
+    ##
+
     @classmethod
     def record_workflow_creation(cls, workflow_id: str, job_store_spec: str) -> None:
         """
@@ -159,14 +175,14 @@ class HistoryManager:
         A workflow may have multiple attempts to run it, some of which succeed
         and others of which fail. Probably only the last one should succeed.
         """
-        
+
         logger.info("Recording workflow creation of %s in %s", workflow_id, job_store_spec)
 
         con = cls.connection()
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
-            cur.execute("INSERT INTO workflows VALUES (?, ?, NULL)", (workflow_id, job_store_spec))
+            cur.execute("INSERT INTO workflows VALUES (?, ?, NULL, NULL)", (workflow_id, job_store_spec))
         except:
             con.rollback()
             raise
@@ -177,20 +193,24 @@ class HistoryManager:
 
 
     @classmethod
-    def record_workflow_metadata(cls, workflow_id: str, workflow_name: str) -> None:
+    def record_workflow_metadata(cls, workflow_id: str, workflow_name: str, trs_spec: Optional[str] = None) -> None:
         """
-        Associate a name (possibly a TRS ID and version string) with a workflow run.
+        Associate a name and optionally a TRS ID and version with a workflow run.
         """
 
         # TODO: Make name of this function less general?
 
         logger.info("Workflow %s is a run of %s", workflow_id, workflow_name)
+        if trs_spec:
+            logger.info("Workflow %s has TRS ID and version %s", workflow_id, trs_spec)
 
         con = cls.connection()
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
             cur.execute("UPDATE workflows SET name = ? WHERE id = ?", (workflow_name, workflow_id))
+            if trs_spec is not None:
+                cur.execute("UPDATE workflows SET trs_spec = ? WHERE id = ?", (trs_spec, workflow_id))
         except:
             con.rollback()
             raise
@@ -205,7 +225,7 @@ class HistoryManager:
         Doesn't expect the provided information to uniquely identify the job attempt; assigns the job attempt its own unique ID.
 
         Thread safe.
-        
+
         :param job_name: A human-readable name for the job. Not expected to be
             a job store ID or to necessarily uniquely identify the job within
             the workflow.
@@ -220,7 +240,7 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)",
                 (
                     str(uuid.uuid4()),
                     workflow_id,
@@ -237,7 +257,7 @@ class HistoryManager:
         else:
             con.commit()
 
-    # TODO: Should we force workflow attempts to be reported on start so that we can have the jobs key-reference them?
+    # TODO: Should we force workflow attempts to be reported on start so that we can have the jobs key-reference them? And so that we always have a start time for the workflow as a whole?
 
     @classmethod
     def record_workflow_attempt(cls, workflow_id: str, workflow_attempt_number: int, succeeded: bool, start_time: float, runtime: float) -> None:
@@ -252,7 +272,7 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, FALSE)",
                 (
                     workflow_id,
                     workflow_attempt_number,
@@ -267,4 +287,179 @@ class HistoryManager:
         else:
             con.commit()
 
-   
+
+    ##
+    # Read methods
+    ##
+
+    # We would implement a bunch of iterators and allow follow-up queries, but
+    # then we'd have to figure out how to make sure we use one connection and
+    # cursor and not block ourselves with the database transaction locks.
+    #
+    # So instead we always fetch all the information asked for and close out
+    # the read transaction before returning.
+    #
+    # This means the caller has to worry about a workflow vanishing or changing
+    # between when it was shown to them and when they ask follow-up questions,
+    # but it also means we can't deadlock.
+
+    @dataclass
+    class WorkflowSummary:
+        """
+        Data class holding summary information for a workflow.
+        """
+        id: str
+        name: Optional[str]
+        jobstore: str
+        total_attempts: int
+        total_job_attempts: int
+        succeeded: bool
+        start_time: Optional[float]
+        """
+        Time when the first workflow attempt started, in seconds since epoch.
+
+        None if there are no attempts recorded.
+        """
+        runtime: Optional[float]
+        """
+        Time from the first workflow attempt's start to the last one's end, in seconds.
+
+        None if there are no attempts recorded.
+        """
+
+    @classmethod
+    def summarize_workflows(cls) -> list[WorkflowSummary]:
+        """
+        List all known workflows and their summary statistics.
+        """
+        
+        workflows = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                """
+                SELECT
+                    workflows.id AS id,
+                    workflows.name AS name,
+                    workflows.jobstore AS jobstore,
+                    (SELECT count(*) FROM workflow_attempts WHERE workflow_id = workflows.id) AS total_attempts,
+                    (SELECT count(*) FROM job_attempts WHERE workflow_id = workflows.id) AS total_job_attempts,
+                    (SELECT min(count(*), 1) FROM workflow_attempts WHERE workflow_id = workflows.id AND succeeded = TRUE) AS succeeded,
+                    (SELECT min(start_time) FROM workflow_attempts WHERE workflow_id = workflows.id) AS start_time,
+                    (SELECT max(start_time + runtime) FROM workflow_attempts WHERE workflow_id = workflows.id) AS end_time
+                FROM workflows
+                ORDER BY start_time DESC
+                """
+            )
+            for row in cur:
+                workflows.append(
+                    cls.WorkflowSummary(
+                        id=row["id"],
+                        name=row["name"],
+                        jobstore=row["jobstore"],
+                        total_attempts=row["total_attempts"],
+                        total_job_attempts=row["total_job_attempts"],
+                        succeeded=(row["succeeded"] == 1),
+                        start_time=row["start_time"],
+                        runtime=(row["end_time"] - row["start_time"]) if row["start_time"] is not None and row["end_time"] is not None else None
+                    )
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+        return workflows
+
+
+    @dataclass
+    class WorkflowAttemptSummary:
+        """
+        Data class holding summary information for a workflow attempt.
+
+        Helpfully includes the workflow metadata for Dockstore.
+        """
+        workflow_id: str
+        attempt_number: int
+        succeeded: bool
+        start_time: float
+        runtime: float 
+        submitted_to_dockstore: bool
+        workflow_trs_spec: Optional[str]
+
+    @classmethod
+    def get_submittable_workflow_attempts(cls) -> list[WorkflowAttemptSummary]:
+        """
+        List all workflow attempts not yet submitted to Dockstore.
+        """
+
+        attempts = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                """
+                SELECT
+                    workflow_attempts.workflow_id AS workflow_id,
+                    workflow_attempts.attempt_number AS attempt_number,
+                    workflow_attempts.succeeded AS succeeded,
+                    workflow_attempts.start_time AS start_time,
+                    workflow_attempts.runtime AS runtime,
+                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
+                    workflows.trs_spec AS workflow_trs_spec
+                FROM workflow_attempts LEFT JOIN workflows ON workflow_attempts.workflow_id = workflows.id
+                WHERE workflow_attempts.submitted_to_dockstore = FALSE
+                AND workflows.trs_spec IS NOT NULL
+                ORDER BY start_time DESC
+                """
+            )
+            for row in cur:
+                attempts.append(
+                    cls.WorkflowAttemptSummary(
+                        workflow_id=row["workflow_id"],
+                        attempt_number=row["attempt_number"],
+                        succeeded=(row["succeeded"] == 1),
+                        start_time=row["start_time"],
+                        runtime=row["runtime"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        workflow_trs_spec=row["workflow_trs_spec"]
+                    )
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+        return attempts
+        
+    @classmethod
+    def mark_workflow_attempt_submitted(cls, workflow_id, attempt_number):
+        """
+        Mark a workflow attempt as having been successfully submitted to Dockstore.
+        """
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                "UPDATE workflow_attempts SET submitted_to_dockstore = TRUE WHERE workflow_id = ? AND attempt_number = ?",
+                (workflow_id, attempt_number)
+            )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+
+
+
+
