@@ -440,7 +440,7 @@ class HistoryManager:
         return attempts
         
     @classmethod
-    def mark_workflow_attempt_submitted(cls, workflow_id, attempt_number):
+    def mark_workflow_attempt_submitted(cls, workflow_id: str, attempt_number: int) -> None:
         """
         Mark a workflow attempt as having been successfully submitted to Dockstore.
         """

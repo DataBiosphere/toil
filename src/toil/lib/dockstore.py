@@ -146,7 +146,7 @@ class TaskExecutions(TypedDict):
     Dockstore can take any JSON-able structured data, but we only use strings.
     """
 
-def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, start_time: float, runtime: float, succeeded: bool):
+def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, start_time: float, runtime: float, succeeded: bool) -> None:
     """
     Send the status of a workflow execution to Dockstore.
     

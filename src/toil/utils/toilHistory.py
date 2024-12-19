@@ -55,6 +55,10 @@ def main() -> None:
             logger.info("Submitting %s attempt %s to Dockstore", attempt.workflow_id, attempt.attempt_number)
             submitted = False
             try:
+                # If it's submittable the TRS spec will be filled in.
+                # Satisfy MyPy
+                # TODO: change the type?
+                assert attempt.workflow_trs_spec is not None
                 trs_id, trs_version = parse_trs_spec(attempt.workflow_trs_spec)
                 if trs_version is None:
                     raise ValueError("Workflow stored in history with TRS ID but without TRS version")
