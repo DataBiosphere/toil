@@ -717,9 +717,10 @@ class CWLWorkflowTest(ToilTest):
         ]
         # Finish the job with a correct PATH
         st = StringIO()
-        cwltoil.main(cmd, stdout=st)
+        ret = cwltoil.main(cmd, stdout=st)
+        assert ret == 0
         # cwltool hashes certain steps into directories, ensure it exists
-        assert os.path.exists(os.path.join(cwlDir, "cache", "92f7d79ad270b174174343085c5456c6"))
+        assert os.path.exists(os.path.join(cwlDir, "cache", "9da28e219a61b062824576503f88b863"))
 
     @needs_aws_s3
     def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
