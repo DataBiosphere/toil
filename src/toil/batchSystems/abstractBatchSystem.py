@@ -39,23 +39,23 @@ EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
 
 class BatchJobExitReason(enum.IntEnum):
-    FINISHED: int = 1
+    FINISHED = 1
     """Successfully finished."""
-    FAILED: int = 2
+    FAILED = 2
     """Job finished, but failed."""
-    LOST: int = 3
+    LOST = 3
     """Preemptable failure (job's executing host went away)."""
-    KILLED: int = 4
+    KILLED = 4
     """Job killed before finishing."""
-    ERROR: int = 5
+    ERROR = 5
     """Internal error."""
-    MEMLIMIT: int = 6
+    MEMLIMIT = 6
     """Job hit batch system imposed memory limit."""
-    MISSING: int = 7
+    MISSING = 7
     """Job disappeared from the scheduler without actually stopping, so Toil killed it."""
-    MAXJOBDURATION: int = 8
+    MAXJOBDURATION = 8
     """Job ran longer than --maxJobDuration, so Toil killed it."""
-    PARTITION: int = 9
+    PARTITION = 9
     """Job was not able to talk to the leader via the job store, so Toil declared it failed."""
 
     @classmethod
