@@ -1224,6 +1224,14 @@ class CWLv12Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_with_task_caching(self) -> None:
+        self.test_run_conformance(
+            junit_file=os.path.join(self.rootDir, "task-caching-conformance-1.2.junit.xml"),
+            extra_args=["--cachedir", self._createTempDir("task_cache")]
+        )
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_in_place_update(self) -> None:
         """
         Make sure that with --bypass-file-store we properly support in place
