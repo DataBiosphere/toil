@@ -210,4 +210,10 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
         logger.warning("Workflow metrics were not accepted by Dockstore. Dockstore complained: %s", e.response.text)
         raise
 
+def get_metrics_url(trs_workflow_id: str, trs_version: str, execution_id: str) -> str:
+    """
+    Get the URL where a workflow metrics submission can be fetched back from.
+    """
+
+    return f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/execution?platform=OTHER&executionId={quote(execution_id, safe='')}"
 

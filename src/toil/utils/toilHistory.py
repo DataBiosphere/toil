@@ -20,7 +20,7 @@ from typing import Any, Optional
 from toil.common import parser_with_common_options
 from toil.statsAndLogging import set_logging_from_options
 
-from toil.lib.dockstore import send_metrics
+from toil.lib.dockstore import send_metrics, get_metrics_url
 from toil.lib.history import HistoryManager
 from toil.lib.misc import unix_seconds_to_local_time
 from toil.lib.trs import parse_trs_spec
@@ -54,6 +54,7 @@ def main() -> None:
         for attempt in HistoryManager.get_submittable_workflow_attempts():
             logger.info("Submitting %s attempt %s to Dockstore", attempt.workflow_id, attempt.attempt_number)
             submitted = False
+            dockstore_execution_id: Optional[str] = None
             try:
                 # If it's submittable the TRS spec will be filled in.
                 # Satisfy MyPy
@@ -74,8 +75,18 @@ def main() -> None:
 
             
             if submitted:
+                # Record submission.
+                # TODO: We don't actually save the ID we generated for Dockstore, we just need to remember the algorithm.
                 HistoryManager.mark_workflow_attempt_submitted(attempt.workflow_id, attempt.attempt_number)
-                logger.info("Recorded submission in database")
+                logger.info("Recorded Dockstore metrics submission %s in database", dockstore_execution_id)
+
+                # Compose the URL you would fetch it back from
+                assert dockstore_execution_id is not None
+                assert trs_version is not None
+                execution_url = get_metrics_url(trs_id, trs_version, dockstore_execution_id)
+                logger.debug("Dockstore accepted submission %s", execution_url)
+
+                
         
 
 
