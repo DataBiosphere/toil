@@ -156,12 +156,10 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
                 continue
         eligible_workflow_versions.add(version_name)
 
-    for default_version in ['main', 'master']:
-        if trs_version is None and default_version in eligible_workflow_versions:
-            # Fill in a version if the user didn't provide one.
-            trs_version = default_version
-            logger.debug("Defaulting to workflow version %s", default_version)
-            break
+    # TODO: Dockstore has a concept of a "default version", but doesn't expose
+    # it over TRS. To avoid defaulting to something that *isn't* the Dockstore
+    # default version, we refuse to choose a version when there are multiple
+    # possibilities.
 
     if trs_version is None and len(eligible_workflow_versions) == 1:
         # If there's just one version use that.
