@@ -5566,12 +5566,14 @@ def main() -> None:
                     inputs_search_path.append(input_source_uri)
 
                     match = re.match(
-                        r"https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/",
+                        r"https://raw\.githubusercontent\.com/[^/]*/[^/]*/(refs/heads/)?[^/]*/",
                         input_source_uri,
                     )
                     if match:
                         # Special magic for Github repos to make e.g.
                         # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
+                        # or
+                        # https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/giraffedv/params/giraffe.json
                         # work when it references things relative to repo root.
                         logger.info(
                             "Inputs appear to come from a Github repository; adding repository root to file search path"

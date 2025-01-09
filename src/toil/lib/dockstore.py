@@ -66,12 +66,12 @@ class RunExecution(TypedDict):
     """
     Dockstore metrics data for a workflow or task run.
     """
-    
+
     executionId: str
     """
     Executor-generated unique execution ID for this workflow or task.
     """
-    
+
     # TODO: Is this start or end?
     dateExecuted: str
     """
@@ -82,7 +82,7 @@ class RunExecution(TypedDict):
     """
     Did the execution work?
     """
-    
+
     executionTime: NotRequired[str]
     """
     Total time of the run in ISO 8601 duration format.
@@ -113,7 +113,7 @@ class RunExecution(TypedDict):
     additionalProperties: NotRequired[dict[str, str]]
     """
     Any additional properties to send.
-    
+
     Dockstore can take any JSON-able structured data, but we only use strings.
     """
 
@@ -121,7 +121,7 @@ class TaskExecutions(TypedDict):
     """
     Dockstore metrics data for all the tasks in a workflow.
     """
-    
+
     # TODO: Should this match executionId for the whole workflow's RunExecution?
     executionId: str
     """
@@ -142,14 +142,14 @@ class TaskExecutions(TypedDict):
     additionalProperties: NotRequired[dict[str, str]]
     """
     Any additional properties to send.
-    
+
     Dockstore can take any JSON-able structured data, but we only use strings.
     """
 
 def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, start_time: float, runtime: float, succeeded: bool) -> None:
     """
     Send the status of a workflow execution to Dockstore.
-    
+
     :param execution_id: Unique ID for the workflow execution.
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
@@ -182,13 +182,14 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
     headers = {}
     if DOCKSTORE_TOKEN is not None:
         headers["Authorization"] = f"Bearer {DOCKSTORE_TOKEN}"
-    
-    endpoint_url = f"{TRS_ROOT}/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/executions"
+
+    # Note that Dockstore's metrics apparently need two levels of /api for some reason.
+    endpoint_url = f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/executions"
 
     logger.info("Sending workflow metrics to %s", endpoint_url)
     logger.debug("With data: %s", to_post)
     logger.debug("With headers: %s", headers)
-    
+
     try:
         result = session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
         result.raise_for_status()
