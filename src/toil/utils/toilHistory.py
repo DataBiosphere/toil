@@ -63,7 +63,10 @@ def main() -> None:
                 if trs_version is None:
                     raise ValueError("Workflow stored in history with TRS ID but without TRS version")
                 
-                send_metrics(trs_id, trs_version, f"{attempt.workflow_id} Attempt {attempt.attempt_number}", attempt.start_time, attempt.runtime, attempt.succeeded)
+                # Compose a Dockstore-compatible ID
+                dockstore_execution_id = attempt.workflow_id.replace("-", "_") + "_attempt_" + str(attempt.attempt_number)
+                # Send it in
+                send_metrics(trs_id, trs_version, dockstore_execution_id, attempt.start_time, attempt.runtime, attempt.succeeded)
                 submitted = True
             except:
                 logger.exception("Could not submit to Dockstore")

@@ -21,6 +21,7 @@ For basic TRS functionality for fetching workflows, see trs.py.
 import datetime
 import logging
 import os
+import re
 import sys
 import uuid
 from typing import Any, Literal, Optional, Union, TypedDict, cast
@@ -150,11 +151,23 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
     """
     Send the status of a workflow execution to Dockstore.
 
-    :param execution_id: Unique ID for the workflow execution.
+    :param execution_id: Unique ID for the workflow execution. Must be
+        alphanumeric (with internal underscores allowed) and <100 characters
+        long.
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
     :raises requests.HTTPError: if Dockstore does not accept the metrics.
     """
+
+    # Enforce Dockstore's constraints
+    if len(execution_id) >= 100:
+        raise ValueError("Execution ID too long")
+    if len(execution_id) == 0:
+        raise ValueError("Execution ID must not be empty")
+    if execution_id[0] == "_" or execution_id[-1] == "_":
+        raise ValueError("Execution ID must not start or end with an underscore")
+    if not re.fullmatch("[a-zA-Z0-9_]+", execution_id):
+        raise ValueError("Execution ID must be alphanumeric with internal underscores")
 
     # Pack up into a RunExecution
     execution = RunExecution(
@@ -193,8 +206,8 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
     try:
         result = session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
         result.raise_for_status()
-    except requests.HTTPError:
-        logging.warning("Workflow metrics were not accepted by Dockstore")
+    except requests.HTTPError as e:
+        logger.warning("Workflow metrics were not accepted by Dockstore. Dockstore complained: %s", e.response.text)
         raise
 
 
