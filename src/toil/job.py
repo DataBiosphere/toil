@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import collections
 import copy
 import importlib
@@ -25,25 +27,36 @@ import time
 import uuid
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
-from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from io import BytesIO
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Literal,
+    Dict,
+    Iterator,
+    List,
+    Mapping,
     NamedTuple,
     Optional,
-    TypedDict,
+    Sequence,
+    Tuple,
     TypeVar,
     Union,
     cast,
     overload,
+    TypedDict,
+    Literal,
 )
+from urllib.error import HTTPError
+from urllib.parse import urlsplit, unquote, urljoin
+
+from toil import memoize
 
 import dill
 from configargparse import ArgParser
+
+from toil.lib.io import is_remote_url
 
 if sys.version_info < (3, 11):
     from typing_extensions import NotRequired
@@ -61,10 +74,14 @@ from toil.lib.resources import ResourceMonitor
 from toil.resource import ModuleDescriptor
 from toil.statsAndLogging import set_logging_from_options
 
+from toil.lib.exceptions import UnimplementedURLException
+
 if TYPE_CHECKING:
     from optparse import OptionParser
 
-    from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+    from toil.batchSystems.abstractBatchSystem import (
+        BatchJobExitReason
+    )
     from toil.fileStores.abstractFileStore import AbstractFileStore
     from toil.jobStores.abstractJobStore import AbstractJobStore
 
@@ -3757,6 +3774,350 @@ class ServiceHostJob(Job):
 
     def getUserScript(self):
         return self.serviceModule
+
+
+class FileMetadata(NamedTuple):
+    """
+    Metadata for a file.
+    source is the URL to grab the file from
+    parent_dir is parent directory of the source
+    size is the size of the file. Is none if the filesize cannot be retrieved.
+    """
+
+    source: str
+    parent_dir: str
+    size: Optional[int]
+
+
+def potential_absolute_uris(
+    uri: str,
+    path: list[str],
+    importer: Optional[str] = None,
+    execution_dir: Optional[str] = None,
+) -> Iterator[str]:
+    """
+    Get potential absolute URIs to check for an imported file.
+
+    Given a URI or bare path, yield in turn all the URIs, with schemes, where we
+    should actually try to find it, given that we want to search under/against
+    the given paths or URIs, the current directory, and the given importing WDL
+    document if any.
+    """
+
+    if uri == "":
+        # Empty URIs can't come from anywhere.
+        return
+
+    # We need to brute-force find this URI relative to:
+    #
+    # 1. Itself if a full URI.
+    #
+    # 2. Importer's URL, if importer is a URL and this is a
+    #    host-root-relative URL starting with / or scheme-relative
+    #    starting with //, or just plain relative.
+    #
+    # 3. Current directory, if a relative path.
+    #
+    # 4. All the prefixes in "path".
+    #
+    # If it can't be found anywhere, we ought to (probably) throw
+    # FileNotFoundError like the MiniWDL implementation does, with a
+    # correct errno.
+    #
+    # To do this, we have AbstractFileStore.read_from_url, which can read a
+    # URL into a binary-mode writable, or throw some kind of unspecified
+    # exception if the source doesn't exist or can't be fetched.
+
+    # This holds scheme-applied full URIs for all the places to search.
+    full_path_list = []
+
+    if importer is not None:
+        # Add the place the imported file came form, to search first.
+        full_path_list.append(Toil.normalize_uri(importer))
+
+    # Then the current directory. We need to make sure to include a filename component here or it will treat the current directory with no trailing / as a document and relative paths will look 1 level up.
+    # When importing on a worker, the cwd will be a tmpdir and will result in FileNotFoundError after os.path.abspath, so override with the execution dir
+    full_path_list.append(Toil.normalize_uri(execution_dir or ".") + "/.")
+
+    # Then the specified paths.
+    # TODO:
+    # https://github.com/chanzuckerberg/miniwdl/blob/e3e8ef74e80fbe59f137b0ad40b354957915c345/WDL/Tree.py#L1479-L1482
+    # seems backward actually and might do these first!
+    full_path_list += [Toil.normalize_uri(p) for p in path]
+
+    # This holds all the URIs we tried and failed with.
+    failures: set[str] = set()
+
+    for candidate_base in full_path_list:
+        # Try fetching based off each base URI
+        candidate_uri = urljoin(candidate_base, uri)
+        if candidate_uri in failures:
+            # Already tried this one, maybe we have an absolute uri input.
+            continue
+        logger.debug(
+            "Consider %s which is %s off of %s", candidate_uri, uri, candidate_base
+        )
+
+        # Try it
+        yield candidate_uri
+        # If we come back it didn't work
+        failures.add(candidate_uri)
+
+
+def get_file_sizes(
+    filenames: List[str],
+    file_source: AbstractJobStore,
+    search_paths: Optional[List[str]] = None,
+    include_remote_files: bool = True,
+    execution_dir: Optional[str] = None,
+) -> Dict[str, FileMetadata]:
+    """
+    Resolve relative-URI files in the given environment and turn them into absolute normalized URIs. Returns a dictionary of the *string values* from the WDL file values
+    to a tuple of the normalized URI, parent directory ID, and size of the file. The size of the file may be None, which means unknown size.
+
+    :param filenames: list of filenames to evaluate on
+    :param file_source: Context to search for files with
+    :param task_path: Dotted WDL name of the user-level code doing the
+        importing (probably the workflow name).
+    :param search_paths: If set, try resolving input location relative to the URLs or
+        directories in this list.
+    :param include_remote_files: If set, import files from remote locations. Else leave them as URI references.
+    """
+
+    @memoize
+    def get_filename_size(filename: str) -> FileMetadata:
+        tried = []
+        for candidate_uri in potential_absolute_uris(
+            filename,
+            search_paths if search_paths is not None else [],
+            execution_dir=execution_dir,
+        ):
+            tried.append(candidate_uri)
+            try:
+                if not include_remote_files and is_remote_url(candidate_uri):
+                    # Use remote URIs in place. But we need to find the one that exists.
+                    if not file_source.url_exists(candidate_uri):
+                        # Wasn't found there
+                        continue
+
+                # Now we know this exists, so pass it through
+                # Get filesizes
+                filesize = file_source.get_size(candidate_uri)
+
+            except UnimplementedURLException as e:
+                # We can't find anything that can even support this URL scheme.
+                # Report to the user, they are probably missing an extra.
+                logger.critical("Error: " + str(e))
+                raise
+            except HTTPError as e:
+                # Something went wrong looking for it there.
+                logger.warning(
+                    "Checked URL %s but got HTTP status %s", candidate_uri, e.code
+                )
+                # Try the next location.
+                continue
+            except FileNotFoundError:
+                # Wasn't found there
+                continue
+            except Exception:
+                # Something went wrong besides the file not being found. Maybe
+                # we have no auth.
+                logger.error(
+                    "Something went wrong when testing for existence of %s",
+                    candidate_uri,
+                )
+                raise
+
+            # Work out what the basename for the file was
+            file_basename = os.path.basename(urlsplit(candidate_uri).path)
+
+            if file_basename == "":
+                # We can't have files with no basename because we need to
+                # download them at that basename later in WDL.
+                raise RuntimeError(
+                    f"File {candidate_uri} has no basename"
+                )
+
+            # Was actually found
+            if is_remote_url(candidate_uri):
+                # Might be a file URI or other URI.
+                # We need to make sure file URIs and local paths that point to
+                # the same place are treated the same.
+                parsed = urlsplit(candidate_uri)
+                if parsed.scheme == "file:":
+                    # This is a local file URI. Convert to a path for source directory tracking.
+                    parent_dir = os.path.dirname(unquote(parsed.path))
+                else:
+                    # This is some other URL. Get the URL to the parent directory and use that.
+                    parent_dir = urljoin(candidate_uri, ".")
+            else:
+                # Must be a local path
+                parent_dir = os.path.dirname(candidate_uri)
+
+            return cast(FileMetadata, (candidate_uri, parent_dir, filesize))
+        # Not found
+        raise RuntimeError(
+            f"Could not find {filename} at any of: {list(potential_absolute_uris(filename, search_paths if search_paths is not None else []))}"
+        )
+
+    return {k: get_filename_size(k) for k in filenames}
+
+
+class CombineImportsJob(Job):
+    """
+    Combine the outputs of multiple WorkerImportsJob into one promise
+    """
+
+    def __init__(self, d: Sequence[Promised[Dict[str, FileID]]], **kwargs):
+        """
+        :param d: Sequence of dictionaries to merge
+        """
+        self._d = d
+        super().__init__(**kwargs)
+
+    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+        """
+        Merge the dicts
+        """
+        d = unwrap_all(self._d)
+        return {k: v for item in d for k, v in item.items()}
+
+
+class WorkerImportJob(Job):
+    """
+    Job to do file imports on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+    For the CWL/WDL runners, this class is only used when runImportsOnWorkers is enabled.
+    """
+
+    def __init__(
+        self,
+        filenames: List[str],
+        **kwargs: Any
+    ):
+        """
+        Setup importing files on a worker.
+        :param filenames: List of file URIs to import
+        :param kwargs: args for the superclass
+        """
+        self.filenames = filenames
+        super().__init__(local=False, **kwargs)
+
+    @staticmethod
+    def import_files(
+        files: List[str], file_source: "AbstractJobStore"
+    ) -> Dict[str, FileID]:
+        """
+        Import a list of files into the jobstore. Returns a mapping of the filename to the associated FileIDs
+
+        When stream is true but the import is not streamable, the worker will run out of
+        disk space and run a new import job with enough disk space instead.
+        :param files: list of files to import
+        :param file_source: AbstractJobStore
+        :return: Dictionary mapping filenames to associated jobstore FileID
+        """
+        # todo: make the import ensure streaming is done instead of relying on running out of disk space
+        path_to_fileid = {}
+
+        @memoize
+        def import_filename(filename: str) -> Optional[FileID]:
+            return file_source.import_file(filename, symlink=True)
+
+        for file in files:
+            imported = import_filename(file)
+            if imported is not None:
+                path_to_fileid[file] = imported
+        return path_to_fileid
+
+    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Promise of workflow outputs
+        """
+        return self.import_files(self.filenames, file_store.jobStore)
+
+
+class ImportsJob(Job):
+    """
+    Job to organize and delegate files to individual WorkerImportJobs.
+
+    For the CWL/WDL runners, this is only used when runImportsOnWorkers is enabled
+    """
+
+    def __init__(
+        self,
+        file_to_data: Dict[str, FileMetadata],
+        max_batch_size: ParseableIndivisibleResource,
+        import_worker_disk: ParseableIndivisibleResource,
+        **kwargs: Any,
+    ):
+        """
+        Job to take the inputs for a workflow and import them on a worker instead of a leader. Assumes all local and cloud files are accessible.
+
+        This class is only used when runImportsOnWorkers is enabled.
+
+        :param file_to_data: mapping of file source name to file metadata
+        :param max_batch_size: maximum cumulative file size of a batched import
+        """
+        super().__init__(local=True, **kwargs)
+        self._file_to_data = file_to_data
+        self._max_batch_size = max_batch_size
+        self._import_worker_disk = import_worker_disk
+
+    def run(
+        self, file_store: AbstractFileStore
+    ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
+        """
+        Import the workflow inputs and then create and run the workflow.
+        :return: Tuple of a mapping from the candidate uri to the file id and a mapping of the source filenames to its metadata. The candidate uri is a field in the file metadata
+        """
+        max_batch_size = self._max_batch_size
+        file_to_data = self._file_to_data
+        # Run WDL imports on a worker instead
+
+        filenames = list(file_to_data.keys())
+
+        import_jobs = []
+
+        # This list will hold lists of batched filenames
+        file_batches = []
+
+        # List of filenames for each batch
+        per_batch_files = []
+        per_batch_size = 0
+        while len(filenames) > 0:
+            filename = filenames.pop(0)
+            # See if adding this to the queue will make the batch job too big
+            filesize = file_to_data[filename][2]
+            if per_batch_size + filesize >= max_batch_size:
+                # batch is too big now, store to schedule the batch
+                if len(per_batch_files) == 0:
+                    # schedule the individual file
+                    per_batch_files.append(filename)
+                file_batches.append(per_batch_files)
+                # reset batching calculation
+                per_batch_size = 0
+            else:
+                per_batch_size += filesize
+            per_batch_files.append(filename)
+
+        if per_batch_files:
+            file_batches.append(per_batch_files)
+
+        # Create batch import jobs for each group of files
+        for batch in file_batches:
+            candidate_uris = [file_to_data[filename][0] for filename in batch]
+            import_jobs.append(WorkerImportJob(candidate_uris, disk=self._import_worker_disk))
+
+        for job in import_jobs:
+            self.addChild(job)
+
+        combine_imports_job = CombineImportsJob([job.rv() for job in import_jobs])
+        for job in import_jobs:
+            job.addFollowOn(combine_imports_job)
+        self.addChild(combine_imports_job)
+
+        return combine_imports_job.rv(), file_to_data
 
 
 class Promise:

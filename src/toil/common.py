@@ -733,7 +733,7 @@ def addOptions(
     add_cwl_options(parser, suppress=not cwl)
     add_wdl_options(parser, suppress=not wdl)
     # Add shared runner options
-    add_runner_options(parser)
+    add_runner_options(parser, cwl=cwl, wdl=wdl)
 
     def check_arguments(typ: str) -> None:
         """
@@ -747,7 +747,7 @@ def addOptions(
             add_cwl_options(check_parser)
         if typ == "cwl":
             add_wdl_options(check_parser)
-        add_runner_options(check_parser)
+
         for action in check_parser._actions:
             action.default = SUPPRESS
         other_options, _ = check_parser.parse_known_args(
