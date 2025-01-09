@@ -50,6 +50,16 @@ def main() -> None:
         start_time = unix_seconds_to_local_time(attempt.start_time).strftime("%Y-%m-%d %H:%M")
         print(f"{status}\t{attempt.workflow_id}\t{start_time}\t{attempt.workflow_trs_spec}\tAttempt #{attempt.attempt_number}")
 
+    print("")
+    print("Jobs to Submit:")
+    for workflow_attempt in HistoryManager.get_workflow_attempts_with_submittable_job_attempts():
+        print(f"\tWorkflow {workflow_attempt.workflow_id} Attempt #{workflow_attempt.attempt_number} of {workflow_attempt.workflow_trs_spec}:")
+        for job_attempt in HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number):
+            status = "✅" if job_attempt.succeeded else f"❌"
+            start_time = unix_seconds_to_local_time(job_attempt.start_time).strftime("%Y-%m-%d %H:%M")
+            print(f"\t\t{status}\t{job_attempt.job_name}\t{start_time}")
+        
+
     if options.submit:
         for attempt in HistoryManager.get_submittable_workflow_attempts():
             logger.info("Submitting %s attempt %s to Dockstore", attempt.workflow_id, attempt.attempt_number)
@@ -85,7 +95,7 @@ def main() -> None:
                 assert trs_version is not None
                 execution_url = get_metrics_url(trs_id, trs_version, dockstore_execution_id)
                 logger.debug("Dockstore accepted submission %s", execution_url)
-
+    
                 
         
 

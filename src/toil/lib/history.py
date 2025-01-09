@@ -106,6 +106,16 @@ class HistoryManager:
                         name TEXT
                     )
                     """,
+                    # There's no reference constraint from the job attempts to
+                    # the workflow attempts because the jobs for a workflow
+                    # attempt need to go in before the attempt is known to be
+                    # finished or failed/before the attempt is submittable to
+                    # Dockstore.
+                    #
+                    # TODO: Should we force workflow attempts to be reported on
+                    # start so that we can have the jobs key-reference them?
+                    # And so that we always have a start time for the workflow
+                    # as a whole?
                     """
                     CREATE TABLE job_attempts (
                         id TEXT NOT NULL PRIMARY KEY,
@@ -139,6 +149,12 @@ class HistoryManager:
                     "ALTER TABLE workflow_attempts ADD COLUMN submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE",
                 ]
             ),
+            (
+                "Index jobs by workflow attempt",
+                [
+                    "CREATE INDEX idx_job_attempts_by_workflow_attempt ON job_attempts (workflow_id, workflow_attempt_number)"
+                ]
+            ),
         ]
 
         if db_version + 1 > len(migrations):
@@ -159,7 +175,7 @@ class HistoryManager:
         # If we did have to migrate, leave everything else we do as part of the migration transaction.
 
     ##
-    # Write Methods
+    # Recording Methods
     ##
 
     @classmethod
@@ -222,7 +238,8 @@ class HistoryManager:
         """
         Record that a job ran in a workflow.
 
-        Doesn't expect the provided information to uniquely identify the job attempt; assigns the job attempt its own unique ID.
+        Doesn't expect the provided information to uniquely identify the job
+        attempt; assigns the job attempt its own unique ID.
 
         Thread safe.
 
@@ -256,8 +273,6 @@ class HistoryManager:
             raise
         else:
             con.commit()
-
-    # TODO: Should we force workflow attempts to be reported on start so that we can have the jobs key-reference them? And so that we always have a start time for the workflow as a whole?
 
     @classmethod
     def record_workflow_attempt(cls, workflow_id: str, workflow_attempt_number: int, succeeded: bool, start_time: float, runtime: float) -> None:
@@ -303,6 +318,12 @@ class HistoryManager:
     # between when it was shown to them and when they ask follow-up questions,
     # but it also means we can't deadlock.
 
+    @classmethod
+    def get_workflow_trs_spec(cls, workflow_id: str) -> Optional[str]:
+        """
+        Get the TRS spec for a workflow, or None if it does not have one.
+        """
+
     @dataclass
     class WorkflowSummary:
         """
@@ -326,13 +347,14 @@ class HistoryManager:
 
         None if there are no attempts recorded.
         """
+        trs_spec: Optional[str]
 
     @classmethod
     def summarize_workflows(cls) -> list[WorkflowSummary]:
         """
         List all known workflows and their summary statistics.
         """
-        
+
         workflows = []
 
         con = cls.connection()
@@ -349,7 +371,8 @@ class HistoryManager:
                     (SELECT count(*) FROM job_attempts WHERE workflow_id = workflows.id) AS total_job_attempts,
                     (SELECT min(count(*), 1) FROM workflow_attempts WHERE workflow_id = workflows.id AND succeeded = TRUE) AS succeeded,
                     (SELECT min(start_time) FROM workflow_attempts WHERE workflow_id = workflows.id) AS start_time,
-                    (SELECT max(start_time + runtime) FROM workflow_attempts WHERE workflow_id = workflows.id) AS end_time
+                    (SELECT max(start_time + runtime) FROM workflow_attempts WHERE workflow_id = workflows.id) AS end_time,
+                    workflows.trs_spec AS trs_spec
                 FROM workflows
                 ORDER BY start_time DESC
                 """
@@ -364,7 +387,8 @@ class HistoryManager:
                         total_job_attempts=row["total_job_attempts"],
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
-                        runtime=(row["end_time"] - row["start_time"]) if row["start_time"] is not None and row["end_time"] is not None else None
+                        runtime=(row["end_time"] - row["start_time"]) if row["start_time"] is not None and row["end_time"] is not None else None,
+                        trs_spec=row["trs_spec"]
                     )
                 )
         except:
@@ -387,7 +411,7 @@ class HistoryManager:
         attempt_number: int
         succeeded: bool
         start_time: float
-        runtime: float 
+        runtime: float
         submitted_to_dockstore: bool
         workflow_trs_spec: Optional[str]
 
@@ -413,9 +437,10 @@ class HistoryManager:
                     workflow_attempts.runtime AS runtime,
                     workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
                     workflows.trs_spec AS workflow_trs_spec
-                FROM workflow_attempts LEFT JOIN workflows ON workflow_attempts.workflow_id = workflows.id
+                FROM workflow_attempts
+                    JOIN workflows ON workflow_attempts.workflow_id = workflows.id
                 WHERE workflow_attempts.submitted_to_dockstore = FALSE
-                AND workflows.trs_spec IS NOT NULL
+                    AND workflows.trs_spec IS NOT NULL
                 ORDER BY start_time DESC
                 """
             )
@@ -438,11 +463,142 @@ class HistoryManager:
             con.commit()
 
         return attempts
-        
+
+    @classmethod
+    def get_workflow_attempts_with_submittable_job_attempts(cls) -> list[WorkflowAttemptSummary]:
+        """
+        Get all workflow attempts that have job attempts not yet submitted to
+        Dockstore.
+
+        The workflow attempts themselves will have finished and been recorded,
+        and have TRS IDs.
+
+        Returns pairs of workflow ID and attempt number.
+        """
+
+        attempts = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                """
+                SELECT
+                    workflow_attempts.workflow_id AS workflow_id,
+                    workflow_attempts.attempt_number AS attempt_number,
+                    workflow_attempts.succeeded AS succeeded,
+                    workflow_attempts.start_time AS start_time,
+                    workflow_attempts.runtime AS runtime,
+                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
+                    workflows.trs_spec AS workflow_trs_spec
+                FROM (
+                    SELECT DISTINCT
+                        workflow_id, workflow_attempt_number
+                    FROM job_attempts
+                    WHERE job_attempts.submitted_to_dockstore = FALSE
+                ) AS found_job_attempts
+                    JOIN workflows ON found_job_attempts.workflow_id = workflows.id
+                    JOIN workflow_attempts ON
+                        found_job_attempts.workflow_id = workflow_attempts.workflow_id
+                        AND found_job_attempts.workflow_attempt_number = workflow_attempts.attempt_number
+                WHERE workflows.trs_spec IS NOT NULL
+                """
+            )
+            for row in cur:
+                # TODO: Unify row to data class conversion
+                attempts.append(
+                    cls.WorkflowAttemptSummary(
+                        workflow_id=row["workflow_id"],
+                        attempt_number=row["attempt_number"],
+                        succeeded=(row["succeeded"] == 1),
+                        start_time=row["start_time"],
+                        runtime=row["runtime"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        workflow_trs_spec=row["workflow_trs_spec"]
+                    )
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+        return attempts
+
+    @dataclass
+    class JobAttemptSummary:
+        """
+        Data class holding summary information for a job attempt within a known
+        workflow attempt.
+        """
+        id: str
+        job_name: str
+        succeeded: bool
+        start_time: float
+        runtime: float
+        submitted_to_dockstore: bool
+
+    @classmethod
+    def get_unsubmitted_job_attempts(cls, workflow_id: str, attempt_number: int) -> list[JobAttemptSummary]:
+        """
+        List all job attempts in the given workflow attempt not yet submitted to Dockstore.
+
+        Doesn't check to make sure the workflow has a TRS ID
+        """
+
+        attempts = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    job_name,
+                    succeeded,
+                    start_time,
+                    runtime,
+                    submitted_to_dockstore
+                FROM job_attempts
+                WHERE workflow_id = ?
+                AND workflow_attempt_number = ?
+                AND submitted_to_dockstore = FALSE
+                ORDER BY start_time DESC
+                """,
+                (workflow_id, attempt_number)
+            )
+            for row in cur:
+                attempts.append(
+                    cls.JobAttemptSummary(
+                        id=row["id"],
+                        job_name=row["job_name"],
+                        succeeded=(row["succeeded"] == 1),
+                        start_time=row["start_time"],
+                        runtime=row["runtime"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1)
+                    )
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+        return attempts
+
+    ###
+    # Submission marking methods
+    ###
+
     @classmethod
     def mark_workflow_attempt_submitted(cls, workflow_id: str, attempt_number: int) -> None:
         """
         Mark a workflow attempt as having been successfully submitted to Dockstore.
+
+        Does not mark the workflow attempt's job attempts as submitted.
         """
 
         con = cls.connection()
@@ -459,7 +615,27 @@ class HistoryManager:
         else:
             con.commit()
 
+    @classmethod
+    def mark_job_attempts_submitted(cls, job_attempt_ids: list[str]) -> None:
+        """
+        Mark a collection of job attempts as submitted to Dockstore in a single transaction.
+        """
 
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            for job_attempt_id in job_attempt_ids:
+                # Do all the marking in one transaction
+                cur.execute(
+                    "UPDATE job_attempts SET submitted_to_dockstore = TRUE WHERE id = ?",
+                    (job_attempt_id,)
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
 
 
 
