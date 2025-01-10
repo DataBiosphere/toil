@@ -186,7 +186,7 @@ def pack_workflow_metrics(execution_id: str, start_time: float, runtime: float, 
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
 
-def pack_single_task_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool, name: Optional[str] = None) -> RunExecution:
+def pack_single_task_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool, job_name: Optional[str] = None) -> RunExecution:
     """
     Pack up metrics for a single task execution in a format that can be used in a Dockstore submission.
 
@@ -195,7 +195,7 @@ def pack_single_task_metrics(execution_id: str, start_time: float, runtime: floa
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
     :param succeeded: Whether the execution succeeded.
-    :param name: Name of the job run within the workflow.
+    :param job_name: Name of the job within the workflow.
     """
 
     # TODO: Deduplicate with workflow code since the output type is the same.
@@ -214,8 +214,9 @@ def pack_single_task_metrics(execution_id: str, start_time: float, runtime: floa
     # TODO: Just use kwargs here?
     additional_properties = {}
 
-    if name is not None:
-        additional_properties["name"] = name
+    if job_name is not None:
+        # Convert to Doskstore-style camelCase property keys
+        additional_properties["jobName"] = job_name
 
     if len(additional_properties) > 0:
         result["additionalProperties"] = additional_properties

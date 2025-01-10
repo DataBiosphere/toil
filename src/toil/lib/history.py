@@ -35,6 +35,61 @@ class HistoryDatabaseSchemaTooNewError(RuntimeError):
     """
     pass
 
+@dataclass
+class WorkflowSummary:
+    """
+    Data class holding summary information for a workflow.
+
+    Represents all the attempts to execute one run of a workflow.
+    """
+    id: str
+    name: Optional[str]
+    jobstore: str
+    total_attempts: int
+    total_job_attempts: int
+    succeeded: bool
+    start_time: Optional[float]
+    """
+    Time when the first workflow attempt started, in seconds since epoch.
+
+    None if there are no attempts recorded.
+    """
+    runtime: Optional[float]
+    """
+    Time from the first workflow attempt's start to the last one's end, in seconds.
+
+    None if there are no attempts recorded.
+    """
+    trs_spec: Optional[str]
+
+@dataclass
+class WorkflowAttemptSummary:
+    """
+    Data class holding summary information for a workflow attempt.
+
+    Helpfully includes the workflow metadata for Dockstore.
+    """
+    workflow_id: str
+    attempt_number: int
+    succeeded: bool
+    start_time: float
+    runtime: float
+    submitted_to_dockstore: bool
+    workflow_trs_spec: Optional[str]
+
+@dataclass
+class JobAttemptSummary:
+    """
+    Data class holding summary information for a job attempt within a known
+    workflow attempt.
+    """
+    id: str
+    job_name: str
+    succeeded: bool
+    start_time: float
+    runtime: float
+    submitted_to_dockstore: bool
+
 class HistoryManager:
     """
     Class responsible for managing the history of Toil runs.
@@ -324,31 +379,6 @@ class HistoryManager:
         Get the TRS spec for a workflow, or None if it does not have one.
         """
 
-    @dataclass
-    class WorkflowSummary:
-        """
-        Data class holding summary information for a workflow.
-        """
-        id: str
-        name: Optional[str]
-        jobstore: str
-        total_attempts: int
-        total_job_attempts: int
-        succeeded: bool
-        start_time: Optional[float]
-        """
-        Time when the first workflow attempt started, in seconds since epoch.
-
-        None if there are no attempts recorded.
-        """
-        runtime: Optional[float]
-        """
-        Time from the first workflow attempt's start to the last one's end, in seconds.
-
-        None if there are no attempts recorded.
-        """
-        trs_spec: Optional[str]
-
     @classmethod
     def summarize_workflows(cls) -> list[WorkflowSummary]:
         """
@@ -379,7 +409,7 @@ class HistoryManager:
             )
             for row in cur:
                 workflows.append(
-                    cls.WorkflowSummary(
+                    WorkflowSummary(
                         id=row["id"],
                         name=row["name"],
                         jobstore=row["jobstore"],
@@ -400,20 +430,7 @@ class HistoryManager:
         return workflows
 
 
-    @dataclass
-    class WorkflowAttemptSummary:
-        """
-        Data class holding summary information for a workflow attempt.
-
-        Helpfully includes the workflow metadata for Dockstore.
-        """
-        workflow_id: str
-        attempt_number: int
-        succeeded: bool
-        start_time: float
-        runtime: float
-        submitted_to_dockstore: bool
-        workflow_trs_spec: Optional[str]
+    
 
     @classmethod
     def get_submittable_workflow_attempts(cls) -> list[WorkflowAttemptSummary]:
@@ -446,7 +463,7 @@ class HistoryManager:
             )
             for row in cur:
                 attempts.append(
-                    cls.WorkflowAttemptSummary(
+                    WorkflowAttemptSummary(
                         workflow_id=row["workflow_id"],
                         attempt_number=row["attempt_number"],
                         succeeded=(row["succeeded"] == 1),
@@ -508,7 +525,7 @@ class HistoryManager:
             for row in cur:
                 # TODO: Unify row to data class conversion
                 attempts.append(
-                    cls.WorkflowAttemptSummary(
+                    WorkflowAttemptSummary(
                         workflow_id=row["workflow_id"],
                         attempt_number=row["attempt_number"],
                         succeeded=(row["succeeded"] == 1),
@@ -525,19 +542,6 @@ class HistoryManager:
             con.commit()
 
         return attempts
-
-    @dataclass
-    class JobAttemptSummary:
-        """
-        Data class holding summary information for a job attempt within a known
-        workflow attempt.
-        """
-        id: str
-        job_name: str
-        succeeded: bool
-        start_time: float
-        runtime: float
-        submitted_to_dockstore: bool
 
     @classmethod
     def get_unsubmitted_job_attempts(cls, workflow_id: str, attempt_number: int) -> list[JobAttemptSummary]:
@@ -572,7 +576,7 @@ class HistoryManager:
             )
             for row in cur:
                 attempts.append(
-                    cls.JobAttemptSummary(
+                    JobAttemptSummary(
                         id=row["id"],
                         job_name=row["job_name"],
                         succeeded=(row["succeeded"] == 1),
