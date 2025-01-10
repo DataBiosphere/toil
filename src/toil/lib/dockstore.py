@@ -73,7 +73,6 @@ class RunExecution(TypedDict):
     Executor-generated unique execution ID for this workflow or task.
     """
 
-    # TODO: Is this start or end?
     dateExecuted: str
     """
     ISO 8601 UTC timestamp when the execution happend.
@@ -123,13 +122,14 @@ class TaskExecutions(TypedDict):
     Dockstore metrics data for all the tasks in a workflow.
     """
 
-    # TODO: Should this match executionId for the whole workflow's RunExecution?
+    # TODO: Right now we use different IDs for the workflow RunExecution and
+    # for its corresponding collection of TaskExecutions, so there's no nice
+    # way to find the one from the other.
     executionId: str
     """
     Executor-generated unique execution ID.
     """
 
-    # TODO: Is this start or end?
     dateExecuted: str
     """
     ISO 8601 UTC timestamp when the execution happend.
@@ -147,19 +147,15 @@ class TaskExecutions(TypedDict):
     Dockstore can take any JSON-able structured data, but we only use strings.
     """
 
-def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, start_time: float, runtime: float, succeeded: bool) -> None:
+def ensure_valid_id(execution_id: str):
     """
-    Send the status of a workflow execution to Dockstore.
+    Make sure the given execution ID is in Dockstore format and will be accepted by Dockstore.
 
-    :param execution_id: Unique ID for the workflow execution. Must be
-        alphanumeric (with internal underscores allowed) and <100 characters
-        long.
-    :param start_time: Execution start time in seconds since the Unix epoch.
-    :param rutime: Execution duration in seconds.
-    :raises requests.HTTPError: if Dockstore does not accept the metrics.
+    Must be alphanumeric (with internal underscores allowed) and <100
+    characters long.
+
+    :raises ValueError: if the ID is not in the right format
     """
-
-    # Enforce Dockstore's constraints
     if len(execution_id) >= 100:
         raise ValueError("Execution ID too long")
     if len(execution_id) == 0:
@@ -169,18 +165,102 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
     if not re.fullmatch("[a-zA-Z0-9_]+", execution_id):
         raise ValueError("Execution ID must be alphanumeric with internal underscores")
 
+def pack_workflow_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool) -> RunExecution:
+    """
+    Pack up per-workflow metrics into a format that can be submitted to Dockstore.
+
+    :param execution_id: Unique ID for the workflow execution. Must be in
+        Dockstore format. 
+    :param start_time: Execution start time in seconds since the Unix epoch.
+    :param rutime: Execution duration in seconds.
+    """
+
+    # Enforce Dockstore's constraints
+    ensure_valid_id(execution_id)
+
     # Pack up into a RunExecution
-    execution = RunExecution(
+    return RunExecution(
         executionId=execution_id,
         dateExecuted=unix_seconds_to_timestamp(start_time),
         executionTime=seconds_to_duration(runtime),
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
 
+def pack_single_task_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool, name: Optional[str] = None) -> RunExecution:
+    """
+    Pack up metrics for a single task execution in a format that can be used in a Dockstore submission.
+
+    :param execution_id: Unique ID for the workflow execution. Must be in
+        Dockstore format. 
+    :param start_time: Execution start time in seconds since the Unix epoch.
+    :param rutime: Execution duration in seconds.
+    :param succeeded: Whether the execution succeeded.
+    :param name: Name of the job run within the workflow.
+    """
+
+    # TODO: Deduplicate with workflow code since the output type is the same.
+
+    # Enforce Dockstore's constraints
+    ensure_valid_id(execution_id)
+
+    # Pack up into a RunExecution
+    result = RunExecution(
+        executionId=execution_id,
+        dateExecuted=unix_seconds_to_timestamp(start_time),
+        executionTime=seconds_to_duration(runtime),
+        executionStatus="SUCCESSFUL" if succeeded else "FAILED"
+    )
+
+    # TODO: Just use kwargs here?
+    additional_properties = {}
+
+    if name is not None:
+        additional_properties["name"] = name
+
+    if len(additional_properties) > 0:
+        result["additionalProperties"] = additional_properties
+
+    return result
+
+
+def pack_workflow_task_set_metrics(execution_id: str, start_time: float, tasks: list[RunExecution]) -> TaskExecutions:
+    """
+    Pack up metrics for all the tasks in a workflow execution into a format that can be submitted to Dockstore.
+    
+    :param execution_id: Unique ID for the workflow execution. Must be in
+        Dockstore format. 
+    :param start_time: Execution start time for the overall workflow execution
+        in seconds since the Unix epoch.
+    :param tasks: Packed tasks from pack_single_task_metrics()
+    """
+
+    # Enforce Dockstore's constraints
+    ensure_valid_id(execution_id)
+
+    return TaskExecutions(
+        executionId=execution_id,
+        dateExecuted=unix_seconds_to_timestamp(start_time),
+        taskExecutions=tasks
+    )
+
+def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[RunExecution], workflow_task_sets: list[TaskExecutions]) -> None:
+    """
+    Send packed workflow and/or task metrics to Dockstore.
+
+    :param workflow_runs: list of packed metrics objects for each workflow.
+
+    :param workflow_task_sets: list of packed metrics objects for the tasks in
+        each workflow. Each workflow should have one entry containing all its
+        tasks. Does not have to be the same order/set of workflows as
+        workflow_runs.
+    
+    :raises requests.HTTPError: if Dockstore does not accept the metrics.
+    """
+
     # Aggregate into a submission
     to_post = {
-        "runExecutions": [execution],
-        "taskExecutions": [],
+        "runExecutions": workflow_runs,
+        "taskExecutions": workflow_task_sets,
         "validationExecutions": []
     }
 
@@ -212,7 +292,7 @@ def send_metrics(trs_workflow_id: str, trs_version: str, execution_id: str, star
 
 def get_metrics_url(trs_workflow_id: str, trs_version: str, execution_id: str) -> str:
     """
-    Get the URL where a workflow metrics submission can be fetched back from.
+    Get the URL where a workflow metrics object (for a workflow, or for a set of tasks) can be fetched back from.
     """
 
     return f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/execution?platform=OTHER&executionId={quote(execution_id, safe='')}"

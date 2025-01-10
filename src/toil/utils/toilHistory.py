@@ -20,13 +20,49 @@ from typing import Any, Optional
 from toil.common import parser_with_common_options
 from toil.statsAndLogging import set_logging_from_options
 
-from toil.lib.dockstore import send_metrics, get_metrics_url
-from toil.lib.history import HistoryManager
+from toil.lib.dockstore import send_metrics, get_metrics_url, pack_workflow_metrics, pack_single_task_metrics, pack_workflow_task_set_metrics
+from toil.lib.history import HistoryManager, WorkflowAttemptSummary, JobAttemptSummary
 from toil.lib.misc import unix_seconds_to_local_time
 from toil.lib.trs import parse_trs_spec
 
 
 logger = logging.getLogger(__name__)
+
+# These aren't methods on the types because I don't want to get too many
+# Dockstore ideas into the database abstraction types.
+
+def workflow_execution_id(workflow_attempt: WorkflowAttemptSummary) -> str:
+    """
+    Get the execution ID for a workflow attempt.
+
+    Result will follow Dockstore's rules.
+
+    Deterministic.
+    """
+
+    return workflow_attempt.workflow_id.replace("-", "_") + "_attempt_" + str(workflow_attempt.attempt_number)
+
+def workflow_task_set_execution_id(workflow_attempt: WorkflowAttemptSummary) -> str:
+    """
+    Get the execution ID for a workflow attempt's collection of tasks.
+
+    Result will follow Dockstore's rules.
+
+    Deterministic.
+    """
+
+    return workflow_execution_id(workflow_attempt) + "_tasks"
+
+def job_execution_id(job_attempt: JobAttemptSummary) -> str:
+    """
+    Get the execution ID for a job attempt.
+
+    Result will follow Dockstore's rules.
+
+    Deterministic.
+    """
+
+    return job_attempt.id.replace("-", "_")
 
 def main() -> None:
     """Manage stored workflow run history."""
@@ -61,10 +97,12 @@ def main() -> None:
         
 
     if options.submit:
+        # The submission code needs to submit things that can be submitted and
+        # not stop just because one thing in the database is uninterpretable or
+        # Dockstore rejects something.
         for attempt in HistoryManager.get_submittable_workflow_attempts():
             logger.info("Submitting %s attempt %s to Dockstore", attempt.workflow_id, attempt.attempt_number)
             submitted = False
-            dockstore_execution_id: Optional[str] = None
             try:
                 # If it's submittable the TRS spec will be filled in.
                 # Satisfy MyPy
@@ -74,27 +112,61 @@ def main() -> None:
                 if trs_version is None:
                     raise ValueError("Workflow stored in history with TRS ID but without TRS version")
                 
-                # Compose a Dockstore-compatible ID
-                dockstore_execution_id = attempt.workflow_id.replace("-", "_") + "_attempt_" + str(attempt.attempt_number)
+                # Pack it up
+                workflow_metrics = pack_workflow_metrics(workflow_execution_id(attempt), attempt.start_time, attempt.runtime, attempt.succeeded)
                 # Send it in
-                send_metrics(trs_id, trs_version, dockstore_execution_id, attempt.start_time, attempt.runtime, attempt.succeeded)
+                send_metrics(trs_id, trs_version, [workflow_metrics], [])
                 submitted = True
             except:
                 logger.exception("Could not submit to Dockstore")
                 # Ignore failed submissions and keep working on other ones.
 
-            
             if submitted:
                 # Record submission.
                 # TODO: We don't actually save the ID we generated for Dockstore, we just need to remember the algorithm.
                 HistoryManager.mark_workflow_attempt_submitted(attempt.workflow_id, attempt.attempt_number)
-                logger.info("Recorded Dockstore metrics submission %s in database", dockstore_execution_id)
+                logger.info("Recorded Dockstore metrics submission %s in database", workflow_execution_id(attempt))
 
                 # Compose the URL you would fetch it back from
-                assert dockstore_execution_id is not None
                 assert trs_version is not None
-                execution_url = get_metrics_url(trs_id, trs_version, dockstore_execution_id)
+                execution_url = get_metrics_url(trs_id, trs_version, workflow_execution_id(attempt))
                 logger.debug("Dockstore accepted submission %s", execution_url)
+
+        for workflow_attempt in HistoryManager.get_workflow_attempts_with_submittable_job_attempts():
+            job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+            logger.info("Submitting %s jobs from %s attempt %s to Dockstore", len(job_attempts), workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+
+            submitted = False
+            try:
+                # If it's submittable the TRS spec will be filled in.
+                # Satisfy MyPy
+                # TODO: change the type?
+                assert attempt.workflow_trs_spec is not None
+                trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
+                if trs_version is None:
+                    raise ValueError("Workflow stored in history with TRS ID but without TRS version")
+                
+                # Pack it up
+                per_task_metrics = [pack_single_task_metrics(job_execution_id(job_attempt), job_attempt.start_time, job_attempt.runtime, job_attempt.succeeded, name=job_attempt.name) for job_attempt in job_attempts]
+                task_set_metrics = pack_workflow_task_set_metrics(workflow_task_set_execution_id(workflow_attempt), per_task_metrics)
+                
+                # Send it in
+                send_metrics(trs_id, trs_version, [], [task_set_metrics])
+                submitted = True
+            except:
+                logger.exception("Could not submit to Dockstore")
+                # Ignore failed submissions and keep working on other ones.
+            
+            if submitted:
+                # Record submission of all job attempts in one transaction.
+                HistoryManager.mark_job_attempts_submitted([job_attempt.id for job_attempt in job_attempts])
+                logger.info("Recorded Dockstore metrics submission %s in database", workflow_task_set_execution_id(attempt))
+
+                # Compose the URL you would fetch it back from
+                assert trs_version is not None
+                execution_url = get_metrics_url(trs_id, trs_version, workflow_task_set_execution_id(attempt))
+                logger.debug("Dockstore accepted submission %s", execution_url)
+            
     
                 
         
