@@ -340,14 +340,29 @@ class HistoryManager:
         :param disk_bytes: Observed job disk usage.
         """
 
-        logger.info("Workflow %s ran job %s", workflow_id, job_name)
+        logger.debug("Workflow %s ran job %s", workflow_id, job_name)
 
         con = cls.connection()
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO job_attempts(
+                    id,
+                    workflow_id,
+                    workflow_attempt_number,
+                    job_name,
+                    succeeded,
+                    start_time,
+                    runtime,
+                    cores,
+                    cpu_seconds,
+                    memory_bytes,
+                    disk_bytes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     str(uuid.uuid4()),
                     workflow_id,
@@ -401,7 +416,22 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                """
+                INSERT INTO workflow_attempts(
+                    workflow_id,
+                    attempt_number,
+                    succeeded,
+                    start_time,
+                    runtime,
+                    batch_system,
+                    caching,
+                    toil_version,
+                    python_version,
+                    platform_system,
+                    platform_machine
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
                 (
                     workflow_id,
                     workflow_attempt_number,
@@ -524,7 +554,7 @@ class HistoryManager:
                     workflow_attempts.platform_system AS platform_system,
                     workflow_attempts.platform_machine AS platform_machine,
                     workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
-                    workflow.job_store AS workflow_job_store,
+                    workflows.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM workflow_attempts
                     JOIN workflows ON workflow_attempts.workflow_id = workflows.id
@@ -593,7 +623,7 @@ class HistoryManager:
                     workflow_attempts.platform_system AS platform_system,
                     workflow_attempts.platform_machine AS platform_machine,
                     workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
-                    workflow.job_store AS workflow_job_store,
+                    workflows.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM (
                     SELECT DISTINCT

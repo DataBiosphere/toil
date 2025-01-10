@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import platform
 import pickle
 import re
 import signal
@@ -81,7 +82,7 @@ from toil.options.wdl import add_wdl_options
 from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
-from toil.version import dockerRegistry, dockerTag, version
+from toil.version import dockerRegistry, dockerTag, version, baseVersion
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -962,7 +963,7 @@ class Toil(ContextManager["Toil"]):
                 # To record the batch system, we need to avoid capturing typos/random text the user types instead of a real batch system.
                 batch_system_type="<Not Initialized>"
                 if hasattr(self, "_batchSystem"):
-                    batch_system_type = str(type(self._batchSystem))
+                    batch_system_type = type(self._batchSystem).__module__ + "." + type(self._batchSystem).__qualname__
                 HistoryManager.record_workflow_attempt(
                     self.config.workflowID,
                     self.config.workflowAttemptNumber,
@@ -970,7 +971,13 @@ class Toil(ContextManager["Toil"]):
                     self._start_time,
                     time.time() - self._start_time,
                     batch_system=batch_system_type,
-                    caching=self.config.caching
+                    caching=self.config.caching,
+                    # Use the git-hash-free Toil version which should not be unique
+                    toil_version=baseVersion,
+                    # This should always be major.minor.patch.
+                    python_version=platform.python_version(),
+                    platform_system=platform.system(),
+                    platform_machine=platform.machine()
                 )
 
             if (
