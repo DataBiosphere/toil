@@ -168,8 +168,9 @@ class HistoryManager:
                     """
                     CREATE TABLE workflows (
                         id TEXT NOT NULL PRIMARY KEY,
-                        jobstore TEXT NOT NULL,
-                        name TEXT
+                        job_store TEXT NOT NULL,
+                        name TEXT,
+                        trs_spec TEXT
                     )
                     """,
                     # There's no reference constraint from the job attempts to
@@ -191,8 +192,17 @@ class HistoryManager:
                         succeeded INTEGER NOT NULL,
                         start_time REAL NOT NULL,
                         runtime REAL NOT NULL,
+                        cores REAL,
+                        cpu_seconds REAL,
+                        memory_bytes INTEGER,
+                        disk_bytes INTEGER,
+                        submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE,
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
+                    """,
+                    """
+                    CREATE INDEX idx_job_attempts_by_workflow_attempt
+                    ON job_attempts (workflow_id, workflow_attempt_number)
                     """,
                     """
                     CREATE TABLE workflow_attempts (
@@ -201,49 +211,17 @@ class HistoryManager:
                         succeeded INTEGER NOT NULL,
                         start_time REAL NOT NULL,
                         runtime REAL NOT NULL,
+                        batch_system TEXT,
+                        caching INTEGER,
+                        toil_version TEXT,
+                        python_version TEXT,
+                        platform_system TEXT,
+                        platform_machine TEXT,
+                        submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE,
                         PRIMARY KEY(workflow_id,attempt_number),
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
                     """
-                ]
-            ),
-            (
-                "Add Dockstore submission status and TRS info",
-                [
-                    "ALTER TABLE workflows ADD COLUMN trs_spec TEXT",
-                    "ALTER TABLE job_attempts ADD COLUMN submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE",
-                    "ALTER TABLE workflow_attempts ADD COLUMN submitted_to_dockstore INTEGER NOT NULL DEFAULT FALSE",
-                ]
-            ),
-            (
-                "Index jobs by workflow attempt",
-                [
-                    "CREATE INDEX idx_job_attempts_by_workflow_attempt ON job_attempts (workflow_id, workflow_attempt_number)"
-                ]
-            ),
-            (
-                "Add job attempt resource usage",
-                [
-                    "ALTER TABLE job_attempts ADD COLUMN cores REAL",
-                    "ALTER TABLE job_attempts ADD COLUMN cpu_seconds REAL",
-                    "ALTER TABLE job_attempts ADD COLUMN memory_bytes INTEGER",
-                    "ALTER TABLE job_attempts ADD COLUMN disk_bytes INTEGER"
-                ]
-            ),
-            (
-                "Add more attempt metadata",
-                [
-                    "ALTER TABLE workflow_attempts ADD COLUMN batch_system TEXT",
-                    "ALTER TABLE workflow_attempts ADD COLUMN caching INTEGER",
-                    "ALTER TABLE workflow_attempts ADD COLUMN python_version TEXT",
-                    "ALTER TABLE workflow_attempts ADD COLUMN platform_system TEXT",
-                    "ALTER TABLE workflow_attempts ADD COLUMN platform_machine TEXT"
-                ]
-            ),
-            (
-                "Use job_store as column name",
-                [
-                    "ALTER TABLE workflows RENAME COLUMN jobstore TO job_store",
                 ]
             ),
         ]
@@ -369,7 +347,7 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?)",
+                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(uuid.uuid4()),
                     workflow_id,
@@ -423,7 +401,7 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     workflow_id,
                     workflow_attempt_number,
@@ -539,13 +517,13 @@ class HistoryManager:
                     workflow_attempts.succeeded AS succeeded,
                     workflow_attempts.start_time AS start_time,
                     workflow_attempts.runtime AS runtime,
-                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
                     workflow_attempts.batch_system AS batch_system,
                     workflow_attempts.caching AS caching,
                     workflow_attempts.toil_version AS toil_version,
                     workflow_attempts.python_version AS python_version,
                     workflow_attempts.platform_system AS platform_system,
                     workflow_attempts.platform_machine AS platform_machine,
+                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
                     workflow.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM workflow_attempts
@@ -563,13 +541,13 @@ class HistoryManager:
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
                         runtime=row["runtime"],
-                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         batch_system=row["batch_system"],
                         caching=(row["caching"] == 1),
                         toil_version=row["toil_version"],
                         python_version=row["python_version"],
                         platform_system=row["platform_system"],
                         platform_machine=row["platform_machine"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         workflow_job_store=row["workflow_job_store"],
                         workflow_trs_spec=row["workflow_trs_spec"]
                     )
@@ -608,13 +586,13 @@ class HistoryManager:
                     workflow_attempts.succeeded AS succeeded,
                     workflow_attempts.start_time AS start_time,
                     workflow_attempts.runtime AS runtime,
-                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
                     workflow_attempts.batch_system AS batch_system,
                     workflow_attempts.caching AS caching,
                     workflow_attempts.toil_version AS toil_version,
                     workflow_attempts.python_version AS python_version,
                     workflow_attempts.platform_system AS platform_system,
                     workflow_attempts.platform_machine AS platform_machine,
+                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
                     workflow.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM (
@@ -639,13 +617,13 @@ class HistoryManager:
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
                         runtime=row["runtime"],
-                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         batch_system=row["batch_system"],
                         caching=(row["caching"] == 1),
                         toil_version=row["toil_version"],
                         python_version=row["python_version"],
                         platform_system=row["platform_system"],
                         platform_machine=row["platform_machine"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         workflow_job_store=row["workflow_job_store"],
                         workflow_trs_spec=row["workflow_trs_spec"]
                     )
@@ -680,11 +658,11 @@ class HistoryManager:
                     succeeded,
                     start_time,
                     runtime,
-                    submitted_to_dockstore,
                     cores,
                     cpu_seconds,
                     memory_bytes,
-                    disk_bytes
+                    disk_bytes,
+                    submitted_to_dockstore
                 FROM job_attempts
                 WHERE workflow_id = ?
                 AND workflow_attempt_number = ?
@@ -701,11 +679,11 @@ class HistoryManager:
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
                         runtime=row["runtime"],
-                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
                         cores=row["cores"],
                         cpu_seconds=row["cpu_seconds"],
                         memory_bytes=row["memory_bytes"],
-                        disk_bytes=row["disk_bytes"]
+                        disk_bytes=row["disk_bytes"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1)
                     )
                 )
         except:
