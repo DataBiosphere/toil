@@ -3140,47 +3140,53 @@ class Job:
             startTime = time.time()
             startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
+        
+        succeeded = False
+        try:
+            yield
 
-        yield
+            if "download_only" in self._debug_flags:
+                # We should stop right away
+                logger.debug("Job did not stop itself after downloading files; stopping.")
+                raise DebugStoppingPointReached()
 
-        if "download_only" in self._debug_flags:
-            # We should stop right away
-            logger.debug("Job did not stop itself after downloading files; stopping.")
-            raise DebugStoppingPointReached()
+            # If the job is not a checkpoint job, add the promise files to delete
+            # to the list of jobStoreFileIDs to delete
+            # TODO: why is Promise holding a global list here???
+            if not self.checkpoint:
+                for jobStoreFileID in Promise.filesToDelete:
+                    # Make sure to wrap the job store ID in a FileID object so the file store will accept it
+                    # TODO: talk directly to the job store here instead.
+                    fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
+            else:
+                # Else copy them to the job description to delete later
+                self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
+            Promise.filesToDelete.clear()
+            # Now indicate the asynchronous update of the job can happen
+            fileStore.startCommit(jobState=True)
 
-        # If the job is not a checkpoint job, add the promise files to delete
-        # to the list of jobStoreFileIDs to delete
-        # TODO: why is Promise holding a global list here???
-        if not self.checkpoint:
-            for jobStoreFileID in Promise.filesToDelete:
-                # Make sure to wrap the job store ID in a FileID object so the file store will accept it
-                # TODO: talk directly to the job store here instead.
-                fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
-        else:
-            # Else copy them to the job description to delete later
-            self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
-        Promise.filesToDelete.clear()
-        # Now indicate the asynchronous update of the job can happen
-        fileStore.startCommit(jobState=True)
-        # Change dir back to cwd dir, if changed by job (this is a safety issue)
-        if os.getcwd() != baseDir:
-            os.chdir(baseDir)
-        # Finish up the stats
-        if stats is not None:
-            totalCpuTime, totalMemoryUsage = (
-                ResourceMonitor.get_total_cpu_time_and_memory_usage()
-            )
-            stats.jobs.append(
-                Expando(
-                    start=startTime,
-                    time=str(time.time() - startTime),
-                    clock=str(totalCpuTime - startClock),
-                    class_name=self._jobName(),
-                    memory=str(totalMemoryUsage),
-                    requested_cores=str(self.cores),
-                    disk=str(fileStore.get_disk_usage()),
+            succeeded = True
+        finally:
+            # Change dir back to cwd dir, if changed by job (this is a safety issue)
+            if os.getcwd() != baseDir:
+                os.chdir(baseDir)
+            # Finish up the stats
+            if stats is not None:
+                totalCpuTime, totalMemoryUsage = (
+                    ResourceMonitor.get_total_cpu_time_and_memory_usage()
                 )
-            )
+                stats.jobs.append(
+                    Expando(
+                        start=startTime,
+                        time=str(time.time() - startTime),
+                        clock=str(totalCpuTime - startClock),
+                        class_name=self._jobName(),
+                        memory=str(totalMemoryUsage),
+                        requested_cores=str(self.cores),
+                        disk=str(fileStore.get_disk_usage()),
+                        succeeded=succeeded,
+                    )
+                )
 
     def _runner(
         self,

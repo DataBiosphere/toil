@@ -241,10 +241,9 @@ class StatsAndLogging:
                 for job in jobs:
                     assert config.workflowID is not None
                     # Here we're talking to job._executor which fills in these stats.
-                    # TODO: Only successful jobs show up here. To get failed ones we need to watch the message bus!
                     # TODO: Bring through CPU and memory usage.
                     # TODO: Use better names!
-                    HistoryManager.record_job_attempt(config.workflowID, config.workflowAttemptNumber, job.class_name, True, job.start, job.time)
+                    HistoryManager.record_job_attempt(config.workflowID, config.workflowAttemptNumber, job.class_name, job.succeeded, job.start, job.time)
 
         while True:
             # This is an indirect way of getting a message to the thread to exit
