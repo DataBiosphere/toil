@@ -240,10 +240,24 @@ class StatsAndLogging:
             else:
                 for job in jobs:
                     assert config.workflowID is not None
-                    # Here we're talking to job._executor which fills in these stats.
-                    # TODO: Bring through CPU and memory usage.
-                    # TODO: Use better names!
-                    HistoryManager.record_job_attempt(config.workflowID, config.workflowAttemptNumber, job.class_name, job.succeeded, job.start, job.time)
+                    try:
+                        # Here we're talking to job._executor which fills in these stats.
+                        # TODO: Use better job names!
+                        HistoryManager.record_job_attempt(
+                            config.workflowID,
+                            config.workflowAttemptNumber,
+                            job.class_name,
+                            job.succeeded == "True",
+                            float(job.start),
+                            float(job.time), 
+                            cores=float(job.requested_cores),
+                            cpu_seconds=float(job.clock),
+                            memory_bytes=int(job.memory) * 1024,
+                            disk_bytes=int(job.disk)
+                        )
+                    except:
+                        logger.exception("Could not record job attempt in history!")
+                        # Keep going. Don't fail the workflow for history-related issues.
 
         while True:
             # This is an indirect way of getting a message to the thread to exit

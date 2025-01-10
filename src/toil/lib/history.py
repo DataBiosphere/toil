@@ -89,6 +89,10 @@ class JobAttemptSummary:
     start_time: float
     runtime: float
     submitted_to_dockstore: bool
+    cores: Optional[float]
+    cpu_seconds: Optional[float]
+    memory_bytes: Optional[int]
+    disk_bytes: Optional[int]
 
 class HistoryManager:
     """
@@ -210,6 +214,15 @@ class HistoryManager:
                     "CREATE INDEX idx_job_attempts_by_workflow_attempt ON job_attempts (workflow_id, workflow_attempt_number)"
                 ]
             ),
+            (
+                "Add job attempt resource usage",
+                [
+                    "ALTER TABLE job_attempts ADD COLUMN cores REAL",
+                    "ALTER TABLE job_attempts ADD COLUMN cpu_seconds REAL",
+                    "ALTER TABLE job_attempts ADD COLUMN memory_bytes INTEGER",
+                    "ALTER TABLE job_attempts ADD COLUMN disk_bytes INTEGER"
+                ]
+            ),
         ]
 
         if db_version + 1 > len(migrations):
@@ -289,7 +302,19 @@ class HistoryManager:
             con.commit()
 
     @classmethod
-    def record_job_attempt(cls, workflow_id: str, workflow_attempt_number: int, job_name: str, succeeded: bool, start_time: float, runtime: float) -> None:
+    def record_job_attempt(
+            cls, 
+            workflow_id: str, 
+            workflow_attempt_number: int, 
+            job_name: str, 
+            succeeded: bool, 
+            start_time: float, 
+            runtime: float,
+            cores: Optional[float] = None,
+            cpu_seconds: Optional[float] = None,
+            memory_bytes: Optional[int] = None,
+            disk_bytes: Optional[int] = None
+        ) -> None:
         """
         Record that a job ran in a workflow.
 
@@ -303,6 +328,10 @@ class HistoryManager:
             the workflow.
         :param start_time: Job execution start time ins econds since epoch.
         :param runtime: Job execution duration in seconds.
+        :param cores: Number of CPU cores the job was scheduled on.
+        :param cpu_seconds: CPU core-seconds actually consumed.
+        :param memory_bytes: Peak observed job memory usage.
+        :param disk_bytes: Observed job disk usage.
         """
 
         logger.info("Workflow %s ran job %s", workflow_id, job_name)
@@ -312,7 +341,7 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)",
+                "INSERT INTO job_attempts VALUES (?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?)",
                 (
                     str(uuid.uuid4()),
                     workflow_id,
@@ -320,7 +349,11 @@ class HistoryManager:
                     job_name,
                     1 if succeeded else 0,
                     start_time,
-                    runtime
+                    runtime,
+                    cores,
+                    cpu_seconds,
+                    memory_bytes,
+                    disk_bytes,
                 )
             )
         except:
@@ -565,7 +598,11 @@ class HistoryManager:
                     succeeded,
                     start_time,
                     runtime,
-                    submitted_to_dockstore
+                    submitted_to_dockstore,
+                    cores,
+                    cpu_seconds,
+                    memory_bytes,
+                    disk_bytes
                 FROM job_attempts
                 WHERE workflow_id = ?
                 AND workflow_attempt_number = ?
@@ -582,7 +619,11 @@ class HistoryManager:
                         succeeded=(row["succeeded"] == 1),
                         start_time=row["start_time"],
                         runtime=row["runtime"],
-                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1)
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        cores=row["cores"],
+                        cpu_seconds=row["cpu_seconds"],
+                        memory_bytes=row["memory_bytes"],
+                        disk_bytes=row["disk_bytes"]
                     )
                 )
         except:

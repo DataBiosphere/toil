@@ -93,7 +93,7 @@ def main() -> None:
         for job_attempt in HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number):
             status = "✅" if job_attempt.succeeded else f"❌"
             start_time = unix_seconds_to_local_time(job_attempt.start_time).strftime("%Y-%m-%d %H:%M")
-            print(f"\t\t{status}\t{job_attempt.job_name}\t{start_time}")
+            print(f"\t\t{status}\t{job_attempt.job_name}\t{start_time}\t{job_attempt.memory_bytes}")
         
 
     if options.submit:
@@ -147,7 +147,19 @@ def main() -> None:
                     raise ValueError("Workflow stored in history with TRS ID but without TRS version")
                 
                 # Pack it up
-                per_task_metrics = [pack_single_task_metrics(job_execution_id(job_attempt), job_attempt.start_time, job_attempt.runtime, job_attempt.succeeded, job_name=job_attempt.job_name) for job_attempt in job_attempts]
+                per_task_metrics = [
+                    pack_single_task_metrics(
+                        job_execution_id(job_attempt),
+                        job_attempt.start_time,
+                        job_attempt.runtime,
+                        job_attempt.succeeded,
+                        job_name=job_attempt.job_name,
+                        cores=job_attempt.cores,
+                        cpu_seconds=job_attempt.cpu_seconds,
+                        memory_bytes=job_attempt.memory_bytes,
+                        disk_bytes=job_attempt.disk_bytes
+                    ) for job_attempt in job_attempts
+                ]
                 task_set_metrics = pack_workflow_task_set_metrics(workflow_task_set_execution_id(workflow_attempt), workflow_attempt.start_time, per_task_metrics)
                 
                 # Send it in

@@ -20,6 +20,7 @@ For basic TRS functionality for fetching workflows, see trs.py.
 
 import datetime
 import logging
+import math
 import os
 import re
 import sys
@@ -186,7 +187,17 @@ def pack_workflow_metrics(execution_id: str, start_time: float, runtime: float, 
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
 
-def pack_single_task_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool, job_name: Optional[str] = None) -> RunExecution:
+def pack_single_task_metrics(
+        execution_id: str,
+        start_time: float,
+        runtime: float,
+        succeeded: bool,
+        job_name: Optional[str] = None,
+        cores: Optional[float] = None,
+        cpu_seconds: Optional[float] = None,
+        memory_bytes: Optional[int] = None,
+        disk_bytes: Optional[int] = None,
+    ) -> RunExecution:
     """
     Pack up metrics for a single task execution in a format that can be used in a Dockstore submission.
 
@@ -196,6 +207,10 @@ def pack_single_task_metrics(execution_id: str, start_time: float, runtime: floa
     :param rutime: Execution duration in seconds.
     :param succeeded: Whether the execution succeeded.
     :param job_name: Name of the job within the workflow.
+    :param cores: CPU cores allocated to the job.
+    :param cpu_seconds: CPU seconds consumed by the job.
+    :param memory_bytes: Memory consumed by the job in bytes.
+    :param disk_bytes: Disk space consumed by the job in bytes.
     """
 
     # TODO: Deduplicate with workflow code since the output type is the same.
@@ -211,12 +226,28 @@ def pack_single_task_metrics(execution_id: str, start_time: float, runtime: floa
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
 
+    if memory_bytes is not None:
+        # Convert bytes to fractional gigabytes
+        result["memoryRequirementsGB"] = memory_bytes / 1_000_000_000
+
+    if cores is not None:
+        # Convert possibly fractional cores to an integer for Dockstore
+        result["cpuRequirements"] = int(math.ceil(cores))
+
     # TODO: Just use kwargs here?
     additional_properties = {}
 
     if job_name is not None:
         # Convert to Doskstore-style camelCase property keys
         additional_properties["jobName"] = job_name
+
+    if disk_bytes is not None:
+        # Convert to a Dockstore-style fractional disk gigabytes
+        additional_properties["diskRequirementsGB"] = disk_bytes / 1_000_000_000
+
+    if cpu_seconds is not None:
+        # Use a Dockstore-ier name here too
+        additional_properties["cpuRequirementsCoreSeconds"] = cpu_seconds
 
     if len(additional_properties) > 0:
         result["additionalProperties"] = additional_properties

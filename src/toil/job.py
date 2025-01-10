@@ -3172,19 +3172,21 @@ class Job:
                 os.chdir(baseDir)
             # Finish up the stats
             if stats is not None:
-                totalCpuTime, totalMemoryUsage = (
+                totalCpuTime, total_memory_kib = (
                     ResourceMonitor.get_total_cpu_time_and_memory_usage()
                 )
                 stats.jobs.append(
+                    # TODO: We represent everything as strings in the stats
+                    # even thought he JSON transport can take bools and floats.
                     Expando(
-                        start=startTime,
+                        start=str(startTime),
                         time=str(time.time() - startTime),
                         clock=str(totalCpuTime - startClock),
                         class_name=self._jobName(),
-                        memory=str(totalMemoryUsage),
-                        requested_cores=str(self.cores),
+                        memory=str(total_memory_kib),
+                        requested_cores=str(self.cores), # TODO: Isn't this really consumed cores?
                         disk=str(fileStore.get_disk_usage()),
-                        succeeded=succeeded,
+                        succeeded=str(succeeded),
                     )
                 )
 
