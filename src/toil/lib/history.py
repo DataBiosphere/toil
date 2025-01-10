@@ -44,7 +44,7 @@ class WorkflowSummary:
     """
     id: str
     name: Optional[str]
-    jobstore: str
+    job_store: str
     total_attempts: int
     total_job_attempts: int
     succeeded: bool
@@ -75,6 +75,13 @@ class WorkflowAttemptSummary:
     start_time: float
     runtime: float
     submitted_to_dockstore: bool
+    batch_system: Optional[str]
+    caching: Optional[bool]
+    toil_version: Optional[str]
+    python_version: Optional[str]
+    platform_system: Optional[str]
+    platform_machine: Optional[str]
+    workflow_job_store: str
     workflow_trs_spec: Optional[str]
 
 @dataclass
@@ -223,6 +230,22 @@ class HistoryManager:
                     "ALTER TABLE job_attempts ADD COLUMN disk_bytes INTEGER"
                 ]
             ),
+            (
+                "Add more attempt metadata",
+                [
+                    "ALTER TABLE workflow_attempts ADD COLUMN batch_system TEXT",
+                    "ALTER TABLE workflow_attempts ADD COLUMN caching INTEGER",
+                    "ALTER TABLE workflow_attempts ADD COLUMN python_version TEXT",
+                    "ALTER TABLE workflow_attempts ADD COLUMN platform_system TEXT",
+                    "ALTER TABLE workflow_attempts ADD COLUMN platform_machine TEXT"
+                ]
+            ),
+            (
+                "Use job_store as column name",
+                [
+                    "ALTER TABLE workflows RENAME COLUMN jobstore TO job_store",
+                ]
+            ),
         ]
 
         if db_version + 1 > len(migrations):
@@ -258,6 +281,11 @@ class HistoryManager:
 
         A workflow may have multiple attempts to run it, some of which succeed
         and others of which fail. Probably only the last one should succeed.
+        
+        :param job_store_spec: The job store specifier for the workflow. Should
+            be canonical and always start with the type and a colon. If the
+            job store is later moved by the user, the location will not be
+            updated.
         """
 
         logger.info("Recording workflow creation of %s in %s", workflow_id, job_store_spec)
@@ -303,12 +331,12 @@ class HistoryManager:
 
     @classmethod
     def record_job_attempt(
-            cls, 
-            workflow_id: str, 
-            workflow_attempt_number: int, 
-            job_name: str, 
-            succeeded: bool, 
-            start_time: float, 
+            cls,
+            workflow_id: str,
+            workflow_attempt_number: int,
+            job_name: str,
+            succeeded: bool,
+            start_time: float,
             runtime: float,
             cores: Optional[float] = None,
             cpu_seconds: Optional[float] = None,
@@ -363,9 +391,29 @@ class HistoryManager:
             con.commit()
 
     @classmethod
-    def record_workflow_attempt(cls, workflow_id: str, workflow_attempt_number: int, succeeded: bool, start_time: float, runtime: float) -> None:
+    def record_workflow_attempt(
+        cls,
+        workflow_id: str,
+        workflow_attempt_number: int,
+        succeeded: bool,
+        start_time: float,
+        runtime: float,
+        batch_system: Optional[str] = None,
+        caching: Optional[bool] = None,
+        toil_version: Optional[str] = None,
+        python_version: Optional[str] = None,
+        platform_system: Optional[str] = None,
+        platform_machine: Optional[str] = None
+    ) -> None:
         """
         Record a workflow attempt (start or restart) having finished or failed.
+
+        :param batch_system: The Python type name of the batch system implementation used.
+        :param caching: Whether Toil filestore-level caching was used.
+        :param toil_version: Version of Toil used to run the workflow.
+        :param python_version: Version of Python used to run the workflow.
+        :param platform_system: OS ("Darwin", "Linux", etc.) used to run the workflow.
+        :param platform_machine: CPU type ("AMD64", etc.) used to run the workflow leader.
         """
 
         logger.info("Workflow %s stopped. Success: %s", workflow_id, succeeded)
@@ -375,13 +423,19 @@ class HistoryManager:
         try:
             cls.ensure_tables(con, cur)
             cur.execute(
-                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, FALSE)",
+                "INSERT INTO workflow_attempts VALUES (?, ?, ?, ?, ?, FALSE, ?, ?, ?, ?, ?, ?)",
                 (
                     workflow_id,
                     workflow_attempt_number,
                     1 if succeeded else 0,
                     start_time,
-                    runtime
+                    runtime,
+                    batch_system,
+                    caching,
+                    toil_version,
+                    python_version,
+                    platform_system,
+                    platform_machine
                 )
             )
         except:
@@ -429,7 +483,7 @@ class HistoryManager:
                 SELECT
                     workflows.id AS id,
                     workflows.name AS name,
-                    workflows.jobstore AS jobstore,
+                    workflows.job_store AS job_store,
                     (SELECT count(*) FROM workflow_attempts WHERE workflow_id = workflows.id) AS total_attempts,
                     (SELECT count(*) FROM job_attempts WHERE workflow_id = workflows.id) AS total_job_attempts,
                     (SELECT min(count(*), 1) FROM workflow_attempts WHERE workflow_id = workflows.id AND succeeded = TRUE) AS succeeded,
@@ -445,7 +499,7 @@ class HistoryManager:
                     WorkflowSummary(
                         id=row["id"],
                         name=row["name"],
-                        jobstore=row["jobstore"],
+                        job_store=row["job_store"],
                         total_attempts=row["total_attempts"],
                         total_job_attempts=row["total_job_attempts"],
                         succeeded=(row["succeeded"] == 1),
@@ -463,7 +517,7 @@ class HistoryManager:
         return workflows
 
 
-    
+
 
     @classmethod
     def get_submittable_workflow_attempts(cls) -> list[WorkflowAttemptSummary]:
@@ -486,6 +540,13 @@ class HistoryManager:
                     workflow_attempts.start_time AS start_time,
                     workflow_attempts.runtime AS runtime,
                     workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
+                    workflow_attempts.batch_system AS batch_system,
+                    workflow_attempts.caching AS caching,
+                    workflow_attempts.toil_version AS toil_version,
+                    workflow_attempts.python_version AS python_version,
+                    workflow_attempts.platform_system AS platform_system,
+                    workflow_attempts.platform_machine AS platform_machine,
+                    workflow.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM workflow_attempts
                     JOIN workflows ON workflow_attempts.workflow_id = workflows.id
@@ -503,6 +564,13 @@ class HistoryManager:
                         start_time=row["start_time"],
                         runtime=row["runtime"],
                         submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        batch_system=row["batch_system"],
+                        caching=(row["caching"] == 1),
+                        toil_version=row["toil_version"],
+                        python_version=row["python_version"],
+                        platform_system=row["platform_system"],
+                        platform_machine=row["platform_machine"],
+                        workflow_job_store=row["workflow_job_store"],
                         workflow_trs_spec=row["workflow_trs_spec"]
                     )
                 )
@@ -541,6 +609,13 @@ class HistoryManager:
                     workflow_attempts.start_time AS start_time,
                     workflow_attempts.runtime AS runtime,
                     workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
+                    workflow_attempts.batch_system AS batch_system,
+                    workflow_attempts.caching AS caching,
+                    workflow_attempts.toil_version AS toil_version,
+                    workflow_attempts.python_version AS python_version,
+                    workflow_attempts.platform_system AS platform_system,
+                    workflow_attempts.platform_machine AS platform_machine,
+                    workflow.job_store AS workflow_job_store,
                     workflows.trs_spec AS workflow_trs_spec
                 FROM (
                     SELECT DISTINCT
@@ -565,6 +640,13 @@ class HistoryManager:
                         start_time=row["start_time"],
                         runtime=row["runtime"],
                         submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        batch_system=row["batch_system"],
+                        caching=(row["caching"] == 1),
+                        toil_version=row["toil_version"],
+                        python_version=row["python_version"],
+                        platform_system=row["platform_system"],
+                        platform_machine=row["platform_machine"],
+                        workflow_job_store=row["workflow_job_store"],
                         workflow_trs_spec=row["workflow_trs_spec"]
                     )
                 )

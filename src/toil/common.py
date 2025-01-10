@@ -926,7 +926,7 @@ class Toil(ContextManager["Toil"]):
             jobStore.initialize(config)
             assert config.workflowID is not None
             # Record that there is a workflow beign run
-            HistoryManager.record_workflow_creation(config.workflowID, config.jobStore)
+            HistoryManager.record_workflow_creation(config.workflowID, self.canonical_locator(config.jobStore))
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -959,8 +959,20 @@ class Toil(ContextManager["Toil"]):
             if self.config.workflowID is not None:
                 # Record that this attempt to run the workflow succeeded or failed.
                 # TODO: Get ahold of the timing from statsAndLogging instead of redoing it here!
-                HistoryManager.record_workflow_attempt(self.config.workflowID, self.config.workflowAttemptNumber, exc_type is None, self._start_time, time.time() - self._start_time)
-                
+                # To record the batch system, we need to avoid capturing typos/random text the user types instead of a real batch system.
+                batch_system_type="<Not Initialized>"
+                if hasattr(self, "_batchSystem"):
+                    batch_system_type = str(type(self._batchSystem))
+                HistoryManager.record_workflow_attempt(
+                    self.config.workflowID,
+                    self.config.workflowAttemptNumber,
+                    exc_type is None,
+                    self._start_time,
+                    time.time() - self._start_time,
+                    batch_system=batch_system_type,
+                    caching=self.config.caching
+                )
+
             if (
                 exc_type is not None
                 and self.config.clean == "onError"
@@ -1008,7 +1020,7 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-   
+
         # Log that the workflow is starting in the Toil history.
         if workflow_name is None:
             # Try to use the entrypoint file.
@@ -1116,6 +1128,8 @@ class Toil(ContextManager["Toil"]):
             )
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
+    JOB_STORE_TYPES = ["file", "aws", "google"]
+
     @classmethod
     def getJobStore(cls, locator: str) -> "AbstractJobStore":
         """
@@ -1143,6 +1157,14 @@ class Toil(ContextManager["Toil"]):
 
     @staticmethod
     def parseLocator(locator: str) -> tuple[str, str]:
+        """
+        Parse a job store locator to a type string and the data needed for that
+        implementation to connect to it.
+
+        Does not validate the set of possible job store types.
+
+        :raises RuntimeError: if the locator is not in the approproate syntax.
+        """
         if locator[0] in "/." or ":" not in locator:
             return "file", locator
         else:
@@ -1158,6 +1180,17 @@ class Toil(ContextManager["Toil"]):
         if ":" in name:
             raise ValueError(f"Can't have a ':' in the name: '{name}'.")
         return f"{name}:{rest}"
+
+    @classmethod
+    def canonical_locator(cls, locator: str) -> str:
+        """
+        Turn a job store locator into one that will work from any directory and
+        always includes the explicit type of job store.
+        """
+        job_store_type, rest = cls.parseLocator(locator)
+        if job_store_type == "file":
+            rest = os.path.abspath(rest)
+        return cls.buildLocator(job_store_type, rest)
 
     @classmethod
     def resumeJobStore(cls, locator: str) -> "AbstractJobStore":

@@ -17,7 +17,7 @@ import os
 import sys
 from typing import Any, Optional
 
-from toil.common import parser_with_common_options
+from toil.common import parser_with_common_options, Toil
 from toil.statsAndLogging import set_logging_from_options
 
 from toil.lib.dockstore import send_metrics, get_metrics_url, pack_workflow_metrics, pack_single_task_metrics, pack_workflow_task_set_metrics
@@ -111,9 +111,32 @@ def main() -> None:
                 trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
                 if trs_version is None:
                     raise ValueError("Workflow stored in history with TRS ID but without TRS version")
-                
+               
+                # Figure out what kind of job store was used.
+                job_store_type: Optional[str] = None
+                try:
+                    job_store_type = Toil.parseLocator(workflow_attempt.workflow_job_store)[0]
+                    if job_store_type not in Toil.JOB_STORE_TYPES:
+                        # Make sure we don't send typo'd job store types in.
+                        job_store_type = None
+                except RuntimeError:
+                    # Could not parse the stored locator.
+                    pass
+               
                 # Pack it up
-                workflow_metrics = pack_workflow_metrics(workflow_execution_id(workflow_attempt), workflow_attempt.start_time, workflow_attempt.runtime, workflow_attempt.succeeded)
+                workflow_metrics = pack_workflow_metrics(
+                    workflow_execution_id(workflow_attempt),
+                    workflow_attempt.start_time,
+                    workflow_attempt.runtime,
+                    workflow_attempt.succeeded,
+                    batch_system=workflow_attempt.batch_system,
+                    caching=workflow_attempt.caching,
+                    toil_version=workflow_attempt.toil_version,
+                    python_version=workflow_attempt.python_version,
+                    platform_system=workflow_attempt.platform_system,
+                    platform_machine=workflow_attempt.platform_machine,
+                    job_store_type=job_store_type
+                )
                 # Send it in
                 send_metrics(trs_id, trs_version, [workflow_metrics], [])
                 submitted = True

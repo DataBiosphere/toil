@@ -111,11 +111,11 @@ class RunExecution(TypedDict):
     The (cloud) region the workflow was executed in.
     """
 
-    additionalProperties: NotRequired[dict[str, str]]
+    additionalProperties: NotRequired[dict[str, Any]]
     """
     Any additional properties to send.
 
-    Dockstore can take any JSON-able structured data, but we only use strings.
+    Dockstore can take any JSON-able structured data.
     """
 
 class TaskExecutions(TypedDict):
@@ -141,14 +141,14 @@ class TaskExecutions(TypedDict):
     Individual executions of each task in the workflow.
     """
 
-    additionalProperties: NotRequired[dict[str, str]]
+    additionalProperties: NotRequired[dict[str, Any]]
     """
     Any additional properties to send.
 
-    Dockstore can take any JSON-able structured data, but we only use strings.
+    Dockstore can take any JSON-able structured data.
     """
 
-def ensure_valid_id(execution_id: str):
+def ensure_valid_id(execution_id: str) -> None:
     """
     Make sure the given execution ID is in Dockstore format and will be accepted by Dockstore.
 
@@ -166,7 +166,19 @@ def ensure_valid_id(execution_id: str):
     if not re.fullmatch("[a-zA-Z0-9_]+", execution_id):
         raise ValueError("Execution ID must be alphanumeric with internal underscores")
 
-def pack_workflow_metrics(execution_id: str, start_time: float, runtime: float, succeeded: bool) -> RunExecution:
+def pack_workflow_metrics(
+        execution_id: str,
+        start_time: float,
+        runtime: float,
+        succeeded: bool,
+        job_store_type: Optional[str] = None,
+        batch_system: Optional[str] = None,
+        caching: Optional[bool] = None,
+        toil_version: Optional[str] = None,
+        python_version: Optional[str] = None,
+        platform_system: Optional[str] = None,
+        platform_machine: Optional[str] = None
+    ) -> RunExecution:
     """
     Pack up per-workflow metrics into a format that can be submitted to Dockstore.
 
@@ -174,18 +186,54 @@ def pack_workflow_metrics(execution_id: str, start_time: float, runtime: float, 
         Dockstore format. 
     :param start_time: Execution start time in seconds since the Unix epoch.
     :param rutime: Execution duration in seconds.
+    :param jobstore_type: Kind of job store used, like "file" or "aws".
+    :param batch_system: Python class name implementing the batch system used.
+    :param caching: Whether Toil filestore-level cahcing was used.
+    :param toil_version: Version of Toil used (without any Git hash).
+    :param python_version: Version of Python used.
+    :param platform_system: Operating system type (like "Darwin" or "Linux").
+    :param platform_machine: Machine architecture of the leader (like "AMD64").
     """
 
     # Enforce Dockstore's constraints
     ensure_valid_id(execution_id)
 
     # Pack up into a RunExecution
-    return RunExecution(
+    result = RunExecution(
         executionId=execution_id,
         dateExecuted=unix_seconds_to_timestamp(start_time),
         executionTime=seconds_to_duration(runtime),
         executionStatus="SUCCESSFUL" if succeeded else "FAILED"
     )
+
+    # TODO: Just use kwargs here?
+    additional_properties: dict[str, Any] = {}
+
+    if job_store_type is not None:
+        additional_properties["jobStoreType"] = job_store_type
+
+    if batch_system is not None:
+        additional_properties["batchSystem"] = batch_system
+
+    if caching is not None:
+        additional_properties["caching"] = caching
+
+    if toil_version is not None:
+        additional_properties["toilVersion"] = toil_version
+
+    if python_version is not None:
+        additional_properties["pythonVersion"] = python_version
+
+    if platform_system is not None:
+        additional_properties["platformSystem"] = platform_system
+
+    if platform_machine is not None:
+        additional_properties["platformMachine"] = platform_machine
+
+    if len(additional_properties) > 0:
+        result["additionalProperties"] = additional_properties
+
+    return result
 
 def pack_single_task_metrics(
         execution_id: str,
@@ -235,7 +283,7 @@ def pack_single_task_metrics(
         result["cpuRequirements"] = int(math.ceil(cores))
 
     # TODO: Just use kwargs here?
-    additional_properties = {}
+    additional_properties: dict[str, Any] = {}
 
     if job_name is not None:
         # Convert to Doskstore-style camelCase property keys
