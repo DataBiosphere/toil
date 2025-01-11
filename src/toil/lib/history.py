@@ -18,6 +18,7 @@ Contains tools for tracking history.
 
 import logging
 import os
+import sys
 import sqlite3
 import threading
 import uuid
@@ -528,9 +529,11 @@ class HistoryManager:
 
 
     @classmethod
-    def get_submittable_workflow_attempts(cls) -> list[WorkflowAttemptSummary]:
+    def get_submittable_workflow_attempts(cls, limit: int = sys.maxsize) -> list[WorkflowAttemptSummary]:
         """
         List all workflow attempts not yet submitted to Dockstore.
+
+        :param limit: Get no more than this many.
         """
 
         attempts = []
@@ -561,7 +564,9 @@ class HistoryManager:
                 WHERE workflow_attempts.submitted_to_dockstore = FALSE
                     AND workflows.trs_spec IS NOT NULL
                 ORDER BY start_time DESC
-                """
+                LIMIT ?
+                """,
+                (limit,)
             )
             for row in cur:
                 attempts.append(
@@ -591,7 +596,7 @@ class HistoryManager:
         return attempts
 
     @classmethod
-    def get_workflow_attempts_with_submittable_job_attempts(cls) -> list[WorkflowAttemptSummary]:
+    def get_workflow_attempts_with_submittable_job_attempts(cls, limit: int = sys.maxsize) -> list[WorkflowAttemptSummary]:
         """
         Get all workflow attempts that have job attempts not yet submitted to
         Dockstore.
@@ -599,7 +604,7 @@ class HistoryManager:
         The workflow attempts themselves will have finished and been recorded,
         and have TRS IDs.
 
-        Returns pairs of workflow ID and attempt number.
+        :param limit: Get no more than this many.
         """
 
         attempts = []
@@ -636,7 +641,9 @@ class HistoryManager:
                         found_job_attempts.workflow_id = workflow_attempts.workflow_id
                         AND found_job_attempts.workflow_attempt_number = workflow_attempts.attempt_number
                 WHERE workflows.trs_spec IS NOT NULL
-                """
+                LIMIT ?
+                """,
+                (limit,)
             )
             for row in cur:
                 # TODO: Unify row to data class conversion
@@ -667,11 +674,82 @@ class HistoryManager:
         return attempts
 
     @classmethod
+    def get_workflow_attempt(cls, workflow_id: str, attempt_number: int) -> Optional[WorkflowAttemptSummary]:
+        """
+        Get a single (not necessarily unsubmitted, not necessarily TRS-ID-having) workflow attempt summary, if present.
+        """
+
+        # TODO: Consolidate with the other 2 ways to query workflow attempts!
+
+        attempts = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+            cur.execute(
+                """
+                SELECT
+                    workflow_attempts.workflow_id AS workflow_id,
+                    workflow_attempts.attempt_number AS attempt_number,
+                    workflow_attempts.succeeded AS succeeded,
+                    workflow_attempts.start_time AS start_time,
+                    workflow_attempts.runtime AS runtime,
+                    workflow_attempts.batch_system AS batch_system,
+                    workflow_attempts.caching AS caching,
+                    workflow_attempts.toil_version AS toil_version,
+                    workflow_attempts.python_version AS python_version,
+                    workflow_attempts.platform_system AS platform_system,
+                    workflow_attempts.platform_machine AS platform_machine,
+                    workflow_attempts.submitted_to_dockstore AS submitted_to_dockstore,
+                    workflows.job_store AS workflow_job_store,
+                    workflows.trs_spec AS workflow_trs_spec
+                FROM workflow_attempts
+                    JOIN workflows ON workflow_attempts.workflow_id = workflows.id
+                WHERE workflow_id = ?
+                    AND attempt_number = ?
+                ORDER BY start_time DESC
+                LIMIT 1
+                """,
+                (workflow_id, attempt_number)
+            )
+            for row in cur:
+                attempts.append(
+                    WorkflowAttemptSummary(
+                        workflow_id=row["workflow_id"],
+                        attempt_number=row["attempt_number"],
+                        succeeded=(row["succeeded"] == 1),
+                        start_time=row["start_time"],
+                        runtime=row["runtime"],
+                        batch_system=row["batch_system"],
+                        caching=(row["caching"] == 1),
+                        toil_version=row["toil_version"],
+                        python_version=row["python_version"],
+                        platform_system=row["platform_system"],
+                        platform_machine=row["platform_machine"],
+                        submitted_to_dockstore=(row["submitted_to_dockstore"] == 1),
+                        workflow_job_store=row["workflow_job_store"],
+                        workflow_trs_spec=row["workflow_trs_spec"]
+                    )
+                )
+        except:
+            con.rollback()
+            raise
+        else:
+            con.commit()
+
+        if len(attempts) == 0:
+            # Not found
+            return None
+        else:
+            return attempts[0]
+
+    @classmethod
     def get_unsubmitted_job_attempts(cls, workflow_id: str, attempt_number: int) -> list[JobAttemptSummary]:
         """
         List all job attempts in the given workflow attempt not yet submitted to Dockstore.
 
-        Doesn't check to make sure the workflow has a TRS ID
+        Doesn't check to make sure the workflow has a TRS ID.
         """
 
         attempts = []

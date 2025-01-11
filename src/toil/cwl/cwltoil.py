@@ -4398,7 +4398,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logger.debug("Root tool: %s", tool)
             tool = remove_pickle_problems(tool)
 
-        with Toil(options) as toil:
+        with Toil(options, workflow_name=trs_spec or options.cwltool, trs_spec=trs_spec) as toil:
             if options.restart:
                 outobj = toil.restart()
             else:
@@ -4415,7 +4415,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
                     logging.error(err)
                     return CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE
                 logger.info("Starting workflow")
-                outobj = toil.start(wf1, workflow_name=trs_spec or options.cwltool, trs_spec=trs_spec)
+                outobj = toil.start(wf1)
 
             # Now the workflow has completed. We need to make sure the outputs (and
             # inputs) end up where the user wants them to be.

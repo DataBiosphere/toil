@@ -97,6 +97,8 @@ def main() -> None:
         
 
     if options.submit:
+        # TODO: Replace with history_submission.py calls!!!!
+
         # The submission code needs to submit things that can be submitted and
         # not stop just because one thing in the database is uninterpretable or
         # Dockstore rejects something.

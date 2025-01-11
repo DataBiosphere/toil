@@ -198,7 +198,7 @@ def atomic_install(tmp_path, final_path) -> None:
 def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
     """Context manager to create a temporary file.  Entering returns path to
     the temporary file in the same directory as finalPath.  If the code in
-    context succeeds, the file renamed to its actually name.  If an error
+    context succeeds, the file renamed to its actuall name.  If an error
     occurs, the file is not installed and is removed unless keep is specified.
     """
     tmp_path = atomic_tmp_file(final_path)

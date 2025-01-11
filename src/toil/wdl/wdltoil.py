@@ -5438,15 +5438,15 @@ def main() -> None:
     )
 
     try:
-        with Toil(options) as toil:
+        wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
+
+        with Toil(options, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec) as toil:
             if options.restart:
                 output_bindings = toil.restart()
             else:
                 # TODO: Move all the input parsing outside the Toil context
                 # manager to avoid leaving a job store behind if the workflow
                 # can't start.
-
-                wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
 
                 # Load the WDL document
                 document: WDL.Tree.Document = WDL.load(
@@ -5604,7 +5604,7 @@ def main() -> None:
                     wdl_options,
                     options,
                 )
-                output_bindings = toil.start(root_job, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec)
+                output_bindings = toil.start(root_job)
             if not isinstance(output_bindings, WDL.Env.Bindings):
                 raise RuntimeError("The output of the WDL job is not a binding.")
 

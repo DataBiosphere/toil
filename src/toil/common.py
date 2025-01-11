@@ -71,6 +71,7 @@ from toil.bus import (
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
 from toil.lib.history import HistoryManager
+from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
 from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
@@ -219,6 +220,9 @@ class Config:
     writeLogsFromAllJobs: bool
     write_messages: Optional[str]
     realTimeLogging: bool
+
+    # Data publishing
+    publish_workflow_metrics: Union[Literal["all"], Literal["current"], Literal["no"], None]
 
     # Misc
     environment: dict[str, str]
@@ -393,6 +397,9 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
+        
+        # Data Publishing Options
+        set_option("publish_workflow_metrics")
 
         if self.write_messages is None:
             # The user hasn't specified a place for the message bus so we
@@ -630,9 +637,27 @@ def generate_config(filepath: str) -> None:
                 yaml.dump(
                     data,
                     f,
+                    # Comment everything out, Unix config file style, to show defaults
                     transform=lambda s: re.sub(r"^(.)", r"#\1", s, flags=re.MULTILINE),
                 )
 
+def update_config(filepath: str, key: str, new_value: Any) -> None:
+    """
+    Set the given top-level key to the given value in the given YAML config
+    file.
+
+    Does not dramatically alter comments or formatting, and does not make a
+    partially-written file visible.
+    """
+    
+    yaml = YAML(typ="rt")
+    data = yaml.load(open(filepath))
+
+    data[key] = new_value
+
+    with AtomicFileCreate(filepath) as temp_path:
+        with open(temp_path, "w") as f:
+            yaml.dump(data, f)
 
 def parser_with_common_options(
     provisioner_options: bool = False,
@@ -888,7 +913,7 @@ class Toil(ContextManager["Toil"]):
     _provisioner: Optional["AbstractProvisioner"]
     _start_time: float
 
-    def __init__(self, options: Namespace) -> None:
+    def __init__(self, options: Namespace, workflow_name: Optional[str] = None, trs_spec: Optional[str] = None) -> None:
         """
         Initialize a Toil object from the given options.
 
@@ -896,12 +921,24 @@ class Toil(ContextManager["Toil"]):
         done when the context is entered.
 
         :param options: command line options specified by the user
+        :param workflow_name: A human-readable name (probably a filename, URL,
+            or TRS specifier) for the workflow being run.
+        :param trs_spec: A TRS id:version string for the workflow being run, if
+            any.
         """
         super().__init__()
         self.options = options
         self._jobCache: dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager: bool = False
         self._inRestart: bool = False
+
+        if workflow_name is None:
+            # Try to use the entrypoint file.
+            import __main__
+            if hasattr(__main__, '__file__'):
+                workflow_name = __main__.__file__
+        self._workflow_name = workflow_name
+        self._trs_spec = trs_spec
 
     def __enter__(self) -> "Toil":
         """
@@ -921,6 +958,10 @@ class Toil(ContextManager["Toil"]):
             config.caching = jobStore.default_caching()
             # Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
             self.options.caching = config.caching
+
+        if self._trs_spec and config.publish_workflow_metrics is None:
+            # We could potentially publish this workflow run. Get a call from the user.
+            config.publish_workflow_metrics = ask_user_about_publishing_metrics()
 
         if not config.restart:
             config.prepare_start()
@@ -980,6 +1021,25 @@ class Toil(ContextManager["Toil"]):
                     platform_machine=platform.machine()
                 )
 
+            if self.config.publish_workflow_metrics == "all":
+                # Publish metrics for all workflows, including previous ones.
+                while True:
+                    # Keep making submissions until we've uploaded the whole
+                    # history or something goes wrong.
+                    submission = create_history_submission()
+                    if submission.empty():
+                        # Nothing else to submit
+                        break
+                    if not submission.submit():
+                        # Submitting this batch failed. An item might be broken
+                        # and we don't want to get stuck making no progress on
+                        # a batch of stuff that can't really be submitted.
+                        break
+            elif self.config.publish_workflow_metrics == "current" and self.config.workflowID is not None:
+                # Publish metrics for this run only. Might be empty if we had no TRS ID.
+                create_current_submission(self.config.workflowID, self.config.workflowAttemptNumber).submit()
+
+
             if (
                 exc_type is not None
                 and self.config.clean == "onError"
@@ -1011,7 +1071,7 @@ class Toil(ContextManager["Toil"]):
         self._inRestart = False
         return False  # let exceptions through
 
-    def start(self, rootJob: "Job", workflow_name: Optional[str] = None, trs_spec: Optional[str] = None) -> Any:
+    def start(self, rootJob: "Job") -> Any:
         """
         Invoke a Toil workflow with the given job as the root for an initial run.
 
@@ -1020,22 +1080,12 @@ class Toil(ContextManager["Toil"]):
         that has not finished.
 
         :param rootJob: The root job of the workflow
-        :param workflow_name: A human-readable name (probably a filename, URL,
-            or TRS specifier) for the workflow being run.
-        :param trs_spec: A TRS id:version string for the workflow being run, if
-            any.
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
 
-        # Log that the workflow is starting in the Toil history.
-        if workflow_name is None:
-            # Try to use the entrypoint file.
-            import __main__
-            if hasattr(__main__, '__file__'):
-                workflow_name = __main__.__file__
         assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(self.config.workflowID, workflow_name or "<interactive>", trs_spec)
+        HistoryManager.record_workflow_metadata(self.config.workflowID, self._workflow_name or "<interactive>", self._trs_spec)
 
         from toil.job import Job
 
