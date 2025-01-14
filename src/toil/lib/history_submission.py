@@ -25,7 +25,7 @@ import os
 import pathlib
 import sys
 import textwrap
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, TypeVar, Union
 
 from toil.lib.dockstore import (
     send_metrics,
@@ -317,6 +317,114 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
     
     return submission
 
+# We ahve dialog functions that MyPy knows can return strings from a possibly restricted set
+KeyType = TypeVar('T', bound=str)
+
+def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+    """
+    Display a dialog with tkinter.
+
+    Dialog will have the given title, text, and options.
+
+    :param options: Dict from machine-readable option key to button text.
+    :returns: the key of the selected option.
+    :raises: an exception if the dialog cannot be displayed.
+    """
+
+    # TODO: implement
+    import tkinter
+    from tkinter import ttk
+    
+    # Get a root window
+    root = tkinter.Tk()
+    # Make a frame
+    frame = ttk.Frame(root, padding=10)
+    # Make it use a grid layout
+    frame.grid()
+    # Lay out a label in the frame's grid
+    ttk.Label(frame, text="Hello World!").grid(column=0, row=0)
+    # Also a button that destroys the window
+    ttk.Button(frame, text="Quit", command=root.destroy).grid(column=1, row=0)
+    # Run the window's main loop
+    root.mainloop()
+   
+    return ""
+
+def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+    """
+    Display a dialog with AppleScript.
+
+    Dialog will have the given title, text, and options.
+
+    :param options: Dict from machine-readable option key to button text.
+    :returns: the key of the selected option.
+    :raises: an exception if the dialog cannot be displayed.
+    """
+
+    raise NotImplementedError()
+
+def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+    """
+    Display a dialog in the terminal.
+
+    Dialog will have the given title, text, and options.
+
+    :param options: Dict from machine-readable option key to button text.
+    :returns: the key of the selected option.
+    :raises: an exception if the dialog cannot be displayed.
+    """
+
+   # See https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog
+
+    from prompt_toolkit.shortcuts import button_dialog
+    
+    # We take button options in the reverse order from how prompt_toolkit does it.
+    # TODO: This is not scrollable! What if there's more than 1 screen of text?
+    # TODO: Use come kind of ScrollablePane like <https://stackoverflow.com/q/68369073>
+    return button_dialog(
+        title=title,
+        text=text,
+        buttons=[(v, k) for k, v in options.items()],
+    ).run()
+
+    # TODO: After this, MiniWDL will crash in asyncio's
+    # get_current_event_loop() and complain there isn't one.
+
+# Define the dialog form in the abstract
+Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]]
+
+DIALOG_TITLE = "Publish Workflow Metrics on Dockstore?"
+
+# We need to fromat the default config path in to the message, but we can't get
+# it until we can close the circular import loop. So it's a placeholder here.
+# We also leave this un-wrapped to let the dialog wrap it if needed.
+DIALOG_TEXT = """
+Would you like to publish execution metrics to Dockstore?
+
+This includes information like a random unique ID for the workflow execution and each job execution, the TRS ID of the workflow you are running, the names of its jobs, when and for how long they run, how much CPU, memory, and disk they are allocated or use, whether they succeed or fail, the versions of Toil and Python you used, the operating system platform and processor type, and which Toil or Toil plugin features the workflow uses.
+
+Dockstore uses this information to prepare reports about how well workflows run in different environments, and what resources they need, to help users plan their workflow runs. The Toil developers also consult this information to see which Toil features are the most popular and how pipular Toil is overall.
+
+Note that publishing is PERMANENT! You WILL NOT be able to recall or un-publish any published metrics!
+
+(You can change your choice by editing the "publishWorkflowMetrics" setting in the "{}" file. You can override it once with the "--publishWorkflowMetrics" command line option.)
+
+All: Publish for this run and all future AND PAST runs of ALL workflows.
+Yes: Publish for just this run, and ask again for future runs.
+No: Do not publish anything now, but ask again for future workflow runs.
+Never: Do not publish anything and stop asking.
+""".strip()
+
+DIALOG_OPTIONS: dict[Decision, str] = {
+    "all": "All",
+    "current": "Yes",
+    "no": "No",
+    "never": "Never"
+}
+
+# Make sure the option texts are short enough; prompt_toolkit can only handle 10 characters.
+for k, v in DIALOG_OPTIONS.items():
+    assert len(v) <= 10, f"Label for \"{k}\" dialog option is too long to work on all backends!"
 
 def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["current"], Literal["no"]]:
     """
@@ -327,32 +435,40 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
     :returns: The user's decision about when to publish metrics.
     """
 
+    from toil.common import update_config, get_default_config_path
+
+    # Find the default config path to talk about or update
+    default_config_path = get_default_config_path()
+
     # Actual chatting with the user will fill this in if possible
-    decision: Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]] = "no"
+    decision: Optional[Decision] = None
 
     if sys.stdin.isatty() and sys.stderr.isatty():
         # IO is not redirected (except maybe JSON to a file). We might be able to raise the user.
 
         # TODO: Get a lock
 
-        # TODO: Try a tkinter dialog
+        for strategy in [dialog_tkinter, dialog_applescript, dialog_tui]:
+            try:
+                decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
+            except:
+                logger.exception("Could not use %s", strategy)
 
-        # TODO: Try a CLI dailog
-
-        # TODO: Set this permanently in the config for them
-
-        # TODO: Prompt the user to set this permanently in the config
-
-        # TODO: Provide a command (or a general toil config editing command) to managte this setting
-        logger.critical("Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]")
-        sys.exit(1)
+        if decision is None:
+            # If we think we should be able to reach the user, but we can't, fail and make them tell us via option
+            # TODO: Provide a command (or a general toil config editing command) to managte this setting
+            logger.critical("Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]")
+            sys.exit(1)
     
+    if decision is None:
+        # If we can't reach the user
+        decision = "no"
+
     result = decision if decision != "never" else "no"
 
     if decision in ("all", "never"):
         # These are persistent and should save to the config
-        from toil.common import update_config, get_default_config_path
-        update_config(get_default_config_path(), "publish_workflow_metrics", result)
+        update_config(default_config_path, "publishWorkflowMetrics", result)
         
     return result
     

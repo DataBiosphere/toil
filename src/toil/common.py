@@ -54,6 +54,7 @@ import requests
 from configargparse import ArgParser, YAMLConfigFileParser
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import set_batchsystem_options
@@ -641,19 +642,31 @@ def generate_config(filepath: str) -> None:
                     transform=lambda s: re.sub(r"^(.)", r"#\1", s, flags=re.MULTILINE),
                 )
 
-def update_config(filepath: str, key: str, new_value: Any) -> None:
+def update_config(filepath: str, key: str, new_value: Union[str, bool, int, float]) -> None:
     """
     Set the given top-level key to the given value in the given YAML config
     file.
 
     Does not dramatically alter comments or formatting, and does not make a
     partially-written file visible.
+
+    :param key: Setting to set. Must be the command-line option name, not the
+        destination variable name.
     """
     
     yaml = YAML(typ="rt")
     data = yaml.load(open(filepath))
 
-    data[key] = new_value
+    logger.info("Change config field %s from %s to %s", key, repr(data.get(key, None)), repr(new_value))
+
+    if isinstance(new_value, str):
+        # Strings with some values (no, yes) will be interpreted as booleans on
+        # load if not quoted. But ruamel is not determining that this is needed
+        # on serialization for nwly-added values. So if we set something to a
+        # string we always quote it.
+        data[key] = DoubleQuotedScalarString(new_value)
+    else:
+        data[key] = new_value
 
     with AtomicFileCreate(filepath) as temp_path:
         with open(temp_path, "w") as f:
