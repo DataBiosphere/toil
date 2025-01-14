@@ -126,9 +126,10 @@ class HistoryManager:
             cls.database_path(),
             isolation_level="DEFERRED"
         )
-        # This doesn't much matter given the default isolation level settings,
-        # but is recommended.
-        con.autocommit = False
+        if hasattr(con, 'autocommit'):
+            # This doesn't much matter given the isolation level setting,
+            # but is recommended on Python versions that have it (3.12+)
+            con.autocommit = False
         # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
         con.row_factory = sqlite3.Row
         # We use foreign keys
