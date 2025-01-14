@@ -317,8 +317,8 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
     
     return submission
 
-# We ahve dialog functions that MyPy knows can return strings from a possibly restricted set
-KeyType = TypeVar('T', bound=str)
+# We have dialog functions that MyPy knows can return strings from a possibly restricted set
+KeyType = TypeVar('KeyType', bound=str)
 
 def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
     """
@@ -331,7 +331,6 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> KeyTyp
     :raises: an exception if the dialog cannot be displayed.
     """
 
-    # TODO: implement
     import tkinter
     from tkinter import ttk
     
@@ -342,13 +341,24 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> KeyTyp
     # Make it use a grid layout
     frame.grid()
     # Lay out a label in the frame's grid
-    ttk.Label(frame, text="Hello World!").grid(column=0, row=0)
+    ttk.Label(frame, text=text).grid(column=0, row=0)
     # Also a button that destroys the window
-    ttk.Button(frame, text="Quit", command=root.destroy).grid(column=1, row=0)
+
+    # Use a lsit as a mutable slot
+    result: list[KeyType] = []
+    button_column = 1
+    for k, v in options.items():
+        def setter() -> None:
+            result.append(k)
+        ttk.Button(frame, text=v, command=setter).grid(column=button_column, row=1)
+        button_column += 1
+
     # Run the window's main loop
     root.mainloop()
    
-    return ""
+    # TODO: Do the title
+
+    return result[0]
 
 def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
     """
@@ -360,7 +370,8 @@ def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> Ke
     :returns: the key of the selected option.
     :raises: an exception if the dialog cannot be displayed.
     """
-
+    
+    # TODO: Implement
     raise NotImplementedError()
 
 def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
