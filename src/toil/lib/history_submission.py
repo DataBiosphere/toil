@@ -474,9 +474,9 @@ DIALOG_TITLE = "Publish Workflow Metrics on Dockstore?"
 DIALOG_TEXT = """
 Would you like to publish execution metrics to Dockstore?
 
-This includes information like a random unique ID for the workflow execution and each job execution, the TRS ID of the workflow you are running, the names of its jobs, when and for how long they run, how much CPU, memory, and disk they are allocated or use, whether they succeed or fail, the versions of Toil and Python you used, the operating system platform and processor type, and which Toil or Toil plugin features the workflow uses.
+This includes information like a unique ID for the workflow execution and each job execution, the Tool Registry Service (TRS) ID of the workflow, the names of its jobs, when and for how long they run, how much CPU, memory, and disk they are allocated or use, whether they succeed or fail, the versions of Toil and Python used, the operating system platform and processor type, and which Toil or Toil plugin features are used.
 
-Dockstore uses this information to prepare reports about how well workflows run in different environments, and what resources they need, to help users plan their workflow runs. The Toil developers also consult this information to see which Toil features are the most popular and how pipular Toil is overall.
+Dockstore uses this information to prepare reports about how well workflows run in different environments, and what resources they need, in order to help users plan their workflow runs. The Toil developers also consult this information to see which Toil features are the most popular and how popular Toil is overall.
 
 Note that publishing is PERMANENT! You WILL NOT be able to recall or un-publish any published metrics!
 
