@@ -533,7 +533,7 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
 
         # TODO: Get a lock
 
-        for strategy in [dialog_tkinter]: #, dialog_applescript, dialog_tui]:
+        for strategy in [dialog_tui]: #dialog_tkinter]: #, dialog_applescript, dialog_tui]:
             try:
                 strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
                 if strategy_decision is None:
@@ -542,8 +542,6 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
                 decision = strategy_decision
             except:
                 logger.exception("Could not use %s", strategy)
-
-        raise RuntimeError("boom")
 
         if decision is None:
             # If we think we should be able to reach the user, but we can't, fail and make them tell us via option

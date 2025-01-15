@@ -5447,8 +5447,14 @@ def main() -> None:
                 # TODO: Move all the input parsing outside the Toil context
                 # manager to avoid leaving a job store behind if the workflow
                 # can't start.
+                
+                # MiniWDL load code internally uses asyncio.get_event_loop()
+                # which might not get an event loop if somebody has ever called
+                # set_event_loop. So we need to make sure an event loop is
+                # available.
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
-                # Load the WDL document
+                # Load the WDL document.
                 document: WDL.Tree.Document = WDL.load(
                     wdl_uri,
                     read_source=toil_read_source,
