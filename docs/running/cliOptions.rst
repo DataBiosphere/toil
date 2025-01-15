@@ -551,7 +551,18 @@ systems have issues!).
                         (default=3600)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
-
+  --publishWorkflowMetrics {all,current,no}
+                        Whether to publish workflow metrics reports (including
+                        uniqe workflow and task run IDs, job names, and version
+                        and Toil feature use information) to Dockstore when a
+                        workflow completes. Selecting "current" will publish
+                        metrics for the current workflow. Selecting "all" will
+                        also publish prior workflow runs from the Toil history
+                        database, even if they themselves were run with "no".
+                        Note that once published, workflow metrics CANNOT be
+                        deleted or un-published; they will stay published
+                        forever!
+                        
 **Debug Options**
 Debug options for finding problems or helping with testing.
 

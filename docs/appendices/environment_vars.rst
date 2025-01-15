@@ -244,6 +244,13 @@ There are several environment variables that affect the way Toil runs.
 |                                  | in favor of CLI options when using launch cluster. |
 |                                  | For information on valid AWS tags, see `AWS Tags`_.|
 +----------------------------------+----------------------------------------------------+
+| TOIL_TRS_ROOT                    | Override for the Dockstore deployment to talk to   |
+|                                  | for workflow lookups and metrics publication, for  |
+|                                  | debugging.                                         |
++----------------------------------+----------------------------------------------------+
+| TOIL_DOCKSTORE_TOKEN             | When publishing workflow metrics, include this     |
+|                                  | Dockstore authentication token, for debugging.     |
++----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
 |                                  | for Docker Hub.                                    |

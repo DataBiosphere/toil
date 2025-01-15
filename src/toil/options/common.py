@@ -981,21 +981,6 @@ def add_base_toil_options(
         help="Enable real-time logging from workers to leader",
     )
 
-    # Data publishing options
-    publishing_options = parser.add_argument_group(
-        title="Toil data publishing options",
-        description="Options for whether Toil should publish information about workflow runs."
-    )
-    publishing_options.add_argument(
-        "--publishWorkflowMetrics",
-        dest="publish_workflow_metrics",
-        choices=["all", "current", "no"],
-        default=None,
-        help="Whether to publish workflow metrics reports to Dockstore when a workflow "
-        "completes. Selecting \"all\" will also publish prior workflow runs from the "
-        "Toil history database."
-    )
-
     # Misc options
     misc_options = parser.add_argument_group(
         title="Toil miscellaneous options", description="Everything else."
@@ -1117,6 +1102,19 @@ def add_base_toil_options(
         action="store_true",
         default=False,
         help="Disables the progress bar shown when standard error is a terminal.",
+    )
+    misc_options.add_argument(
+        "--publishWorkflowMetrics",
+        dest="publish_workflow_metrics",
+        choices=["all", "current", "no"],
+        default=None,
+        help="Whether to publish workflow metrics reports (including uniqe workflow "
+        "and task run IDs, job names, and version and Toil feature use information) to "
+        "Dockstore when a workflow completes. Selecting \"current\" will publish metrics "
+        "for the current workflow. Selecting \"all\" will also publish prior workflow "
+        "runs from the Toil history database, even if they themselves were run with \"no\". "
+        "Note that once published, workflow metrics CANNOT be deleted or un-published; they "
+        "will stay published forever!"
     )
 
     # Debug options
