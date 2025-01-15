@@ -320,68 +320,142 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
 # We have dialog functions that MyPy knows can return strings from a possibly restricted set
 KeyType = TypeVar('KeyType', bound=str)
 
-def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
     """
     Display a dialog with tkinter.
 
     Dialog will have the given title, text, and options.
 
     :param options: Dict from machine-readable option key to button text.
-    :returns: the key of the selected option.
+    :returns: the key of the selected option, or None if the user declined to
+        select an option.
     :raises: an exception if the dialog cannot be displayed.
     """
+
+    FRAME_PADDING = 10
+    BUTTON_FRAME_PADDING = 5
+    DEFAULT_LABEL_WRAP = 400
 
     import tkinter
     from tkinter import ttk
     
     # Get a root window
     root = tkinter.Tk()
-    # Make a frame
-    frame = ttk.Frame(root, padding=10)
-    # Make it use a grid layout
-    frame.grid()
-    # Lay out a label in the frame's grid
-    ttk.Label(frame, text=text).grid(column=0, row=0)
-    # Also a button that destroys the window
+    # Set the title
+    root.title(title)
 
-    # Use a lsit as a mutable slot
+    # Make a frame
+    frame = ttk.Frame(root, padding=FRAME_PADDING)
+    # Put it on a grid in the parent
+    frame.grid(row=0, column=0, sticky="nsew")
+    
+    # Lay out a label in the frame's grid
+    label = ttk.Label(frame, text=text, wraplength=DEFAULT_LABEL_WRAP)
+    label.grid(column=0, row=0, sticky="nsew")
+
+    # Add a button frame below it so the buttons can be in columns narrower than the label
+    button_frame = ttk.Frame(frame, padding=BUTTON_FRAME_PADDING)
+    # Put it on a grid in the parent
+    button_frame.grid(row=1, column=0, sticky="sw")
+
+    # Use a list as a mutable slot
     result: list[KeyType] = []
-    button_column = 1
+    button_column = 0
     for k, v in options.items():
         def setter() -> None:
+            # Record the choice
             result.append(k)
-        ttk.Button(frame, text=v, command=setter).grid(column=button_column, row=1)
+            # Close the window
+            root.quit()
+        ttk.Button(button_frame, text=v, command=setter).grid(column=button_column, row=0)
         button_column += 1
+
+    # Buttons do not grow as the window resizes.
+
+    # Say row 0 of the container frame gets all its extra height
+    frame.rowconfigure(0, weight=1)
+    # Say column 0 of the container frame gets all its extra width
+    frame.columnconfigure(0, weight=1)
+
+    # Say row 0 of the root gets all its extra height
+    root.rowconfigure(0, weight=1)
+    # Say column 0 of the root gets all its extra width
+    root.columnconfigure(0, weight=1)
+
+    # Make sure the window can't get too small for the content
+    def force_fit() -> None:
+        """
+        Make sure the root window is no smaller than its contents require.
+        """
+        # Give it a minimum size in inches, and also no smaller than the
+        # contents require. We can't use the required width exactly because
+        # that would never let us shrink and rewrap the label, so we use the
+        # button frame instead and add padding ourselves.
+        min_width = max(int(root.winfo_fpixels("2i")), button_frame.winfo_reqwidth() + BUTTON_FRAME_PADDING + FRAME_PADDING)
+        min_height = max(int(root.winfo_fpixels("1i")), root.winfo_reqheight())
+        root.minsize(min_width, min_height)
+
+        # TODO: If the window would be too tall for the screen, make it wider for the user?
+
+    # Rewrap the text as the window size changes
+    setattr(label, "last_width", 100)
+    # MyPy demands a generic argument here but Python won't be able to handle
+    # it until
+    # <https://github.com/python/cpython/commit/42a818912bdb367c4ec2b7d58c18db35f55ebe3b>
+    # ships.
+    def resize_label(event: "tkinter.Event[ttk.Label]") -> None:
+        """
+        If the label's width has changed, rewrap the text.
+
+        See <https://stackoverflow.com/a/71599924>
+        """
+        current_width = label.winfo_width()
+        if getattr(label, "last_width") != current_width:
+            setattr(label, "last_width", current_width)
+            label.config(wraplength=current_width)
+            # Update required height calculation based on new width
+            label.update_idletasks()
+            # Impose minimum height
+            force_fit()
+    label.bind('<Configure>', resize_label)
+
+    # Do root sizing
+    force_fit()
 
     # Run the window's main loop
     root.mainloop()
    
-    # TODO: Do the title
+    if len(result) == 0:
+        # User didn't click any buttons. Probably they don't want to deal with
+        # this right now.
+        return None
 
     return result[0]
 
-def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
     """
     Display a dialog with AppleScript.
 
     Dialog will have the given title, text, and options.
 
     :param options: Dict from machine-readable option key to button text.
-    :returns: the key of the selected option.
+    :returns: the key of the selected option, or None if the user declined to
+        select an option.
     :raises: an exception if the dialog cannot be displayed.
     """
     
     # TODO: Implement
     raise NotImplementedError()
 
-def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> KeyType:
+def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
     """
     Display a dialog in the terminal.
 
     Dialog will have the given title, text, and options.
 
     :param options: Dict from machine-readable option key to button text.
-    :returns: the key of the selected option.
+    :returns: the key of the selected option, or None if the user declined to
+        select an option.
     :raises: an exception if the dialog cannot be displayed.
     """
 
@@ -459,11 +533,17 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
 
         # TODO: Get a lock
 
-        for strategy in [dialog_tkinter, dialog_applescript, dialog_tui]:
+        for strategy in [dialog_tkinter]: #, dialog_applescript, dialog_tui]:
             try:
-                decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
+                strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
+                if strategy_decision is None:
+                    # User declined to choose. Treat that as choosing "no".
+                    strategy_decision = "no"
+                decision = strategy_decision
             except:
                 logger.exception("Could not use %s", strategy)
+
+        raise RuntimeError("boom")
 
         if decision is None:
             # If we think we should be able to reach the user, but we can't, fail and make them tell us via option
@@ -472,7 +552,7 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
             sys.exit(1)
     
     if decision is None:
-        # If we can't reach the user
+        # We can't reach the user
         decision = "no"
 
     result = decision if decision != "never" else "no"
