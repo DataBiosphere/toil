@@ -21,6 +21,7 @@ import collections
 import io
 import json
 import logging
+import multiprocessing
 import os
 import pathlib
 import subprocess
@@ -109,7 +110,7 @@ class Submission:
         trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
         if trs_version is None:
             raise ValueError("Workflow stored in history with TRS ID but without TRS version")
-       
+
         # Figure out what kind of job store was used.
         job_store_type: Optional[str] = None
         try:
@@ -121,7 +122,7 @@ class Submission:
         except RuntimeError:
             # Could not parse the stored locator.
             pass
-       
+
         # Pack it up
         workflow_metrics = pack_workflow_metrics(
             workflow_execution_id(workflow_attempt),
@@ -136,7 +137,7 @@ class Submission:
             platform_machine=workflow_attempt.platform_machine,
             job_store_type=job_store_type
         )
-        
+
         # Add it to the package
         self.data[(trs_id, trs_version)][0].append((workflow_metrics, workflow_attempt.workflow_id, workflow_attempt.attempt_number))
 
@@ -152,7 +153,7 @@ class Submission:
         trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
         if trs_version is None:
             raise ValueError("Workflow stored in history with TRS ID but without TRS version")
-        
+
         # Pack it up
         per_task_metrics = [
             pack_single_task_metrics(
@@ -168,7 +169,7 @@ class Submission:
             ) for job_attempt in job_attempts
         ]
         task_set_metrics = pack_workflow_task_set_metrics(workflow_task_set_execution_id(workflow_attempt), workflow_attempt.start_time, per_task_metrics)
-        
+
         # Add it to the package
         self.data[(trs_id, trs_version)][1].append((task_set_metrics, [job_attempt.id for job_attempt in job_attempts]))
 
@@ -191,7 +192,7 @@ class Submission:
         """
         Compose a multi-line human-readable string report about what will be submitted.
         """
-        
+
         stream = io.StringIO()
 
         for (trs_id, trs_version), (workflow_metrics, task_metrics) in self.data.items():
@@ -219,7 +220,7 @@ class Submission:
 
         :returns: False if there was any error, True if submission was accepted and recorded locally.
         """
-        
+
         all_submitted_and_marked = True
 
         for (trs_id, trs_version), (workflow_metrics, task_metrics) in self.data.items():
@@ -264,10 +265,10 @@ def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> S
     :param desired_tasks: Number of tasks to try and put into a task submission
         batch. Use 0 to not submit any task information.
     """
-    
+
     # Collect together some workflows and some lists of tasks into a submission.
     submission = Submission()
-    
+
     # We don't want to submit many large workflows' tasks in one request. So we
     # count how many tasks we've colected so far.
     total_tasks = 0
@@ -290,10 +291,10 @@ def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> S
     # into extra workflow runs (see
     # <https://ucsc-cgl.atlassian.net/browse/SEAB-6919>), set the default task
     # limit to submit to be nonzero.
-    
+
     for workflow_attempt in HistoryManager.get_workflow_attempts_with_submittable_job_attempts(limit=batch_size):
         job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
-        
+
         if desired_tasks == 0 or total_tasks + len(job_attempts) > desired_tasks:
             # Don't add any more task sets to the dubmission
             break
@@ -331,7 +332,7 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
     except:
         logger.exception("Could not compose metrics report for workflow execution")
         # Keep going with an empty submission.
-    
+
     return submission
 
 # We have dialog functions that MyPy knows can return strings from a possibly restricted set
@@ -343,111 +344,149 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> Option
 
     Dialog will have the given title, text, and options.
 
+    Dialog will be displayed by a separate Python process to avoid a Mac dock
+    icon sticking around as long as Toil runs.
+
     :param options: Dict from machine-readable option key to button text.
     :returns: the key of the selected option, or None if the user declined to
         select an option.
     :raises: an exception if the dialog cannot be displayed.
     """
 
-    FRAME_PADDING = 10
-    BUTTON_FRAME_PADDING = 5
-    DEFAULT_LABEL_WRAP = 400
-
-    import tkinter
-    from tkinter import ttk
+    # Multiprocessing queues aren't actually generic, but MyPy requires them to be.
+    result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]" = multiprocessing.Queue()
+    process = multiprocessing.Process(target=display_dialog_tkinter, args=(title, text, options, result_queue))
+    process.start()
+    result = result_queue.get()
+    process.join()
     
-    # Get a root window
-    root = tkinter.Tk()
-    # Set the title
-    root.title(title)
+    if isinstance(result, Exception):
+        raise result
+    else:
+        return result
 
-    # Make a frame
-    frame = ttk.Frame(root, padding=FRAME_PADDING)
-    # Put it on a grid in the parent
-    frame.grid(row=0, column=0, sticky="nsew")
     
-    # Lay out a label in the frame's grid
-    label = ttk.Label(frame, text=text, wraplength=DEFAULT_LABEL_WRAP)
-    label.grid(column=0, row=0, sticky="nsew")
 
-    # Add a button frame below it so the buttons can be in columns narrower than the label
-    button_frame = ttk.Frame(frame, padding=BUTTON_FRAME_PADDING)
-    # Put it on a grid in the parent
-    button_frame.grid(row=1, column=0, sticky="sw")
+def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]") -> None:
+    """
+    Display a dialog with tkinter in the current process.
 
-    # Use a list as a mutable slot
-    result: list[KeyType] = []
-    button_column = 0
-    for k, v in options.items():
-        def setter() -> None:
-            # Record the choice
-            result.append(k)
-            # Close the window
-            root.quit()
-        ttk.Button(button_frame, text=v, command=setter).grid(column=button_column, row=0)
-        button_column += 1
+    Dialog will have the given title, text, and options.
 
-    # Buttons do not grow as the window resizes.
+    :param options: Dict from machine-readable option key to button text.
 
-    # Say row 0 of the container frame gets all its extra height
-    frame.rowconfigure(0, weight=1)
-    # Say column 0 of the container frame gets all its extra width
-    frame.columnconfigure(0, weight=1)
+    Sends back either the key of the chosen option, or an exception, via the
+    result queue.
+    """
 
-    # Say row 0 of the root gets all its extra height
-    root.rowconfigure(0, weight=1)
-    # Say column 0 of the root gets all its extra width
-    root.columnconfigure(0, weight=1)
+    try:
 
-    # Make sure the window can't get too small for the content
-    def force_fit() -> None:
-        """
-        Make sure the root window is no smaller than its contents require.
-        """
-        # Give it a minimum size in inches, and also no smaller than the
-        # contents require. We can't use the required width exactly because
-        # that would never let us shrink and rewrap the label, so we use the
-        # button frame instead and add padding ourselves.
-        min_width = max(int(root.winfo_fpixels("2i")), button_frame.winfo_reqwidth() + BUTTON_FRAME_PADDING + FRAME_PADDING)
-        min_height = max(int(root.winfo_fpixels("1i")), root.winfo_reqheight())
-        root.minsize(min_width, min_height)
+        FRAME_PADDING = 10
+        BUTTON_FRAME_PADDING = 5
+        DEFAULT_LABEL_WRAP = 400
 
-        # TODO: If the window would be too tall for the screen, make it wider for the user?
+        import tkinter
+        from tkinter import ttk
 
-    # Rewrap the text as the window size changes
-    setattr(label, "last_width", 100)
-    # MyPy demands a generic argument here but Python won't be able to handle
-    # it until
-    # <https://github.com/python/cpython/commit/42a818912bdb367c4ec2b7d58c18db35f55ebe3b>
-    # ships.
-    def resize_label(event: "tkinter.Event[ttk.Label]") -> None:
-        """
-        If the label's width has changed, rewrap the text.
+        # Get a root window
+        root = tkinter.Tk()
+        # Set the title
+        root.title(title)
 
-        See <https://stackoverflow.com/a/71599924>
-        """
-        current_width = label.winfo_width()
-        if getattr(label, "last_width") != current_width:
-            setattr(label, "last_width", current_width)
-            label.config(wraplength=current_width)
-            # Update required height calculation based on new width
-            label.update_idletasks()
-            # Impose minimum height
-            force_fit()
-    label.bind('<Configure>', resize_label)
+        # Make a frame
+        frame = ttk.Frame(root, padding=FRAME_PADDING)
+        # Put it on a grid in the parent
+        frame.grid(row=0, column=0, sticky="nsew")
 
-    # Do root sizing
-    force_fit()
+        # Lay out a label in the frame's grid
+        label = ttk.Label(frame, text=text, wraplength=DEFAULT_LABEL_WRAP)
+        label.grid(column=0, row=0, sticky="nsew")
 
-    # Run the window's main loop
-    root.mainloop()
-   
-    if len(result) == 0:
-        # User didn't click any buttons. Probably they don't want to deal with
-        # this right now.
-        return None
+        # Add a button frame below it so the buttons can be in columns narrower than the label
+        button_frame = ttk.Frame(frame, padding=BUTTON_FRAME_PADDING)
+        # Put it on a grid in the parent
+        button_frame.grid(row=1, column=0, sticky="sw")
 
-    return result[0]
+        # Use a list as a mutable slot
+        result: list[KeyType] = []
+        button_column = 0
+        for k, v in options.items():
+            # A function in here will capture k by reference. Sneak the current k
+            # in through a default argument, which is evaluated at definition time.
+            def setter(set_to: KeyType = k) -> None:
+                # Record the choice
+                result.append(set_to)
+                # Hide the window
+                root.withdraw()
+                # Now we want to exit the main loop. But if we do it right away the window hide never happens and the window stays open but not responding.
+                # So we schedule the root to go away.
+                root.after(100, root.destroy)
+            ttk.Button(button_frame, text=v, command=setter).grid(column=button_column, row=0)
+            button_column += 1
+
+        # Buttons do not grow as the window resizes.
+
+        # Say row 0 of the container frame gets all its extra height
+        frame.rowconfigure(0, weight=1)
+        # Say column 0 of the container frame gets all its extra width
+        frame.columnconfigure(0, weight=1)
+
+        # Say row 0 of the root gets all its extra height
+        root.rowconfigure(0, weight=1)
+        # Say column 0 of the root gets all its extra width
+        root.columnconfigure(0, weight=1)
+
+        # Make sure the window can't get too small for the content
+        def force_fit() -> None:
+            """
+            Make sure the root window is no smaller than its contents require.
+            """
+            # Give it a minimum size in inches, and also no smaller than the
+            # contents require. We can't use the required width exactly because
+            # that would never let us shrink and rewrap the label, so we use the
+            # button frame instead and add padding ourselves.
+            min_width = max(int(root.winfo_fpixels("2i")), button_frame.winfo_reqwidth() + BUTTON_FRAME_PADDING + FRAME_PADDING)
+            min_height = max(int(root.winfo_fpixels("1i")), root.winfo_reqheight())
+            root.minsize(min_width, min_height)
+
+            # TODO: If the window would be too tall for the screen, make it wider for the user?
+
+        # Rewrap the text as the window size changes
+        setattr(label, "last_width", 100)
+        # MyPy demands a generic argument here but Python won't be able to handle
+        # it until
+        # <https://github.com/python/cpython/commit/42a818912bdb367c4ec2b7d58c18db35f55ebe3b>
+        # ships.
+        def resize_label(event: "tkinter.Event[ttk.Label]") -> None:
+            """
+            If the label's width has changed, rewrap the text.
+
+            See <https://stackoverflow.com/a/71599924>
+            """
+            current_width = label.winfo_width()
+            if getattr(label, "last_width") != current_width:
+                setattr(label, "last_width", current_width)
+                label.config(wraplength=current_width)
+                # Update required height calculation based on new width
+                label.update_idletasks()
+                # Impose minimum height
+                force_fit()
+        label.bind('<Configure>', resize_label)
+
+        # Do root sizing
+        force_fit()
+
+        # Run the window's main loop
+        root.mainloop()
+
+        if len(result) == 0:
+            # User didn't click any buttons. Probably they don't want to deal with
+            # this right now.
+            result_queue.put(None)
+        else:
+            result_queue.put(result[0])
+    except Exception as e:
+        result_queue.put(e)
 
 def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
     """
@@ -469,7 +508,7 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[K
     # See https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog
 
     from prompt_toolkit.shortcuts import button_dialog
-    
+
     # We take button options in the reverse order from how prompt_toolkit does it.
     # TODO: This is not scrollable! What if there's more than 1 screen of text?
     # TODO: Use come kind of ScrollablePane like <https://stackoverflow.com/q/68369073>
@@ -552,6 +591,7 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
                     # User declined to choose. Treat that as choosing "no".
                     strategy_decision = "no"
                 decision = strategy_decision
+                break
             except:
                 logger.exception("Could not use %s", strategy)
 
@@ -560,25 +600,24 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
             # TODO: Provide a command (or a general toil config editing command) to manage this setting
             logger.critical("Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]")
             sys.exit(1)
-    
+
     if decision is None:
         # We can't reach the user
         decision = "no"
 
     result = decision if decision != "never" else "no"
-
     if decision in ("all", "never"):
         # These are persistent and should save to the config
         update_config(default_config_path, "publishWorkflowMetrics", result)
-        
+
     return result
-    
 
 
 
-    
 
-    
+
+
+
 
 
 
