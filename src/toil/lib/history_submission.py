@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import pathlib
+import subprocess
 import sys
 import textwrap
 from typing import Any, Literal, Optional, TypeVar, Union
@@ -432,34 +433,24 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> Option
 
     return result[0]
 
-def dialog_applescript(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
-    """
-    Display a dialog with AppleScript.
-
-    Dialog will have the given title, text, and options.
-
-    :param options: Dict from machine-readable option key to button text.
-    :returns: the key of the selected option, or None if the user declined to
-        select an option.
-    :raises: an exception if the dialog cannot be displayed.
-    """
-    
-    # TODO: Implement
-    raise NotImplementedError()
-
 def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
     """
     Display a dialog in the terminal.
 
     Dialog will have the given title, text, and options.
 
+    Note that internally this calls asyncio.set_event_loop(). So after this
+    function is called, asyncio.get_event_loop() will no longer magically make
+    you an event loop when one doesn't exist (which is deprecated behavior
+    anyway).
+
     :param options: Dict from machine-readable option key to button text.
     :returns: the key of the selected option, or None if the user declined to
         select an option.
     :raises: an exception if the dialog cannot be displayed.
     """
 
-   # See https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog
+    # See https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog
 
     from prompt_toolkit.shortcuts import button_dialog
     
@@ -471,9 +462,6 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[K
         text=text,
         buttons=[(v, k) for k, v in options.items()],
     ).run()
-
-    # TODO: After this, MiniWDL will crash in asyncio's
-    # get_current_event_loop() and complain there isn't one.
 
 # Define the dialog form in the abstract
 Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]]
@@ -511,6 +499,9 @@ DIALOG_OPTIONS: dict[Decision, str] = {
 for k, v in DIALOG_OPTIONS.items():
     assert len(v) <= 10, f"Label for \"{k}\" dialog option is too long to work on all backends!"
 
+# Make sure the options all have unique labels
+assert len(set(DIALOG_OPTIONS.values())) == len(DIALOG_OPTIONS), "Labels for dialog options are not unique!"
+
 def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["current"], Literal["no"]]:
     """
     Ask the user to set standing workflow submission consent.
@@ -533,7 +524,12 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
 
         # TODO: Get a lock
 
-        for strategy in [dialog_tui]: #dialog_tkinter]: #, dialog_applescript, dialog_tui]:
+        for strategy in [dialog_tkinter, dialog_tui]:
+            # TODO: Add a graphical strategy that, unlike tkinter (which needs
+            # homebrew python-tk), can work out of the box on Mac! AppleScript
+            # and builtin NSDialog can only use 3 buttons. AppleScript choice
+            # dialogs can't hold enough text. We don't really want to bring in
+            # e.g. QT for this.
             try:
                 strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
                 if strategy_decision is None:
@@ -545,7 +541,7 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
 
         if decision is None:
             # If we think we should be able to reach the user, but we can't, fail and make them tell us via option
-            # TODO: Provide a command (or a general toil config editing command) to managte this setting
+            # TODO: Provide a command (or a general toil config editing command) to manage this setting
             logger.critical("Decide whether to publish workflow metrics and pass --publishWorkflowMetrics=[all|current|no]")
             sys.exit(1)
     
