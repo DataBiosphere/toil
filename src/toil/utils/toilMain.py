@@ -54,7 +54,6 @@ def loadModules() -> dict[str, types.ModuleType]:
     from toil.utils import toilDebugFile  # noqa
     from toil.utils import toilDebugJob  # noqa
     from toil.utils import toilDestroyCluster  # noqa
-    from toil.utils import toilHistory  # noqa
     from toil.utils import toilKill  # noqa
     from toil.utils import toilLaunchCluster  # noqa
     from toil.utils import toilRsyncCluster  # noqa
