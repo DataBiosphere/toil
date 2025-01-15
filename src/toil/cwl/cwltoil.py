@@ -2965,25 +2965,25 @@ def makeRootJob(
     """
     if options.run_imports_on_workers:
         filenames = extract_workflow_inputs(options, initialized_job_order, tool)
-        files_to_data = get_file_sizes(
+        metadata = get_file_sizes(
             filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
 
         # Mapping of files to metadata for files that will be imported on the worker
         # This will consist of files that we were able to get a file size for
-        worker_files_to_data: dict[str, FileMetadata] = dict()
+        worker_metadata: dict[str, FileMetadata] = dict()
         # Mapping of files to metadata for files that will be imported on the leader
         # This will consist of files that we were not able to get a file size for
-        leader_files_to_data = dict()
-        for filename, file_data in files_to_data.items():
+        leader_metadata = dict()
+        for filename, file_data in metadata.items():
             if file_data.size is None:
-                leader_files_to_data[filename] = file_data
+                leader_metadata[filename] = file_data
             else:
-                worker_files_to_data[filename] = file_data
+                worker_metadata[filename] = file_data
 
         # import the files for the leader first
         path_to_fileid = WorkerImportJob.import_files(
-            list(leader_files_to_data.keys()), toil._jobStore
+            list(leader_metadata.keys()), toil._jobStore
         )
 
         # then install the imported files before importing the other files
@@ -2998,7 +2998,7 @@ def makeRootJob(
         )
 
         import_job = CWLImportWrapper(
-            initialized_job_order, tool, runtime_context, worker_files_to_data, options
+            initialized_job_order, tool, runtime_context, worker_metadata, options
         )
         return import_job
     else:
