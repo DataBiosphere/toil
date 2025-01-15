@@ -253,12 +253,16 @@ class Submission:
         return all_submitted_and_marked
 
 
-def create_history_submission(batch_size: int = 10, desired_tasks: int = 1000) -> Submission:
+def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> Submission:
     """
     Make a package of data about recent workflow runs to send in.
 
     Returns a Submission object that remembers how to update the history
     database to record when it is successfully submitted.
+
+    :param batch_size: Number of workflows to try and submit in one request.
+    :param desired_tasks: Number of tasks to try and put into a task submission
+        batch. Use 0 to not submit any task information.
     """
     
     # Collect together some workflows and some lists of tasks into a submission.
@@ -276,16 +280,28 @@ def create_history_submission(batch_size: int = 10, desired_tasks: int = 1000) -
             # Ignore failed submissions and keep working on other ones.
             # TODO: What happens when they accumulate and fill the whole batch from the database?
 
+        # TODO: Dockstore limits request size to 60k. See
+        # <https://github.com/dockstore/compose_setup/blob/a14cd1d390f4ae1e14a8ba6e36ec06ce5fe2604e/templates/default.nginx_http.shared.conf.template#L15>.
+        # Apply that limit to the submission and don't add more attempts if we
+        # would go over it.
+
+    # TODO: Once we have a way to deal with single runs possibly having more
+    # than 60k worth of tasks, and with Dockstore turning collections of tasks
+    # into extra workflow runs (see
+    # <https://ucsc-cgl.atlassian.net/browse/SEAB-6919>), set the default task
+    # limit to submit to be nonzero.
+    
     for workflow_attempt in HistoryManager.get_workflow_attempts_with_submittable_job_attempts(limit=batch_size):
         job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+        
+        if desired_tasks == 0 or total_tasks + len(job_attempts) > desired_tasks:
+            # Don't add any more task sets to the dubmission
+            break
+
         try:
             submission.add_job_attempts(workflow_attempt, job_attempts)
 
             total_tasks += len(job_attempts)
-
-            if total_tasks >= desired_tasks:
-                # Don't add any more task sets to this submission.
-                break
         except:
             logger.exception("Could not compose metrics report for workflow task set")
             # Ignore failed submissions and keep working on other ones.
