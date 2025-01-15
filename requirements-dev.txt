@@ -6,10 +6,10 @@ setuptools>=65.5.1,<76
 sphinx>=7,<9
 sphinx-autoapi>=3.2.1,<4
 astroid>=3,<4
-sphinx-autodoc-typehints>=1.24.0,<3
+sphinx-autodoc-typehints>=1.24.0,<4
 sphinxcontrib-autoprogram==0.1.9
 cwltest>=2.2.20211116163652
-mypy==1.13.0
+mypy==1.14.1
 types-aws-xray-sdk
 types-boto<2.49.18.20241020
 types-Flask-Cors
