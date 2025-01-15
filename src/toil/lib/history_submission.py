@@ -483,8 +483,8 @@ Note that publishing is PERMANENT! You WILL NOT be able to recall or un-publish 
 (You can change your choice by editing the "publishWorkflowMetrics" setting in the "{}" file. You can override it once with the "--publishWorkflowMetrics" command line option.)
 
 All: Publish for this run and all future AND PAST runs of ALL workflows.
-Yes: Publish for just this run, and ask again for future runs.
-No: Do not publish anything now, but ask again for future workflow runs.
+Yes: Publish for just this run, and ask again next time.
+No: Do not publish anything now, but ask again next time.
 Never: Do not publish anything and stop asking.
 """.strip()
 
