@@ -122,10 +122,17 @@ class HistoryManager:
         Caller must not actually use the connection without using
         ensure_tables() to protect reads and updates.
         """
+        if not os.path.exists(cls.database_path()):
+            # Make the database and protect it from snoopers and busybodies
+            con = sqlite3.connect(cls.database_path())
+            del con
+            os.chmod(cls.database_path(), 0o600)
+
         con = sqlite3.connect(
             cls.database_path(),
             isolation_level="DEFERRED"
         )
+        
         if hasattr(con, 'autocommit'):
             # This doesn't much matter given the isolation level setting,
             # but is recommended on Python versions that have it (3.12+)
