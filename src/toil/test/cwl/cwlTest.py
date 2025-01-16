@@ -422,7 +422,7 @@ class CWLWorkflowTest(ToilTest):
         )
 
     def test_run_revsort_no_container(self) -> None:
-        self.revsort_no_checksum(
+        self.revsort(
             "revsort.cwl", partial(self._tester, main_args=["--no-container"])
         )
 
