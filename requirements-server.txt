@@ -1,4 +1,4 @@
-connexion[swagger-ui]>=2.10.0, <3
+connexion[swagger-ui]>=2.10.0, <4
 flask>=2.0,<4
 werkzeug>=2.0,<4
 flask-cors==5.0.0

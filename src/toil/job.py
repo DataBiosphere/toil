@@ -3911,7 +3911,6 @@ def get_file_sizes(
                 # Now we know this exists, so pass it through
                 # Get filesizes
                 filesize = file_source.get_size(candidate_uri)
-
             except UnimplementedURLException as e:
                 # We can't find anything that can even support this URL scheme.
                 # Report to the user, they are probably missing an extra.
@@ -3922,8 +3921,12 @@ def get_file_sizes(
                 logger.warning(
                     "Checked URL %s but got HTTP status %s", candidate_uri, e.code
                 )
-                # Try the next location.
-                continue
+                if e.code == 405:
+                    # 405 Method not allowed, maybe HEAD requests are not supported
+                    filesize = None
+                else:
+                    # Try the next location.
+                    continue
             except FileNotFoundError:
                 # Wasn't found there
                 continue
@@ -4001,6 +4004,7 @@ class WorkerImportJob(Job):
     def __init__(
         self,
         filenames: List[str],
+        local: bool = False,
         **kwargs: Any
     ):
         """
@@ -4009,7 +4013,7 @@ class WorkerImportJob(Job):
         :param kwargs: args for the superclass
         """
         self.filenames = filenames
-        super().__init__(local=False, **kwargs)
+        super().__init__(local=local, **kwargs)
 
     @staticmethod
     def import_files(

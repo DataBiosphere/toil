@@ -421,6 +421,11 @@ class CWLWorkflowTest(ToilTest):
             "revsort.cwl", partial(self._tester, main_args=["--no-compute-checksum"])
         )
 
+    def test_run_revsort_no_container(self) -> None:
+        self.revsort(
+            "revsort.cwl", partial(self._tester, main_args=["--no-container"])
+        )
+
     def test_run_revsort2(self) -> None:
         self.revsort("revsort2.cwl", self._tester)
 
