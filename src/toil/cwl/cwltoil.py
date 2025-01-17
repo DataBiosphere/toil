@@ -111,7 +111,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.cwl import check_cwltool_version
-from toil.lib.integration import resolve_workflow
+from toil.lib.trs import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
@@ -4302,7 +4302,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # Before showing the options to any cwltool stuff that wants to
             # load the workflow, transform options.cwltool, where our
             # argument for what to run is, to handle Dockstore workflows.
-            options.cwltool = resolve_workflow(options.cwltool)
+            options.cwltool, trs_spec = resolve_workflow(options.cwltool)
 
             # TODO: why are we doing this? Does this get applied to all
             # tools as a default or something?
@@ -4474,7 +4474,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logger.debug("Root tool: %s", tool)
             tool = remove_pickle_problems(tool)
 
-        with Toil(options) as toil:
+        with Toil(options, workflow_name=trs_spec or options.cwltool, trs_spec=trs_spec) as toil:
             if options.restart:
                 outobj = toil.restart()
             else:
