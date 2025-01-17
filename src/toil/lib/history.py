@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from toil.lib.io import get_toil_home
+from toil.lib.retry import ErrorCondition, retry
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,14 @@ class HistoryManager:
         return os.path.join(get_toil_home(), "history.sqlite")
 
     @classmethod
+    @retry(
+        infinite_retries=True,
+        errors=[
+            ErrorCondition(
+                error=sqlite3.OperationalError, error_message_must_include="is locked"
+            )
+        ],
+    )
     def connection(cls) -> sqlite3.Connection:
         """
         Connect to the history database.
@@ -284,9 +293,11 @@ class HistoryManager:
             cur.execute("INSERT INTO workflows VALUES (?, ?, NULL, NULL)", (workflow_id, job_store_spec))
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         # If we raise out of here the connection goes away and the transaction rolls back.
 
@@ -312,9 +323,11 @@ class HistoryManager:
                 cur.execute("UPDATE workflows SET trs_spec = ? WHERE id = ?", (trs_spec, workflow_id))
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
     @classmethod
     def record_job_attempt(
@@ -388,9 +401,11 @@ class HistoryManager:
             )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
     @classmethod
     def record_workflow_attempt(
@@ -457,9 +472,11 @@ class HistoryManager:
             )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
 
     ##
@@ -527,9 +544,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         return workflows
 
@@ -597,9 +616,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         return attempts
 
@@ -675,9 +696,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         return attempts
 
@@ -742,9 +765,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         if len(attempts) == 0:
             # Not found
@@ -804,9 +829,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
         return attempts
 
@@ -832,9 +859,11 @@ class HistoryManager:
             )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
     @classmethod
     def mark_job_attempts_submitted(cls, job_attempt_ids: list[str]) -> None:
@@ -854,9 +883,11 @@ class HistoryManager:
                 )
         except:
             con.rollback()
+            con.close()
             raise
         else:
             con.commit()
+            con.close()
 
 
 
