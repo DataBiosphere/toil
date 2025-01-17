@@ -106,6 +106,8 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
     :raises FileNotFoundError: if the workflow or version doesn't exist.
+    :raises ValueError: if the version is not specified but cannot be
+        automatically determined. 
     """
 
     if supported_languages is not None and len(supported_languages) == 0:
@@ -172,6 +174,7 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
     problem_type: type[Exception] = RuntimeError
     if trs_version is None:
         problems.append(f"Workflow {workflow} does not specify a version")
+        problem_type = ValueError
     elif trs_version not in workflow_versions:
         problems.append(f"Workflow version {trs_version} from {workflow} does not exist")
         problem_type = FileNotFoundError

@@ -61,13 +61,25 @@ class DockstoreLookupTest(ToilTest):
         self.assertEqual(trs_version, "master")
         self.assertEqual(language, "WDL")
 
-    def test_lookup_from_trs(self) -> None:
+    def test_lookup_from_trs_with_version(self) -> None:
         TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
-        trs_id, trs_version, language = find_workflow(TRS_ID)
+        TRS_VERSION = "master"
+        trs_id, trs_version, language = find_workflow(f"{TRS_ID}:{TRS_VERSION}")
         
         self.assertEqual(trs_id, TRS_ID)
-        self.assertEqual(trs_version, "master")
+        self.assertEqual(trs_version, TRS_VERSION)
         self.assertEqual(language, "CWL")
+
+    def test_lookup_from_trs_no_version(self) -> None:
+        TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
+        with pytest.raises(ValueError):
+            # We don't yet have a way to read Dockstore's default version info,
+            # so it's not safe to apply any default version when multiple
+            # versions exist.
+            trs_id, trs_version, language = find_workflow(TRS_ID)
+
+    # TODO: Add a test with a workflow that we know has and will only ever
+    # have one version, to test version auto-detection in that case.
 
     def test_get(self) -> None:
         TRS_ID = "#workflow/github.com/dockstore-testing/md5sum-checker"
