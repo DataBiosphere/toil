@@ -4166,15 +4166,15 @@ def get_options(args: list[str]) -> Namespace:
         description=textwrap.dedent(
             """
             positional arguments:
-              
+
               WORKFLOW              CWL file to run.
 
               INFILE                YAML or JSON file of workflow inputs.
-              
+
               WF_OPTIONS            Additional inputs to the workflow as command-line
                                     flags. If CWL workflow takes an input, the name of the
                                     input can be used as an option. For example:
-                                    
+
                                       %(prog)s workflow.cwl --file1 file
 
                                     If an input has the same name as a Toil option, pass
@@ -4293,6 +4293,10 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     try:
 
+        # We might have workflow metadata to pass to Toil
+        workflow_name=None
+        trs_spec = None
+
         if not options.restart:
             # Make a version of the config based on the initial options, for
             # setting up CWL option stuff
@@ -4303,6 +4307,8 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # load the workflow, transform options.cwltool, where our
             # argument for what to run is, to handle Dockstore workflows.
             options.cwltool, trs_spec = resolve_workflow(options.cwltool)
+            # Figure out what to call the workflow
+            workflow_name = trs_spec or options.cwltool
 
             # TODO: why are we doing this? Does this get applied to all
             # tools as a default or something?
@@ -4474,7 +4480,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logger.debug("Root tool: %s", tool)
             tool = remove_pickle_problems(tool)
 
-        with Toil(options, workflow_name=trs_spec or options.cwltool, trs_spec=trs_spec) as toil:
+        with Toil(options, workflow_name=workflow_name, trs_spec=trs_spec) as toil:
             if options.restart:
                 outobj = toil.restart()
             else:
