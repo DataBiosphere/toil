@@ -1,19 +1,26 @@
 import json
 import logging
 import os
+import time
 import urllib.request
 from collections.abc import Iterator
 from typing import Optional, cast
 from urllib.error import HTTPError, URLError
 
 from botocore.client import BaseClient
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
 
+class ReleaseFeedUnavailableError(RuntimeError):
+    """
+    Raised when a Flatcar releases can't be located.
+    """
+    pass
 
+@retry(errors=[ReleaseFeedUnavailableError])
 def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
     """
     Retrieve the flatcar AMI image to use as the base for all Toil autoscaling instances.
@@ -25,7 +32,8 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
       2. Official AMI from stable.release.flatcar-linux.net
       3. Search the AWS Marketplace
 
-    If all of these sources fail, we raise an error to complain.
+
+    :raises ReleaseFeedUnavailableError: if all of these sources fail.
 
     :param ec2_client: Boto3 EC2 Client
     :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
@@ -48,7 +56,6 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
         ami = aws_marketplace_flatcar_ami_search(
             ec2_client=ec2_client, architecture=architecture
         )
-    if not ami:
         logger.debug("No AMI found in marketplace; checking Toil Flatcar release feed")
         ami = feed_flatcar_ami_release(
             ec2_client=ec2_client, architecture=architecture, source="toil"
@@ -69,7 +76,7 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
         )
     if not ami:
         logger.critical("No available Flatcar AMI in any source!")
-        raise RuntimeError(
+        raise ReleaseFeedUnavailableError(
             f"Unable to fetch the latest flatcar image. Upload "
             f"https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_image.bin.bz2 "
             f"to AWS as am AMI and set TOIL_AWS_AMI in the environment to its AMI ID."
@@ -78,7 +85,6 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
     return ami
 
 
-@retry(errors=[HTTPError])
 def _fetch_flatcar_feed(architecture: str = "amd64", source: str = "stable") -> bytes:
     """
     Get the binary data of the Flatcar release feed for the given architecture.
@@ -121,13 +127,16 @@ def flatcar_release_feed_amis(
 
     try_number = 0
     while try_number < MAX_TRIES:
+        if try_number != 0:
+            time.sleep(1)
         try:
             feed = json.loads(_fetch_flatcar_feed(architecture, source))
             break
         except HTTPError:
             # Flatcar servers did not return the feed
             logger.exception(f"Could not retrieve {source} Flatcar release feed JSON")
-            # Don't retry
+            # This is probably a permanent error, or at least unlikely to go
+            # away immediately.
             return
         except json.JSONDecodeError:
             # Feed is not JSON
@@ -161,7 +170,6 @@ def flatcar_release_feed_amis(
     )
 
 
-@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def feed_flatcar_ami_release(
     ec2_client: BaseClient, architecture: str = "amd64", source: str = "stable"
 ) -> Optional[str]:
@@ -169,6 +177,8 @@ def feed_flatcar_ami_release(
     Check a Flatcar release feed for the latest flatcar AMI.
 
     Verify it's on AWS.
+
+    Does not raise exceptions.
 
     :param ec2_client: Boto3 EC2 Client
     :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
@@ -195,7 +205,7 @@ def feed_flatcar_ami_release(
                 logger.warning(
                     f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}"
                 )
-        except ClientError:
+        except (ClientError, EndpointConnectionError):
             # Sometimes we get back nonsense like:
             # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
             # Don't hold that against the AMI.
@@ -210,19 +220,28 @@ def feed_flatcar_ami_release(
     return None
 
 
-@retry()  # TODO: What errors do we get for timeout, JSON parse failure, etc?
 def aws_marketplace_flatcar_ami_search(
     ec2_client: BaseClient, architecture: str = "amd64"
 ) -> Optional[str]:
-    """Query AWS for all AMI names matching ``Flatcar-stable-*`` and return the most recent one."""
+    """
+    Query AWS for all AMI names matching ``Flatcar-stable-*`` and return the most recent one.
+
+    Does not raise exceptions.
+
+    :returns: An AMI name, or None if no matching AMI was found or we could not talk to AWS.
+    """
 
     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_images
     # Possible arch choices on AWS: 'i386'|'x86_64'|'arm64'|'x86_64_mac'
     architecture_mapping = {"amd64": "x86_64", "arm64": "arm64"}
-    response = ec2_client.describe_images(  # type: ignore[attr-defined]
-        Owners=["aws-marketplace"],
-        Filters=[{"Name": "name", "Values": ["Flatcar-stable-*"]}],
-    )
+    try:
+        response = ec2_client.describe_images(  # type: ignore[attr-defined]
+            Owners=["aws-marketplace"],
+            Filters=[{"Name": "name", "Values": ["Flatcar-stable-*"]}],
+        )
+    except (ClientError, EndpointConnectionError):
+        logger.exception("Unable to search AWS marketplace")
+        return None
     latest: dict[str, str] = {"CreationDate": "0lder than atoms."}
     for image in response["Images"]:
         if (
