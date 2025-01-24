@@ -1,10 +1,23 @@
+# Dependabot configuration file
+# Validate with: check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
 version: 2
 updates:
   - package-ecosystem: "pip" # See documentation for possible values
     directory: "/" # Location of package manifests
     schedule:
       interval: "daily"
+    ignore:
+      # htcondor is not under CI
+      - dependency-name: "htcondor"
+      # Google cloud/storage is not under CI
+      - dependency-name: "apache-libcloud"
+      - dependency-name: "google-cloud-storage"
+      - dependency-name: "google-auth"
+    rebase-strategy: disabled
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    rebase-strategy: disabled
+    
+

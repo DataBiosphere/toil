@@ -30,8 +30,8 @@ def main():
 
 
 def explode(job):
-    sys.stderr.write('Something somewhere has gone terribly wrong\n')
-    raise RuntimeError('Boom!')
+    sys.stderr.write("Something somewhere has gone terribly wrong\n")
+    raise RuntimeError("Boom!")
 
 
 if __name__ == "__main__":

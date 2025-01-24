@@ -25,11 +25,11 @@ python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
 pip = f'{python} -m pip'
 
 # Debian and Ubuntu don't package ensurepip by default so the python-venv package must be installed
-python_packages = {'python3.8': ['python3.8-distutils', 'python3.8-venv'],
-                   'python3.9': ['python3.9-distutils', 'python3.9-venv'],
+python_packages = {'python3.9': ['python3.9-distutils', 'python3.9-venv'],
                    'python3.10': ['python3.10-distutils', 'python3.10-venv'],
                    'python3.11': ['python3.11-distutils', 'python3.11-venv'],
-                   'python3.12': ['python3.12-distutils', 'python3.12-venv']}
+                   'python3.12': ['python3.12-distutils', 'python3.12-venv'],
+                   'python3.13': ['python3.13-venv']}  # python3.13 removed distutils
 
 dependencies = ' '.join(python_packages[python] +
                         ['libffi-dev',  # For client side encryption for extras with PyNACL
@@ -111,11 +111,12 @@ print(heredoc('''
     # Find a repo with a Mesos build.
     # This one was archived like:
     # mkdir mesos-repo && cd mesos-repo
-    # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
+    # wget --recursive --restrict-file-names=windows -k --convert-links --no-parent --page-requisites -m https://rpm.aventer.biz/Ubuntu/ https://www.aventer.biz/assets/support_aventer.asc https://rpm.aventer.biz/README.txt
     # ipfs add -r .
-    RUN echo "deb https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/rpm.aventer.biz/Ubuntu/focal focal main" \
+    # It contains a GPG key that will expire 2026-09-28
+    RUN echo "deb https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/rpm.aventer.biz/Ubuntu/focal focal main" \
         > /etc/apt/sources.list.d/mesos.list \
-        && curl https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmeaErHzK4Dajz2mCMd36eUDQp7GX2bSECVRpGfrqdragR/www.aventer.biz/assets/support_aventer.asc | apt-key add -
+        && curl https://public.gi.ucsc.edu/~anovak/outbox/toil/ipfs/QmRXnGNiWk523zgNkuamENVkghMJ2zJtinVfgjHbc4Dcpr/www.aventer.biz/assets/support_aventer.asc | apt-key add -
 
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \

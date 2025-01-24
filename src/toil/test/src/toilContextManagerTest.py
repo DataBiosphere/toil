@@ -29,13 +29,13 @@ class ToilContextManagerTest(ToilTest):
 
     def testContextManger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = 'INFO'
+        options.logLevel = "INFO"
         with Toil(options) as toil:
             toil.start(HelloWorld())
 
     def testNoContextManger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = 'INFO'
+        options.logLevel = "INFO"
         toil = Toil(options)
         self.assertRaises(ToilContextManagerException, toil.start, HelloWorld())
 
@@ -45,7 +45,9 @@ class ToilContextManagerTest(ToilTest):
             with Toil(options) as toil:
                 _ = toil.start(HelloWorld())
                 # oh no, an error! :(
-                raise RuntimeError("we died after workflow completion but before our export finished")
+                raise RuntimeError(
+                    "we died after workflow completion but before our export finished"
+                )
         except RuntimeError:
             pass
 
@@ -54,17 +56,18 @@ class ToilContextManagerTest(ToilTest):
             fileID = toil.restart()
             print(fileID)
             # Hopefully the error didn't cause us to lose all our work!
-            toil.exportFile(fileID, 'file://' + self.exportPath)
+            toil.exportFile(fileID, "file://" + self.exportPath)
         with open(self.exportPath) as f:
             # The file should have all our content
             self.assertEqual(f.read(), "Hello, World!")
 
+
 class HelloWorld(Job):
     def __init__(self):
-        Job.__init__(self, memory=100000, disk='1M')
+        Job.__init__(self, memory=100000, disk="1M")
 
     def run(self, fileStore):
-        fileID = self.addChildJobFn(childFn, memory='1M', disk='1M').rv()
+        fileID = self.addChildJobFn(childFn, memory="1M", disk="1M").rv()
         return self.addFollowOn(FollowOn(fileID)).rv()
 
 
@@ -81,7 +84,7 @@ class FollowOn(Job):
 
     def run(self, fileStore):
         tempDir = fileStore.getLocalTempDir()
-        tempFilePath = "/".join([tempDir, 'LocalCopy'])
+        tempFilePath = "/".join([tempDir, "LocalCopy"])
         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
             with open(tempFilePath, "wb") as localFile:
                 localFile.write(globalFile.read())
