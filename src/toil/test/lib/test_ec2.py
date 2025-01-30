@@ -19,7 +19,7 @@ from unittest import mock
 from toil.lib.aws.ami import (
     aws_marketplace_flatcar_ami_search,
     feed_flatcar_ami_release,
-    flatcar_release_feed_amis,
+    flatcar_release_feed_ami,
     get_flatcar_ami,
     ReleaseFeedUnavailableError
 )
@@ -39,24 +39,21 @@ class FlatcarFeedTest(ToilTest):
 
     def test_parse_archive_feed(self):
         """Make sure we can get a Flatcar release from the Internet Archive."""
-        amis = list(flatcar_release_feed_amis("us-west-2", "amd64", "archive"))
-        for ami in amis:
-            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-            self.assertTrue(ami.startswith("ami-"))
+        ami = flatcar_release_feed_ami("us-west-2", "amd64", "archive")
+        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+        self.assertTrue(ami.startswith("ami-"))
 
     def test_parse_beta_feed(self):
         """Make sure we can get a Flatcar release from the beta channel."""
-        amis = list(flatcar_release_feed_amis("us-west-2", "amd64", "beta"))
-        for ami in amis:
-            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-            self.assertTrue(ami.startswith("ami-"))
+        ami = flatcar_release_feed_ami("us-west-2", "amd64", "beta")
+        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+        self.assertTrue(ami.startswith("ami-"))
 
     def test_parse_stable_feed(self):
         """Make sure we can get a Flatcar release from the stable channel."""
-        amis = list(flatcar_release_feed_amis("us-west-2", "amd64", "stable"))
-        for ami in amis:
-            self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
-            self.assertTrue(ami.startswith("ami-"))
+        ami = flatcar_release_feed_ami("us-west-2", "amd64", "stable")
+        self.assertEqual(len(ami), len("ami-02b46c73fed689d1c"))
+        self.assertTrue(ami.startswith("ami-"))
 
 
 @needs_aws_ec2

@@ -97,9 +97,9 @@ def _fetch_flatcar_feed(architecture: str = "amd64", source: str = "stable") -> 
     return cast(bytes, urllib.request.urlopen(JSON_FEED_URL).read())
 
 
-def flatcar_release_feed_amis(
+def flatcar_release_feed_ami(
     region: str, architecture: str = "amd64", source: str = "stable"
-) -> Iterator[str]:
+) -> Optional[str]:
     """
     Yield AMI IDs for the given architecture from the Flatcar release feed.
 
@@ -126,7 +126,7 @@ def flatcar_release_feed_amis(
             # Flatcar servers did not return the feed
             logger.exception(f"Could not retrieve {source} Flatcar release feed JSON")
             # This is probably a permanent error, or at least unlikely to go away immediately.
-            return
+            return None
         except json.JSONDecodeError:
             # Feed is not JSON
             logger.exception(f"Could not decode {source} Flatcar release feed JSON")
@@ -143,12 +143,12 @@ def flatcar_release_feed_amis(
         # We could not get the JSON
         logger.error(f"Could not get a readable {source} Flatcar release feed JSON")
         # Bail on this method
-        return
+        return None
 
     for ami_record in feed.get("amis", []):
         # Scan the list of regions
         if ami_record.get("name") == region:
-            return ami_record.get("hvm")
+            return str(ami_record.get("hvm")) if ami_record.get("hvm") else None
     # We didn't find our region
     logger.warning(f"Flatcar {source} release feed does not have an image for region {region}")
 
@@ -175,20 +175,20 @@ def feed_flatcar_ami_release(
 
     region = ec2_client._client_config.region_name  # type: ignore
 
-    for ami in flatcar_release_feed_amis(region, architecture, source):
-        # verify it exists on AWS
-        try:
-            response = ec2_client.describe_images(Filters=[{"Name": "image-id", "Values": [ami]}])  # type: ignore
-            if (len(response["Images"]) == 1 and response["Images"][0]["State"] == "available"):
-                return ami
-            else:
-                logger.warning(f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}")
-        except (ClientError, EndpointConnectionError):
-            # Sometimes we get back nonsense like:
-            # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
-            # Don't hold that against the AMI.
-            logger.exception(f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does")
+    ami = flatcar_release_feed_ami(region, architecture, source)
+    # verify it exists on AWS
+    try:
+        response = ec2_client.describe_images(Filters=[{"Name": "image-id", "Values": [ami]}])  # type: ignore
+        if (len(response["Images"]) == 1 and response["Images"][0]["State"] == "available"):
             return ami
+        else:
+            logger.warning(f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}")
+    except (ClientError, EndpointConnectionError):
+        # Sometimes we get back nonsense like:
+        # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
+        # Don't hold that against the AMI.
+        logger.exception(f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does")
+        return ami
     # We didn't find it
     logger.warning(f"Flatcar release feed does not have an image for region {region} that exists on AWS")
 
