@@ -585,7 +585,7 @@ class StepValueFrom:
                     # store for the workflow. In that case, no toilfile:// or
                     # other special URIs will exist in the workflow to be read
                     # from, and ToilFsAccess still supports file:// URIs.
-                    fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+                    fs_access = functools.partial(ToilFsAccess, job_store=file_store.jobStore, file_store=file_store)
                     with fs_access("").open(cast(str, val["location"]), "rb") as f:
                         val["contents"] = cwltool.builder.content_limit_respected_read(
                             f
@@ -1304,9 +1304,15 @@ class ToilFsAccess(StdFsAccess):
     def __init__(
         self,
         basedir: str,
+        job_store: AbstractJobStore,
         file_store: Optional[AbstractFileStore] = None,
     ) -> None:
-        """Create a FsAccess object for the given Toil Filestore and basedir."""
+        """
+        Create a FsAccess object for the given Toil Filestore and basedir.
+
+        :param job_store: Toil job store to use to access URLs.
+        """
+        self.job_store = job_store
         self.file_store = file_store
 
         # Map encoded directory structures to where we downloaded them, so we
@@ -1395,7 +1401,7 @@ class ToilFsAccess(StdFsAccess):
             destination = path
         else:
             # The destination is something else.
-            if AbstractJobStore.get_is_directory(path):
+            if self.job_store.get_is_directory(path):
                 # Treat this as a directory
                 if path not in self.dir_to_download:
                     logger.debug(
@@ -1405,14 +1411,14 @@ class ToilFsAccess(StdFsAccess):
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
-                        if AbstractJobStore.get_is_directory(url):
+                        if self.job_store.get_is_directory(url):
                             os.mkdir(dest)
-                            for part in AbstractJobStore.list_url(url):
+                            for part in self.job_store.list_url(url):
                                 download_to(
                                     os.path.join(url, part), os.path.join(dest, part)
                                 )
                         else:
-                            AbstractJobStore.read_from_url(url, open(dest, "wb"))
+                            self.job_store.read_from_url(url, open(dest, "wb"))
 
                     download_to(path, dest_dir)
                     self.dir_to_download[path] = dest_dir
@@ -1425,7 +1431,7 @@ class ToilFsAccess(StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = NamedTemporaryFile(delete=False)
-                    AbstractJobStore.read_from_url(path, dest_file)
+                    self.job_store.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
@@ -1483,7 +1489,7 @@ class ToilFsAccess(StdFsAccess):
             return open(self._abs(fn), mode)
         else:
             # This should be supported by a job store.
-            byte_stream = AbstractJobStore.open_url(fn)
+            byte_stream = self.job_store.open_url(fn)
             if "b" in mode:
                 # Pass stream along in binary
                 return byte_stream
@@ -1520,7 +1526,7 @@ class ToilFsAccess(StdFsAccess):
             return True
         else:
             # This should be supported by a job store.
-            return AbstractJobStore.url_exists(path)
+            return self.job_store.url_exists(path)
 
     def size(self, path: str) -> int:
         parse = urlparse(path)
@@ -1549,7 +1555,7 @@ class ToilFsAccess(StdFsAccess):
             )
         else:
             # This should be supported by a job store.
-            size = AbstractJobStore.get_size(path)
+            size = self.job_store.get_size(path)
             if size is None:
                 # get_size can be unimplemented or unavailable
                 raise RuntimeError(f"Could not get size of {path}")
@@ -1572,7 +1578,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return isinstance(found, str)
         else:
-            return self.exists(fn) and not AbstractJobStore.get_is_directory(fn)
+            return self.exists(fn) and not self.job_store.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
         logger.debug("ToilFsAccess checking type of %s", fn)
@@ -1592,8 +1598,8 @@ class ToilFsAccess(StdFsAccess):
             # TODO: We assume directories can't be deleted.
             return isinstance(found, dict)
         else:
-            status = AbstractJobStore.get_is_directory(fn)
-            logger.debug("AbstractJobStore said: %s", status)
+            status = self.job_store.get_is_directory(fn)
+            logger.debug("Job store said: %s", status)
             return status
 
     def listdir(self, fn: str) -> list[str]:
@@ -1626,7 +1632,7 @@ class ToilFsAccess(StdFsAccess):
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
-                for entry in AbstractJobStore.list_url(fn)
+                for entry in self.job_store.list_url(fn)
             ]
 
     def join(self, path: str, *paths: str) -> str:
@@ -1736,7 +1742,7 @@ def toil_get_file(
                                 pipe.write(data)
                     else:
                         # Stream from some other URI
-                        AbstractJobStore.read_from_url(uri, pipe)
+                        file_store.jobStore.read_from_url(uri, pipe)
             except OSError as e:
                 # The other side of the pipe may have been closed by the
                 # reading thread, which is OK.
@@ -1779,7 +1785,7 @@ def toil_get_file(
                     # Open that path exclusively to make sure we created it
                     with open(src_path, "xb") as fh:
                         # Download into the file
-                        size, executable = AbstractJobStore.read_from_url(uri, fh)
+                        size, executable = file_store.jobStore.read_from_url(uri, fh)
                         if executable:
                             # Set the execute bit in the file's permissions
                             os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)
@@ -2824,7 +2830,7 @@ class CWLJob(CWLNamedJob):
 
             runtime_context.make_fs_access = cast(
                 type[StdFsAccess],
-                functools.partial(ToilFsAccess, file_store=file_store),
+                functools.partial(ToilFsAccess, job_store=file_store.jobStore, file_store=file_store),
             )
 
             runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
@@ -2964,7 +2970,7 @@ def makeRootJob(
     :return:
     """
     if options.run_imports_on_workers:
-        filenames = extract_workflow_inputs(options, initialized_job_order, tool)
+        filenames = extract_workflow_inputs(options, initialized_job_order, tool, toil)
         metadata = get_file_sizes(
             filenames, toil._jobStore, include_remote_files=options.reference_inputs
         )
@@ -2993,6 +2999,7 @@ def makeRootJob(
             tool,
             path_to_fileid,
             options.basedir,
+            toil._jobStore,
             options.reference_inputs,
             options.bypass_file_store,
         )
@@ -3391,7 +3398,7 @@ class CWLWorkflow(CWLNamedJob):
             return self.conditional.skipped_outputs()
 
         # Apply default values set in the workflow
-        fs_access = ToilFsAccess(self.runtime_context.basedir, file_store=file_store)
+        fs_access = ToilFsAccess(self.runtime_context.basedir, job_store=file_store.jobStore, file_store=file_store)
         fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
 
         # `promises` dict
@@ -3593,6 +3600,7 @@ class CWLInstallImportsJob(Job):
         tool: Process,
         candidate_to_fileid: dict[str, FileID],
         basedir: str,
+        job_store: AbstractJobStore,
         skip_remote: bool,
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
@@ -3608,7 +3616,7 @@ class CWLInstallImportsJob(Job):
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
         )
-        fs_access = ToilFsAccess(basedir)
+        fs_access = ToilFsAccess(basedir, job_store)
         fileindex: dict[str, str] = {}
         existing: dict[str, str] = {}
         visit_files(
@@ -3659,6 +3667,7 @@ class CWLInstallImportsJob(Job):
             tool,
             candidate_to_fileid,
             self.basedir,
+            file_store.jobStore,
             self.skip_remote,
             self.bypass_file_store,
         )
@@ -3748,7 +3757,7 @@ class CWLStartJob(CWLNamedJob):
 
 
 def extract_workflow_inputs(
-    options: Namespace, initialized_job_order: CWLObjectType, tool: Process
+    options: Namespace, initialized_job_order: CWLObjectType, tool: Process, toil: Toil
 ) -> list[str]:
     """
     Collect all the workflow input files to import later.
@@ -3762,7 +3771,7 @@ def extract_workflow_inputs(
 
     # Extract out all the input files' filenames
     logger.info("Collecting input files...")
-    fs_access = ToilFsAccess(options.basedir)
+    fs_access = ToilFsAccess(options.basedir, toil._jobStore)
     filenames = visit_files(
         extract_file_uri_once,
         fs_access,
@@ -3825,7 +3834,7 @@ def import_workflow_inputs(
     # Import all the input files, some of which may be missing optional
     # files.
     logger.info("Importing input files...")
-    fs_access = ToilFsAccess(options.basedir)
+    fs_access = ToilFsAccess(options.basedir, jobstore)
     visit_files(
         import_function,
         fs_access,

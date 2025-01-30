@@ -494,7 +494,10 @@ def remove_common_leading_whitespace(
 
 
 async def toil_read_source(
-    uri: str, path: list[str], importer: WDL.Tree.Document | None
+    uri: str,
+    path: list[str],
+    importer: WDL.Tree.Document | None,
+    job_store: AbstractJobStore
 ) -> ReadSourceResult:
     """
     Implementation of a MiniWDL read_source function that can use any
@@ -513,7 +516,7 @@ async def toil_read_source(
         tried.append(candidate_uri)
         try:
             # TODO: this is probably sync work that would be better as async work here
-            AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
+            job_store.read_from_url(candidate_uri, destination_buffer)
         except Exception as e:
             # TODO: we need to assume any error is just a not-found,
             # because the exceptions thrown by read_from_url()
@@ -5449,7 +5452,8 @@ def main() -> None:
                 # Load the WDL document
                 document: WDL.Tree.Document = WDL.load(
                     resolve_workflow(options.wdl_uri, supported_languages={"WDL"}),
-                    read_source=toil_read_source,
+                    # Smuggle the job store in so we can read URLs according to the config
+                    read_source=functools.partial(toil_read_source, job_store=toil._jobStore),
                 )
 
                 # See if we're going to run a workflow or a task
@@ -5508,7 +5512,7 @@ def main() -> None:
                         input_source_uri = input_source
                         input_source_name = input_source_uri
                         input_json = asyncio.run(
-                            toil_read_source(input_source_uri, [], None)
+                            toil_read_source(input_source_uri, [], None, toil._jobStore)
                         ).source_text
                     try:
                         inputs = json.loads(input_json)

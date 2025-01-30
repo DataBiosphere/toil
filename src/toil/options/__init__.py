@@ -24,12 +24,10 @@ class OptionSetter(Protocol):
     Actual functionality is defined in the Config class.
     
     Looks first at option_name and then at old_names to find the namespace key for the option.
-
-    Returns the option's value, or None if not found.
     """
 
     def __call__(
         self,
         option_name: str,
         old_names: Optional[list[str]] = None,
-    ) -> Optional[Any]: ...
+    ) -> None: ...

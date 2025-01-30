@@ -26,10 +26,12 @@ from contextlib import contextmanager
 from typing import IO, Literal, Optional, Union, overload
 from urllib.parse import ParseResult, quote, unquote
 
+from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -46,7 +48,7 @@ from toil.lib.io import (
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore):
+class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -81,13 +83,13 @@ class FileJobStore(AbstractJobStore):
 
         return False
 
-    def __init__(self, path: str, fanOut: int = 1000) -> None:
+    def __init__(self, path: str, config: Config, fanOut: int = 1000) -> None:
         """
         :param path: Path to directory holding the job store
         :param fanOut: Number of items to have in a directory before making
                            subdirectories
         """
-        super().__init__(path)
+        super().__init__(path, config)
         self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
@@ -116,7 +118,7 @@ class FileJobStore(AbstractJobStore):
     def __repr__(self):
         return f"FileJobStore({self.jobStoreDir})"
 
-    def initialize(self, config):
+    def initialize(self):
         try:
             os.mkdir(self.jobStoreDir)
         except OSError as e:
@@ -134,7 +136,7 @@ class FileJobStore(AbstractJobStore):
         self.linkImports = config.symlinkImports
         self.moveExports = config.moveOutputs
         self.symlink_job_store_reads = config.symlink_job_store_reads
-        super().initialize(config)
+        super().initialize()
 
     def resume(self):
         if not os.path.isdir(self.jobStoreDir):

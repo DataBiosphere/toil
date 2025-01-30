@@ -35,6 +35,7 @@ from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     ConcurrentFileModificationException,
     JobStoreExistsException,
     LocatorException,
@@ -113,7 +114,7 @@ class DomainDoesNotExist(Exception):
         super().__init__(f"Expected domain {domain_name} to exist!")
 
 
-class AWSJobStore(AbstractJobStore):
+class AWSJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
     """
     A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
     enforcing strong consistency on the S3 file storage. There will be SDB domains for jobs and
@@ -135,7 +136,7 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = "--"
 
-    def __init__(self, locator: str, partSize: int = 50 << 20) -> None:
+    def __init__(self, locator: str, config: Config, partSize: int = 50 << 20) -> None:
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -143,7 +144,7 @@ class AWSJobStore(AbstractJobStore):
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
-        super().__init__(locator)
+        super().__init__(locator, config)
         region, namePrefix = locator.split(":")
         regions = EC2Regions.keys()
         if region not in regions:
@@ -184,7 +185,7 @@ class AWSJobStore(AbstractJobStore):
         self.s3_resource = boto3_session.resource("s3", region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
 
-    def initialize(self, config: "Config") -> None:
+    def initialize(self) -> None:
         if self._registered:
             raise JobStoreExistsException(self.locator, "aws")
         self._registered = None
@@ -194,7 +195,7 @@ class AWSJobStore(AbstractJobStore):
             with panic(logger):
                 self.destroy()
         else:
-            super().initialize(config)
+            super().initialize()
             # Only register after job store has been full initialized
             self._registered = True
 
@@ -647,9 +648,9 @@ class AWSJobStore(AbstractJobStore):
     # URL access methods aren't used by the rest of the job store methods.
 
     @classmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
+    def _url_exists(cls, url: ParseResult, config: Config) -> bool:
         try:
-            get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
+            get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
             return True
         except FileNotFoundError:
             # Not a file
@@ -658,17 +659,17 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _get_size(cls, url: ParseResult) -> int:
-        return get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously).content_length
+        return get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access).content_length
 
     @classmethod
     def _read_from_url(cls, url: ParseResult, writable):
-        srcObj = get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
+        srcObj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         srcObj.download_fileobj(writable)
         return (srcObj.content_length, False)  # executable bit is always False
 
     @classmethod
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        src_obj = get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
+        src_obj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         response = src_obj.get()
         # We should get back a response with a stream in 'Body'
         if "Body" not in response:
@@ -679,7 +680,7 @@ class AWSJobStore(AbstractJobStore):
     def _write_to_url(
         cls, readable, url: ParseResult, executable: bool = False
     ) -> None:
-        dstObj = get_object_for_url(url, anonymous=cls._access_urls_anonymously)
+        dstObj = get_object_for_url(url, anonymous=config.aws_anonymous_url_access)
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
@@ -693,7 +694,7 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _list_url(cls, url: ParseResult) -> list[str]:
-        return list_objects_for_url(url, anonymous=cls._access_urls_anonymously)
+        return list_objects_for_url(url, anonymous=config.aws_anonymous_url_access)
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
@@ -704,18 +705,10 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() == "s3"
-
+    
     ####
 
-    # To let URL access be anonymous, we have a class-level flag you can set
-
-    # We use this class-level variable to store a user preference from the
-    # workflow/command line.
-    _access_urls_anonymously: Optional[bool] = None
-
-    ####
-
-    # To set the class-level flag, we need command-line option support.
+    # To set the config flag affecting URL access, we need command-line option support.
 
     @classmethod
     def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
@@ -738,16 +731,14 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def set_options(cls, set_option: OptionSetter) -> None:
         """
-        Process command line or configuration options relevant to this job store.
+        Process command line options relevant to this job store.
 
-        :param set_ption: A function taking an option name and returning
+        :param set_option: A function taking an option name and returning
             nothing, used to update run configuration as a side effect.
         """
         
-        # Set the option in the config, but also capture the value and configure the class.
-        cls._access_urls_anonymously = set_option("aws_anonymous_url_access")
-        # TODO: If a user script sets it in the config, how do we get that
-        # value back to static code???
+        # Set the option in the config
+        set_option("aws_anonymous_url_access")
 
     ###
 

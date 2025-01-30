@@ -31,8 +31,10 @@ from google.api_core.exceptions import (
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import exceptions, storage
 
+from toil.common import Config
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -91,12 +93,12 @@ def google_retry(f):
     return wrapper
 
 
-class GoogleJobStore(AbstractJobStore):
+class GoogleJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
 
     nodeServiceAccountJson = "/root/service_account.json"
 
-    def __init__(self, locator: str) -> None:
-        super().__init__(locator)
+    def __init__(self, locator: str, config: Config) -> None:
+        super().__init__(locator, config)
 
         try:
             projectID, namePrefix = locator.split(":", 1)
@@ -173,12 +175,12 @@ class GoogleJobStore(AbstractJobStore):
             return storage.Client.create_anonymous_client()
 
     @google_retry
-    def initialize(self, config=None):
+    def initialize(self):
         try:
             self.bucket = self.storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
             raise JobStoreExistsException(self.locator, "google")
-        super().initialize(config)
+        super().initialize()
 
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:

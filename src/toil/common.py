@@ -276,7 +276,7 @@ class Config:
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
 
-        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> Optional[Any]:
+        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> None:
             """
             Determine the correct value for the given option.
 
@@ -292,8 +292,6 @@ class Config:
 
             If the option gets a non-None value, sets it as an attribute in
             this Config.
-
-            Returns the option value, or None if not found.
             """
             option_value = getattr(options, option_name, None)
 
@@ -319,8 +317,6 @@ class Config:
                         option_value = getattr(options, old_name)
             if option_value is not None or not hasattr(self, option_name):
                 setattr(self, option_name, option_value)
-
-            return option_value
 
         # Core options
         set_option("jobStore")
@@ -927,6 +923,14 @@ class Toil(ContextManager["Toil"]):
         self._inContextManager: bool = False
         self._inRestart: bool = False
 
+        # Set up the config so it can be gotten at outside the context manager,
+        # so workflow code can use command line flags before creatign the job
+        # store storage.
+        set_logging_from_options(self.options)
+        self.config = Config()
+        self.config.setOptions(self.options)
+        logger.debug("Set up Toil with configuration: %s", vars(self.options))
+
     def __enter__(self) -> "Toil":
         """
         Derive configuration from the command line options.
@@ -934,29 +938,25 @@ class Toil(ContextManager["Toil"]):
         Then load the job store and, on restart, consolidate the derived
         configuration with the one from the previous invocation of the workflow.
         """
-        set_logging_from_options(self.options)
-        config = Config()
-        config.setOptions(self.options)
-        logger.debug("Loaded configuration: %s", vars(self.options))
-        if config.jobStore is None:
+        
+        if self.config.jobStore is None:
             raise RuntimeError("No jobstore provided!")
-        jobStore = self.getJobStore(config.jobStore)
-        if config.caching is None:
-            config.caching = jobStore.default_caching()
+        jobStore = self.getJobStore(self.config)
+        if self.config.caching is None:
+            self.config.caching = jobStore.default_caching()
             # Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
-            self.options.caching = config.caching
+            self.options.caching = self.config.caching
 
-        if not config.restart:
-            config.prepare_start()
-            jobStore.initialize(config)
+        if not self.config.restart:
+            self.config.prepare_start()
+            jobStore.initialize()
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
-            config = jobStore.config
-            config.prepare_restart()
-            config.setOptions(self.options)
+            self.config = jobStore.config
+            self.config.prepare_restart()
+            self.config.setOptions(self.options)
             jobStore.write_config()
-        self.config = config
         self._jobStore = jobStore
         self._inContextManager = True
 
@@ -1120,27 +1120,28 @@ class Toil(ContextManager["Toil"]):
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, locator: str) -> "AbstractJobStore":
+    def getJobStore(cls, config: Config) -> "AbstractJobStore":
         """
-        Create an instance of the concrete job store implementation that matches the given locator.
-
-        :param str locator: The location of the job store to be represent by the instance
+        Create an instance of the concrete job store implementation that
+        matches the locator in the given config.
 
         :return: an instance of a concrete subclass of AbstractJobStore
         """
+
+        locator = config.locator
         name, rest = cls.parseLocator(locator)
         if name == "file":
             from toil.jobStores.fileJobStore import FileJobStore
 
-            return FileJobStore(rest)
+            return FileJobStore(rest, config)
         elif name == "aws":
             from toil.jobStores.aws.jobStore import AWSJobStore
 
-            return AWSJobStore(rest)
+            return AWSJobStore(rest, config)
         elif name == "google":
             from toil.jobStores.googleJobStore import GoogleJobStore
 
-            return GoogleJobStore(rest)
+            return GoogleJobStore(rest, config)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 
@@ -1164,7 +1165,16 @@ class Toil(ContextManager["Toil"]):
 
     @classmethod
     def resumeJobStore(cls, locator: str) -> "AbstractJobStore":
-        jobStore = cls.getJobStore(locator)
+        """
+        Connect to and resume a job store from just its locator.
+        """
+        # Make a temporary config that will apply during job store
+        # construction/connection.
+        config = Config()
+        # Point it at the job store
+        config.locator = locator
+        jobStore = cls.getJobStore(config)
+        # Replace the config by resuming
         jobStore.resume()
         return jobStore
 
