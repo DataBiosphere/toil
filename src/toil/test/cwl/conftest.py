@@ -35,6 +35,7 @@ def pytest_cwl_execute_test(
     """Use the CWL reference runner (cwltool) to execute tests."""
     from toil.cwl.cwltoil import main
     from cwltool.errors import WorkflowException
+    from schema_salad.exceptions import ValidationException
 
     stdout = StringIO()
     argsl: List[str] = [f"--outdir={config.outdir}"]
@@ -49,6 +50,8 @@ def pytest_cwl_execute_test(
     try:
         result = main(args=argsl, stdout=stdout)
     except WorkflowException:
+        return 1, {}
+    except ValidationException:
         return 1, {}
     out = stdout.getvalue()
     return result, json.loads(out) if out else {}
