@@ -15,9 +15,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
 
 class ReleaseFeedUnavailableError(RuntimeError):
-    """
-    Raised when a Flatcar releases can't be located.
-    """
+    """Raised when a Flatcar releases can't be located."""
     pass
 
 @retry(errors=[ReleaseFeedUnavailableError])
@@ -32,16 +30,13 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
       2. Official AMI from stable.release.flatcar-linux.net
       3. Search the AWS Marketplace
 
-
     :raises ReleaseFeedUnavailableError: if all of these sources fail.
 
     :param ec2_client: Boto3 EC2 Client
     :param architecture: The architecture type for the new AWS machine. Can be either amd64 or arm64
     """
-
     # Take a user override
     ami = os.environ.get("TOIL_AWS_AMI")
-    try_number = 0
     if not ami:
         logger.debug(
             "No AMI found in TOIL_AWS_AMI; checking stable Flatcar release feed"
@@ -55,10 +50,6 @@ def get_flatcar_ami(ec2_client: BaseClient, architecture: str = "amd64") -> str:
         )
         ami = aws_marketplace_flatcar_ami_search(
             ec2_client=ec2_client, architecture=architecture
-        )
-        logger.debug("No AMI found in marketplace; checking Toil Flatcar release feed")
-        ami = feed_flatcar_ami_release(
-            ec2_client=ec2_client, architecture=architecture, source="toil"
         )
     if not ami:
         logger.debug(
@@ -100,9 +91,8 @@ def _fetch_flatcar_feed(architecture: str = "amd64", source: str = "stable") -> 
     JSON_FEED_URL = {
         "stable": f"https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json",
         "beta": f"https://beta.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json",
-        "alpha": f"https://alpha.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json",
-        "archive": f"https://web.archive.org/web/20220625112618if_/https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json",
-        "toil": f"https://raw.githubusercontent.com/DataBiosphere/toil/master/contrib/flatcar/{architecture}-usr/current/flatcar_production_ami_all.json",
+        # "alpha": f"https://alpha.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json",
+        "archive": f"https://web.archive.org/web/20220625112618if_/https://stable.release.flatcar-linux.net/{architecture}-usr/current/flatcar_production_ami_all.json"
     }[source]
     return cast(bytes, urllib.request.urlopen(JSON_FEED_URL).read())
 
@@ -135,8 +125,7 @@ def flatcar_release_feed_amis(
         except HTTPError:
             # Flatcar servers did not return the feed
             logger.exception(f"Could not retrieve {source} Flatcar release feed JSON")
-            # This is probably a permanent error, or at least unlikely to go
-            # away immediately.
+            # This is probably a permanent error, or at least unlikely to go away immediately.
             return
         except json.JSONDecodeError:
             # Feed is not JSON
@@ -158,16 +147,10 @@ def flatcar_release_feed_amis(
 
     for ami_record in feed.get("amis", []):
         # Scan the list of regions
-        if ami_record.get("name", None) == region:
-            # When we find ours, return the AMI ID
-            if "hvm" in ami_record:
-                yield ami_record["hvm"]
-            # And stop, there should be one per region.
-            return
+        if ami_record.get("name") == region:
+            return ami_record.get("hvm")
     # We didn't find our region
-    logger.warning(
-        f"Flatcar {source} release feed does not have an image for region {region}"
-    )
+    logger.warning(f"Flatcar {source} release feed does not have an image for region {region}")
 
 
 def feed_flatcar_ami_release(
@@ -196,28 +179,18 @@ def feed_flatcar_ami_release(
         # verify it exists on AWS
         try:
             response = ec2_client.describe_images(Filters=[{"Name": "image-id", "Values": [ami]}])  # type: ignore
-            if (
-                len(response["Images"]) == 1
-                and response["Images"][0]["State"] == "available"
-            ):
+            if (len(response["Images"]) == 1 and response["Images"][0]["State"] == "available"):
                 return ami
             else:
-                logger.warning(
-                    f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}"
-                )
+                logger.warning(f"Flatcar release feed suggests image {ami} which does not exist on AWS in {region}")
         except (ClientError, EndpointConnectionError):
             # Sometimes we get back nonsense like:
             # botocore.exceptions.ClientError: An error occurred (AuthFailure) when calling the DescribeImages operation: AWS was not able to validate the provided access credentials
             # Don't hold that against the AMI.
-            logger.exception(
-                f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does"
-            )
+            logger.exception(f"Unable to check if AMI {ami} exists on AWS in {region}; assuming it does")
             return ami
     # We didn't find it
-    logger.warning(
-        f"Flatcar release feed does not have an image for region {region} that exists on AWS"
-    )
-    return None
+    logger.warning(f"Flatcar release feed does not have an image for region {region} that exists on AWS")
 
 
 def aws_marketplace_flatcar_ami_search(
