@@ -59,7 +59,7 @@ class FlatcarFeedTest(ToilTest):
             self.assertTrue(ami.startswith("ami-"))
 
 
-# @needs_aws_ec2
+@needs_aws_ec2
 class AMITest(ToilTest):
     @classmethod
     def setUpClass(cls):
@@ -69,8 +69,6 @@ class AMITest(ToilTest):
         cls.ec2_client = session.client("ec2")
 
     def test_fetch_flatcar(self):
-        print('anything at all')
-        # raise RuntimeError('wat')
         with self.subTest("Test flatcar AMI from user is prioritized."):
             with mock.patch.dict(os.environ, {"TOIL_AWS_AMI": "overridden"}):
                 ami = get_flatcar_ami(self.ec2_client)
