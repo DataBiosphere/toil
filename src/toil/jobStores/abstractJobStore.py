@@ -17,6 +17,7 @@ import pickle
 import re
 import shutil
 from abc import ABC, ABCMeta, abstractmethod
+from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Iterator, ValuesView
 from contextlib import closing, contextmanager
 from datetime import timedelta
@@ -52,6 +53,7 @@ from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.io import WriteWatchingStream
 from toil.lib.memoize import memoize
 from toil.lib.retry import ErrorCondition, retry
+from toil.options import OptionSetter
 
 if TYPE_CHECKING:
     from toil.job import TemporaryID
@@ -330,6 +332,12 @@ class AbstractJobStore(ABC):
 
         :rtype: List[AbstractJobStore]
         """
+        # TODO: Although this method is private from users of job stores, it is
+        # shared with jobStores/options.py.
+        
+        # TODO: Replace with a real plugin/registry system like for batch
+        # systems.
+
         jobStoreClassNames = (
             "toil.jobStores.fileJobStore.FileJobStore",
             "toil.jobStores.googleJobStore.GoogleJobStore",
@@ -353,6 +361,27 @@ class AbstractJobStore(ABC):
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)
         return jobStoreClasses
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        """
+        If this job store provides any command line options, add them to the given parser.
+        """
+
+        # By default, job store implementatiuons have no CLI options.
+        pass
+
+    @classmethod
+    def set_options(cls, set_option: OptionSetter) -> None:
+        """
+        Process command line or configuration options relevant to this job store.
+
+        :param set_option: A function taking an option name and returning
+            nothing, used to update run configuration as a side effect.
+        """
+
+        # By default, job store implementatiuons have no CLI options.
+        pass
 
     @classmethod
     def _findJobStoreForUrl(

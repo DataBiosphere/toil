@@ -29,7 +29,7 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.batchSystems.abstractGridEngineBatchSystem import (
     AbstractGridEngineBatchSystem,
 )
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.bus import get_job_kind
 from toil.common import Config
 from toil.job import JobDescription, Requirer

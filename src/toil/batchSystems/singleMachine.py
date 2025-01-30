@@ -35,7 +35,7 @@ from toil.batchSystems.abstractBatchSystem import (
     ResourceSet,
     UpdatedBatchJobInfo,
 )
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.bus import ExternalBatchIdMessage
 from toil.common import Config, Toil
 from toil.job import (

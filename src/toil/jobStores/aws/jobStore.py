@@ -21,6 +21,7 @@ import reprlib
 import stat
 import time
 import uuid
+from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Generator
 from contextlib import contextmanager
 from io import BytesIO
@@ -69,12 +70,14 @@ from toil.lib.aws.utils import (
     retryable_s3_errors,
 )
 from toil.lib.compatibility import compat_bytes
+from toil.lib.conversions import opt_strtobool
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
 from toil.lib.retry import get_error_code, get_error_status, retry
+from toil.options import OptionSetter
 
 if TYPE_CHECKING:
     from mypy_boto3_sdb.type_defs import (
@@ -637,10 +640,16 @@ class AWSJobStore(AbstractJobStore):
         else:
             super()._default_export_file(otherCls, file_id, uri)
 
+    ###
+    # URL access implementation
+    ###
+
+    # URL access methods aren't used by the rest of the job store methods.
+
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
         try:
-            get_object_for_url(url, existing=True)
+            get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
             return True
         except FileNotFoundError:
             # Not a file
@@ -649,17 +658,17 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _get_size(cls, url: ParseResult) -> int:
-        return get_object_for_url(url, existing=True).content_length
+        return get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously).content_length
 
     @classmethod
     def _read_from_url(cls, url: ParseResult, writable):
-        srcObj = get_object_for_url(url, existing=True)
+        srcObj = get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
         srcObj.download_fileobj(writable)
         return (srcObj.content_length, False)  # executable bit is always False
 
     @classmethod
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        src_obj = get_object_for_url(url, existing=True)
+        src_obj = get_object_for_url(url, existing=True, anonymous=cls._access_urls_anonymously)
         response = src_obj.get()
         # We should get back a response with a stream in 'Body'
         if "Body" not in response:
@@ -670,7 +679,7 @@ class AWSJobStore(AbstractJobStore):
     def _write_to_url(
         cls, readable, url: ParseResult, executable: bool = False
     ) -> None:
-        dstObj = get_object_for_url(url)
+        dstObj = get_object_for_url(url, anonymous=cls._access_urls_anonymously)
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
@@ -684,17 +693,63 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _list_url(cls, url: ParseResult) -> list[str]:
-        return list_objects_for_url(url)
+        return list_objects_for_url(url, anonymous=cls._access_urls_anonymously)
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
         # We consider it a directory if anything is in it.
         # TODO: Can we just get the first item and not the whole list?
-        return len(list_objects_for_url(url)) > 0
+        return len(cls._list_url(url)) > 0
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() == "s3"
+
+    ####
+
+    # To let URL access be anonymous, we have a class-level flag you can set
+
+    # We use this class-level variable to store a user preference from the
+    # workflow/command line.
+    _access_urls_anonymously: Optional[bool] = None
+
+    ####
+
+    # To set the class-level flag, we need command-line option support.
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        """
+        If this job store provides any command line options, add them to the given parser.
+        """
+
+        parser.add_argument(
+            "--awsAnonymousUrlAccess",
+            dest="aws_anonymous_url_access",
+            default=False,
+            metavar="BOOL",
+            env_var="TOIL_AWS_ANONYMOUS_URL_ACCESS",
+            type=opt_strtobool,
+            help="Whether to access AWS S3 URLs anonymously. Useful for skipping "
+                 "multi-factor authentication when MFA is configured but unnecessary. "
+                 "(default: %(default)s)",
+        )
+
+    @classmethod
+    def set_options(cls, set_option: OptionSetter) -> None:
+        """
+        Process command line or configuration options relevant to this job store.
+
+        :param set_ption: A function taking an option name and returning
+            nothing, used to update run configuration as a side effect.
+        """
+        
+        # Set the option in the config, but also capture the value and configure the class.
+        cls._access_urls_anonymously = set_option("aws_anonymous_url_access")
+        # TODO: If a user script sets it in the config, how do we get that
+        # value back to static code???
+
+    ###
 
     def write_file(
         self, local_path: FileID, job_id: Optional[FileID] = None, cleanup: bool = False

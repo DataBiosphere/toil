@@ -21,7 +21,7 @@ from toil.batchSystems.abstractBatchSystem import (
     UpdatedBatchJobInfo,
 )
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.batchSystems.registry import add_batch_system_factory
 from toil.common import Toil, addOptions
 from toil.job import JobDescription

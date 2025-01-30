@@ -55,7 +55,8 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
 from toil import logProcessContext, lookupEnvVar
-from toil.batchSystems.options import set_batchsystem_options
+from toil.batchSystems.options import set_batch_system_options
+from toil.jobStores.options import set_job_store_options
 from toil.bus import (
     ClusterDesiredSizeMessage,
     ClusterSizeMessage,
@@ -83,7 +84,7 @@ from toil.version import dockerRegistry, dockerTag, version
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
-    from toil.batchSystems.options import OptionSetter
+    from toil.options import OptionSetter
     from toil.job import AcceleratorRequirement, Job, JobDescription, TemporaryID
     from toil.jobStores.abstractJobStore import AbstractJobStore
     from toil.provisioners.abstractProvisioner import AbstractProvisioner
@@ -275,7 +276,7 @@ class Config:
     def setOptions(self, options: Namespace) -> None:
         """Creates a config object from the options object."""
 
-        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> None:
+        def set_option(option_name: str, old_names: Optional[list[str]] = None) -> Optional[Any]:
             """
             Determine the correct value for the given option.
 
@@ -291,6 +292,8 @@ class Config:
 
             If the option gets a non-None value, sets it as an attribute in
             this Config.
+
+            Returns the option value, or None if not found.
             """
             option_value = getattr(options, option_name, None)
 
@@ -317,6 +320,8 @@ class Config:
             if option_value is not None or not hasattr(self, option_name):
                 setattr(self, option_name, option_value)
 
+            return option_value
+
         # Core options
         set_option("jobStore")
         # TODO: LOG LEVEL STRING
@@ -332,9 +337,13 @@ class Config:
 
         # Batch system options
         set_option("batchSystem")
-        set_batchsystem_options(
-            None, cast("OptionSetter", set_option)
-        )  # None as that will make set_batchsystem_options iterate through all batch systems and set their corresponding values
+        option_setter: OptionSetter = set_option
+        set_batch_system_options(
+            None, option_setter
+        )  # None as that will make set_batch_system_options iterate through all batch systems and set their corresponding values
+
+        # Job store options
+        set_job_store_options(option_setter)
 
         # File store options
         set_option("symlinkImports", old_names=["linkImports"])
