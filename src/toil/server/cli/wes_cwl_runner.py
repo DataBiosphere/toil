@@ -10,13 +10,13 @@ from io import BytesIO
 from typing import Any, Optional, cast
 from urllib.parse import urldefrag, urljoin, urlparse
 
-import requests
 import ruamel.yaml
 import schema_salad
 from configargparse import ArgumentParser
 from wes_client.util import WESClient  # type: ignore
 from wes_client.util import wes_reponse as wes_response
 
+from toil.lib.web import session
 from toil.wdl.utils import get_version as get_wdl_version
 
 """
@@ -117,7 +117,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         proto, host = endpoint.split("://")
         super().__init__(
             {
-                # TODO: use the auth argument in requests.post so we don't need to encode it ourselves
+                # TODO: use the auth argument in requests' post so we don't need to encode it ourselves
                 "auth": (
                     {
                         "Authorization": "Basic "
@@ -314,7 +314,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         data, files = self.build_wes_request(
             workflow_file, workflow_params_file, attachments, workflow_engine_parameters
         )
-        post_result = requests.post(
+        post_result = session.post(
             urljoin(f"{self.proto}://{self.host}", "/ga4gh/wes/v1/runs"),
             data=data,
             files=files,

@@ -63,6 +63,24 @@ def unix_now_ms() -> float:
     """Return the current time in milliseconds since the Unix epoch."""
     return time.time() * 1000
 
+def unix_seconds_to_timestamp(timestamp: float) -> str:
+    """
+    Convert a time in seconds since the Unix epoch to an ISO 8601 string.
+    """
+    return datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).isoformat()
+
+def unix_seconds_to_local_time(timestamp: float) -> datetime.datetime:
+    """
+    Returns a local time corresponding to the given number of seconds since the Unix epoch.
+    """
+    return datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc).astimezone()
+
+def seconds_to_duration(time_difference: float) -> str:
+    """
+    Convert a time difference in seconds to an ISO 8601 duration string.
+    """
+    return f"PT{time_difference:.3f}S"
+
 
 def slow_down(seconds: float) -> float:
     """

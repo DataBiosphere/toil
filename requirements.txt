@@ -13,3 +13,4 @@ ruamel.yaml>=0.15
 pyyaml>=6,<7
 typing-extensions>=4.6.2, <5
 coloredlogs>=15,<16
+prompt_toolkit>=3.0,<4
