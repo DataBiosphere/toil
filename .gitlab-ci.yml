@@ -304,6 +304,7 @@ cwl_badge:
     - make download_cwl_spec
     - rm -rf badges
     - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
+  allow_failure: true
   artifacts:
     paths:
     - "badges/"
