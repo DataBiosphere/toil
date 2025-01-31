@@ -28,6 +28,7 @@ import io
 import json
 import logging
 import os
+import pickle
 import pprint
 import shutil
 import stat
@@ -2240,6 +2241,74 @@ def remove_empty_listings(rec: CWLObjectType) -> None:
         return
 
 
+# CWL jobs all need a RuntimeContext, and it needs a make_fs_access function.
+# But that needs access to the *current* Toil object/job store/config, which we
+# can't pickle and bring around with us. So we drop it out of the runtime
+# context when we pack it up in each job for pickling, and we put it back in
+# when the job runs.
+def pack_runtime_context(local_context: cwltool.context.RuntimeContext) -> cwltool.context.RuntimeContext:
+    """
+    Prepare a CWL RuntimeContext for pickling.
+    """
+
+    stored_context = local_context.copy()
+    # Drop the FS access hook
+    stored_context.make_fs_access = StdFsAccess
+
+    # Make sure it pickles
+    pickle.dumps(stored_context)
+
+    return stored_context
+
+def unpack_runtime_context(stored_context: cwltool.context.RuntimeContext, url_access: URLAccess, file_store: AbstractFileStore, pipe_threads: list[tuple[Thread, int]], index: dict[str, str], existing: dict[str, str]) -> cwltool.context.RuntimeContext:
+    """
+    Set up a CWL RuntimeContext for the local machine.
+
+    Always needs the file store (for temp files and streaming) even if it is
+    being bypassed for CWL file access.
+
+    :param pipe_threads: used for keeping track of separate threads launched to
+        stream files around. Caller should close all the FDs and join all the
+        threads when done.
+    :param index: Used to track downloaded files for :meth:`visit_files`.
+    :param existing: Used to track downloaded files :meth:`visit_files`.
+    """
+
+    local_context = stored_context.copy()
+    
+    # Add the FS access hook, using the file store if we're not bypassing it
+    local_context.make_fs_access = make_fs_access = cast(
+        type[StdFsAccess],
+        functools.partial(ToilFsAccess, url_access=url_access, file_store=file_store if not getattr(local_context, "bypass_file_store", False) else None),
+    )
+    
+    if not getattr(local_context, "bypass_file_store", False):
+        # Hook up the Toil file store access hooks.
+
+        # When the tool makes its own PathMappers with make_path_mapper, they
+        # will come and grab this function for fetching files from the Toil
+        # file store. pipe_threads is used for keeping track of separate
+        # threads launched to stream files around.
+        setattr(
+            local_context,
+            "toil_get_file",
+            functools.partial(
+                toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
+            ),
+        )
+
+        # Intercept file and directory access not already done through the
+        # tool's make_path_mapper(), and support the URIs we define for
+        # stuff in Toil's FileStore. We need to plug in a path_mapper type
+        # or factory function.
+        local_context.path_mapper = functools.partial(  # type: ignore[assignment]
+            ToilPathMapper,
+            get_file=getattr(local_context, "toil_get_file"),
+            streaming_allowed=local_context.streaming_allowed,
+        )
+
+    return local_context
+
 class CWLNamedJob(Job):
     """
     Base class for all CWL jobs that do user work, to give them useful names.
@@ -2534,13 +2603,18 @@ class CWLJobWrapper(CWLNamedJob):
         )
         self.cwltool = tool
         self.cwljob = cwljob
-        self.runtime_context = runtime_context
+        self.runtime_context = pack_runtime_context(runtime_context)
         self.conditional = conditional or Conditional()
         self.parent_name = parent_name
 
     def run(self, file_store: AbstractFileStore) -> Any:
         """Create a child job with the correct resource requirements set."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
+
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
 
         # Check confitional to license full evaluation of job inputs.
         if self.conditional.is_false(cwljob):
@@ -2549,16 +2623,21 @@ class CWLJobWrapper(CWLNamedJob):
         fill_in_defaults(
             self.cwltool.tool["inputs"],
             cwljob,
-            self.runtime_context.make_fs_access(self.runtime_context.basedir or ""),
+            runtime_context.make_fs_access(self.runtime_context.basedir or ""),
         )
         # Don't forward the conditional. We checked it already.
         realjob = CWLJob(
             tool=self.cwltool,
             cwljob=cwljob,
-            runtime_context=self.runtime_context,
+            runtime_context=runtime_context,
             parent_name=self.parent_name,
         )
         self.addChild(realjob)
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
+
         return realjob.rv()
 
 
@@ -2575,38 +2654,14 @@ class CWLJob(CWLNamedJob):
     ):
         """Store the context for later execution."""
         self.cwltool = tool
+        self.cwljob = cwljob
         self.conditional = conditional or Conditional()
 
-        if runtime_context.builder:
-            self.builder = runtime_context.builder
-        else:
-            self.builder = cwltool.builder.Builder(
-                job=cwljob,
-                files=[],
-                bindings=[],
-                schemaDefs={},
-                names=Names(),
-                requirements=self.cwltool.requirements,
-                hints=[],
-                resources={},
-                mutation_manager=runtime_context.mutation_manager,
-                formatgraph=tool.formatgraph,
-                make_fs_access=cast(type[StdFsAccess], runtime_context.make_fs_access),
-                fs_access=runtime_context.make_fs_access(""),
-                job_script_provider=runtime_context.job_script_provider,
-                timeout=runtime_context.eval_timeout,
-                debug=runtime_context.debug,
-                js_console=runtime_context.js_console,
-                force_docker_pull=False,
-                loadListing=determine_load_listing(tool),
-                outdir="",
-                tmpdir=DEFAULT_TMPDIR,
-                stagedir="/var/lib/cwl",  # TODO: use actual defaults here
-                cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
-                container_engine=get_container_engine(runtime_context),
-            )
+        # We need the builder, but it needs an fs_access, so we can't
+        # make one and send it anywhere.
+        builder = self.get_builder(runtime_context)
 
-        req = tool.evalResources(self.builder, runtime_context)
+        req = tool.evalResources(builder, runtime_context)
 
         tool_own_resources = tool.get_requirement("ResourceRequirement")[0] or {}
         if "ramMin" in tool_own_resources or "ramMax" in tool_own_resources:
@@ -2695,24 +2750,62 @@ class CWLJob(CWLNamedJob):
             local=isinstance(tool, cwltool.command_line_tool.ExpressionTool),
         )
 
-        self.cwljob = cwljob
-        self.runtime_context = runtime_context
+        self.runtime_context = pack_runtime_context(runtime_context)
         self.step_inputs = self.cwltool.tool["inputs"]
         self.workdir: str = runtime_context.workdir  # type: ignore[attr-defined]
 
-    def required_env_vars(self, cwljob: Any) -> Iterator[tuple[str, str]]:
+    def get_builder(self, runtime_context: cwltool.context.RuntimeContext) -> cwltool.builder.Builder:
+        """
+        Get a Builder for the job from the given runtime context.
+
+        Requires that self.cwltool and self.cwljob are set.
+        
+        The builder may not leave the node.
+        """
+
+        if runtime_context.builder:
+            return runtime_context.builder
+        else:
+            return cwltool.builder.Builder(
+                job=self.cwljob,
+                files=[],
+                bindings=[],
+                schemaDefs={},
+                names=Names(),
+                requirements=self.cwltool.requirements,
+                hints=[],
+                resources={},
+                mutation_manager=runtime_context.mutation_manager,
+                formatgraph=self.cwltool.formatgraph,
+                make_fs_access=cast(type[StdFsAccess], runtime_context.make_fs_access),
+                fs_access=runtime_context.make_fs_access(""),
+                job_script_provider=runtime_context.job_script_provider,
+                timeout=runtime_context.eval_timeout,
+                debug=runtime_context.debug,
+                js_console=runtime_context.js_console,
+                force_docker_pull=False,
+                loadListing=determine_load_listing(self.cwltool),
+                outdir="",
+                tmpdir=DEFAULT_TMPDIR,
+                stagedir="/var/lib/cwl",  # TODO: use actual defaults here
+                cwlVersion=cast(str, self.cwltool.metadata["cwlVersion"]),
+                container_engine=get_container_engine(runtime_context),
+            )
+
+
+    def required_env_vars(self, cwljob: Any, builder: cwltool.builder.Builder) -> Iterator[tuple[str, str]]:
         """Yield environment variables from EnvVarRequirement."""
         if isinstance(cwljob, dict):
             if cwljob.get("class") == "EnvVarRequirement":
                 for t in cwljob.get("envDef", {}):
-                    yield t["envName"], cast(str, self.builder.do_eval(t["envValue"]))
+                    yield t["envName"], cast(str, builder.do_eval(t["envValue"]))
             for v in cwljob.values():
-                yield from self.required_env_vars(v)
+                yield from self.required_env_vars(v, builder)
         if isinstance(cwljob, list):
             for env_var in cwljob:
-                yield from self.required_env_vars(env_var)
+                yield from self.required_env_vars(env_var, builder)
 
-    def populate_env_vars(self, cwljob: CWLObjectType) -> dict[str, str]:
+    def populate_env_vars(self, cwljob: CWLObjectType, builder: cwltool.builder.Builder) -> dict[str, str]:
         """
         Prepare environment variables necessary at runtime for the job.
 
@@ -2724,10 +2817,10 @@ class CWLJob(CWLNamedJob):
         same name and replaces their value with that found in the
         "EnvVarRequirement" env var if it exists.
         """
-        self.builder.job = cwljob
+        builder.job = cwljob
         required_env_vars = {}
         # iterate over EnvVarRequirement env vars, if any
-        for k, v in self.required_env_vars(cwljob):
+        for k, v in self.required_env_vars(cwljob, builder):
             required_env_vars[k] = (
                 v  # will tell cwltool which env vars to take from the environment
             )
@@ -2757,16 +2850,23 @@ class CWLJob(CWLNamedJob):
 
         logger.debug("Loaded order:\n%s", self.cwljob)
 
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
+        
+        builder = self.get_builder(runtime_context)
+
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
         fill_in_defaults(
-            self.step_inputs, cwljob, self.runtime_context.make_fs_access("")
+            self.step_inputs, cwljob, runtime_context.make_fs_access("")
         )
 
-        required_env_vars = self.populate_env_vars(cwljob)
+        required_env_vars = self.populate_env_vars(cwljob, builder)
 
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
@@ -2787,27 +2887,9 @@ class CWLJob(CWLNamedJob):
             functools.partial(remove_empty_listings),
         )
 
-        index: dict[str, str] = {}
-        existing: dict[str, str] = {}
-
         # Prepare the run instructions for cwltool
-        runtime_context = self.runtime_context.copy()
-
         runtime_context.basedir = os.getcwd()
         runtime_context.preserve_environment = required_env_vars
-
-        # When the tool makes its own PathMappers with make_path_mapper, they
-        # will come and grab this function for fetching files from the Toil
-        # file store. pipe_threads is used for keeping track of separate
-        # threads launched to stream files around.
-        pipe_threads: list[tuple[Thread, int]] = []
-        setattr(
-            runtime_context,
-            "toil_get_file",
-            functools.partial(
-                toil_get_file, file_store, index, existing, pipe_threads=pipe_threads
-            ),
-        )
 
         if not getattr(runtime_context, "bypass_file_store", False):
             # Exports temporary directory for batch systems that reset TMPDIR
@@ -2827,22 +2909,6 @@ class CWLJob(CWLNamedJob):
             )
 
             runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-
-            # Intercept file and directory access not already done through the
-            # tool's make_path_mapper(), and support the URIs we define for
-            # stuff in Toil's FileStore. We need to plug in a make_fs_access
-            # function and a path_mapper type or factory function.
-
-            runtime_context.make_fs_access = cast(
-                type[StdFsAccess],
-                functools.partial(ToilFsAccess, url_access=file_store.jobStore, file_store=file_store),
-            )
-
-            runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
-                ToilPathMapper,
-                get_file=getattr(runtime_context, "toil_get_file"),
-                streaming_allowed=runtime_context.streaming_allowed,
-            )
 
         # Collect standard output and standard error somewhere if they don't go to files.
         # We need to keep two FDs to these because cwltool will close what we give it.
@@ -2972,7 +3038,6 @@ def makeRootJob(
     Actually creates what might be a subgraph of two jobs. The second of which may be the follow on of the first.
     If only one job is created, it is returned twice.
 
-    :return:
     """
     if options.run_imports_on_workers:
         filenames = extract_workflow_inputs(options, initialized_job_order, tool, toil)
@@ -3020,6 +3085,7 @@ def makeRootJob(
             initialized_job_order=initialized_job_order,
             tool=tool,
         )
+
         root_job, followOn = makeJob(
             tool, jobobj, runtime_context, None, None
         )  # toplevel, no name needed
@@ -3116,7 +3182,7 @@ class CWLScatter(Job):
         super().__init__(cores=1, memory="1GiB", disk="1MiB", local=True)
         self.step = step
         self.cwljob = cwljob
-        self.runtime_context = runtime_context
+        self.runtime_context = pack_runtime_context(runtime_context)
         self.conditional = conditional
         self.parent_name = parent_name
 
@@ -3187,6 +3253,11 @@ class CWLScatter(Job):
         """Generate the follow on scatter jobs."""
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
+
         if isinstance(self.step.tool["scatter"], str):
             scatter = [self.step.tool["scatter"]]
         else:
@@ -3218,7 +3289,7 @@ class CWLScatter(Job):
                         None,
                         {},
                         context=v,
-                        container_engine=get_container_engine(self.runtime_context),
+                        container_engine=get_container_engine(runtime_context),
                     )
                 else:
                     return v
@@ -3236,7 +3307,7 @@ class CWLScatter(Job):
                 subjob, follow_on = makeJob(
                     tool=self.step.embedded_tool,
                     jobobj=copyjob,
-                    runtime_context=self.runtime_context,
+                    runtime_context=runtime_context,
                     parent_name=f"{self.parent_name}.{i}",
                     conditional=self.conditional,
                 )
@@ -3255,6 +3326,10 @@ class CWLScatter(Job):
                 raise ValidationException(
                     "Must provide scatterMethod to scatter over multiple inputs."
                 )
+        
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
 
         return outputs
 
@@ -3385,7 +3460,7 @@ class CWLWorkflow(CWLNamedJob):
         )
         self.cwlwf = cwlwf
         self.cwljob = cwljob
-        self.runtime_context = runtime_context
+        self.runtime_context = pack_runtime_context(runtime_context)
         self.conditional = conditional or Conditional()
 
     def run(
@@ -3402,8 +3477,13 @@ class CWLWorkflow(CWLNamedJob):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
+
         # Apply default values set in the workflow
-        fs_access = ToilFsAccess(self.runtime_context.basedir, url_access=file_store.jobStore, file_store=file_store)
+        fs_access = ToilFsAccess(runtime_context.basedir, url_access=file_store.jobStore, file_store=file_store)
         fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
 
         # `promises` dict
@@ -3465,7 +3545,7 @@ class CWLWorkflow(CWLNamedJob):
                                     inp["valueFrom"],
                                     jobobj.get(key, JustAValue(None)),
                                     self.cwlwf.requirements,
-                                    get_container_engine(self.runtime_context),
+                                    get_container_engine(runtime_context),
                                 )
 
                             logger.debug(
@@ -3476,7 +3556,7 @@ class CWLWorkflow(CWLNamedJob):
                             expression=step.tool.get("when"),
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements,
-                            container_engine=get_container_engine(self.runtime_context),
+                            container_engine=get_container_engine(runtime_context),
                         )
 
                         if "scatter" in step.tool:
@@ -3485,7 +3565,7 @@ class CWLWorkflow(CWLNamedJob):
                             ] = CWLScatter(
                                 step,
                                 UnresolvedDict(jobobj),
-                                self.runtime_context,
+                                runtime_context,
                                 parent_name=parent_name,
                                 conditional=conditional,
                             )
@@ -3502,7 +3582,7 @@ class CWLWorkflow(CWLNamedJob):
                             wfjob, followOn = makeJob(
                                 tool=step.embedded_tool,
                                 jobobj=UnresolvedDict(jobobj),
-                                runtime_context=self.runtime_context,
+                                runtime_context=runtime_context,
                                 parent_name=f"{parent_name}.{shortname(step_id)}",
                                 conditional=conditional,
                             )
@@ -3570,6 +3650,10 @@ class CWLWorkflow(CWLNamedJob):
                 source_key="outputSource",
                 promises=promises,
             )
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
 
         return UnresolvedDict(outobj)
 
@@ -3697,23 +3781,36 @@ class CWLImportWrapper(CWLNamedJob):
         super().__init__(local=False, disk=options.import_workers_threshold)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
-        self.options = options
-        self.runtime_context = runtime_context
+        
+        # Parse options now to avoid sending options
+        self.import_workers_threshold = options.import_workers_threshold
+        self.import_workers_disk = options.import_workers_disk
+        self.basedir = options.basedir
+        self.skip_remote = options.reference_inputs
+        self.bypass_file_store = options.bypass_file_store
+
+        self.runtime_context = pack_runtime_context(runtime_context)
         self.file_to_data = file_to_data
 
     def run(self, file_store: AbstractFileStore) -> Any:
+
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
+
         imports_job = ImportsJob(
             self.file_to_data,
-            self.options.import_workers_threshold,
-            self.options.import_workers_disk,
+            self.import_workers_threshold,
+            self.import_workers_disk,
         )
         self.addChild(imports_job)
         install_imports_job = CWLInstallImportsJob(
             initialized_job_order=self.initialized_job_order,
             tool=self.tool,
-            basedir=self.options.basedir,
-            skip_remote=self.options.reference_inputs,
-            bypass_file_store=self.options.bypass_file_store,
+            basedir=self.basedir,
+            skip_remote=self.reference_inputs,
+            bypass_file_store=self.bypass_file_store,
             import_data=imports_job.rv(0),
         )
         self.addChild(install_imports_job)
@@ -3722,10 +3819,14 @@ class CWLImportWrapper(CWLNamedJob):
         start_job = CWLStartJob(
             install_imports_job.rv(0),
             install_imports_job.rv(1),
-            runtime_context=self.runtime_context,
+            runtime_context=runtime_context,
         )
         self.addChild(start_job)
         install_imports_job.addFollowOn(start_job)
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
 
         return start_job.rv()
 
@@ -3748,16 +3849,27 @@ class CWLStartJob(CWLNamedJob):
         super().__init__(**kwargs)
         self.tool = tool
         self.initialized_job_order = initialized_job_order
-        self.runtime_context = runtime_context
+        self.runtime_context = pack_runtime_context(runtime_context)
 
     def run(self, file_store: AbstractFileStore) -> Any:
         initialized_job_order = unwrap(self.initialized_job_order)
+
+        pipe_threads: list[tuple[Thread, int]] = []
+        index: dict[str, str] = {}
+        existing: dict[str, str] = {}
+        runtime_context = unpack_runtime_context(self.runtime_context, file_store.jobStore, file_store, pipe_threads, index, existing)
+
         tool = unwrap(self.tool)
         cwljob, _ = makeJob(
-            tool, initialized_job_order, self.runtime_context, None, None
+            tool, initialized_job_order, runtime_context, None, None
         )  # toplevel, no name needed
         cwljob.cwljob = initialized_job_order
         self.addChild(cwljob)
+
+        for t, fd in pipe_threads:
+            os.close(fd)
+            t.join()
+
         return cwljob.rv()
 
 
@@ -4314,6 +4426,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             temp_prefix_ro=tmp_outdir_prefix,
             orcid=options.orcid,
             full_name=options.cwl_full_name,
+            # TODO: Won't this be un-pickle-able?
             fsaccess=runtime_context.make_fs_access(""),
         )
         runtime_context.research_obj = research_obj

@@ -131,6 +131,12 @@ class AbstractFileStore(ABC):
         # Holds total bytes of observed disk usage for the last job run under open()
         self._job_disk_used: Optional[int] = None
 
+    def __getstate__(self) -> None:
+        """
+        Make sure file stores cannot themselves be pickled.
+        """
+        raise RuntimeError("Attempted to pickle file store implementation") 
+
     @staticmethod
     def createFileStore(
         jobStore: AbstractJobStore,

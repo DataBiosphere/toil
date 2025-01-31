@@ -3025,10 +3025,16 @@ class Job:
                         serviceJob = self._registry[serviceID]
                         logger.debug("Saving service %s", serviceJob.description)
                         # Pickle the service body, which triggers all the promise stuff
-                        serviceJob.saveBody(jobStore)
+                        try:
+                            serviceJob.saveBody(jobStore)
+                        except TypeError as e:
+                            raise RuntimeError("Could not save body of service " + str(serviceJob.description)) from e
             if job != self or saveSelf:
                 # Now pickle the job itself
-                job.saveBody(jobStore)
+                try:
+                    job.saveBody(jobStore)
+                except TypeError as e:
+                    raise RuntimeError("Could not save body of " + str(job.description)) from e
 
         # Now that the job data is on disk, commit the JobDescriptions in
         # reverse execution order, in a batch if supported.
