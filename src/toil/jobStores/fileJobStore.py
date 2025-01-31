@@ -396,15 +396,15 @@ class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
             os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
+    def _url_exists(cls, url: ParseResult, config: Config) -> bool:
         return os.path.exists(cls._extract_path_from_url(url))
 
     @classmethod
-    def _get_size(cls, url):
+    def _get_size(cls, url: ParseResult, config: Config) -> int:
         return os.stat(cls._extract_path_from_url(url)).st_size
 
     @classmethod
-    def _read_from_url(cls, url, writable):
+    def _read_from_url(cls, url: ParseResult, writable: bool, config: Config) -> tuple[int, bool]:
         """
         Writes the contents of a file to a source (writes url to writable)
         using a ~10Mb buffer.
@@ -414,21 +414,21 @@ class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
         """
 
         # we use a ~10Mb buffer to improve speed
-        with cls._open_url(url) as readable:
+        with cls._open_url(url, config) as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
             executable = os.stat(readable.name).st_mode & stat.S_IXUSR
             return readable.tell(), executable
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+    def _open_url(cls, url: ParseResult, config: Config) -> IO[bytes]:
         """
         Open a file URL as a binary stream.
         """
         return open(cls._extract_path_from_url(url), "rb")
 
     @classmethod
-    def _write_to_url(cls, readable, url, executable=False):
+    def _write_to_url(cls, readable: IO[bytes], url: ParseResult, executable: bool, config: Config):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -445,7 +445,7 @@ class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
         )
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
+    def _list_url(cls, url: ParseResult, config: Config) -> list[str]:
         path = cls._extract_path_from_url(url)
         listing = []
         for p in os.listdir(path):
@@ -458,7 +458,7 @@ class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
         return listing
 
     @classmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
+    def _get_is_directory(cls, url: ParseResult, config: Config) -> bool:
         path = cls._extract_path_from_url(url)
         return os.path.isdir(path)
 

@@ -518,10 +518,13 @@ async def toil_read_source(
             # TODO: this is probably sync work that would be better as async work here
             job_store.read_from_url(candidate_uri, destination_buffer)
         except Exception as e:
-            # TODO: we need to assume any error is just a not-found,
+            # We need to assume any arbitrary error is just a not-found,
             # because the exceptions thrown by read_from_url()
             # implementations are not specified.
-            logger.debug("Tried to fetch %s from %s but got %s", uri, candidate_uri, e)
+            logger.debug("Tried to fetch %s from %s but got %s: %s", uri, candidate_uri, type(e), e)
+            if isinstance(e, TypeError):
+                # This is probably actually a bug
+                raise
             continue
         # If we get here, we got it probably.
         try:

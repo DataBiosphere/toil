@@ -657,17 +657,17 @@ class AWSJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
             return cls._get_is_directory(url)
 
     @classmethod
-    def _get_size(cls, url: ParseResult) -> int:
+    def _get_size(cls, url: ParseResult, config: Config) -> int:
         return get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access).content_length
 
     @classmethod
-    def _read_from_url(cls, url: ParseResult, writable):
+    def _read_from_url(cls, url: ParseResult, writable, config: Config):
         srcObj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         srcObj.download_fileobj(writable)
         return (srcObj.content_length, False)  # executable bit is always False
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+    def _open_url(cls, url: ParseResult, config: Config) -> IO[bytes]:
         src_obj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         response = src_obj.get()
         # We should get back a response with a stream in 'Body'
@@ -677,7 +677,7 @@ class AWSJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
 
     @classmethod
     def _write_to_url(
-        cls, readable, url: ParseResult, executable: bool = False
+        cls, readable, url: ParseResult, executable: bool, config: Config
     ) -> None:
         dstObj = get_object_for_url(url, anonymous=config.aws_anonymous_url_access)
 
@@ -692,14 +692,14 @@ class AWSJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
         )
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
+    def _list_url(cls, url: ParseResult, config: Config) -> list[str]:
         return list_objects_for_url(url, anonymous=config.aws_anonymous_url_access)
 
     @classmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
+    def _get_is_directory(cls, url: ParseResult, config: Config) -> bool:
         # We consider it a directory if anything is in it.
         # TODO: Can we just get the first item and not the whole list?
-        return len(cls._list_url(url)) > 0
+        return len(cls._list_url(url, config)) > 0
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
