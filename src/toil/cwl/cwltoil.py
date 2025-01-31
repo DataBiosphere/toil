@@ -3809,7 +3809,7 @@ class CWLImportWrapper(CWLNamedJob):
             initialized_job_order=self.initialized_job_order,
             tool=self.tool,
             basedir=self.basedir,
-            skip_remote=self.reference_inputs,
+            skip_remote=self.skip_remote,
             bypass_file_store=self.bypass_file_store,
             import_data=imports_job.rv(0),
         )
