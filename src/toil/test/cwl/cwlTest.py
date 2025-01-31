@@ -703,6 +703,30 @@ class CWLWorkflowTest(ToilTest):
         except subprocess.CalledProcessError:
             pass
 
+    def test_caching(self) -> None:
+        log.info("Running CWL Test Cache.")
+        from toil.cwl import cwltoil
+
+        outDir = self._createTempDir()
+        cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
+        cmd = [
+            "--outdir",
+            outDir,
+            "--jobStore",
+            os.path.join(outDir, "jobStore"),
+            "--no-container",
+            "--cachedir",
+            "cache",
+            os.path.join(cwlDir, "revsort.cwl"),
+            os.path.join(cwlDir, "revsort-job.json"),
+        ]
+        # Finish the job with a correct PATH
+        st = StringIO()
+        ret = cwltoil.main(cmd, stdout=st)
+        assert ret == 0
+        # cwltool hashes certain steps into directories, ensure it exists
+        assert os.path.exists(os.path.join(cwlDir, "cache", "9da28e219a61b062824576503f88b863"))
+
     @needs_aws_s3
     def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
         """
@@ -1201,6 +1225,14 @@ class CWLv12Test(ToilTest):
         self.test_run_conformance(
             caching=True,
             junit_file=os.path.join(self.rootDir, "caching-conformance-1.2.junit.xml"),
+        )
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_with_task_caching(self) -> None:
+        self.test_run_conformance(
+            junit_file=os.path.join(self.rootDir, "task-caching-conformance-1.2.junit.xml"),
+            extra_args=["--cachedir", self._createTempDir("task_cache")]
         )
 
     @slow
