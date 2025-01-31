@@ -135,7 +135,7 @@ class AbstractFileStore(ABC):
         """
         Make sure file stores cannot themselves be pickled.
         """
-        raise RuntimeError("Attempted to pickle file store implementation") 
+        raise TypeError("Attempted to pickle file store implementation") 
 
     @staticmethod
     def createFileStore(

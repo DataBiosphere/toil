@@ -3027,13 +3027,13 @@ class Job:
                         # Pickle the service body, which triggers all the promise stuff
                         try:
                             serviceJob.saveBody(jobStore)
-                        except TypeError as e:
+                        except Exception as e:
                             raise RuntimeError("Could not save body of service " + str(serviceJob.description)) from e
             if job != self or saveSelf:
                 # Now pickle the job itself
                 try:
                     job.saveBody(jobStore)
-                except TypeError as e:
+                except Exception as e:
                     raise RuntimeError("Could not save body of " + str(job.description)) from e
 
         # Now that the job data is on disk, commit the JobDescriptions in
