@@ -133,9 +133,9 @@ class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
         os.makedirs(self.filesDir, exist_ok=True)
         os.makedirs(self.jobFilesDir, exist_ok=True)
         os.makedirs(self.sharedFilesDir, exist_ok=True)
-        self.linkImports = config.symlinkImports
-        self.moveExports = config.moveOutputs
-        self.symlink_job_store_reads = config.symlink_job_store_reads
+        self.linkImports = self.config.symlinkImports
+        self.moveExports = self.config.moveOutputs
+        self.symlink_job_store_reads = self.config.symlink_job_store_reads
         super().initialize()
 
     def resume(self):

@@ -137,7 +137,7 @@ from toil.job import (
     FileMetadata,
     WorkerImportJob,
 )
-from toil.jobStores.abstractJobStore import (
+from toil.jobStores.abstractJobStore import (\
     AbstractJobStore,
     NoSuchFileException,
     InvalidImportExportUrlException,
@@ -148,6 +148,7 @@ from toil.jobStores.fileJobStore import FileJobStore
 from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread, global_mutex
+from toil.lib.url import URLAccess
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
 
 logger = logging.getLogger(__name__)
@@ -585,7 +586,7 @@ class StepValueFrom:
                     # store for the workflow. In that case, no toilfile:// or
                     # other special URIs will exist in the workflow to be read
                     # from, and ToilFsAccess still supports file:// URIs.
-                    fs_access = functools.partial(ToilFsAccess, job_store=file_store.jobStore, file_store=file_store)
+                    fs_access = functools.partial(ToilFsAccess, url_access=file_store.jobStore, file_store=file_store)
                     with fs_access("").open(cast(str, val["location"]), "rb") as f:
                         val["contents"] = cwltool.builder.content_limit_respected_read(
                             f
@@ -1293,7 +1294,8 @@ def encode_directory(contents: DirectoryContents) -> str:
 
 class ToilFsAccess(StdFsAccess):
     """
-    Custom filesystem access class which handles toil filestore references.
+    Custom filesystem access class which handles toil filestore references and
+    other URLs.
 
     Normal file paths will be resolved relative to basedir, but 'toilfile:' and
     'toildir:' URIs will be fulfilled from the Toil file store.
@@ -1304,15 +1306,18 @@ class ToilFsAccess(StdFsAccess):
     def __init__(
         self,
         basedir: str,
-        job_store: AbstractJobStore,
+        url_access: URLAccess,
         file_store: Optional[AbstractFileStore] = None,
     ) -> None:
         """
-        Create a FsAccess object for the given Toil Filestore and basedir.
-
-        :param job_store: Toil job store to use to access URLs.
+        Create a FsAccess object.
+        
+        :param bassdir: Directory for resolving relative paths.
+        :param url_access: Object to use to access URLs.
+        :param file_store: Toil FileStore to access toilfile: and toildir:
+            URLs.
         """
-        self.job_store = job_store
+        self.url_access = url_access
         self.file_store = file_store
 
         # Map encoded directory structures to where we downloaded them, so we
@@ -1401,7 +1406,7 @@ class ToilFsAccess(StdFsAccess):
             destination = path
         else:
             # The destination is something else.
-            if self.job_store.get_is_directory(path):
+            if self.url_access.get_is_directory(path):
                 # Treat this as a directory
                 if path not in self.dir_to_download:
                     logger.debug(
@@ -1411,14 +1416,14 @@ class ToilFsAccess(StdFsAccess):
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
-                        if self.job_store.get_is_directory(url):
+                        if self.url_access.get_is_directory(url):
                             os.mkdir(dest)
-                            for part in self.job_store.list_url(url):
+                            for part in self.url_access.list_url(url):
                                 download_to(
                                     os.path.join(url, part), os.path.join(dest, part)
                                 )
                         else:
-                            self.job_store.read_from_url(url, open(dest, "wb"))
+                            self.url_access.read_from_url(url, open(dest, "wb"))
 
                     download_to(path, dest_dir)
                     self.dir_to_download[path] = dest_dir
@@ -1431,7 +1436,7 @@ class ToilFsAccess(StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = NamedTemporaryFile(delete=False)
-                    self.job_store.read_from_url(path, dest_file)
+                    self.url_access.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
@@ -1489,7 +1494,7 @@ class ToilFsAccess(StdFsAccess):
             return open(self._abs(fn), mode)
         else:
             # This should be supported by a job store.
-            byte_stream = self.job_store.open_url(fn)
+            byte_stream = self.url_access.open_url(fn)
             if "b" in mode:
                 # Pass stream along in binary
                 return byte_stream
@@ -1526,7 +1531,7 @@ class ToilFsAccess(StdFsAccess):
             return True
         else:
             # This should be supported by a job store.
-            return self.job_store.url_exists(path)
+            return self.url_access.url_exists(path)
 
     def size(self, path: str) -> int:
         parse = urlparse(path)
@@ -1555,7 +1560,7 @@ class ToilFsAccess(StdFsAccess):
             )
         else:
             # This should be supported by a job store.
-            size = self.job_store.get_size(path)
+            size = self.url_access.get_size(path)
             if size is None:
                 # get_size can be unimplemented or unavailable
                 raise RuntimeError(f"Could not get size of {path}")
@@ -1578,7 +1583,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return isinstance(found, str)
         else:
-            return self.exists(fn) and not self.job_store.get_is_directory(fn)
+            return self.exists(fn) and not self.url_access.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
         logger.debug("ToilFsAccess checking type of %s", fn)
@@ -1598,7 +1603,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: We assume directories can't be deleted.
             return isinstance(found, dict)
         else:
-            status = self.job_store.get_is_directory(fn)
+            status = self.url_access.get_is_directory(fn)
             logger.debug("Job store said: %s", status)
             return status
 
@@ -1632,7 +1637,7 @@ class ToilFsAccess(StdFsAccess):
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
-                for entry in self.job_store.list_url(fn)
+                for entry in self.url_access.list_url(fn)
             ]
 
     def join(self, path: str, *paths: str) -> str:
@@ -2830,7 +2835,7 @@ class CWLJob(CWLNamedJob):
 
             runtime_context.make_fs_access = cast(
                 type[StdFsAccess],
-                functools.partial(ToilFsAccess, job_store=file_store.jobStore, file_store=file_store),
+                functools.partial(ToilFsAccess, url_access=file_store.jobStore, file_store=file_store),
             )
 
             runtime_context.path_mapper = functools.partial(  # type: ignore[assignment]
@@ -3398,7 +3403,7 @@ class CWLWorkflow(CWLNamedJob):
             return self.conditional.skipped_outputs()
 
         # Apply default values set in the workflow
-        fs_access = ToilFsAccess(self.runtime_context.basedir, job_store=file_store.jobStore, file_store=file_store)
+        fs_access = ToilFsAccess(self.runtime_context.basedir, url_access=file_store.jobStore, file_store=file_store)
         fill_in_defaults(self.cwlwf.tool["inputs"], cwljob, fs_access)
 
         # `promises` dict
@@ -3600,7 +3605,7 @@ class CWLInstallImportsJob(Job):
         tool: Process,
         candidate_to_fileid: dict[str, FileID],
         basedir: str,
-        job_store: AbstractJobStore,
+        url_access: URLAccess,
         skip_remote: bool,
         bypass_file_store: bool,
     ) -> tuple[Process, CWLObjectType]:
@@ -3616,7 +3621,7 @@ class CWLInstallImportsJob(Job):
         file_convert_function = functools.partial(
             extract_and_convert_file_to_toil_uri, fill_in_file
         )
-        fs_access = ToilFsAccess(basedir, job_store)
+        fs_access = ToilFsAccess(basedir, url_access)
         fileindex: dict[str, str] = {}
         existing: dict[str, str] = {}
         visit_files(
@@ -4277,21 +4282,34 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # We use the file store to write to buckets, so we can't do this (yet?)
         logger.error("Cannot export outputs to a bucket when bypassing the file store")
         return 1
+    if options.reference_inputs and options.bypass_file_store:
+        # We can't do both of these at the same time.
+        logger.error("Cannot reference inputs when bypassing the file store")
+        return 1
+
+
+    # Now options are fully ready for Toil. Any mutations to the options from
+    # here on are only for CWL workflow setup. We can start using them to make
+    # things.
+
+    # Maker the Toil context manager object, which also knows how to access URLs.
+    toil_object = Toil(options)
+
     if not options.bypass_file_store:
         # If we're using Toil's filesystem wrappers and the ability to access
         # URLs implemented by Toil, we need to hook up our own StdFsAccess
         # replacement early, before we try and set up the main CWL document.
         # Otherwise, if it takes a File with loadContents from a URL, we won't
         # be able to load the contents when we need to.
-        runtime_context.make_fs_access = ToilFsAccess
-    if options.reference_inputs and options.bypass_file_store:
-        # We can't do both of these at the same time.
-        logger.error("Cannot reference inputs when bypassing the file store")
-        return 1
+        #
+        # And it depends on Toil's URL access machinery, so it needs the Toil object.
+        runtime_context.make_fs_access = cast(type[StdFsAccess], functools.partial(ToilFsAccess, url_access=toil_object))
 
+    # Set up the CWL loading context
     loading_context = cwltool.main.setup_loadingContext(None, runtime_context, options)
 
     if options.provenance:
+        # Set up CWL provenance
         research_obj = cwltool.cwlprov.ro.ResearchObject(
             temp_prefix_ro=tmp_outdir_prefix,
             orcid=options.orcid,
@@ -4303,11 +4321,9 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     try:
 
         if not options.restart:
-            # Make a version of the config based on the initial options, for
-            # setting up CWL option stuff
-            expected_config = Config()
-            expected_config.setOptions(options)
-
+            # We have the initial Toil config already and we can use it to set
+            # more options for cwltool.
+            
             # Before showing the options to any cwltool stuff that wants to
             # load the workflow, transform options.cwltool, where our
             # argument for what to run is, to handle Dockstore workflows.
@@ -4318,10 +4334,10 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             loading_context.hints = [
                 {
                     "class": "ResourceRequirement",
-                    "coresMin": expected_config.defaultCores,
+                    "coresMin": toil_object._config.defaultCores,
                     # Don't include any RAM requirement because we want to
                     # know when tools don't manually ask for RAM.
-                    "outdirMin": expected_config.defaultDisk / (2**20),
+                    "outdirMin": toil_object._config.defaultDisk / (2**20),
                     "tmpdirMin": 0,
                 }
             ]
@@ -4346,7 +4362,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
             # Attempt to prepull the containers
             if not options.no_prepull and not options.no_container:
-                try_prepull(uri, runtime_context, expected_config.batchSystem)
+                try_prepull(uri, runtime_context, toil_object._config.batchSystem)
 
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
@@ -4483,7 +4499,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logger.debug("Root tool: %s", tool)
             tool = remove_pickle_problems(tool)
 
-        with Toil(options) as toil:
+        with toil_object as toil:
             if options.restart:
                 outobj = toil.restart()
             else:

@@ -73,6 +73,7 @@ from toil.lib.compatibility import deprecated
 from toil.lib.io import AtomicFileCreate, try_path
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
+from toil.lib.url import URLAccess
 from toil.options.common import JOBSTORE_HELP, add_base_toil_options
 from toil.options.cwl import add_cwl_options
 from toil.options.runner import add_runner_options
@@ -101,7 +102,7 @@ DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
-
+    
     logFile: Optional[str]
     logRotating: bool
     cleanWorkDir: str
@@ -896,14 +897,13 @@ def getNodeID() -> str:
     return nodeID
 
 
-class Toil(ContextManager["Toil"]):
+class Toil(URLAccess, ContextManager["Toil"]):
     """
     A context manager that represents a Toil workflow.
 
     Specifically the batch system, job store, and its configuration.
     """
 
-    config: Config
     _jobStore: "AbstractJobStore"
     _batchSystem: "AbstractBatchSystem"
     _provisioner: Optional["AbstractProvisioner"]
@@ -917,19 +917,22 @@ class Toil(ContextManager["Toil"]):
 
         :param options: command line options specified by the user
         """
-        super().__init__()
+
+        # Set up the config so it can be gotten at outside the context manager,
+        # so workflow code can use command line flags before creating the job
+        # store storage.
+        set_logging_from_options(options)
+        config = Config()
+        config.setOptions(options)
+        logger.debug("Set up Toil with configuration: %s", vars(options))
+        
+        # This will set self._config
+        super().__init__(config)
         self.options = options
         self._jobCache: dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager: bool = False
         self._inRestart: bool = False
-
-        # Set up the config so it can be gotten at outside the context manager,
-        # so workflow code can use command line flags before creatign the job
-        # store storage.
-        set_logging_from_options(self.options)
-        self.config = Config()
-        self.config.setOptions(self.options)
-        logger.debug("Set up Toil with configuration: %s", vars(self.options))
+        
 
     def __enter__(self) -> "Toil":
         """
@@ -939,23 +942,23 @@ class Toil(ContextManager["Toil"]):
         configuration with the one from the previous invocation of the workflow.
         """
         
-        if self.config.jobStore is None:
+        if self._config.jobStore is None:
             raise RuntimeError("No jobstore provided!")
-        jobStore = self.getJobStore(self.config)
-        if self.config.caching is None:
-            self.config.caching = jobStore.default_caching()
+        jobStore = self.getJobStore(self._config.jobStore, self._config)
+        if self._config.caching is None:
+            self._config.caching = jobStore.default_caching()
             # Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
-            self.options.caching = self.config.caching
+            self.options.caching = self._config.caching
 
-        if not self.config.restart:
-            self.config.prepare_start()
+        if not self._config.restart:
+            self._config.prepare_start()
             jobStore.initialize()
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
-            self.config = jobStore.config
-            self.config.prepare_restart()
-            self.config.setOptions(self.options)
+            self._config = jobStore._config
+            self._config.prepare_restart()
+            self._config.setOptions(self.options)
             jobStore.write_config()
         self._jobStore = jobStore
         self._inContextManager = True
@@ -979,14 +982,14 @@ class Toil(ContextManager["Toil"]):
         try:
             if (
                 exc_type is not None
-                and self.config.clean == "onError"
+                and self._config.clean == "onError"
                 or exc_type is None
-                and self.config.clean == "onSuccess"
-                or self.config.clean == "always"
+                and self._config.clean == "onSuccess"
+                or self._config.clean == "always"
             ):
 
                 try:
-                    if self.config.restart and not self._inRestart:
+                    if self._config.restart and not self._inRestart:
                         pass
                     else:
                         self._jobStore.destroy()
@@ -1034,13 +1037,13 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.write_leader_pid()
         self._jobStore.write_leader_node_id()
 
-        if self.config.restart:
+        if self._config.restart:
             raise ToilRestartException(
                 "A Toil workflow can only be started once. Use "
                 "Toil.restart() to resume it."
             )
 
-        self._batchSystem = self.createBatchSystem(self.config)
+        self._batchSystem = self.createBatchSystem(self._config)
         self._setupAutoDeployment(rootJob.getUserScript())
         try:
             self._setBatchSystemEnvVars()
@@ -1078,7 +1081,7 @@ class Toil(ContextManager["Toil"]):
         self._jobStore.write_leader_pid()
         self._jobStore.write_leader_node_id()
 
-        if not self.config.restart:
+        if not self._config.restart:
             raise ToilRestartException(
                 "A Toil workflow must be initiated with Toil.start(), " "not restart()."
             )
@@ -1093,7 +1096,7 @@ class Toil(ContextManager["Toil"]):
             )
             return self._jobStore.get_root_job_return_value()
 
-        self._batchSystem = self.createBatchSystem(self.config)
+        self._batchSystem = self.createBatchSystem(self._config)
         self._setupAutoDeployment()
         try:
             self._setBatchSystemEnvVars()
@@ -1106,29 +1109,34 @@ class Toil(ContextManager["Toil"]):
             self._shutdownBatchSystem()
 
     def _setProvisioner(self) -> None:
-        if self.config.provisioner is None:
+        if self._config.provisioner is None:
             self._provisioner = None
         else:
             self._provisioner = cluster_factory(
-                provisioner=self.config.provisioner,
+                provisioner=self._config.provisioner,
                 clusterName=None,
                 zone=None,  # read from instance meta-data
-                nodeStorage=self.config.nodeStorage,
-                nodeStorageOverrides=self.config.nodeStorageOverrides,
-                sseKey=self.config.sseKey,
+                nodeStorage=self._config.nodeStorage,
+                nodeStorageOverrides=self._config.nodeStorageOverrides,
+                sseKey=self._config.sseKey,
             )
-            self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
+            self._provisioner.setAutoscaledNodeTypes(self._config.nodeTypes)
 
     @classmethod
-    def getJobStore(cls, config: Config) -> "AbstractJobStore":
+    def getJobStore(cls, locator: str, config: Optional[Config] = None) -> "AbstractJobStore":
         """
         Create an instance of the concrete job store implementation that
-        matches the locator in the given config.
+        matches the given locator.
+
+        Will use the provided config if given, or a default one otherwise.
 
         :return: an instance of a concrete subclass of AbstractJobStore
         """
+        
+        if config is None:
+            # Fill in a default config.
+            config = Config()
 
-        locator = config.locator
         name, rest = cls.parseLocator(locator)
         if name == "file":
             from toil.jobStores.fileJobStore import FileJobStore
@@ -1168,12 +1176,8 @@ class Toil(ContextManager["Toil"]):
         """
         Connect to and resume a job store from just its locator.
         """
-        # Make a temporary config that will apply during job store
-        # construction/connection.
-        config = Config()
-        # Point it at the job store
-        config.locator = locator
-        jobStore = cls.getJobStore(config)
+        # Connect to the job store with a temporary config
+        jobStore = cls.getJobStore(locator)
         # Replace the config by resuming
         jobStore.resume()
         return jobStore
@@ -1240,7 +1244,7 @@ class Toil(ContextManager["Toil"]):
             else:
                 if (
                     self._batchSystem.supportsAutoDeployment()
-                    and not self.config.disableAutoDeployment
+                    and not self._config.disableAutoDeployment
                 ):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
@@ -1260,7 +1264,7 @@ class Toil(ContextManager["Toil"]):
             # This branch is hit on restarts
             if (
                 self._batchSystem.supportsAutoDeployment()
-                and not self.config.disableAutoDeployment
+                and not self._config.disableAutoDeployment
             ):
                 # We could deploy a user script
                 from toil.jobStores.abstractJobStore import NoSuchFileException
@@ -1418,7 +1422,7 @@ class Toil(ContextManager["Toil"]):
 
     def _setBatchSystemEnvVars(self) -> None:
         """Set the environment variables required by the job store and those passed on command line."""
-        for envDict in (self._jobStore.get_env(), self.config.environment):
+        for envDict in (self._jobStore.get_env(), self._config.environment):
             for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
@@ -1632,7 +1636,7 @@ class Toil(ContextManager["Toil"]):
 
         :param rootJob: The root job for the workflow.
         """
-        logProcessContext(self.config)
+        logProcessContext(self._config)
 
         with RealtimeLogger(
             self._batchSystem,
@@ -1642,7 +1646,7 @@ class Toil(ContextManager["Toil"]):
             from toil.leader import Leader
 
             return Leader(
-                config=self.config,
+                config=self._config,
                 batchSystem=self._batchSystem,
                 provisioner=self._provisioner,
                 jobStore=self._jobStore,

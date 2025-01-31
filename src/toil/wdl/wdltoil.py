@@ -1221,7 +1221,10 @@ class NonDownloadingSize(WDL.StdLib._Size):
                 else:
                     # This is some other kind of remote file.
                     # We need to get its size from the URI.
-                    item_size = AbstractJobStore.get_size(uri)
+                    # To access the URI we need to reach inside the stdlib to get a URLAccess.
+                    # TODO: Maybe the stdlib should be one???
+                    assert isinstance(self.stdlib, ToilWDLStdLibBase)
+                    item_size = self.stdlib._file_store.jobStore.get_size(uri)
                     if item_size is None:
                         # User asked for the size and we can't figure it out efficiently, so bail out.
                         raise RuntimeError(f"Attempt to check the size of {uri} failed")
@@ -1659,7 +1662,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 )
                 file_uri = Toil.normalize_uri(abs_filepath)
 
-            if not AbstractJobStore.url_exists(file_uri):
+            if not self._file_store.jobStore.url_exists(file_uri):
                 logger.debug("File appears nonexistent so marking it nonexistent")
                 return set_file_nonexistent(file, True)
         virtualized_filename = self._virtualize_filename(file.value)
@@ -1746,7 +1749,8 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Open it exclusively
             with open(dest_path, "xb") as dest_file:
                 # And save to it
-                size, executable = AbstractJobStore.read_from_url(filename, dest_file)
+                url_access = file_source if isinstance(file_source, Toil) else file_source.jobStore
+                size, executable = url_access.read_from_url(filename, dest_file)
                 if executable:
                     # Set the execute bit in the file's permissions
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
@@ -2611,7 +2615,7 @@ def drop_if_missing(
 
     if filename is not None and is_any_url(filename):
         try:
-            if filename.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(
+            if filename.startswith(TOIL_URI_SCHEME) or standard_library._file_store.jobStore.url_exists(
                 filename
             ):
                 # We assume anything in the filestore actually exists.
@@ -5453,7 +5457,7 @@ def main() -> None:
                 document: WDL.Tree.Document = WDL.load(
                     resolve_workflow(options.wdl_uri, supported_languages={"WDL"}),
                     # Smuggle the job store in so we can read URLs according to the config
-                    read_source=functools.partial(toil_read_source, job_store=toil._jobStore),
+                    read_source=partial(toil_read_source, job_store=toil._jobStore),
                 )
 
                 # See if we're going to run a workflow or a task
@@ -5521,7 +5525,7 @@ def main() -> None:
 
                         # We need the absolute path or URL to raise the error
                         if input_source_uri is not None:
-                            # If this is a local fike, use that as the abspath.
+                            # If this is a local file, use that as the abspath.
                             # Otherwise just pass through a URL.
                             inputs_abspath = (
                                 input_source_uri

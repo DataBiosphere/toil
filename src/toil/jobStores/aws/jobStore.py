@@ -31,6 +31,7 @@ from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
+from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import (
@@ -89,8 +90,6 @@ if TYPE_CHECKING:
         ReplaceableItemTypeDef,
         UpdateConditionTypeDef,
     )
-
-    from toil import Config
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource("s3")
