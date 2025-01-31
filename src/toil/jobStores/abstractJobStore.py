@@ -1705,7 +1705,7 @@ class StandardURLProtocolImplementation(AbstractURLProtocolImplementation, metac
     ) -> tuple[int, bool]:
         # We can't actually retry after we start writing.
         # TODO: Implement retry with byte range requests
-        with cls._open_url(url) as readable:
+        with cls._open_url(url, config) as readable:
             # Make something to count the bytes we get
             # We need to put the actual count in a container so our
             # nested function can modify it without creating its own
