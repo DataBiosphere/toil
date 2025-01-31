@@ -15,10 +15,12 @@
 # https://pytest.org/latest/example/pythoncollection.html
 
 import json
+import logging
 from io import StringIO
 from typing import Any, Dict, List, Optional, Tuple
 
 from cwltest import utils
+logger = logging.getLogger(__name__)
 
 collect_ignore = ["spec"]
 
@@ -34,8 +36,6 @@ def pytest_cwl_execute_test(
 ) -> Tuple[int, Optional[Dict[str, Any]]]:
     """Use the CWL reference runner (cwltool) to execute tests."""
     from toil.cwl.cwltoil import main
-    from cwltool.errors import WorkflowException
-    from schema_salad.exceptions import ValidationException
 
     stdout = StringIO()
     argsl: List[str] = [f"--outdir={config.outdir}"]
@@ -49,9 +49,8 @@ def pytest_cwl_execute_test(
         argsl.append(jobfile)
     try:
         result = main(args=argsl, stdout=stdout)
-    except WorkflowException:
-        return 1, {}
-    except ValidationException:
+    except Exception as e:
+        logger.error(e)
         return 1, {}
     out = stdout.getvalue()
     return result, json.loads(out) if out else {}
