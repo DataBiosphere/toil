@@ -2255,8 +2255,12 @@ def pack_runtime_context(local_context: cwltool.context.RuntimeContext) -> cwlto
     # Drop the FS access hook
     stored_context.make_fs_access = StdFsAccess
 
-    # Make sure it pickles
-    pickle.dumps(stored_context)
+    if hasattr(stored_context, "toil_get_file"):
+        # Drop the toil_get_file hook
+        delattr(stored_context, "toil_get_file")
+
+    # Drop the path mapper hook
+    stored_context.path_mapper = PathMapper
 
     return stored_context
 
