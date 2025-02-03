@@ -39,7 +39,7 @@ from toil.batchSystems.abstractBatchSystem import (
 )
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.job import JobDescription
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool

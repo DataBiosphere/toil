@@ -27,10 +27,10 @@ class WorkerTests(ToilTest):
     def setUp(self):
         super().setUp()
         path = self._getTestJobStorePath()
-        self.jobStore = FileJobStore(path)
         self.config = Config()
         self.config.jobStore = "file:%s" % path
-        self.jobStore.initialize(self.config)
+        self.jobStore = FileJobStore(path, self.config)
+        self.jobStore.initialize()
         self.jobNumber = 0
 
     def testNextChainable(self):

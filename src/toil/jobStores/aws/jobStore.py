@@ -21,6 +21,7 @@ import reprlib
 import stat
 import time
 import uuid
+from argparse import ArgumentParser, _ArgumentGroup
 from collections.abc import Generator
 from contextlib import contextmanager
 from io import BytesIO
@@ -30,10 +31,12 @@ from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
 from botocore.exceptions import ClientError
 
 import toil.lib.encryption as encryption
+from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import Job, JobDescription
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     ConcurrentFileModificationException,
     JobStoreExistsException,
     LocatorException,
@@ -69,12 +72,14 @@ from toil.lib.aws.utils import (
     retryable_s3_errors,
 )
 from toil.lib.compatibility import compat_bytes
+from toil.lib.conversions import opt_strtobool
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.exceptions import panic
 from toil.lib.io import AtomicFileCreate
 from toil.lib.memoize import strict_bool
 from toil.lib.objects import InnerClass
 from toil.lib.retry import get_error_code, get_error_status, retry
+from toil.options import OptionSetter
 
 if TYPE_CHECKING:
     from mypy_boto3_sdb.type_defs import (
@@ -85,8 +90,6 @@ if TYPE_CHECKING:
         ReplaceableItemTypeDef,
         UpdateConditionTypeDef,
     )
-
-    from toil import Config
 
 boto3_session = establish_boto3_session()
 s3_boto3_resource = boto3_session.resource("s3")
@@ -110,7 +113,7 @@ class DomainDoesNotExist(Exception):
         super().__init__(f"Expected domain {domain_name} to exist!")
 
 
-class AWSJobStore(AbstractJobStore):
+class AWSJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
     """
     A job store that uses Amazon's S3 for file storage and SimpleDB for storing job info and
     enforcing strong consistency on the S3 file storage. There will be SDB domains for jobs and
@@ -132,7 +135,7 @@ class AWSJobStore(AbstractJobStore):
     maxNameLen = 10
     nameSeparator = "--"
 
-    def __init__(self, locator: str, partSize: int = 50 << 20) -> None:
+    def __init__(self, locator: str, config: Config, partSize: int = 50 << 20) -> None:
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -140,7 +143,7 @@ class AWSJobStore(AbstractJobStore):
                upload and copy, must be >= 5 MiB but large enough to not exceed 10k parts for the
                whole file
         """
-        super().__init__(locator)
+        super().__init__(locator, config)
         region, namePrefix = locator.split(":")
         regions = EC2Regions.keys()
         if region not in regions:
@@ -181,7 +184,7 @@ class AWSJobStore(AbstractJobStore):
         self.s3_resource = boto3_session.resource("s3", region_name=self.region)
         self.s3_client = self.s3_resource.meta.client
 
-    def initialize(self, config: "Config") -> None:
+    def initialize(self) -> None:
         if self._registered:
             raise JobStoreExistsException(self.locator, "aws")
         self._registered = None
@@ -191,7 +194,7 @@ class AWSJobStore(AbstractJobStore):
             with panic(logger):
                 self.destroy()
         else:
-            super().initialize(config)
+            super().initialize()
             # Only register after job store has been full initialized
             self._registered = True
 
@@ -637,10 +640,16 @@ class AWSJobStore(AbstractJobStore):
         else:
             super()._default_export_file(otherCls, file_id, uri)
 
+    ###
+    # URL access implementation
+    ###
+
+    # URL access methods aren't used by the rest of the job store methods.
+
     @classmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
+    def _url_exists(cls, url: ParseResult, config: Config) -> bool:
         try:
-            get_object_for_url(url, existing=True)
+            get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
             return True
         except FileNotFoundError:
             # Not a file
@@ -648,18 +657,18 @@ class AWSJobStore(AbstractJobStore):
             return cls._get_is_directory(url)
 
     @classmethod
-    def _get_size(cls, url: ParseResult) -> int:
-        return get_object_for_url(url, existing=True).content_length
+    def _get_size(cls, url: ParseResult, config: Config) -> int:
+        return get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access).content_length
 
     @classmethod
-    def _read_from_url(cls, url: ParseResult, writable):
-        srcObj = get_object_for_url(url, existing=True)
+    def _read_from_url(cls, url: ParseResult, writable, config: Config):
+        srcObj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         srcObj.download_fileobj(writable)
         return (srcObj.content_length, False)  # executable bit is always False
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        src_obj = get_object_for_url(url, existing=True)
+    def _open_url(cls, url: ParseResult, config: Config) -> IO[bytes]:
+        src_obj = get_object_for_url(url, existing=True, anonymous=config.aws_anonymous_url_access)
         response = src_obj.get()
         # We should get back a response with a stream in 'Body'
         if "Body" not in response:
@@ -668,9 +677,9 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _write_to_url(
-        cls, readable, url: ParseResult, executable: bool = False
+        cls, readable, url: ParseResult, executable: bool, config: Config
     ) -> None:
-        dstObj = get_object_for_url(url)
+        dstObj = get_object_for_url(url, anonymous=config.aws_anonymous_url_access)
 
         logger.debug("Uploading %s", dstObj.key)
         # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
@@ -683,18 +692,54 @@ class AWSJobStore(AbstractJobStore):
         )
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
-        return list_objects_for_url(url)
+    def _list_url(cls, url: ParseResult, config: Config) -> list[str]:
+        return list_objects_for_url(url, anonymous=config.aws_anonymous_url_access)
 
     @classmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
+    def _get_is_directory(cls, url: ParseResult, config: Config) -> bool:
         # We consider it a directory if anything is in it.
         # TODO: Can we just get the first item and not the whole list?
-        return len(list_objects_for_url(url)) > 0
+        return len(cls._list_url(url, config)) > 0
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
         return url.scheme.lower() == "s3"
+    
+    ####
+
+    # To set the config flag affecting URL access, we need command-line option support.
+
+    @classmethod
+    def add_options(cls, parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+        """
+        If this job store provides any command line options, add them to the given parser.
+        """
+
+        parser.add_argument(
+            "--awsAnonymousUrlAccess",
+            dest="aws_anonymous_url_access",
+            default=False,
+            metavar="BOOL",
+            env_var="TOIL_AWS_ANONYMOUS_URL_ACCESS",
+            type=opt_strtobool,
+            help="Whether to access AWS S3 URLs anonymously. Useful for skipping "
+                 "multi-factor authentication when MFA is configured but unnecessary. "
+                 "(default: %(default)s)",
+        )
+
+    @classmethod
+    def set_options(cls, set_option: OptionSetter) -> None:
+        """
+        Process command line options relevant to this job store.
+
+        :param set_option: A function taking an option name and returning
+            nothing, used to update run configuration as a side effect.
+        """
+        
+        # Set the option in the config
+        set_option("aws_anonymous_url_access")
+
+    ###
 
     def write_file(
         self, local_path: FileID, job_id: Optional[FileID] = None, cleanup: bool = False

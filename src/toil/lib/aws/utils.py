@@ -19,6 +19,7 @@ from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, cast
 from urllib.parse import ParseResult
 
+# To import toil.lib.aws.session, the AWS libraries must be installed 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.conversions import strtobool
 from toil.lib.misc import printq
@@ -37,12 +38,7 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.service_resource import Object as S3Object
     from mypy_boto3_sdb.type_defs import AttributeTypeDef
 
-try:
-    from botocore.exceptions import ClientError, EndpointConnectionError
-except ImportError:
-    ClientError = None  # type: ignore
-    EndpointConnectionError = None  # type: ignore
-    # AWS/boto extra is not installed
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +228,7 @@ def get_bucket_region(
     bucket_name: str,
     endpoint_url: Optional[str] = None,
     only_strategies: Optional[set[int]] = None,
+    anonymous: Optional[bool] = None
 ) -> str:
     """
     Get the AWS region name associated with the given S3 bucket, or raise NoBucketLocationError.
@@ -243,7 +240,8 @@ def get_bucket_region(
     :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
     """
 
-    s3_client = session.client("s3", endpoint_url=endpoint_url)
+    config = session.ANONYMOUS_CONFIG if anonymous else None
+    s3_client = session.client("s3", endpoint_url=endpoint_url, config=config)
 
     def attempt_get_bucket_location() -> Optional[str]:
         """
@@ -267,7 +265,7 @@ def get_bucket_region(
         # It could also be because AWS open data buckets (which we tend to
         # encounter this problem for) tend to actually themselves be in
         # us-east-1.
-        backup_s3_client = session.client("s3", region_name="us-east-1")
+        backup_s3_client = session.client("s3", region_name="us-east-1", config=config)
         return backup_s3_client.get_bucket_location(Bucket=bucket_name).get(
             "LocationConstraint", None
         )
@@ -346,7 +344,7 @@ def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
 
-def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3Object":
+def get_object_for_url(url: ParseResult, existing: Optional[bool] = None, anonymous: Optional[bool] = None) -> "S3Object":
     """
     Extracts a key (object) from a given parsed s3:// URL.
 
@@ -372,17 +370,18 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
     # TODO: OrdinaryCallingFormat equivalent in boto3?
     # if botoargs:
     #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
-
+    
+    config = session.ANONYMOUS_CONFIG if anonymous else None
     try:
         # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-        s3 = session.resource("s3", region_name=region, endpoint_url=endpoint_url)
+        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url, anonymous=anonymous)
+        s3 = session.resource("s3", region_name=region, endpoint_url=endpoint_url, config=config)
     except NoBucketLocationError as e:
         # Probably don't have permission.
         # TODO: check if it is that
         logger.debug("Couldn't get bucket location: %s", e)
         logger.debug("Fall back to not specifying location")
-        s3 = session.resource("s3", endpoint_url=endpoint_url)
+        s3 = session.resource("s3", endpoint_url=endpoint_url, config=config)
 
     obj = s3.Object(bucket_name, key_name)
     objExists = True
@@ -407,11 +406,12 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
 
 
 @retry(errors=[AWSServerErrors])
-def list_objects_for_url(url: ParseResult) -> list[str]:
+def list_objects_for_url(url: ParseResult, anonymous: Optional[bool] = None) -> list[str]:
     """
     Extracts a key (object) from a given parsed s3:// URL. The URL will be
     supplemented with a trailing slash if it is missing.
     """
+
     key_name = url.path[1:]
     bucket_name = url.netloc
 
@@ -430,8 +430,9 @@ def list_objects_for_url(url: ParseResult) -> list[str]:
         protocol = "http"
     if host:
         endpoint_url = f"{protocol}://{host}" + f":{port}" if port else ""
-
-    client = session.client("s3", endpoint_url=endpoint_url)
+    
+    config = session.ANONYMOUS_CONFIG if anonymous else None
+    client = session.client("s3", endpoint_url=endpoint_url, config=config)
 
     listing = []
 

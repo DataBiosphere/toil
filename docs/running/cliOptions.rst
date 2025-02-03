@@ -311,6 +311,10 @@ Allows configuring Toil's data storage.
                         of all the jobs reading from it at once, and you want
                         to use ``--caching=True`` to make jobs on each node
                         read from node-local cache storage. (Default=True)
+  --awsAnonymousUrlAccess BOOL
+                        Whether to access AWS S3 URLs anonymously. Useful for
+                        skipping multi-factor authentication when MFA is
+                        configured but unnecessary.
 
 **Autoscaling Options**
 Allows the specification of the minimum and maximum number of nodes in an

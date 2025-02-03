@@ -100,7 +100,7 @@ from toil.batchSystems.abstractBatchSystem import (
 )
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
 from toil.batchSystems.contained_executor import pack_job
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.common import Config, Toil
 from toil.job import JobDescription, Requirer
 from toil.lib.conversions import human2bytes

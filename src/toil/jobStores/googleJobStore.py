@@ -31,8 +31,10 @@ from google.api_core.exceptions import (
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import exceptions, storage
 
+from toil.common import Config
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -91,12 +93,12 @@ def google_retry(f):
     return wrapper
 
 
-class GoogleJobStore(AbstractJobStore):
+class GoogleJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
 
     nodeServiceAccountJson = "/root/service_account.json"
 
-    def __init__(self, locator: str) -> None:
-        super().__init__(locator)
+    def __init__(self, locator: str, config: Config) -> None:
+        super().__init__(locator, config)
 
         try:
             projectID, namePrefix = locator.split(":", 1)
@@ -173,12 +175,12 @@ class GoogleJobStore(AbstractJobStore):
             return storage.Client.create_anonymous_client()
 
     @google_retry
-    def initialize(self, config=None):
+    def initialize(self):
         try:
             self.bucket = self.storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
             raise JobStoreExistsException(self.locator, "google")
-        super().initialize(config)
+        super().initialize()
 
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:
@@ -439,7 +441,7 @@ class GoogleJobStore(AbstractJobStore):
         return blob
 
     @classmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
+    def _url_exists(cls, url: ParseResult, config: Config) -> bool:
         try:
             cls._get_blob_from_url(url, exists=True)
             return True
@@ -447,17 +449,17 @@ class GoogleJobStore(AbstractJobStore):
             return False
 
     @classmethod
-    def _get_size(cls, url):
+    def _get_size(cls, url, config: Config):
         return cls._get_blob_from_url(url, exists=True).size
 
     @classmethod
-    def _read_from_url(cls, url, writable):
+    def _read_from_url(cls, url, writable, config: Config):
         blob = cls._get_blob_from_url(url, exists=True)
         blob.download_to_file(writable)
         return blob.size, False
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+    def _open_url(cls, url: ParseResult, config: Config) -> IO[bytes]:
         blob = cls._get_blob_from_url(url, exists=True)
         return blob.open("rb")
 
@@ -466,18 +468,18 @@ class GoogleJobStore(AbstractJobStore):
         return url.scheme.lower() == "gs"
 
     @classmethod
-    def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
+    def _write_to_url(cls, readable: bytes, url: str, executable: bool, config: Config) -> None:
         blob = cls._get_blob_from_url(url)
         blob.upload_from_file(readable)
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
+    def _list_url(cls, url: ParseResult, config: Config) -> list[str]:
         raise NotImplementedError(
             "Listing files in Google buckets is not yet implemented!"
         )
 
     @classmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
+    def _get_is_directory(cls, url: ParseResult, config: Config) -> bool:
         raise NotImplementedError(
             "Checking directory status in Google buckets is not yet implemented!"
         )

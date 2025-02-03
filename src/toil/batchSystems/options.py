@@ -13,7 +13,7 @@
 
 import logging
 from argparse import ArgumentParser, _ArgumentGroup
-from typing import Any, Callable, Optional, Protocol, TypeVar, Union
+from typing import Optional, Union
 
 from toil.batchSystems.registry import (
     DEFAULT_BATCH_SYSTEM,
@@ -21,32 +21,12 @@ from toil.batchSystems.registry import (
     get_batch_systems,
 )
 from toil.lib.threading import cpu_count
+# Need to re-export from here for compatibility with old batch system plugins
+from toil.options import OptionSetter as OptionSetter
 
 logger = logging.getLogger(__name__)
 
-
-class OptionSetter(Protocol):
-    """
-    Protocol for the setOption function we get to let us set up CLI options for
-    each batch system.
-
-    Actual functionality is defined in the Config class.
-    """
-
-    OptionType = TypeVar("OptionType")
-
-    def __call__(
-        self,
-        option_name: str,
-        parsing_function: Optional[Callable[[Any], OptionType]] = None,
-        check_function: Optional[Callable[[OptionType], Union[None, bool]]] = None,
-        default: Optional[OptionType] = None,
-        env: Optional[list[str]] = None,
-        old_names: Optional[list[str]] = None,
-    ) -> bool: ...
-
-
-def set_batchsystem_options(
+def set_batch_system_options(
     batch_system: Optional[str], set_option: OptionSetter
 ) -> None:
     """
@@ -80,7 +60,7 @@ def set_batchsystem_options(
     set_option("batch_logs_dir")
 
 
-def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
+def add_all_batch_system_options(parser: Union[ArgumentParser, _ArgumentGroup]) -> None:
     from toil.options.common import SYS_MAX_SIZE
 
     # Do the global cross-batch-system arguments

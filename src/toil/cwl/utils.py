@@ -164,7 +164,7 @@ def download_structure(
 
     Guaranteed to fill the structure with real files, and not symlinks out of
     it to elsewhere. File URIs may be toilfile: URIs or any other URI that
-    Toil's job store system can read.
+    Toil can read.
 
     :param file_store: The Toil file store to download from.
 
@@ -178,6 +178,10 @@ def download_structure(
     :param into_dir: The directory to download the top-level dict's files
         into.
     """
+
+    # TODO: Have a good way to get a URL access straight from a FileStore
+    # without dealing with the internal JobStore.
+
     logger.debug("Downloading directory with %s items", len(dir_dict))
 
     for name, value in dir_dict.items():
@@ -208,7 +212,7 @@ def download_structure(
                 )
             else:
                 # We need to download from some other kind of URL.
-                size, executable = AbstractJobStore.read_from_url(
+                size, executable = file_store.jobStore.read_from_url(
                     value, open(dest_path, "wb")
                 )
                 if executable:
