@@ -16,8 +16,8 @@ import logging
 import os
 import socket
 from collections.abc import Iterable, Iterator
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, cast
-from urllib.parse import ParseResult
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, Union, cast
+from urllib.parse import ParseResult, urlparse
 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.conversions import strtobool
@@ -346,7 +346,7 @@ def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
 
-def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3Object":
+def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = None) -> "S3Object":
     """
     Extracts a key (object) from a given parsed s3:// URL.
 
@@ -355,6 +355,8 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
     :param bool existing: If True, key is expected to exist. If False, key is expected not to
             exists and it will be created. If None, the key will be created if it doesn't exist.
     """
+    if isinstance(url, str):
+        url = urlparse(url)
 
     key_name = url.path[1:]
     bucket_name = url.netloc
@@ -407,11 +409,14 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None) -> "S3
 
 
 @retry(errors=[AWSServerErrors])
-def list_objects_for_url(url: ParseResult) -> list[str]:
+def list_objects_for_url(url: Union[ParseResult, str]) -> list[str]:
     """
     Extracts a key (object) from a given parsed s3:// URL. The URL will be
     supplemented with a trailing slash if it is missing.
     """
+    if isinstance(url, str):
+        url = urlparse(url)
+
     key_name = url.path[1:]
     bucket_name = url.netloc
 

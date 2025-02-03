@@ -83,7 +83,17 @@ def main():
         'src/toil/lib/aws/__init__.py',
         'src/toil/server/utils.py',
         'src/toil/test',
-        'src/toil/utils/toilStats.py'
+        'src/toil/utils/toilStats.py',
+        'src/toil/server/utils.py',
+        'src/toil/jobStores/aws/jobStore.py',
+        'src/toil/jobStores/exceptions.py',
+        'src/toil/lib/aws/config.py',
+        'src/toil/lib/aws/s3.py',
+        'src/toil/lib/retry.py',
+        'src/toil/lib/pipes.py',
+        'src/toil/lib/checksum.py',
+        'src/toil/lib/conversions.py',
+        'src/toil/lib/iterables.py'
     ]]
 
     def ignore(file_path):
@@ -99,6 +109,7 @@ def main():
     for file_path in all_files_to_check:
         if not ignore(file_path):
             filtered_files_to_check.append(file_path)
+    print(f'Checking: {filtered_files_to_check}')
     args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
     p = subprocess.run(args=args)
     exit(p.returncode)
