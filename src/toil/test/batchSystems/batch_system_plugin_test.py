@@ -87,4 +87,4 @@ class BatchSystemPluginTest(ToilTest):
         # try to install a batchsystem plugin with some arguments
         # if the arguments exists, the values should also exist in the config
         with Toil(options) as toil:
-            self.assertEqual(toil.config.fake_argument == "exists", True)
+            self.assertEqual(toil._config.fake_argument == "exists", True)
