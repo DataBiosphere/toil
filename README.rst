@@ -33,6 +33,9 @@ Notes:
 
 #### CWL Conformance
 
+|command_line_tool|
+.. |command_line_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/command_line_tool.json%3Fjob=cwl_badge
+
 ![command_line_tool](https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/command_line_tool.json%3Fjob=cwl_badge)
 ![conditional](https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/conditional.json%3Fjob=cwl_badge)
 ![docker](https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/docker.json%3Fjob=cwl_badge)
