@@ -708,15 +708,19 @@ class CWLWorkflowTest(ToilTest):
         from toil.cwl import cwltoil
 
         outDir = self._createTempDir()
+        cacheDir = self._createTempDir()
+
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
+        log_path = os.path.join(outDir, "log")
         cmd = [
             "--outdir",
             outDir,
             "--jobStore",
             os.path.join(outDir, "jobStore"),
+            "--clean=always",
             "--no-container",
             "--cachedir",
-            "cache",
+            cacheDir,
             os.path.join(cwlDir, "revsort.cwl"),
             os.path.join(cwlDir, "revsort-job.json"),
         ]
@@ -725,7 +729,23 @@ class CWLWorkflowTest(ToilTest):
         ret = cwltoil.main(cmd, stdout=st)
         assert ret == 0
         # cwltool hashes certain steps into directories, ensure it exists
-        assert os.path.exists(os.path.join(cwlDir, "cache", "9da28e219a61b062824576503f88b863"))
+        assert (len(os.listdir(cacheDir)) == 4)
+
+        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the workflow
+        st = StringIO()
+        cmd = [
+                  "--writeLogsFromAllJobs=True",
+                  "--writeLogs",
+                  log_path
+              ] + cmd
+        ret = cwltoil.main(cmd, stdout=st)
+        assert ret == 0
+
+        # Ensure all of the worker logs are using their cached outputs
+        for file in os.listdir(log_path):
+            assert "Using cached output" in open(os.path.join(log_path, file), encoding="utf-8").read()
+
+
 
     @needs_aws_s3
     def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
