@@ -3599,6 +3599,7 @@ class CWLInstallImportsJob(Job):
         """
         Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
         """
+
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
