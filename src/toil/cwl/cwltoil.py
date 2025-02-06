@@ -4179,6 +4179,9 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.streaming_allowed = not options.disable_streaming
     if options.cachedir is not None:
         runtime_context.cachedir = os.path.abspath(options.cachedir)
+        # Automatically bypass the file store to be compatible with cwltool caching
+        logger.debug("CWL task caching is turned on. Bypassing file store.")
+        options.bypass_file_store = True
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     if cwltool.main.check_working_directories(runtime_context) is not None:
