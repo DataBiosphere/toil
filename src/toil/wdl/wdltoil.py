@@ -3803,7 +3803,7 @@ class WDLTaskJob(WDLBaseJob):
                     # miniwdl depends on docker so this should be available but check just in case
                     pass
                     # docker stubs are still WIP: https://github.com/docker/docker-py/issues/2796
-                    from docker.types import Mount  # type: ignore[import-untyped]
+                    from docker.types import Mount  # type: ignore[import-not-found]
 
                     def patch_prepare_mounts_docker(
                         logger: logging.Logger,
