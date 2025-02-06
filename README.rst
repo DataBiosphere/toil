@@ -29,3 +29,27 @@ Notes:
 
 * Toil moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on July 5th, 2018.
 * Toil dropped Python 2.7 support on February 13, 2020 (the last working py2.7 version is 3.24.0).
+
+
+#### CWL Conformance
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/command_line_tool.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/conditional.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/docker.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/expression_tool.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/format_checking.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/initial_work_dir.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/inline_javascript.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/inplace_update.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/input_object_requirements.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/json_schema_invalid.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/load_listing.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/multiple_input.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/networkaccess.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/required.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/resource.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/scatter.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/schema_def.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/step_input.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/timelimit.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/workflow.json%3Fjob=cwl_badge
+https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/work_reuse.json%3Fjob=cwl_badge
