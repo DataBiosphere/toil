@@ -23,7 +23,7 @@ from contextlib import contextmanager
 from threading import Condition
 from typing import Any, ContextManager, NamedTuple, Optional, Union, cast
 
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.bus import MessageBus, MessageOutbox
 from toil.common import Config, Toil, cacheDirName
 from toil.deferred import DeferredFunctionManager
@@ -282,16 +282,17 @@ class AbstractBatchSystem(ABC):
         """
         If this batch system provides any command line options, add them to the given parser.
         """
+        pass
 
     @classmethod
     def setOptions(cls, setOption: OptionSetter) -> None:
         """
         Process command line or configuration options relevant to this batch system.
 
-        :param setOption: A function with signature
-            setOption(option_name, parsing_function=None, check_function=None, default=None, env=None)
-            returning nothing, used to update run configuration as a side effect.
+        :param setOption: A function taking an option name and returning
+            nothing, used to update run configuration as a side effect.
         """
+        pass
 
     def getWorkerContexts(self) -> list[ContextManager[Any]]:
         """

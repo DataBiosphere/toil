@@ -26,10 +26,12 @@ from contextlib import contextmanager
 from typing import IO, Literal, Optional, Union, overload
 from urllib.parse import ParseResult, quote, unquote
 
+from toil.common import Config
 from toil.fileStores import FileID
 from toil.job import TemporaryID
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
+    AbstractURLProtocolImplementation,
     JobStoreExistsException,
     NoSuchFileException,
     NoSuchJobException,
@@ -46,7 +48,7 @@ from toil.lib.io import (
 logger = logging.getLogger(__name__)
 
 
-class FileJobStore(AbstractJobStore):
+class FileJobStore(AbstractJobStore, AbstractURLProtocolImplementation):
     """
     A job store that uses a directory on a locally attached file system. To be compatible with
     distributed batch systems, that file system must be shared by all worker nodes.
@@ -81,13 +83,13 @@ class FileJobStore(AbstractJobStore):
 
         return False
 
-    def __init__(self, path: str, fanOut: int = 1000) -> None:
+    def __init__(self, path: str, config: Config, fanOut: int = 1000) -> None:
         """
         :param path: Path to directory holding the job store
         :param fanOut: Number of items to have in a directory before making
                            subdirectories
         """
-        super().__init__(path)
+        super().__init__(path, config)
         self.jobStoreDir = os.path.abspath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
 
@@ -116,7 +118,7 @@ class FileJobStore(AbstractJobStore):
     def __repr__(self):
         return f"FileJobStore({self.jobStoreDir})"
 
-    def initialize(self, config):
+    def initialize(self):
         try:
             os.mkdir(self.jobStoreDir)
         except OSError as e:
@@ -131,10 +133,10 @@ class FileJobStore(AbstractJobStore):
         os.makedirs(self.filesDir, exist_ok=True)
         os.makedirs(self.jobFilesDir, exist_ok=True)
         os.makedirs(self.sharedFilesDir, exist_ok=True)
-        self.linkImports = config.symlinkImports
-        self.moveExports = config.moveOutputs
-        self.symlink_job_store_reads = config.symlink_job_store_reads
-        super().initialize(config)
+        self.linkImports = self.config.symlinkImports
+        self.moveExports = self.config.moveOutputs
+        self.symlink_job_store_reads = self.config.symlink_job_store_reads
+        super().initialize()
 
     def resume(self):
         if not os.path.isdir(self.jobStoreDir):
@@ -394,15 +396,15 @@ class FileJobStore(AbstractJobStore):
             os.chmod(destPath, os.stat(destPath).st_mode | stat.S_IXUSR)
 
     @classmethod
-    def _url_exists(cls, url: ParseResult) -> bool:
+    def _url_exists(cls, url: ParseResult, config: Config) -> bool:
         return os.path.exists(cls._extract_path_from_url(url))
 
     @classmethod
-    def _get_size(cls, url):
+    def _get_size(cls, url: ParseResult, config: Config) -> int:
         return os.stat(cls._extract_path_from_url(url)).st_size
 
     @classmethod
-    def _read_from_url(cls, url, writable):
+    def _read_from_url(cls, url: ParseResult, writable: bool, config: Config) -> tuple[int, bool]:
         """
         Writes the contents of a file to a source (writes url to writable)
         using a ~10Mb buffer.
@@ -412,21 +414,21 @@ class FileJobStore(AbstractJobStore):
         """
 
         # we use a ~10Mb buffer to improve speed
-        with cls._open_url(url) as readable:
+        with cls._open_url(url, config) as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
             # Return the number of bytes we read when we reached EOF.
             executable = os.stat(readable.name).st_mode & stat.S_IXUSR
             return readable.tell(), executable
 
     @classmethod
-    def _open_url(cls, url: ParseResult) -> IO[bytes]:
+    def _open_url(cls, url: ParseResult, config: Config) -> IO[bytes]:
         """
         Open a file URL as a binary stream.
         """
         return open(cls._extract_path_from_url(url), "rb")
 
     @classmethod
-    def _write_to_url(cls, readable, url, executable=False):
+    def _write_to_url(cls, readable: IO[bytes], url: ParseResult, executable: bool, config: Config):
         """
         Writes the contents of a file to a source (writes readable to url)
         using a ~10Mb buffer.
@@ -443,7 +445,7 @@ class FileJobStore(AbstractJobStore):
         )
 
     @classmethod
-    def _list_url(cls, url: ParseResult) -> list[str]:
+    def _list_url(cls, url: ParseResult, config: Config) -> list[str]:
         path = cls._extract_path_from_url(url)
         listing = []
         for p in os.listdir(path):
@@ -456,7 +458,7 @@ class FileJobStore(AbstractJobStore):
         return listing
 
     @classmethod
-    def _get_is_directory(cls, url: ParseResult) -> bool:
+    def _get_is_directory(cls, url: ParseResult, config: Config) -> bool:
         path = cls._extract_path_from_url(url)
         return os.path.isdir(path)
 

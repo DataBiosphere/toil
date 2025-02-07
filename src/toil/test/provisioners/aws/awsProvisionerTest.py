@@ -661,7 +661,7 @@ class PreemptibleDeficitCompensationTest(AbstractAWSAutoscaleTest):
             if __name__ == "__main__":
                 options = Job.Runner.getDefaultArgumentParser().parse_args()
                 with Toil(options) as toil:
-                    if toil.config.restart:
+                    if options.restart:
                         toil.restart()
                     else:
                         toil.start(Job.wrapJobFn(job))

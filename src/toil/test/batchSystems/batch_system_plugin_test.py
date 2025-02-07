@@ -21,7 +21,7 @@ from toil.batchSystems.abstractBatchSystem import (
     UpdatedBatchJobInfo,
 )
 from toil.batchSystems.cleanup_support import BatchSystemCleanupSupport
-from toil.batchSystems.options import OptionSetter
+from toil.options import OptionSetter
 from toil.batchSystems.registry import add_batch_system_factory
 from toil.common import Toil, addOptions
 from toil.job import JobDescription
@@ -87,4 +87,4 @@ class BatchSystemPluginTest(ToilTest):
         # try to install a batchsystem plugin with some arguments
         # if the arguments exists, the values should also exist in the config
         with Toil(options) as toil:
-            self.assertEqual(toil.config.fake_argument == "exists", True)
+            self.assertEqual(toil._config.fake_argument == "exists", True)

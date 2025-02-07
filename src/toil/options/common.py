@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from configargparse import SUPPRESS
 from ruamel.yaml import YAML
 
-from toil.batchSystems.options import add_all_batchsystem_options
+from toil.batchSystems.options import add_all_batch_system_options
+from toil.jobStores.options import add_all_job_store_options
 from toil.lib.conversions import bytes2human, human2bytes, opt_strtobool, strtobool
 from toil.provisioners import parse_node_types
 from toil.statsAndLogging import add_logging_options
@@ -421,18 +422,18 @@ def add_base_toil_options(
     )
 
     # Batch system options
-    batchsystem_options = parser.add_argument_group(
-        title="Toil options for specifying the batch system",
-        description="Allows the specification of the batch system.",
+    batch_system_options = parser.add_argument_group(
+        title="Toil options for the batch system",
+        description="Allows specifying and configuring batch system.",
     )
-    add_all_batchsystem_options(batchsystem_options)
+    add_all_batch_system_options(batch_system_options)
 
     # File store options
-    file_store_options = parser.add_argument_group(
+    storage_options = parser.add_argument_group(
         title="Toil options for configuring storage",
         description="Allows configuring Toil's data storage.",
     )
-    link_imports = file_store_options.add_mutually_exclusive_group()
+    link_imports = storage_options.add_mutually_exclusive_group()
     link_imports_help = (
         "When using a filesystem based job store, CWL input files are by default symlinked in.  "
         "Setting this option to True instead copies the files into the job store, which may protect "
@@ -448,7 +449,7 @@ def add_base_toil_options(
         metavar="BOOL",
         help=link_imports_help,
     )
-    move_exports = file_store_options.add_mutually_exclusive_group()
+    move_exports = storage_options.add_mutually_exclusive_group()
     move_exports_help = (
         "When using a filesystem based job store, output files are by default moved to the "
         "output directory, and a symlink to the moved exported file is created at the initial "
@@ -465,7 +466,7 @@ def add_base_toil_options(
         help=move_exports_help,
     )
 
-    caching = file_store_options.add_mutually_exclusive_group()
+    caching = storage_options.add_mutually_exclusive_group()
     caching_help = "Enable or disable caching for your workflow, specifying this overrides default from job store"
     caching.add_argument(
         "--caching",
@@ -477,7 +478,7 @@ def add_base_toil_options(
     )
     # default is None according to PR 4299, seems to be generated at runtime
 
-    file_store_options.add_argument(
+    storage_options.add_argument(
         "--symlinkJobStoreReads",
         dest="symlink_job_store_reads",
         type=strtobool,
@@ -486,6 +487,10 @@ def add_base_toil_options(
         help="Allow reads and container mounts from a JobStore's shared filesystem directly "
         "via symlink. default=%(default)s",
     )
+
+    # Add job store pluggable options to storage section
+    add_all_job_store_options(storage_options)
+
 
     # Auto scaling options
     autoscaling_options = parser.add_argument_group(

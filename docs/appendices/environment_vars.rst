@@ -128,6 +128,8 @@ There are several environment variables that affect the way Toil runs.
 |                                  | access to S3 and SimpleDB, the AWS job store will  |
 |                                  | not be usable.                                     |
 +----------------------------------+----------------------------------------------------+
+| TOIL_AWS_ANONYMOUS_URL_ACCESS    | Whether to access s3:// URLs anonymously.          |
++----------------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID            | The Google project ID to use when generating       |
 |                                  | Google job store names for tests or CWL workflows. |
 +----------------------------------+----------------------------------------------------+

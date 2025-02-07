@@ -35,6 +35,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# You can pass config=ANONYMOUS_CONFIG to make anonymous S3 accesses
+ANONYMOUS_CONFIG = Config(signature_version=botocore.UNSIGNED)
+
 # A note on thread safety:
 #
 # Boto3 Session: Not thread safe, 1 per thread is required.
@@ -148,6 +151,7 @@ class AWSConnectionManager:
         region: Optional[str],
         service_name: Literal["s3"],
         endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
     ) -> "S3ServiceResource": ...
     @overload
     def resource(
@@ -155,6 +159,7 @@ class AWSConnectionManager:
         region: Optional[str],
         service_name: Literal["iam"],
         endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
     ) -> "IAMServiceResource": ...
     @overload
     def resource(
@@ -162,6 +167,7 @@ class AWSConnectionManager:
         region: Optional[str],
         service_name: Literal["ec2"],
         endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
     ) -> "EC2ServiceResource": ...
 
     def resource(
@@ -169,6 +175,7 @@ class AWSConnectionManager:
         region: Optional[str],
         service_name: str,
         endpoint_url: Optional[str] = None,
+        config: Optional[Config] = None,
     ) -> boto3.resources.base.ServiceResource:
         """
         Get the Boto3 Resource to use with the given service (like 'ec2') in the given region.
@@ -188,10 +195,10 @@ class AWSConnectionManager:
                     # The Boto3 stubs are missing an overload for `resource` that takes
                     # a non-literal string. See
                     # <https://github.com/vemel/mypy_boto3_builder/issues/121#issuecomment-1011322636>
-                    storage.item = self.session(region).resource(service_name, endpoint_url=endpoint_url)  # type: ignore
+                    storage.item = self.session(region).resource(service_name, endpoint_url=endpoint_url, config=config)  # type: ignore
                 else:
                     # We might not be able to pass None to Boto3 and have it be the same as no argument.
-                    storage.item = self.session(region).resource(service_name)  # type: ignore
+                    storage.item = self.session(region).resource(service_name, config=config)  # type: ignore
 
         return cast(boto3.resources.base.ServiceResource, storage.item)
 
@@ -369,18 +376,21 @@ def resource(
     service_name: Literal["s3"],
     region_name: Optional[str] = None,
     endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
 ) -> "S3ServiceResource": ...
 @overload
 def resource(
     service_name: Literal["iam"],
     region_name: Optional[str] = None,
     endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
 ) -> "IAMServiceResource": ...
 @overload
 def resource(
     service_name: Literal["ec2"],
     region_name: Optional[str] = None,
     endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
 ) -> "EC2ServiceResource": ...
 
 
@@ -388,6 +398,7 @@ def resource(
     service_name: Literal["s3", "iam", "ec2"],
     region_name: Optional[str] = None,
     endpoint_url: Optional[str] = None,
+    config: Optional[Config] = None,
 ) -> boto3.resources.base.ServiceResource:
     """
     Get a Boto 3 resource for a particular AWS service, usable by the current thread.
@@ -397,5 +408,5 @@ def resource(
 
     # Just use a global version of the manager. Note that we change the argument order!
     return _global_manager.resource(
-        region_name, service_name, endpoint_url=endpoint_url
+        region_name, service_name, endpoint_url=endpoint_url, config=config
     )

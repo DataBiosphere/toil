@@ -115,17 +115,24 @@ class AbstractJobStoreTest:
         def setUp(self):
             super().setUp()
             self.namePrefix = "jobstore-test-" + str(uuid.uuid4())
-            self.config = self._createConfig()
 
             # Jobstores to be used in testing.
-            # jobstore_initialized is created with a particular configuration, as creating by self._createConfig()
-            # jobstore_resume_noconfig is created with the resume() method. resume() will look for a previously
-            # instantiated jobstore, and initialize the jobstore calling it with the found config. In this case,
-            # jobstore_resume_noconfig will be initialized with the config from jobstore_initialized.
+            #
+            # jobstore_initialized is created with a particular configuration,
+            # as creating by self._createConfig()
+            #
+            # jobstore_resumed is created with the resume() method. resume()
+            # will look for a previously instantiated jobstore, and initialize
+            # the jobstore calling it with the found config, overriding the one
+            # from _createConfig(). In this case, jobstore_resumed will be
+            # initialized with the config from jobstore_initialized.
             self.jobstore_initialized = self._createJobStore()
-            self.jobstore_initialized.initialize(self.config)
-            self.jobstore_resumed_noconfig = self._createJobStore()
-            self.jobstore_resumed_noconfig.resume()
+            self.jobstore_initialized._config.test_value = 123
+            self.jobstore_initialized.initialize()
+            self.config = self.jobstore_initialized._config
+
+            self.jobstore_resumed = self._createJobStore()
+            self.jobstore_resumed.resume()
 
             # Requirements for jobs to be created.
             self.arbitraryRequirements = {
@@ -145,7 +152,7 @@ class AbstractJobStoreTest:
 
         def tearDown(self):
             self.jobstore_initialized.destroy()
-            self.jobstore_resumed_noconfig.destroy()
+            self.jobstore_resumed.destroy()
             super().tearDown()
 
         def testInitialState(self):
@@ -196,8 +203,8 @@ class AbstractJobStoreTest:
             """
             newJobStore = self._createJobStore()
             newJobStore.resume()
-            self.assertEqual(newJobStore.config, self.config)
-            self.assertIsNot(newJobStore.config, self.config)
+            self.assertEqual(newJobStore._config, self.config)
+            self.assertIsNot(newJobStore._config, self.config)
 
         def testJobLoadEquality(self):
             """Tests that a job created via one JobStore instance can be loaded from another."""
@@ -210,7 +217,7 @@ class AbstractJobStoreTest:
             self.jobstore_initialized.create_job(jobDesc1)
 
             # Load it from the second jobstore
-            jobDesc2 = self.jobstore_resumed_noconfig.load_job(jobDesc1.jobStoreID)
+            jobDesc2 = self.jobstore_resumed.load_job(jobDesc1.jobStoreID)
 
             self.assertEqual(jobDesc1._body, jobDesc2._body)
 
@@ -264,7 +271,7 @@ class AbstractJobStoreTest:
         def testUpdateBehavior(self):
             """Tests the proper behavior during updating jobs."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resumed_noconfig
+            jobstore2 = self.jobstore_resumed
 
             job1 = JobDescription(
                 requirements=self.parentJobReqs, jobName="test1", unitName="onParent"
@@ -380,7 +387,7 @@ class AbstractJobStoreTest:
         def testSharedFiles(self):
             """Tests the sharing of files."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resumed_noconfig
+            jobstore2 = self.jobstore_resumed
 
             bar = b"bar"
 
@@ -405,7 +412,7 @@ class AbstractJobStoreTest:
         def testReadWriteSharedFilesTextMode(self):
             """Checks if text mode is compatible for shared file streams."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resumed_noconfig
+            jobstore2 = self.jobstore_resumed
 
             bar = "bar"
 
@@ -446,7 +453,7 @@ class AbstractJobStoreTest:
         def testPerJobFiles(self):
             """Tests the behavior of files on jobs."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resumed_noconfig
+            jobstore2 = self.jobstore_resumed
 
             # Create jobNodeOnJS1
             jobOnJobStore1 = JobDescription(
@@ -525,7 +532,7 @@ class AbstractJobStoreTest:
         def testStatsAndLogging(self):
             """Tests behavior of reading and writing stats and logging."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resumed_noconfig
+            jobstore2 = self.jobstore_resumed
 
             jobOnJobStore1 = JobDescription(
                 requirements=self.parentJobReqs, jobName="test1", unitName="onJobStore1"
@@ -1199,7 +1206,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         # Make a FileJobStore with an artificially low fan out threshold, to
         # make sure to test fan out logic
-        return FileJobStore(self.namePrefix, fanOut=2)
+        return FileJobStore(self.namePrefix, config=self._createConfig(), fanOut=2)
 
     def _corruptJobStore(self):
         assert isinstance(self.jobstore_initialized, FileJobStore)  # type hint
@@ -1253,7 +1260,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             dir_symlinked_to_original_filestore = f"{original_filestore}-am-i-real"
             os.symlink(original_filestore, dir_symlinked_to_original_filestore)
             filejobstore_using_symlink = FileJobStore(
-                dir_symlinked_to_original_filestore, fanOut=2
+                dir_symlinked_to_original_filestore, config=self._createConfig(), fanOut=2
             )
             self.assertEqual(
                 dir_symlinked_to_original_filestore,
@@ -1345,9 +1352,10 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             config = self._createConfig()
             config.symlink_job_store_reads = should_link
             store = FileJobStore(
-                self.namePrefix + ("-link" if should_link else "-nolink")
+                self.namePrefix + ("-link" if should_link else "-nolink"),
+                config=config
             )
-            store.initialize(config)
+            store.initialize()
 
             # Put something in the job store
             src_url, _ = self._prepareTestFile(self._externalStore(), 1)
@@ -1373,7 +1381,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
 
-        return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
+        return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix, config=self._createConfig())
 
     def _corruptJobStore(self):
         # The Google job store has only one resource, the bucket, so we can't corrupt it without
@@ -1427,7 +1435,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import AWSJobStore
 
         partSize = self._partSize()
-        return AWSJobStore(self.awsRegion() + ":" + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion() + ":" + self.namePrefix, config=self._createConfig(), partSize=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
