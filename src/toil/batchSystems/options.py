@@ -185,6 +185,7 @@ def add_all_batchsystem_options(parser: Union[ArgumentParser, _ArgumentGroup]) -
         "systems such as gridengine, htcondor, torque, slurm, and lsf.",
     )
 
+    # TODO: Move this to Slurm specifically.
     parser.add_argument(
         "--memoryIsProduct",
         dest="memory_is_product",
