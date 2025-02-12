@@ -17,6 +17,7 @@ Contains logic for generating Toil usage history reports to send back to Toil
 HQ (via Dockstore), and for working out if the user wants to send them.
 """
 
+import asyncio
 import collections
 import io
 import json
@@ -338,7 +339,7 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
 # We have dialog functions that MyPy knows can return strings from a possibly restricted set
 KeyType = TypeVar('KeyType', bound=str)
 
-def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
+def dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: float) -> Optional[KeyType]:
     """
     Display a dialog with tkinter.
 
@@ -355,19 +356,19 @@ def dialog_tkinter(title: str, text: str, options: dict[KeyType, str]) -> Option
 
     # Multiprocessing queues aren't actually generic, but MyPy requires them to be.
     result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]" = multiprocessing.Queue()
-    process = multiprocessing.Process(target=display_dialog_tkinter, args=(title, text, options, result_queue))
+    process = multiprocessing.Process(target=display_dialog_tkinter, args=(title, text, options, timeout, result_queue))
     process.start()
     result = result_queue.get()
     process.join()
-    
+
     if isinstance(result, Exception):
         raise result
     else:
         return result
 
-    
 
-def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]") -> None:
+
+def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], timeout: float, result_queue: "multiprocessing.Queue[Union[Exception, Optional[KeyType]]]") -> None:
     """
     Display a dialog with tkinter in the current process.
 
@@ -393,6 +394,17 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], r
         # Set the title
         root.title(title)
 
+        def close_root():
+            """
+            Function to close the dialog window.
+            """
+            # Hide the window
+            root.withdraw()
+            # Now we want to exit the main loop. But if we do it right away the window hide never happens and the window stays open but not responding.
+            # So we schedule the root to go away.
+            root.after(100, root.destroy)
+
+
         # Make a frame
         frame = ttk.Frame(root, padding=FRAME_PADDING)
         # Put it on a grid in the parent
@@ -416,11 +428,8 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], r
             def setter(set_to: KeyType = k) -> None:
                 # Record the choice
                 result.append(set_to)
-                # Hide the window
-                root.withdraw()
-                # Now we want to exit the main loop. But if we do it right away the window hide never happens and the window stays open but not responding.
-                # So we schedule the root to go away.
-                root.after(100, root.destroy)
+                # Close the window.
+                close_root()
             ttk.Button(button_frame, text=v, command=setter).grid(column=button_column, row=0)
             button_column += 1
 
@@ -476,6 +485,10 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], r
         # Do root sizing
         force_fit()
 
+        if timeout:
+            # If we run out of time, hide the window and move on without a choice.
+            root.after(timeout * 1000, close_root)
+
         # Run the window's main loop
         root.mainloop()
 
@@ -488,16 +501,11 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], r
     except Exception as e:
         result_queue.put(e)
 
-def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[KeyType]:
+def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: float) -> Optional[KeyType]:
     """
     Display a dialog in the terminal.
 
     Dialog will have the given title, text, and options.
-
-    Note that internally this calls asyncio.set_event_loop(). So after this
-    function is called, asyncio.get_event_loop() will no longer magically make
-    you an event loop when one doesn't exist (which is deprecated behavior
-    anyway).
 
     :param options: Dict from machine-readable option key to button text.
     :returns: the key of the selected option, or None if the user declined to
@@ -505,18 +513,59 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str]) -> Optional[K
     :raises: an exception if the dialog cannot be displayed.
     """
 
-    # See https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog
+    # See
+    # <https://python-prompt-toolkit.readthedocs.io/en/master/pages/dialogs.html#button-dialog>
+    # for the dialog and
+    # <https://python-prompt-toolkit.readthedocs.io/en/master/pages/advanced_topics/input_hooks.html>
+    # for how we run concurrently with it.
 
     from prompt_toolkit.shortcuts import button_dialog
+    from prompt_toolkit.eventloop.inputhook import set_eventloop_with_inputhook
 
     # We take button options in the reverse order from how prompt_toolkit does it.
     # TODO: This is not scrollable! What if there's more than 1 screen of text?
     # TODO: Use come kind of ScrollablePane like <https://stackoverflow.com/q/68369073>
-    return button_dialog(
+    application = button_dialog(
         title=title,
         text=text,
         buttons=[(v, k) for k, v in options.items()],
-    ).run()
+    )
+
+    # Make the coroutine to run the dialog
+    application_coroutine = application.run_async()
+
+    async def exit_application_after_timeout():
+        """
+        Wait for the timeout to elapse and then close the application.
+        """
+        await asyncio.sleep(timeout)
+        # End the application and make it return None
+        application.exit()
+
+    # Make the coroutine to stop the dialog
+    timeout_coroutine = exit_application_after_timeout()
+
+    # To avoid messing around with a global event loop and instead just race
+    # some coroutines, we make our own event loop.
+    loop = asyncio.new_event_loop()
+
+    # Attach the coroutines to it so it tries to advance them
+    application_task = loop.create_task(application_coroutine)
+    timeout_task = loop.create_task(timeout_coroutine)
+
+    # This task finishes when the first task in the set finishes.
+    race_task = asyncio.wait({application_task, timeout_task}, return_when=asyncio.FIRST_COMPLETED)
+    # Run it until then
+    loop.run_until_complete(race_task)
+    # Maybe the application needs to finish its exit?
+    loop.run_until_complete(application_task)
+
+    # We no longer need the stopping task/coroutine
+    timeout_task.cancel()
+    # We don't need to await it because we cancel it.
+    # It is OK to cancel it if it is finished already.
+
+    return application_task.result()
 
 # Define the dialog form in the abstract
 Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]]
@@ -557,6 +606,9 @@ for k, v in DIALOG_OPTIONS.items():
 # Make sure the options all have unique labels
 assert len(set(DIALOG_OPTIONS.values())) == len(DIALOG_OPTIONS), "Labels for dialog options are not unique!"
 
+# How many seconds should we show the dialog for before assuming the user means "no"?
+DIALOG_TIMEOUT = 120
+
 def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["current"], Literal["no"]]:
     """
     Ask the user to set standing workflow submission consent.
@@ -586,9 +638,10 @@ def ask_user_about_publishing_metrics() -> Union[Literal["all"], Literal["curren
             # dialogs can't hold enough text. We don't really want to bring in
             # e.g. QT for this.
             try:
-                strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS)
+                strategy_decision = strategy(DIALOG_TITLE, DIALOG_TEXT.format(default_config_path), DIALOG_OPTIONS, DIALOG_TIMEOUT)
                 if strategy_decision is None:
                     # User declined to choose. Treat that as choosing "no".
+                    logger.warning("User did not make a selection. Assuming \"no\".")
                     strategy_decision = "no"
                 decision = strategy_decision
                 break
