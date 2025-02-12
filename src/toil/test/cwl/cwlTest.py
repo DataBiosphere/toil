@@ -84,6 +84,7 @@ def run_conformance_tests(
     extra_args: Optional[list[str]] = None,
     must_support_all_features: bool = False,
     junit_file: Optional[str] = None,
+    badgedir: Optional[str] = None
 ) -> None:
     """
     Run the CWL conformance tests.
@@ -133,6 +134,9 @@ def run_conformance_tests(
         else:
             # Otherwise dump all output to our output stream
             cmd.append("--verbose")
+
+        if badgedir:
+            cmd.append(f"--badgedir={badgedir}")
 
         args_passed_directly_to_runner = [
             "--clean=always",
@@ -1179,6 +1183,7 @@ class CWLv12Test(ToilTest):
         extra_args: Optional[list[str]] = None,
         must_support_all_features: bool = False,
         junit_file: Optional[str] = None,
+        badgedir: Optional[str] = None
     ) -> None:
         if junit_file is None:
             junit_file = os.path.join(self.rootDir, "conformance-1.2.junit.xml")
@@ -1193,6 +1198,16 @@ class CWLv12Test(ToilTest):
             extra_args=extra_args,
             must_support_all_features=must_support_all_features,
             junit_file=junit_file,
+            badgedir=badgedir
+        )
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_badgedir(self) -> None:
+        self.test_run_conformance(
+            junit_file=os.path.join(self.rootDir, "badgedir-conformance-1.2.junit.xml"),
+            badgedir="badges",
+            selected_tests="33"
         )
 
     @slow
