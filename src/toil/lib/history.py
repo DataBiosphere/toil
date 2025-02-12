@@ -124,6 +124,16 @@ class HistoryManager:
     Class responsible for managing the history of Toil runs.
     """
 
+    # Should workflow run history be recorded?
+    WORKFLOW_HISTORY_ENABLED = True
+    # Should job history be recorded? Can only be true if
+    # WORKFLOW_HISTORY_ENABLED is also true.
+    #
+    # TODO: When Dockstore can take job metrics alongside whole-workflow
+    # metrics, and we've tested to make sure history recording doesn't slow
+    # down our leader job processing rate, turn on actual job history logging.
+    JOB_HISTORY_ENABLED = False
+
     @classmethod
     def database_path(cls) -> str:
         """
@@ -297,6 +307,9 @@ class HistoryManager:
             updated.
         """
 
+        if not cls.WORKFLOW_HISTORY_ENABLED:
+            return
+
         logger.info("Recording workflow creation of %s in %s", workflow_id, job_store_spec)
 
         con = cls.connection()
@@ -323,6 +336,9 @@ class HistoryManager:
         """
 
         # TODO: Make name of this function less general?
+
+        if not cls.WORKFLOW_HISTORY_ENABLED:
+            return
 
         logger.info("Workflow %s is a run of %s", workflow_id, workflow_name)
         if trs_spec:
@@ -376,6 +392,9 @@ class HistoryManager:
         :param memory_bytes: Peak observed job memory usage.
         :param disk_bytes: Observed job disk usage.
         """
+
+        if not cls.WORKFLOW_HISTORY_ENABLED or not cls.JOB_HISTORY_ENABLED:
+            return
 
         logger.debug("Workflow %s ran job %s", workflow_id, job_name)
 
@@ -448,6 +467,9 @@ class HistoryManager:
         :param platform_system: OS ("Darwin", "Linux", etc.) used to run the workflow.
         :param platform_machine: CPU type ("AMD64", etc.) used to run the workflow leader.
         """
+
+        if not cls.WORKFLOW_HISTORY_ENABLED:
+            return
 
         logger.info("Workflow %s stopped. Success: %s", workflow_id, succeeded)
 
