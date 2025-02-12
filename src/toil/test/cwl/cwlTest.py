@@ -1207,7 +1207,6 @@ class CWLv12Test(ToilTest):
         self.test_run_conformance(
             junit_file=os.path.join(self.rootDir, "badgedir-conformance-1.2.junit.xml"),
             badgedir="badges",
-            selected_tests="33"
         )
 
     @slow
