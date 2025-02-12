@@ -394,7 +394,7 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
         # Set the title
         root.title(title)
 
-        def close_root():
+        def close_root() -> None:
             """
             Function to close the dialog window.
             """
@@ -487,7 +487,7 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
 
         if timeout:
             # If we run out of time, hide the window and move on without a choice.
-            root.after(timeout * 1000, close_root)
+            root.after(int(timeout * 1000), close_root)
 
         # Run the window's main loop
         root.mainloop()
@@ -534,7 +534,7 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: floa
     # Make the coroutine to run the dialog
     application_coroutine = application.run_async()
 
-    async def exit_application_after_timeout():
+    async def exit_application_after_timeout() -> None:
         """
         Wait for the timeout to elapse and then close the application.
         """
