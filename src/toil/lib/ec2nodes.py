@@ -148,7 +148,7 @@ def parse_storage(
         return [0, 0]
     else:
         specs = storage_info.strip().split()
-        if is_number(specs[0]) and specs[1] == "x" and is_number(specs[2]):
+        if is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2]):
             return float(specs[0].replace(",", "")), float(specs[2].replace(",", ""))
         elif (
             is_number(specs[0])
@@ -157,9 +157,11 @@ def parse_storage(
             and specs[3] == "SSD"
         ):
             return 1, float(specs[0].replace(",", ""))
+        elif is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2][:-2]) and specs[2][-2:] == "GB":
+            return float(specs[0].replace(",", "")), float(specs[2][:-2].replace(",", ""))
         else:
             raise RuntimeError(
-                "EC2 JSON format has likely changed.  Error parsing disk specs."
+                f"EC2 JSON format has likely changed.  Error parsing disk specs : {storage_info.strip()}"
             )
 
 
