@@ -1,1 +1,10 @@
 include requirements*.txt
+include src/toil/server/api_spec/workflow_execution_service.swagger.yaml
+include src/toil/test/cwl/colon_test_output_job.yaml
+include src/toil/test/cwl/conditional_wf.yaml
+include src/toil/test/cwl/mock_mpi/fake_mpi.yml
+include src/toil/test/docs/scripts/*
+include src/toil/test/utils/ABCWorkflowDebug/sleep.yaml
+include src/toil/test/utils/ABCWorkflowDebug/*
+recursive-include src/toil/test/ *.cwl
+recursive-include src/toil/test/ *.txt
