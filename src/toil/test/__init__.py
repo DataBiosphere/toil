@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from contextlib import contextmanager, AbstractContextManager
 import datetime
 import logging
 import os
@@ -29,7 +30,9 @@ import zoneinfo
 from abc import ABCMeta, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
+from importlib.resources import as_file, files
 from inspect import getsource
+from pathlib import Path
 from shutil import which
 from tempfile import mkstemp
 from textwrap import dedent
@@ -49,7 +52,28 @@ from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.version import distVersion
 
+import pytest
+
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _fallback_get_data(filename: str) -> Generator[Path]:
+    try:
+        yield Path(os.path.dirname(__file__)) / ".." / ".." / ".." / filename
+    finally:
+        pass  # no cleanup needed
+
+
+def get_data(filename: str) -> AbstractContextManager[Path]:
+    """Returns an absolute path for a file from this package."""
+    # normalizing path depending on OS or else it will cause problem when joining path
+    filename = os.path.normpath(filename)
+    try:
+        return as_file(files("toil") / filename)
+    except ModuleNotFoundError:
+        pass
+    return _fallback_get_data(filename)
 
 
 class ToilTest(unittest.TestCase):
@@ -370,6 +394,11 @@ def needs_online(test_item: MT) -> MT:
     return test_item
 
 
+pneeds_online = pytest.mark.skipif(
+    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true", reason="Skipping online test."
+)
+
+
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
@@ -394,6 +423,32 @@ def needs_aws_s3(test_item: MT) -> MT:
             test_item
         )
     return test_item
+
+
+def _aws_s3_avail() -> bool:
+    """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
+    try:
+        from boto3 import Session
+
+        session = Session()
+        boto3_credentials = session.get_credentials()
+    except ImportError:
+        return False
+    from toil.lib.aws import running_on_ec2
+
+    if not (
+        boto3_credentials
+        or os.path.exists(os.path.expanduser("~/.aws/credentials"))
+        or running_on_ec2()
+    ):
+        return False
+    return True
+
+
+pneeds_aws_s3 = pytest.mark.skipif(
+    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true" or not _aws_s3_avail(),
+    reason="Install Toil with the 'aws' extra or configure AWS credentials to include this test.",
+)
 
 
 def needs_aws_ec2(test_item: MT) -> MT:
@@ -471,12 +526,22 @@ def needs_gridengine(test_item: MT) -> MT:
     return unittest.skip("Install GridEngine to include this test.")(test_item)
 
 
+pneeds_gridengine = pytest.mark.skipif(
+    not which("qhost"), reason="Install GridEngine to include this test."
+)
+
+
 def needs_torque(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if PBS/Torque is installed."""
     test_item = _mark_test("torque", test_item)
     if which("pbsnodes"):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
+
+
+pneeds_torque = pytest.mark.skipif(
+    not which("pbsnodes"), reason="Install PBS/Torque to include this test."
+)
 
 
 def needs_kubernetes_installed(test_item: MT) -> MT:
@@ -493,9 +558,7 @@ def needs_kubernetes_installed(test_item: MT) -> MT:
     return test_item
 
 
-def needs_kubernetes(test_item: MT) -> MT:
-    """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
-    test_item = needs_kubernetes_installed(needs_online(test_item))
+def _is_kubernetes_installed_and_configured() -> bool:
     try:
         import kubernetes
 
@@ -505,14 +568,29 @@ def needs_kubernetes(test_item: MT) -> MT:
             try:
                 kubernetes.config.load_incluster_config()
             except kubernetes.config.ConfigException:
-                return unittest.skip(
-                    "Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
-                    "or current pod) to include this test."
-                )(test_item)
+                return False
     except ImportError:
-        # We should already be skipping this test
-        pass
+        return False
+    return True
+
+
+def needs_kubernetes(test_item: MT) -> MT:
+    """Use as a decorator before test classes or methods to run only if Kubernetes is installed and configured."""
+    test_item = needs_kubernetes_installed(needs_online(test_item))
+    if not _is_kubernetes_installed_and_configured():
+        return unittest.skip(
+            "Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
+            "or current pod) to include this test."
+        )(test_item)
     return test_item
+
+
+pneeds_kubernetes = pytest.mark.skipif(
+    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true"
+    or not _is_kubernetes_installed_and_configured(),
+    reason="Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
+    "or current pod) to include this test.",
+)
 
 
 def needs_mesos(test_item: MT) -> MT:
@@ -532,12 +610,34 @@ def needs_mesos(test_item: MT) -> MT:
     return test_item
 
 
+def _mesos_avail() -> None:
+    if not (which("mesos-master") or which("mesos-agent")):
+        return False
+    try:
+        import psutil
+        import pymesos
+    except ImportError:
+        return False
+    return True
+
+
+pneeds_mesos = pytest.mark.skipif(
+    not _mesos_avail(),
+    reason="Install Mesos (and Toil with the 'mesos' extra) to include this test.",
+)
+
+
 def needs_slurm(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if Slurm is installed."""
     test_item = _mark_test("slurm", test_item)
     if which("squeue"):
         return test_item
     return unittest.skip("Install Slurm to include this test.")(test_item)
+
+
+pneeds_slurm = pytest.mark.skipif(
+    not which("squeue"), reason="Install Slurm to include this test."
+)
 
 
 def needs_htcondor(test_item: MT) -> MT:
@@ -576,6 +676,11 @@ def needs_lsf(test_item: MT) -> MT:
         return unittest.skip("Install LSF to include this test.")(test_item)
 
 
+pneeds_lsf = pytest.mark.skipif(
+    not which("bsub"), reason="Install LSF to include this test."
+)
+
+
 def needs_java(test_item: MT) -> MT:
     """Use as a test decorator to run only if java is installed."""
     test_item = _mark_test("java", test_item)
@@ -597,6 +702,12 @@ def needs_docker(test_item: MT) -> MT:
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
+
+
+pneeds_docker = pytest.mark.skipif(
+    (os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true" or not which("docker")),
+    reason="Requested to skip docker test or docker is not installed.",
+)
 
 
 def needs_singularity(test_item: MT) -> MT:
@@ -641,6 +752,12 @@ def needs_local_cuda(test_item: MT) -> MT:
         )(test_item)
 
 
+pneeds_local_cuda = pytest.mark.skipif(
+    not have_working_nvidia_smi(),
+    reason="Install nvidia-smi, an nvidia proprietary driver, and a CUDA-capable nvidia GPU to include this test.",
+)
+
+
 def needs_docker_cuda(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if
@@ -653,6 +770,12 @@ def needs_docker_cuda(test_item: MT) -> MT:
         return unittest.skip(
             "Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test."
         )(test_item)
+
+
+pneeds_docker_cuda = pytest.mark.skipif(
+    not have_working_nvidia_docker_runtime(),
+    reason="Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test.",
+)
 
 
 def needs_encryption(test_item: MT) -> MT:
@@ -687,6 +810,20 @@ def needs_cwl(test_item: MT) -> MT:
         )
     else:
         return test_item
+
+
+def _cwl_available() -> bool:
+    try:
+        import cwltool
+    except ImportError:
+        return False
+    return True
+
+
+pneeds_cwl = pytest.mark.skipif(
+    not _cwl_available(),
+    reason="Install Toil with the 'cwl' extra to include this test.",
+)
 
 
 def needs_wdl(test_item: MT) -> MT:
@@ -754,6 +891,23 @@ def needs_wes_server(test_item: MT) -> MT:
         )
 
     return test_item
+
+
+def _is_wes_server_avail() -> bool:
+    wes_url = os.environ.get("TOIL_WES_ENDPOINT")
+    if not wes_url:
+        return False
+    try:
+        urlopen(f"{wes_url}/ga4gh/wes/v1/service-info")
+        return True
+    except (HTTPError, URLError):
+        return False
+
+
+pneeds_wes_server = pytest.mark.skipif(
+    not _is_wes_server_avail(),
+    reason="Set TOIL_WES_ENDPOINT, or run a WES server at that location to include this test.",
+)
 
 
 def needs_local_appliance(test_item: MT) -> MT:
@@ -844,6 +998,11 @@ def slow(test_item: MT) -> MT:
     else:
         return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
 
+
+pslow = pytest.mark.skipif(
+    os.environ.get("TOIL_TEST_QUICK", "").lower() == "true",
+    reason='Skipped because TOIL_TEST_QUICK is "True"',
+)
 
 methodNamePartRegex = re.compile("^[a-zA-Z_0-9]+$")
 

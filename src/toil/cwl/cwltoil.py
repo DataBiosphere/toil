@@ -2979,7 +2979,7 @@ def makeRootJob(
         # This will consist of files that we were not able to get a file size for
         leader_metadata = dict()
         for filename, file_data in metadata.items():
-            if file_data.size is None:
+            if file_data[2] is None:  # size
                 leader_metadata[filename] = file_data
             else:
                 worker_metadata[filename] = file_data

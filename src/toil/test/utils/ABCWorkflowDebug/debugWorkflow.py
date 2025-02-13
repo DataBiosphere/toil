@@ -6,6 +6,7 @@ import sys
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.io import mkdtemp
+from toil.test import get_data
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ def writeC(job):
     return rvDict
 
 
-def writeABC(job, A_dict, B_dict, C_dict, filepath):
+def writeABC(job, A_dict, B_dict, C_dict, filepath: str) -> None:
     """Takes 3 files (specified as dictionaries) and writes their contents to ABC.txt."""
     job.fileStore.log_to_leader("""writeABC""")
 
@@ -163,27 +164,24 @@ if __name__ == "__main__":
     options.logLevel = "INFO"
     with Toil(options) as toil:
 
-        B_file0 = toil.importFile(
-            "file://"
-            + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/B_file.txt")
-        )
+        with get_data("test/utils/ABCWorkflowDebug/B_file.txt") as B_file_path:
+            B_file0 = toil.importFile(B_file_path.as_uri())
         B_file0_preserveThisFilename = "B_file.txt"
         B_file = (B_file0, B_file0_preserveThisFilename)
 
-        file_maker0 = toil.importFile(
-            "file://"
-            + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/mkFile.py")
-        )
+        with get_data("test/utils/ABCWorkflowDebug/mkFile.py") as mkFile_path:
+            file_maker0 = toil.importFile(mkFile_path.as_uri())
         file_maker0_preserveThisFilename = "mkFile.py"
         file_maker = (file_maker0, file_maker0_preserveThisFilename)
-
-        filepath = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/ABC.txt")
 
         job0 = Job.wrapJobFn(initialize_jobs)
         job1 = Job.wrapJobFn(writeA, file_maker)
         job2 = Job.wrapJobFn(writeB, file_maker, B_file)
         job3 = Job.wrapJobFn(writeC)
-        job4 = Job.wrapJobFn(writeABC, job1.rv(), job2.rv(), job3.rv(), filepath)
+        with get_data("test/utils/ABCWorkflowDebug/ABC.txt") as filepath:
+            job4 = Job.wrapJobFn(
+                writeABC, job1.rv(), job2.rv(), job3.rv(), str(filepath)
+            )
         job5 = Job.wrapJobFn(finalize_jobs, 1)
         job6 = Job.wrapJobFn(finalize_jobs, 2)
         job7 = Job.wrapJobFn(finalize_jobs, 3)
