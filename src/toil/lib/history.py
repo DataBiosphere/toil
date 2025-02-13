@@ -18,9 +18,10 @@ Contains tools for tracking history.
 
 import logging
 import os
-import sys
 import sqlite3
+import sys
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable, Optional, TypeVar, Callable
@@ -134,11 +135,18 @@ class HistoryManager:
     # down our leader job processing rate, turn on actual job history logging.
     JOB_HISTORY_ENABLED = False
 
+    # For testing, we can move the database path for the class.
+    database_path_override: Optional[str] = None
+
     @classmethod
     def database_path(cls) -> str:
         """
         Get the path at which the database we store history in lives.
         """
+        if cls.database_path_override is not None:
+            # Under test, we can use a temporary path.
+            return cls.database_path_override
+        
         return os.path.join(get_toil_home(), "history.sqlite")
 
     @classmethod
@@ -209,9 +217,14 @@ class HistoryManager:
                     CREATE TABLE workflows (
                         id TEXT NOT NULL PRIMARY KEY,
                         job_store TEXT NOT NULL,
+                        creation_time REAL NOT NULL,
                         name TEXT,
                         trs_spec TEXT
                     )
+                    """,
+                    """
+                    CREATE INDEX idx_workflows_by_creation_time
+                    ON workflows (creation_time)
                     """,
                     # There's no reference constraint from the job attempts to
                     # the workflow attempts because the jobs for a workflow
@@ -262,7 +275,7 @@ class HistoryManager:
                         FOREIGN KEY(workflow_id) REFERENCES workflows(id)
                     )
                     """
-                ]
+                ],
             ),
         ]
 
@@ -316,7 +329,7 @@ class HistoryManager:
         cur = con.cursor()
         try:
             cls.ensure_tables(con, cur)
-            cur.execute("INSERT INTO workflows VALUES (?, ?, NULL, NULL)", (workflow_id, job_store_spec))
+            cur.execute("INSERT INTO workflows VALUES (?, ?, ?, NULL, NULL)", (workflow_id, job_store_spec, time.time()))
         except:
             con.rollback()
             con.close()
@@ -924,6 +937,311 @@ class HistoryManager:
         else:
             con.commit()
             con.close()
+    
+    @classmethod
+    @db_retry
+    def count_workflows(cls) -> int:
+        """
+        Count workflows in the database.
+        """
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("SELECT count(*) FROM workflows")
+
+            count = cur.fetchone()[0]
+            assert isinstance(count, int)
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return count
+
+    @classmethod
+    @db_retry
+    def count_workflow_attempts(cls) -> int:
+        """
+        Count workflow attempts in the database.
+        """
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("SELECT count(*) FROM workflow_attempts")
+
+            count = cur.fetchone()[0]
+            assert isinstance(count, int)
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return count
+
+    @classmethod
+    @db_retry
+    def count_job_attempts(cls) -> int:
+        """
+        Count job attempts in the database.
+        """
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("SELECT count(*) FROM job_attempts")
+
+            count = cur.fetchone()[0]
+            assert isinstance(count, int)
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return count
+
+    @classmethod
+    @db_retry
+    def get_fully_submitted_workflow_ids(cls, limit: int = sys.maxsize) -> list[str]:
+        """
+        Get workflows that have a successful attempt and no unsubmitted attempts or job attempts.
+        """
+        ids = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute(
+                """
+                SELECT
+                    workflows.id
+                FROM workflows 
+                WHERE
+                    (
+                        SELECT
+                            count(*)
+                        FROM workflow_attempts
+                        WHERE workflow_id = workflows.id
+                            AND succeeded = TRUE 
+                            AND submitted_to_dockstore = TRUE
+                        LIMIT 1
+                    ) = 1
+                    AND (
+                        SELECT
+                            count(*)
+                        FROM workflow_attempts
+                        WHERE workflow_id = workflows.id
+                            AND submitted_to_dockstore = FALSE
+                        LIMIT 1
+                    ) = 0
+                    AND (
+                        SELECT
+                            count(*)
+                        FROM job_attempts
+                        WHERE workflow_id = workflows.id
+                            AND submitted_to_dockstore = FALSE
+                        LIMIT 1
+                    ) = 0
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            for row in cur:
+                ids.append(row["id"])
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return ids
+
+    @classmethod
+    @db_retry
+    def get_oldest_workflow_ids(cls, limit: int = sys.maxsize) -> list[str]:
+        """
+        Get workflows that are old.
+        """
+
+        ids = []
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            # We could use a complicated query to bump workflows down the list
+            # if they have been updated by having attempts or job attempts. But
+            # that would mean we'd need to do a lot of querying and live
+            # sorting, whereas using just the creation time lets us use an
+            # index and a limit efficiently.
+
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    creation_time
+                FROM workflows 
+                ORDER BY creation_time ASC
+                LIMIT ?
+                """,
+                (limit,)
+            )
+            for row in cur:
+                ids.append(row["id"])
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return ids
+    
+    @classmethod
+    @db_retry
+    def delete_workflow(cls, workflow_id: str) -> None:
+        """
+        Delete a workflow and all its attempts and job attempts.
+
+        Succeeds if the workflow does not exist.
+        """
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("DELETE FROM job_attempts WHERE workflow_id = ?", (workflow_id,))
+            cur.execute("DELETE FROM workflow_attempts WHERE workflow_id = ?", (workflow_id,))
+            cur.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+    
+    @classmethod
+    @db_retry
+    def get_database_byte_size(cls) -> int:
+        """
+        Get the total number of bytes used by the database.
+        """
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("PRAGMA page_size")
+            page_size = cur.fetchone()[0]
+            assert isinstance(page_size, int)
+
+            cur.execute("PRAGMA page_count")
+            page_count = cur.fetchone()[0]
+            assert isinstance(page_count, int)
+            
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+
+        return page_size * page_count
+
+    @classmethod
+    @db_retry
+    def compact_database(cls) -> None:
+        """
+        Shrink the database to remove unused space.
+        """
+
+        con = cls.connection()
+        cur = con.cursor()
+        try:
+            cls.ensure_tables(con, cur)
+
+            cur.execute("VACUUM")
+        except:
+            con.rollback()
+            con.close()
+            raise
+        else:
+            con.commit()
+            con.close()
+    
+    @classmethod
+    def enforce_byte_size_limit(cls, limit: int = 100 * 1024 * 1024) -> None:
+        """
+        Shrink the database until it is smaller than the given limit, or until
+        it is empty, by throwing away workflows.
+
+        Throws data away in a sensible order, least important to most
+        important.
+        """
+
+        db_size = cls.get_database_byte_size()
+
+        if db_size < limit:
+            # Nothing to do!
+            return
+        
+        while db_size > limit:
+            # Look for some things we submitted already
+            target_workflows = cls.get_fully_submitted_workflow_ids(limit=100)
+            if len(target_workflows) == 0:
+                # If there aren't any, do oldest workflows a few at a time
+                # We need to balance the O(n^2)
+                # delete-and-copy-the-whole-db-to-vacuum loop with not wanting
+                # to delete too many workflows we could keep.
+                target_workflows = cls.get_oldest_workflow_ids(limit=10)
+            if len(target_workflows) == 0:
+                # There are no more workflows to delete.
+                break
+        
+            for workflow_id in target_workflows:
+                # Delete all the workflows we don't want.
+                cls.delete_workflow(workflow_id)
+            
+            # Shrink the DB
+            cls.compact_database()
+            # Re-check the size
+            db_size = cls.get_database_byte_size()
+
+
+
+
+    @classmethod
+    def database_dump_lines(cls) -> Iterable[str]:
+        """
+        Yield lines from the database dump.
+
+        For debugging tests.
+        """
+        return cls.connection().iterdump()
+
 
 
 

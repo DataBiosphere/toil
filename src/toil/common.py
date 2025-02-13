@@ -1052,6 +1052,9 @@ class Toil(ContextManager["Toil"]):
                 # Publish metrics for this run only. Might be empty if we had no TRS ID.
                 create_current_submission(self.config.workflowID, self.config.workflowAttemptNumber).submit()
 
+            # Make sure the history doesn't stay too big
+            HistoryManager.enforce_byte_size_limit()
+
 
             if (
                 exc_type is not None
