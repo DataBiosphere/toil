@@ -146,7 +146,7 @@ class HistoryManager:
         if cls.database_path_override is not None:
             # Under test, we can use a temporary path.
             return cls.database_path_override
-        
+
         return os.path.join(get_toil_home(), "history.sqlite")
 
     @classmethod
@@ -937,7 +937,7 @@ class HistoryManager:
         else:
             con.commit()
             con.close()
-    
+
     @classmethod
     @db_retry
     def count_workflows(cls) -> int:
@@ -1030,14 +1030,14 @@ class HistoryManager:
                 """
                 SELECT
                     workflows.id
-                FROM workflows 
+                FROM workflows
                 WHERE
                     (
                         SELECT
                             count(*)
                         FROM workflow_attempts
                         WHERE workflow_id = workflows.id
-                            AND succeeded = TRUE 
+                            AND succeeded = TRUE
                             AND submitted_to_dockstore = TRUE
                         LIMIT 1
                     ) = 1
@@ -1098,7 +1098,7 @@ class HistoryManager:
                 SELECT
                     id,
                     creation_time
-                FROM workflows 
+                FROM workflows
                 ORDER BY creation_time ASC
                 LIMIT ?
                 """,
@@ -1115,7 +1115,7 @@ class HistoryManager:
             con.close()
 
         return ids
-    
+
     @classmethod
     @db_retry
     def delete_workflow(cls, workflow_id: str) -> None:
@@ -1140,7 +1140,7 @@ class HistoryManager:
         else:
             con.commit()
             con.close()
-    
+
     @classmethod
     @db_retry
     def get_database_byte_size(cls) -> int:
@@ -1160,7 +1160,7 @@ class HistoryManager:
             cur.execute("PRAGMA page_count")
             page_count = cur.fetchone()[0]
             assert isinstance(page_count, int)
-            
+
         except:
             con.rollback()
             con.close()
@@ -1180,18 +1180,26 @@ class HistoryManager:
 
         con = cls.connection()
         cur = con.cursor()
+
         try:
             cls.ensure_tables(con, cur)
 
-            cur.execute("VACUUM")
+            # Vacuuming can't happen in an open transaction, and on Python 3.13
+            # we have one at this point
+
         except:
             con.rollback()
             con.close()
             raise
         else:
             con.commit()
-            con.close()
-    
+
+        # Do the vacuum after any table-making transaction, and rely on it to
+        # synchronize appropriately internally.
+        cur.execute("VACUUM")
+
+        con.close()
+
     @classmethod
     def enforce_byte_size_limit(cls, limit: int = 100 * 1024 * 1024) -> None:
         """
@@ -1207,7 +1215,7 @@ class HistoryManager:
         if db_size < limit:
             # Nothing to do!
             return
-        
+
         while db_size > limit:
             # Look for some things we submitted already
             target_workflows = cls.get_fully_submitted_workflow_ids(limit=100)
@@ -1220,11 +1228,11 @@ class HistoryManager:
             if len(target_workflows) == 0:
                 # There are no more workflows to delete.
                 break
-        
+
             for workflow_id in target_workflows:
                 # Delete all the workflows we don't want.
                 cls.delete_workflow(workflow_id)
-            
+
             # Shrink the DB
             cls.compact_database()
             # Re-check the size
