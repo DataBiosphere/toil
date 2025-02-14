@@ -33,6 +33,7 @@ from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import (
     ToilTest,
+    get_data,
     get_temp_file,
     integrative,
     needs_aws_ec2,
@@ -444,10 +445,10 @@ class UtilsTest(ToilTest):
             self.toilDir,
             "--clean=never",
             "--badWorker=1",
-            "src/toil/test/cwl/sorttool.cwl",
+            get_data("test/cwl/sorttool.cwl"),
             "--reverse",
             "--input",
-            "src/toil/test/cwl/whale.txt",
+            get_data("test/cwl/whale.txt"),
             f"--outdir={self.tempDir}",
         ]
         logger.info("Run command: %s", " ".join(cmd))
@@ -465,10 +466,10 @@ class UtilsTest(ToilTest):
             "--jobStore",
             self.toilDir,
             "--clean=never",
-            "src/toil/test/cwl/sorttool.cwl",
+            get_data("test/cwl/sorttool.cwl"),
             "--reverse",
             "--input",
-            "src/toil/test/cwl/whale.txt",
+            get_data("test/cwl/whale.txt"),
             f"--outdir={self.tempDir}",
         ]
         wf = subprocess.Popen(cmd)
@@ -487,7 +488,7 @@ class UtilsTest(ToilTest):
             "--jobStore",
             self.toilDir,
             "--clean=never",
-            "src/toil/test/cwl/alwaysfails.cwl",
+            get_data("test/cwl/alwaysfails.cwl"),
             "--message",
             "Testing",
         ]

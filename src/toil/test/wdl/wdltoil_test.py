@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import pytest
 import re
 import shutil
 import string
@@ -11,12 +10,14 @@ from typing import Any, Optional, Union
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 import WDL.Error
 import WDL.Expr
 
 from toil.fileStores import FileID
 from toil.test import (
     ToilTest,
+    get_data,
     needs_docker,
     needs_docker_cuda,
     needs_google_storage,
@@ -203,8 +204,8 @@ class WDLTests(BaseWDLTest):
     def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.json")
+        wdl = get_data("test/wdl/md5sum/md5sum.1.0.wdl")
+        json_file = get_data("test/wdl/md5sum/md5sum.json")
 
         result_json = subprocess.check_output(
             self.base_command
@@ -221,7 +222,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if web URL strings can be coerced to usable Files.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/url_to_file.wdl")
+        wdl = get_data("test/wdl/testfiles/url_to_file.wdl")
 
         result_json = subprocess.check_output(
             self.base_command
@@ -238,7 +239,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if Bash "wait" works in WDL scripts.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/wait.wdl")
+        wdl = get_data("test/wdl/testfiles/wait.wdl")
 
         result_json = subprocess.check_output(
             self.base_command
@@ -262,7 +263,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if Toil can collect all call outputs from a workflow that doesn't expose them.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/not_enough_outputs.wdl")
+        wdl = get_data("test/wdl/testfiles/not_enough_outputs.wdl")
 
         # With no flag we don't include the call outputs
         result_json = subprocess.check_output(
@@ -319,7 +320,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if Toil can detect and do something sensible with Cromwell Output Organizer workflows.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/croo.wdl")
+        wdl = get_data("test/wdl/testfiles/croo.wdl")
 
         # With no flag we should include all task outputs
         result_json = subprocess.check_output(
@@ -357,7 +358,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if Toil can cache task runs.
         """
-        wdl = os.path.abspath('src/toil/test/wdl/testfiles/random.wdl')
+        wdl = get_data("test/wdl/testfiles/random.wdl")
 
         caching_env = dict(os.environ)
         caching_env["MINIWDL__CALL_CACHE__GET"] = "true"
@@ -412,7 +413,7 @@ class WDLTests(BaseWDLTest):
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/url_to_optional_file.wdl")
+        wdl = get_data("test/wdl/testfiles/url_to_optional_file.wdl")
 
         def run_for_code(code: int) -> dict:
             """
@@ -457,8 +458,8 @@ class WDLTests(BaseWDLTest):
         """
         Test if Toil can run a WDL workflow into a new directory.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.json")
+        wdl = get_data("test/wdl/md5sum/md5sum.1.0.wdl")
+        json_file = get_data("test/wdl/md5sum/md5sum.json")
         subprocess.check_call(
             self.base_command
             + [
@@ -474,8 +475,8 @@ class WDLTests(BaseWDLTest):
     @needs_singularity_or_docker
     def test_miniwdl_self_test(self, extra_args: Optional[list[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
-        wdl_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/self_test.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/inputs.json")
+        wdl_file = get_data("test/wdl/miniwdl_self_test/self_test.wdl")
+        json_file = get_data("test/wdl/miniwdl_self_test/inputs.json")
 
         result_json = subprocess.check_output(
             self.base_command
@@ -656,8 +657,8 @@ class WDLTests(BaseWDLTest):
     @needs_google_storage
     def test_gs_uri(self):
         """Test if Toil can access Google Storage URIs."""
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum-gs.json")
+        wdl = get_data("test/wdl/md5sum/md5sum.1.0.wdl")
+        json_file = get_data("test/wdl/md5sum/md5sum-gs.json")
 
         result_json = subprocess.check_output(
             self.base_command + [wdl, json_file, "-o", self.output_dir, "--logDebug"]

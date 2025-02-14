@@ -51,6 +51,7 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.lib.threading import cpu_count
 from toil.test import (
     ToilTest,
+    get_data,
     needs_aws_s3,
     needs_cwl,
     needs_docker,
@@ -237,7 +238,6 @@ class CWLWorkflowTest(ToilTest):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
-        self.rootDir = self._projectRootPath()
         self.jobStoreDir = f"./jobstore-{str(uuid.uuid4())}"
 
     def tearDown(self) -> None:
@@ -254,7 +254,7 @@ class CWLWorkflowTest(ToilTest):
         """
         from toil.cwl import cwltoil
 
-        cwlfile = "src/toil/test/cwl/conditional_wf.cwl"
+        cwlfile = get_data("test/cwl/conditional_wf.cwl")
         args = [cwlfile, "--message", "str", "--sleep", "2"]
         st = StringIO()
         # If the workflow runs, it must have had options
@@ -278,8 +278,8 @@ class CWLWorkflowTest(ToilTest):
             main_args.extend(["--logDebug", "--outdir", self.outDir])
         main_args.extend(
             [
-                os.path.join(self.rootDir, cwlfile),
-                os.path.join(self.rootDir, jobfile),
+                cwlfile,
+                jobfile,
             ]
         )
         cwltoil.main(main_args, stdout=st)
@@ -312,8 +312,8 @@ class CWLWorkflowTest(ToilTest):
                 "--debugWorker",
                 "--outdir",
                 self.outDir,
-                os.path.join(self.rootDir, cwlfile),
-                os.path.join(self.rootDir, jobfile),
+                cwlfile,
+                jobfile,
             ],
             stdout=st,
         )
@@ -325,46 +325,46 @@ class CWLWorkflowTest(ToilTest):
 
     def revsort(self, cwl_filename: str, tester_fn: TesterFuncType) -> None:
         tester_fn(
-            "src/toil/test/cwl/" + cwl_filename,
-            "src/toil/test/cwl/revsort-job.json",
+            get_data(f"test/cwl/{cwl_filename}"),
+            get_data("test/cwl/revsort-job.json"),
             self._expected_revsort_output(self.outDir),
         )
 
     def revsort_no_checksum(self, cwl_filename: str, tester_fn: TesterFuncType) -> None:
         tester_fn(
-            "src/toil/test/cwl/" + cwl_filename,
-            "src/toil/test/cwl/revsort-job.json",
+            get_data(f"test/cwl/{cwl_filename}"),
+            get_data("test/cwl/revsort-job.json"),
             self._expected_revsort_nochecksum_output(self.outDir),
         )
 
     def download(self, inputs: str, tester_fn: TesterFuncType) -> None:
-        input_location = os.path.join("src/toil/test/cwl", inputs)
+        input_location = get_data(f"test/cwl/{inputs}")
         tester_fn(
-            "src/toil/test/cwl/download.cwl",
+            get_data("test/cwl/download.cwl"),
             input_location,
             self._expected_download_output(self.outDir),
         )
 
     def load_contents(self, inputs: str, tester_fn: TesterFuncType) -> None:
-        input_location = os.path.join("src/toil/test/cwl", inputs)
+        input_location = get_data(f"test/cwl/{inputs}")
         tester_fn(
-            "src/toil/test/cwl/load_contents.cwl",
+            get_data("test/cwl/load_contents.cwl"),
             input_location,
             self._expected_load_contents_output(self.outDir),
         )
 
     def download_directory(self, inputs: str, tester_fn: TesterFuncType) -> None:
-        input_location = os.path.join("src/toil/test/cwl", inputs)
+        input_location = get_data(f"test/cwl/{inputs}")
         tester_fn(
-            "src/toil/test/cwl/download_directory.cwl",
+            get_data("test/cwl/download_directory.cwl"),
             input_location,
             self._expected_download_output(self.outDir),
         )
 
     def download_subdirectory(self, inputs: str, tester_fn: TesterFuncType) -> None:
-        input_location = os.path.join("src/toil/test/cwl", inputs)
+        input_location = get_data(f"test/cwl/{inputs}")
         tester_fn(
-            "src/toil/test/cwl/download_subdirectory.cwl",
+            get_data("test/cwl/download_subdirectory.cwl"),
             input_location,
             self._expected_download_output(self.outDir),
         )
@@ -374,24 +374,29 @@ class CWLWorkflowTest(ToilTest):
 
         stdout = StringIO()
         main_args = [
+            "--logDebug",
             "--outdir",
             self.outDir,
             "--enable-dev",
             "--enable-ext",
             "--mpi-config-file",
-            os.path.join(self.rootDir, "src/toil/test/cwl/mock_mpi/fake_mpi.yml"),
-            os.path.join(self.rootDir, "src/toil/test/cwl/mpi_simple.cwl"),
+            get_data("test/cwl/mock_mpi/fake_mpi.yml"),
+            get_data("test/cwl/mpi_simple.cwl"),
         ]
         path = os.environ["PATH"]
-        os.environ["PATH"] = f"{path}:{self.rootDir}/src/toil/test/cwl/mock_mpi/"
+        os.environ["PATH"] = (
+            f"{path}:{os.path.dirname(get_data('test/cwl/mock_mpi/fake_mpi_run.py'))}"
+        )
         cwltoil.main(main_args, stdout=stdout)
         os.environ["PATH"] = path
-        out = json.loads(stdout.getvalue())
+        stdout_text = stdout.getvalue()
+        assert "pids" in stdout_text
+        out = json.loads(stdout_text)
         with open(out.get("pids", {}).get("location")[len("file://") :]) as f:
             two_pids = [int(i) for i in f.read().split()]
-        self.assertEqual(len(two_pids), 2)
-        self.assertTrue(isinstance(two_pids[0], int))
-        self.assertTrue(isinstance(two_pids[1], int))
+        assert len(two_pids) == 2
+        assert isinstance(two_pids[0], int)
+        assert isinstance(two_pids[1], int)
 
     @needs_aws_s3
     def test_s3_as_secondary_file(self) -> None:
@@ -401,8 +406,8 @@ class CWLWorkflowTest(ToilTest):
         main_args = [
             "--outdir",
             self.outDir,
-            os.path.join(self.rootDir, "src/toil/test/cwl/s3_secondary_file.cwl"),
-            os.path.join(self.rootDir, "src/toil/test/cwl/s3_secondary_file.json"),
+            get_data("test/cwl/s3_secondary_file.cwl"),
+            get_data("test/cwl/s3_secondary_file.json"),
         ]
         cwltoil.main(main_args, stdout=stdout)
         out = json.loads(stdout.getvalue())
@@ -434,8 +439,8 @@ class CWLWorkflowTest(ToilTest):
 
     def test_run_colon_output(self) -> None:
         self._tester(
-            "src/toil/test/cwl/colon_test_output.cwl",
-            "src/toil/test/cwl/colon_test_output_job.yaml",
+            get_data("test/cwl/colon_test_output.cwl"),
+            get_data("test/cwl/colon_test_output_job.yaml"),
             self._expected_colon_output(self.outDir),
             out_name="result",
         )
@@ -464,8 +469,8 @@ class CWLWorkflowTest(ToilTest):
             # We need to output to the current directory to make sure that
             # works.
             self._tester(
-                "src/toil/test/cwl/glob_dir.cwl",
-                "src/toil/test/cwl/empty.json",
+                get_data("test/cwl/glob_dir.cwl"),
+                get_data("test/cwl/empty.json"),
                 self._expected_glob_dir_output(os.getcwd()),
                 main_args=["--bypass-file-store"],
                 output_here=True,
@@ -480,8 +485,8 @@ class CWLWorkflowTest(ToilTest):
     def test_required_input_condition_protection(self) -> None:
         # This doesn't run containerized
         self._tester(
-            "src/toil/test/cwl/not_run_required_input.cwl",
-            "src/toil/test/cwl/empty.json",
+            get_data("test/cwl/not_run_required_input.cwl"),
+            get_data("test/cwl/empty.json"),
             {},
         )
 
@@ -506,7 +511,7 @@ class CWLWorkflowTest(ToilTest):
             "--slurmDefaultAllMem=True",
             "--outdir",
             self.outDir,
-            os.path.join(self.rootDir, "src/toil/test/cwl/measure_default_memory.cwl"),
+            get_data("test/cwl/measure_default_memory.cwl"),
         ]
         try:
             log.debug("Start test workflow")
@@ -600,8 +605,8 @@ class CWLWorkflowTest(ToilTest):
     @unittest.skip("Fails too often due to remote service")
     def test_bioconda(self) -> None:
         self._tester(
-            "src/toil/test/cwl/seqtk_seq.cwl",
-            "src/toil/test/cwl/seqtk_seq_job.json",
+            get_data("test/cwl/seqtk_seq.cwl"),
+            get_data("test/cwl/seqtk_seq_job.json"),
             self._expected_seqtk_output(self.outDir),
             main_args=["--beta-conda-dependencies"],
             out_name="output1",
@@ -610,8 +615,8 @@ class CWLWorkflowTest(ToilTest):
     @needs_docker
     def test_default_args(self) -> None:
         self._tester(
-            "src/toil/test/cwl/seqtk_seq.cwl",
-            "src/toil/test/cwl/seqtk_seq_job.json",
+            get_data("test/cwl/seqtk_seq.cwl"),
+            get_data("test/cwl/seqtk_seq_job.json"),
             self._expected_seqtk_output(self.outDir),
             main_args=[
                 "--default-container",
@@ -625,8 +630,8 @@ class CWLWorkflowTest(ToilTest):
     @unittest.skip("Fails too often due to remote service")
     def test_biocontainers(self) -> None:
         self._tester(
-            "src/toil/test/cwl/seqtk_seq.cwl",
-            "src/toil/test/cwl/seqtk_seq_job.json",
+            get_data("test/cwl/seqtk_seq.cwl"),
+            get_data("test/cwl/seqtk_seq_job.json"),
             self._expected_seqtk_output(self.outDir),
             main_args=["--beta-use-biocontainers"],
             out_name="output1",
@@ -637,8 +642,8 @@ class CWLWorkflowTest(ToilTest):
     @needs_local_cuda
     def test_cuda(self) -> None:
         self._tester(
-            "src/toil/test/cwl/nvidia_smi.cwl",
-            "src/toil/test/cwl/empty.json",
+            get_data("test/cwl/nvidia_smi.cwl"),
+            get_data("test/cwl/empty.json"),
             {},
             out_name="result",
         )
@@ -709,8 +714,8 @@ class CWLWorkflowTest(ToilTest):
         Test that a file with 'streamable'=True is a named pipe.
         This is a CWL1.2 feature.
         """
-        cwlfile = "src/toil/test/cwl/stream.cwl"
-        jobfile = "src/toil/test/cwl/stream.json"
+        cwlfile = get_data("test/cwl/stream.cwl")
+        jobfile = get_data("test/cwl/stream.json")
         out_name = "output"
         jobstore = f"--jobStore=aws:us-west-1:toil-stream-{uuid.uuid4()}"
         from toil.cwl import cwltoil
@@ -721,8 +726,8 @@ class CWLWorkflowTest(ToilTest):
             "--outdir",
             self.outDir,
             jobstore,
-            os.path.join(self.rootDir, cwlfile),
-            os.path.join(self.rootDir, jobfile),
+            cwlfile,
+            jobfile,
         ]
         if extra_args:
             args = extra_args + args
@@ -747,8 +752,8 @@ class CWLWorkflowTest(ToilTest):
         """
         Tests that the http://arvados.org/cwl#UsePreemptible extension is supported.
         """
-        cwlfile = "src/toil/test/cwl/preemptible.cwl"
-        jobfile = "src/toil/test/cwl/empty.json"
+        cwlfile = get_data("test/cwl/preemptible.cwl")
+        jobfile = get_data("test/cwl/empty.json")
         out_name = "output"
         from toil.cwl import cwltoil
 
@@ -756,8 +761,8 @@ class CWLWorkflowTest(ToilTest):
         args = [
             "--outdir",
             self.outDir,
-            os.path.join(self.rootDir, cwlfile),
-            os.path.join(self.rootDir, jobfile),
+            cwlfile,
+            jobfile,
         ]
         cwltoil.main(args, stdout=st)
         out = json.loads(st.getvalue())
@@ -771,16 +776,16 @@ class CWLWorkflowTest(ToilTest):
         """
         Tests that the http://arvados.org/cwl#UsePreemptible extension is validated.
         """
-        cwlfile = "src/toil/test/cwl/preemptible_expression.cwl"
-        jobfile = "src/toil/test/cwl/preemptible_expression.json"
+        cwlfile = get_data("test/cwl/preemptible_expression.cwl")
+        jobfile = get_data("test/cwl/preemptible_expression.json")
         from toil.cwl import cwltoil
 
         st = StringIO()
         args = [
             "--outdir",
             self.outDir,
-            os.path.join(self.rootDir, cwlfile),
-            os.path.join(self.rootDir, jobfile),
+            cwlfile,
+            jobfile,
         ]
         try:
             cwltoil.main(args, stdout=st)
@@ -938,8 +943,7 @@ class CWLv10Test(ToilTest):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.outDir = f"/tmp/toil-cwl-test-{str(uuid.uuid4())}"
         os.makedirs(self.outDir)
-        self.rootDir = self._projectRootPath()
-        self.cwlSpec = os.path.join(self.rootDir, "src/toil/test/cwl/spec")
+        self.cwlSpec = get_data("test/cwl/spec")
         self.workDir = os.path.join(self.cwlSpec, "v1.0")
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
@@ -1072,15 +1076,13 @@ class CWLv11Test(ToilTest):
     Run the CWL 1.1 conformance tests in various environments.
     """
 
-    rootDir: str
     cwlSpec: str
     test_yaml: str
 
     @classmethod
     def setUpClass(cls) -> None:
         """Runs anew before each test."""
-        cls.rootDir = cls._projectRootPath()
-        cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v11")
+        cls.cwlSpec = get_data("test/cwl/spec_v11")
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.1.git"
@@ -1152,7 +1154,7 @@ class CWLv12Test(ToilTest):
     def setUpClass(cls) -> None:
         """Runs anew before each test."""
         cls.rootDir = cls._projectRootPath()
-        cls.cwlSpec = os.path.join(cls.rootDir, "src/toil/test/cwl/spec_v12")
+        cls.cwlSpec = get_data("test/cwl/spec_v12")
         cls.test_yaml = os.path.join(cls.cwlSpec, "conformance_tests.yaml")
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = "https://github.com/common-workflow-language/cwl-v1.2.git"
@@ -1770,8 +1772,8 @@ def test_download_structure(tmp_path: Path) -> None:
 @pytest.mark.timeout(300)
 def test_import_on_workers() -> None:
     args = [
-        "src/toil/test/cwl/download.cwl",
-        "src/toil/test/cwl/download_file.json",
+        get_data("test/cwl/download.cwl"),
+        get_data("test/cwl/download_file.json"),
         "--runImportsOnWorkers",
         "--importWorkersDisk=10MiB",
         "--realTimeLogging=True",

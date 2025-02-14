@@ -118,6 +118,7 @@ endif
 endif
 
 develop: check_venv
+	python3 setup.py check
 	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv

@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 
 from toil.lib.resources import glob
-from toil.test import ToilTest, needs_wdl, slow
+from toil.test import ToilTest, get_data, needs_wdl, slow
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def workflow_debug_jobstore() -> str:
     subprocess.check_call(
         [
             python,
-            os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py"),
+            get_data("test/utils/ABCWorkflowDebug/debugWorkflow.py"),
             job_store_path,
         ]
     )
@@ -49,7 +49,7 @@ def testJobStoreContents():
     subprocess.check_call(
         [
             python,
-            os.path.abspath("src/toil/utils/toilDebugFile.py"),
+            get_data("utils/toilDebugFile.py"),
             workflow_debug_jobstore(),
             "--logDebug",
             "--listFilesInJobStore=True",
@@ -86,7 +86,7 @@ def fetchFiles(symLink: bool, jobStoreDir: str, outputDir: str):
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
     cmd = [
         python,
-        os.path.abspath("src/toil/utils/toilDebugFile.py"),
+        get_data("utils/toilDebugFile.py"),
         jobStoreDir,
         "--fetch",
         "*A.txt",
@@ -137,7 +137,7 @@ class DebugJobTest(ToilTest):
             subprocess.check_call(
                 [
                     python,
-                    os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
+                    get_data("test/docs/scripts/example_alwaysfail.py"),
                     "--retryCount=0",
                     "--logCritical",
                     "--disableProgress",
@@ -172,9 +172,7 @@ class DebugJobTest(ToilTest):
         wf_result = subprocess.run(
             [
                 "toil-wdl-runner",
-                os.path.abspath(
-                    "src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"
-                ),
+                get_data("test/docs/scripts/example_alwaysfail_with_files.wdl"),
                 "--retryCount=0",
                 "--logDebug",
                 "--disableProgress",
