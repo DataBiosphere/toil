@@ -443,13 +443,12 @@ def workerScript(
                 )
 
         ##########################################
-        # Setup the stats, if requested
+        # Setup the stats
         ##########################################
 
-        if config.stats:
-            # Remember the cores from the first job, which is how many we have reserved for us.
-            statsDict.workers.requested_cores = jobDesc.cores
-            startClock = ResourceMonitor.get_total_cpu_time()
+        # Remember the cores from the first job, which is how many we have reserved for us.
+        statsDict.workers.requested_cores = jobDesc.cores
+        startClock = ResourceMonitor.get_total_cpu_time()
 
         startTime = time.time()
         while True:
@@ -483,7 +482,7 @@ def workerScript(
                 )
                 try:
                     with job._executor(
-                        stats=statsDict if config.stats else None, fileStore=fileStore
+                        stats=statsDict, fileStore=fileStore
                     ):
                         with deferredFunctionManager.open() as defer:
                             with fileStore.open(job):
@@ -594,22 +593,21 @@ def workerScript(
         ##########################################
         # Finish up the stats
         ##########################################
-        if config.stats:
-            totalCPUTime, totalMemoryUsage = (
-                ResourceMonitor.get_total_cpu_time_and_memory_usage()
-            )
-            statsDict.workers.time = str(time.time() - startTime)
-            statsDict.workers.clock = str(totalCPUTime - startClock)
-            statsDict.workers.memory = str(totalMemoryUsage)
-            # Say the worker used the max disk we saw from any job
-            max_bytes = 0
-            for job_stats in statsDict.jobs:
-                if "disk" in job_stats:
-                    max_bytes = max(max_bytes, int(job_stats.disk))
-            statsDict.workers.disk = str(max_bytes)
-            # Count the jobs executed.
-            # TODO: toil stats could compute this but its parser is too general to hook into simply.
-            statsDict.workers.jobs_run = len(statsDict.jobs)
+        totalCPUTime, totalMemoryUsage = (
+            ResourceMonitor.get_total_cpu_time_and_memory_usage()
+        )
+        statsDict.workers.time = str(time.time() - startTime)
+        statsDict.workers.clock = str(totalCPUTime - startClock)
+        statsDict.workers.memory = str(totalMemoryUsage)
+        # Say the worker used the max disk we saw from any job
+        max_bytes = 0
+        for job_stats in statsDict.jobs:
+            if "disk" in job_stats:
+                max_bytes = max(max_bytes, int(job_stats.disk))
+        statsDict.workers.disk = str(max_bytes)
+        # Count the jobs executed.
+        # TODO: toil stats could compute this but its parser is too general to hook into simply.
+        statsDict.workers.jobs_run = len(statsDict.jobs)
 
         # log the worker log path here so that if the file is truncated the path can still be found
         if redirect_output_to_log_file:
@@ -767,16 +765,10 @@ def workerScript(
         statsDict.logs.names = [names.stats_name for names in jobDesc.get_chain()]
         statsDict.logs.messages = logMessages
 
-    if (
-        debugging
-        or config.stats
-        or statsDict.workers.logs_to_leader
-        or statsDict.workers.logging_user_streams
-    ):
-        # We have stats/logging to report back.
-        # We report even if the job attempt failed.
-        # TODO: Will that upset analysis of the stats?
-        job_store.write_logs(json.dumps(statsDict, ensure_ascii=True))
+    # We have stats/logging to report back.
+    # We report even if the job attempt failed.
+    # TODO: Will that upset analysis of the stats?
+    job_store.write_logs(json.dumps(statsDict, ensure_ascii=True))
 
     # Remove the temp dir
     cleanUp = config.cleanWorkDir
