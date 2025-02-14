@@ -16,6 +16,7 @@
 Contains tools for tracking history.
 """
 
+from contextlib import contextmanager
 import logging
 import os
 import sqlite3
@@ -24,7 +25,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, TypeVar, Callable
+from typing import Any, Iterable, Iterator, Optional, TypeVar, Callable
 
 from toil.lib.io import get_toil_home
 from toil.lib.retry import ErrorCondition, retry
@@ -157,7 +158,11 @@ class HistoryManager:
         Caller must not actually use the connection without using
         ensure_tables() to protect reads and updates.
 
-        Must be called from inside a top-level methodf marked @db_retry.
+        Must be called from inside a top-level method marked @db_retry.
+
+        The connection will be in DEFERRED isolation_level, with autocommit off
+        on Python versions that support it. In order to run any commands
+        outside of a transaction use the no_transaction context manager.
         """
         if not os.path.exists(cls.database_path()):
             # Make the database and protect it from snoopers and busybodies
@@ -170,15 +175,35 @@ class HistoryManager:
             isolation_level="DEFERRED"
         )
 
-        if hasattr(con, 'autocommit'):
-            # This doesn't much matter given the isolation level setting,
-            # but is recommended on Python versions that have it (3.12+)
-            con.autocommit = False
+        with cls.no_transaction(con):
+            # Turn on foreign keys.
+            # This has to be outside any transaction.
+            # See <https://stackoverflow.com/q/78898176>
+            con.execute("PRAGMA foreign_keys = ON")
+        # This has the side effect of definitely leaving autocommit off, which
+        # is what we want as the base state.
+
         # Set up the connection to use the Row class so that we can look up row values by column name and not just order.
         con.row_factory = sqlite3.Row
-        # We use foreign keys
-        con.execute("PRAGMA foreign_keys = ON")
+        
         return con
+
+    @classmethod
+    @contextmanager
+    def no_transaction(cls, con: sqlite3.Connection) -> Iterator[None]:
+        """
+        Temporarily disable the constant active transaction on the database
+        connection, on Python versions where it exists.
+
+        Commits the current transaction.
+        """
+        
+        con.commit()
+        if hasattr(con, 'autocommit'):
+            con.autocommit = True
+        yield
+        if hasattr(con, 'autocommit'):
+            con.autocommit = False
 
     @classmethod
     def ensure_tables(cls, con: sqlite3.Connection, cur: sqlite3.Cursor) -> None:
@@ -1177,26 +1202,17 @@ class HistoryManager:
         """
         Shrink the database to remove unused space.
         """
-
+        
         con = cls.connection()
         cur = con.cursor()
 
-        try:
-            cls.ensure_tables(con, cur)
-
-            # Vacuuming can't happen in an open transaction, and on Python 3.13
-            # we have one at this point
-
-        except:
-            con.rollback()
-            con.close()
-            raise
-        else:
-            con.commit()
-
-        # Do the vacuum after any table-making transaction, and rely on it to
-        # synchronize appropriately internally.
-        cur.execute("VACUUM")
+        # Don't bother making tables; we don't need them for this and they need
+        # a transaction.
+        
+        with cls.no_transaction(con):
+            # Do the vacuum outside any transaction, and rely on it to
+            # synchronize appropriately internally.
+            cur.execute("VACUUM")
 
         con.close()
 
