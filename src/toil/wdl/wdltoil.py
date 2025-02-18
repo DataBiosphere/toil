@@ -516,7 +516,7 @@ async def toil_read_source(
             AbstractJobStore.read_from_url(candidate_uri, destination_buffer)
         except Exception as e:
             if isinstance(e, SyntaxError) or isinstance(e, NameError):
-                # These are probably actual priblems with the code and not
+                # These are probably actual problems with the code and not
                 # failures in reading the URL.
                 raise
             # TODO: we need to assume in general that an error is just a

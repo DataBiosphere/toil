@@ -22,6 +22,7 @@ from urllib.parse import ParseResult
 # To import toil.lib.aws.session, the AWS libraries must be installed 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.conversions import strtobool
+from toil.lib.memoize import memoize
 from toil.lib.misc import printq
 from toil.lib.retry import (
     DEFAULT_DELAYS,
@@ -238,6 +239,9 @@ def get_bucket_region(
     Takes an optional S3 API URL override.
 
     :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
+
+    :raises NoBucketLocationError: if the bucket's region cannot be determined
+        (possibly due to lack of permissions).
     """
 
     config = session.ANONYMOUS_CONFIG if anonymous else None
@@ -335,6 +339,30 @@ def get_bucket_region(
         "Could not get bucket location: " + "\n".join(error_messages)
     ) from last_error
 
+@memoize
+def get_bucket_region_if_available(
+    bucket_name: str,
+    endpoint_url: Optional[str] = None,
+    only_strategies: Optional[set[int]] = None,
+    anonymous: Optional[bool] = None
+) -> Optional[str]:
+    """
+    Get the AWS region name associated with the given S3 bucket, or return None.
+
+    Caches results, so may not return the location for a bucket that has been
+    created but was previously observed to be nonexistent.
+
+    :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
+    """
+
+    try:
+        return get_bucket_region(bucket_name, endpoint_url, only_strategies, anonymous)
+    except Exception as e:
+        if isinstance(e, NoBucketLocationError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
+            # We can't know
+            return None
+        else:
+            raise
 
 def region_to_bucket_location(region: str) -> str:
     return "" if region == "us-east-1" else region
@@ -376,19 +404,17 @@ def get_object_for_url(url: ParseResult, existing: Optional[bool] = None, anonym
     #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
     
     config = session.ANONYMOUS_CONFIG if anonymous else None
-    try:
-        # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url, anonymous=anonymous)
+    # Get the bucket's region to avoid a redirect per request.
+    # Cache the result
+    region = get_bucket_region_if_available(bucket_name, endpoint_url=endpoint_url, anonymous=anonymous)
+    if region is not None:
         s3 = session.resource("s3", region_name=region, endpoint_url=endpoint_url, config=config)
-    except Exception as e:
-        if isinstance(e, NoBucketLocationError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
-            # We can't get the bucket location, perhaps because we don't have
-            # permission to do that.
-            logger.debug("Couldn't get bucket location: %s", e)
-            logger.debug("Fall back to not specifying location")
-            s3 = session.resource("s3", endpoint_url=endpoint_url, config=config)
-        else:
-            raise
+    else:
+        # We can't get the bucket location, perhaps because we don't have
+        # permission to do that.
+        logger.debug("Couldn't get bucket location")
+        logger.debug("Fall back to not specifying location")
+        s3 = session.resource("s3", endpoint_url=endpoint_url, config=config)
 
     obj = s3.Object(bucket_name, key_name)
     objExists = True
