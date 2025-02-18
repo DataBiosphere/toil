@@ -637,30 +637,61 @@ class AWSJobStore(AbstractJobStore):
         else:
             super()._default_export_file(otherCls, file_id, uri)
 
+    ###
+    # URL access implementation
+    ###
+
+    # URL access methods aren't used by the rest of the job store methods.
+
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
         try:
-            get_object_for_url(url, existing=True)
+            try:
+                get_object_for_url(url, existing=True, anonymous=True)
+            except PermissionError:
+                # If we can't look anonymously, log in
+                get_object_for_url(url, existing=True)
             return True
         except FileNotFoundError:
             # Not a file
-            # Might be a directory.
+            # Might be a directory. Or we might not have access to know.
+            # See if it's a directory.
             return cls._get_is_directory(url)
 
     @classmethod
     def _get_size(cls, url: ParseResult) -> int:
-        return get_object_for_url(url, existing=True).content_length
+        try:
+            src_obj = get_object_for_url(url, existing=True, anonymous=True)
+        except PermissionError:
+            src_obj = get_object_for_url(url, existing=True)
+        return src_obj.content_length
 
     @classmethod
     def _read_from_url(cls, url: ParseResult, writable):
-        srcObj = get_object_for_url(url, existing=True)
-        srcObj.download_fileobj(writable)
+        try:
+            src_obj = get_object_for_url(url, existing=True, anonymous=True)
+            src_obj.download_fileobj(writable)
+        except Exception as e:
+            if isinstance(e, PermissionError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
+                # The object setup or the download does not have permission. Try again with a login.
+                src_obj = get_object_for_url(url, existing=True)
+                src_obj.download_fileobj(writable)
+            else:
+                raise
         return (srcObj.content_length, False)  # executable bit is always False
 
     @classmethod
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        src_obj = get_object_for_url(url, existing=True)
-        response = src_obj.get()
+        try:
+            src_obj = get_object_for_url(url, existing=True, anonymous=True)
+            response = src_obj.get()
+        except Exception as e:
+            if isinstance(e, PermissionError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
+                # The object setup or the download does not have permission. Try again with a login.
+                src_obj = get_object_for_url(url, existing=True)
+                response = src_obj.get()
+            else:
+                raise
         # We should get back a response with a stream in 'Body'
         if "Body" not in response:
             raise RuntimeError(f"Could not fetch body stream for {url}")
@@ -670,6 +701,7 @@ class AWSJobStore(AbstractJobStore):
     def _write_to_url(
         cls, readable, url: ParseResult, executable: bool = False
     ) -> None:
+        # Don't try to do anonympus writes.
         dstObj = get_object_for_url(url)
 
         logger.debug("Uploading %s", dstObj.key)
@@ -684,13 +716,17 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _list_url(cls, url: ParseResult) -> list[str]:
-        return list_objects_for_url(url)
+        try:
+            return list_objects_for_url(url, anonymous=True)
+        except PermissionError:
+            return list_objects_for_url(url)
+        
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
         # We consider it a directory if anything is in it.
         # TODO: Can we just get the first item and not the whole list?
-        return len(list_objects_for_url(url)) > 0
+        return len(cls._list_url(url)) > 0
 
     @classmethod
     def _supports_url(cls, url: ParseResult, export: bool = False) -> bool:
