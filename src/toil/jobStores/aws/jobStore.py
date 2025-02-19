@@ -678,7 +678,7 @@ class AWSJobStore(AbstractJobStore):
                 src_obj.download_fileobj(writable)
             else:
                 raise
-        return (srcObj.content_length, False)  # executable bit is always False
+        return (src_obj.content_length, False)  # executable bit is always False
 
     @classmethod
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
