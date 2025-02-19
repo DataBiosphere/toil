@@ -4265,6 +4265,8 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if options.cachedir is not None:
         runtime_context.cachedir = os.path.abspath(options.cachedir)
         # Automatically bypass the file store to be compatible with cwltool caching
+        # Otherwise, the CWL caching code makes links to temporary local copies
+        # of filestore files and caches those.
         logger.debug("CWL task caching is turned on. Bypassing file store.")
         options.bypass_file_store = True
     if options.mpi_config_file is not None:

@@ -704,7 +704,7 @@ class CWLWorkflowTest(ToilTest):
             pass
 
     def test_caching(self) -> None:
-        log.info("Running CWL Test Cache.")
+        log.info("Running CWL caching test.")
         from toil.cwl import cwltoil
 
         outDir = self._createTempDir()
@@ -731,7 +731,7 @@ class CWLWorkflowTest(ToilTest):
         # since cwltool caches per task and revsort has 2 cwl tasks, there should be 2 directories and 2 status files
         assert (len(os.listdir(cacheDir)) == 4)
 
-        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the workflow
+        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the tools
         st = StringIO()
         cmd = [
                   "--writeLogsFromAllJobs=True",
