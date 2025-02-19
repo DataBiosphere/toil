@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import atexit
 import base64
 import copy
 import json
@@ -22,7 +23,9 @@ import shutil
 import signal
 import socket
 import stat
+import subprocess
 import sys
+import threading
 import time
 import traceback
 from collections.abc import Iterator
@@ -58,7 +61,6 @@ class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
     jobs: list[MagicExpando]
-
 
 def nextChainable(
     predecessor: JobDescription, job_store: AbstractJobStore, config: Config
@@ -165,6 +167,107 @@ def nextChainable(
     # Made it through! This job is chainable.
     return successor
 
+def unstick_worker(stop_event: threading.Event, interval=120, timeout=120) -> None:
+    """
+    Thread function that tries to prevent the process from getting stuck.
+
+    :param stop_event: When this event is set, shut down.
+    :param interval: Try to unstick the process at intervals of this many seconds.
+    :param timeout: Stop child processes that take longer than this many seconds to finish.
+    """
+
+    # We've observed Toil getting stuck reading the job from the job store,
+    # either due to a problem with the FileJobStore or with local temp storage,
+    # but then get unstuck as soon as someone logged in and ran lsof on the
+    # Toil process. So we make sure to do that to ourselves every once in a
+    # while as long as the worker is running.
+
+    # Figure out our process ID
+    pid = os.getpid()
+
+    child: Optional[subprocess.Popen] = None
+
+    def clean_up_child():
+        """
+        Cleanup function to run at daemon thread shutdown when the main thread
+        terminates without shutting us down.
+        """
+        if child is not None:
+            # Kill the child immediately if it is running
+            child.kill()
+            try:
+                # Wait one last time to try and reap the child process
+                child.wait(timeout=5)
+            except TimeoutExpired:
+                pass
+
+    atexit.register(clean_up_child)
+
+    # TODO: If we handle daemon thread shutdown just fine, why do we bother
+    # with all the event stuff? Why not cut it?
+
+    # Wait the interval before trying the first unstick
+    stop_event.wait(interval)
+
+    while not stop_event.is_set():
+        # Run an lsof on our PID, which has been observed to unstick reads.
+        # We don't just use subprocess.run() with a timeout because we want the
+        # event getting set to be able to interrupt the timeout.
+        #
+        # We also want to handle the case where the child process gets so
+        # gummed up that it can't exit when killed.
+        # Preserve errors form child process but not output
+        child = subprocess.Popen(
+            ["lsof", "-p", str(pid)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+        )
+        child_start = time.time()
+        child.poll()
+        while child.returncode is None:
+            stop_event.wait(0.01)
+            child.poll()
+            if child.returncode is None:
+                if stop_event.is_set() or time.time() - child_start > timeout:
+                    # We need to stop before the child is done
+                    child.kill()
+                    # Wait for the kill to take, but don't get stuck. Leave a
+                    # zombie process if the kill does not take promptly.
+                    try:
+                        child.wait(timeout=5)
+                    except TimeoutExpired:
+                        if stop_event.is_set():
+                            # We're stopping now. Leak the child and don't make
+                            # any more.
+                            atexit.unregister(clean_up_child)
+                            return
+                        else:
+                            # We aren't stopping, but we ran a child that
+                            # refuses to die
+                            logger.warning("Could not kill stuck child process %s", child.pid)
+                            # Break out of the child watching loop and leak
+                            # that child, and also make a new one.
+                            break
+            else:
+                # Return code is set, so the process is done, so we can wait
+                # without worrying about blocking. TODO: do we still need to
+                # wait to reap it?
+                child.wait()
+            if stop_event.is_set():
+                # Finish the thread and don't start another child process
+                atexit.unregister(clean_up_child)
+                return
+
+        if child.returncode != 0:
+            # Something went wrong, which is suspicious. Either it failed or it
+            # timed out and could not be killed promptly.
+            logger.warning("Could not list open files on ourselves.")
+
+        # Wait the interval, but wake up if we're being told to stop.
+        stop_event.wait(interval)
+
+    atexit.unregister(clean_up_child)
+
 
 def workerScript(
     job_store: AbstractJobStore,
@@ -239,6 +342,14 @@ def workerScript(
 
         # We don't need to reap the child. Either it kills us, or we finish
         # before it does. Either way, init will have to clean it up for us.
+
+    ##########################################
+    # Create the worker unsticker
+    ##########################################
+    worker_shutdown_event = threading.Event()
+    unstick_thread = threading.Thread(target=unstick_worker, args=(worker_shutdown_event,))
+    unstick_thread.daemon = True
+    unstick_thread.start()
 
     ##########################################
     # Load the environment for the job
@@ -814,6 +925,10 @@ def workerScript(
         for merged_in in jobDesc.get_chain():
             # We can now safely get rid of the JobDescription, and all jobs it chained up
             job_store.delete_job(merged_in.job_store_id)
+
+    # Join up with the unsticker
+    worker_shutdown_event.set()
+    unstick_thread.join()
 
     if jobAttemptFailed:
         return failure_exit_code
