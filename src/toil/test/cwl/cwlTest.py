@@ -704,7 +704,7 @@ class CWLWorkflowTest(ToilTest):
             pass
 
     def test_caching(self) -> None:
-        log.info("Running CWL Test Cache.")
+        log.info("Running CWL caching test.")
         from toil.cwl import cwltoil
 
         outDir = self._createTempDir()
@@ -731,7 +731,7 @@ class CWLWorkflowTest(ToilTest):
         # cwltool hashes certain steps into directories, ensure it exists
         assert (len(os.listdir(cacheDir)) == 4)
 
-        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the workflow
+        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the tools
         st = StringIO()
         cmd = [
                   "--writeLogsFromAllJobs=True",
