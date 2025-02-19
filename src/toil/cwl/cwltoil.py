@@ -4270,6 +4270,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
     if cwltool.main.check_working_directories(runtime_context) is not None:
+        logger.error("Failed to create directory. If using tmpdir_prefix, tmpdir_outdir_prefix, or cachedir, consider changing directory locations.")
         return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
@@ -4444,12 +4445,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             if not options.bypass_file_store:
                 # If we're using the file store we need to start moving output
                 # files now.
-                # But if caching is enabled we have to leave files in the cache directory,
-                # so do a copy if so.
-                if runtime_context.cachedir is not None:
-                    runtime_context.move_outputs = "copy"
-                else:
-                    runtime_context.move_outputs = "move"
+                runtime_context.move_outputs = "move"
 
             # We instantiate an early builder object here to populate indirect
             # secondaryFile references using cwltool's library because we need

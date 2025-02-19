@@ -724,11 +724,11 @@ class CWLWorkflowTest(ToilTest):
             os.path.join(cwlDir, "revsort.cwl"),
             os.path.join(cwlDir, "revsort-job.json"),
         ]
-        # Finish the job with a correct PATH
         st = StringIO()
         ret = cwltoil.main(cmd, stdout=st)
         assert ret == 0
         # cwltool hashes certain steps into directories, ensure it exists
+        # since cwltool caches per task and revsort has 2 cwl tasks, there should be 2 directories and 2 status files
         assert (len(os.listdir(cacheDir)) == 4)
 
         # Rerun the workflow to ensure there is a cache hit and that we don't rerun the workflow
