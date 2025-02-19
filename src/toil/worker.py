@@ -167,7 +167,7 @@ def nextChainable(
     # Made it through! This job is chainable.
     return successor
 
-def unstick_worker(interval=120, timeout=120) -> None:
+def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
     """
     Thread function that tries to prevent the process from getting stuck.
 
@@ -189,9 +189,9 @@ def unstick_worker(interval=120, timeout=120) -> None:
     # Figure out our process ID
     pid = os.getpid()
 
-    child: Optional[subprocess.Popen] = None
+    child: Optional[subprocess.Popen[bytes]] = None
 
-    def clean_up_child():
+    def clean_up_child() -> None:
         """
         Cleanup function to run at daemon thread shutdown when the main thread
         terminates without shutting us down.
