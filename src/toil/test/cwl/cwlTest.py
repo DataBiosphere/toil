@@ -926,6 +926,55 @@ class CWLWorkflowTest(ToilTest):
             }
         }
 
+    @needs_cwl
+    def test_missing_import(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+        toil = "toil-cwl-runner"
+        options = [
+            f"--outdir={out_dir}",
+            "--clean=always",
+        ]
+        cmd = [toil] + options + ["revsort.cwl", "revsort-job-missing.json"]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        # Make sure that the missing file is mentioned in the log so the user knows
+        assert b"missing.txt" in stderr
+        assert p.returncode == 1
+
+    @needs_cwl
+    @needs_aws_s3
+    @pytest.mark.timeout(300)
+    def test_optional_secondary_files_exists(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+        args = [
+            "optional-file.cwl",
+            "optional-file-exists.json",
+            f"--outdir={out_dir}"
+        ]
+        from toil.cwl import cwltoil
+
+        ret = cwltoil.main(args)
+        assert ret == 0
+        assert os.path.exists(os.path.join(out_dir, "wdl_templates_old.zip"))
+
+    @needs_cwl
+    @needs_aws_s3
+    @pytest.mark.timeout(300)
+    def test_optional_secondary_files_missing(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+        args = [
+            "optional-file.cwl",
+            "optional-file-missing.json",
+            f"--outdir={out_dir}"
+        ]
+        from toil.cwl import cwltoil
+
+        ret = cwltoil.main(args)
+        assert ret == 0
+        assert not os.path.exists(os.path.join(out_dir, "hello_old.zip"))
 
 @needs_cwl
 @needs_online
