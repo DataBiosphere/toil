@@ -50,8 +50,6 @@ The following conformance tests are tested against the latest version of master:
 
 |work_reuse|
 
-:conformance:`command_line_tool`
-
 .. |command_line_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/command_line_tool.json%3Fjob=cwl_badge
 
 .. |conditional| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/conditional.json%3Fjob=cwl_badge

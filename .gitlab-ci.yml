@@ -273,8 +273,7 @@ cwl_v1.2:
     - time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
     # Run CWL conformance tests, with file store bypassed.
     # Only one test so do just one thread and log live.
-    - make download_cwl_spec
-    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest-args="--cwl-runner-verbose --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --bypass-file-store --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600"
+    - time make test threads=1 tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
   artifacts:
     reports:
       junit: "*.junit.xml"
