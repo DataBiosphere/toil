@@ -1,11 +1,12 @@
 .. _cwlConformance:
 
 Toil CWL Conformance v1.2.1
-============
+===========================
 
 Note: To fully support `inplace_update`, ``--bypass-file-store`` should be enabled.
-See :ref:`_InitialWorkDirRequirement`.
+See :ref:`inplaceupdaterequirement`.
 
+The following conformance tests are tested against the latest version of master:
 
 |command_line_tool|
 
@@ -49,44 +50,46 @@ See :ref:`_InitialWorkDirRequirement`.
 
 |work_reuse|
 
-.. |command_line_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/command_line_tool.json%3Fjob=cwl_badge
+:conformance:`command_line_tool`
 
-.. |conditional| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/conditional.json%3Fjob=cwl_badge
+.. |command_line_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/command_line_tool.json%3Fjob=cwl_badge
 
-.. |docker| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/docker.json%3Fjob=cwl_badge
+.. |conditional| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/conditional.json%3Fjob=cwl_badge
 
-.. |expression_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/expression_tool.json%3Fjob=cwl_badge
+.. |docker| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/docker.json%3Fjob=cwl_badge
 
-.. |format_checking| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/format_checking.json%3Fjob=cwl_badge
+.. |expression_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/expression_tool.json%3Fjob=cwl_badge
 
-.. |initial_work_dir| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/initial_work_dir.json%3Fjob=cwl_badge
+.. |format_checking| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/format_checking.json%3Fjob=cwl_badge
 
-.. |inline_javascript| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/inline_javascript.json%3Fjob=cwl_badge
+.. |initial_work_dir| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/initial_work_dir.json%3Fjob=cwl_badge
 
-.. |inplace_update| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/inplace_update.json%3Fjob=cwl_badge
+.. |inline_javascript| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/inline_javascript.json%3Fjob=cwl_badge
 
-.. |input_object_requirements| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/input_object_requirements.json%3Fjob=cwl_badge
+.. |inplace_update| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/inplace_update.json%3Fjob=cwl_badge
 
-.. |json_schema_invalid| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/json_schema_invalid.json%3Fjob=cwl_badge
+.. |input_object_requirements| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/input_object_requirements.json%3Fjob=cwl_badge
 
-.. |load_listing| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/load_listing.json%3Fjob=cwl_badge
+.. |json_schema_invalid| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/json_schema_invalid.json%3Fjob=cwl_badge
 
-.. |multiple_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/multiple_input.json%3Fjob=cwl_badge
+.. |load_listing| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/load_listing.json%3Fjob=cwl_badge
 
-.. |networkaccess| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/networkaccess.json%3Fjob=cwl_badge
+.. |multiple_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/multiple_input.json%3Fjob=cwl_badge
 
-.. |required| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/required.json%3Fjob=cwl_badge
+.. |networkaccess| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/networkaccess.json%3Fjob=cwl_badge
 
-.. |resource| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/resource.json%3Fjob=cwl_badge
+.. |required| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/required.json%3Fjob=cwl_badge
 
-.. |scatter| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/scatter.json%3Fjob=cwl_badge
+.. |resource| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/resource.json%3Fjob=cwl_badge
 
-.. |schema_def| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/schema_def.json%3Fjob=cwl_badge
+.. |scatter| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/scatter.json%3Fjob=cwl_badge
 
-.. |step_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/step_input.json%3Fjob=cwl_badge
+.. |schema_def| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/schema_def.json%3Fjob=cwl_badge
 
-.. |timelimit| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/timelimit.json%3Fjob=cwl_badge
+.. |step_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/step_input.json%3Fjob=cwl_badge
 
-.. |workflow| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/workflow.json%3Fjob=cwl_badge
+.. |timelimit| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/timelimit.json%3Fjob=cwl_badge
 
-.. |work_reuse| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/issues/5183-cwl-badge/raw/badges/work_reuse.json%3Fjob=cwl_badge
+.. |workflow| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/workflow.json%3Fjob=cwl_badge
+
+.. |work_reuse| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges/work_reuse.json%3Fjob=cwl_badge
