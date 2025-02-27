@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import errno
 import logging
 import math
 import os
@@ -344,7 +345,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
             try:
                 status_dict = self._getJobDetailsFromSacct(job_id_list)
-            except CalledProcessErrorStderr:
+            except (CalledProcessErrorStderr, OSError) as e:
+                if isinstance(e, OSError):
+                    logger.warning("Could not run sacct: %s", e)
                 status_dict = self._getJobDetailsFromScontrol(job_id_list)
             return status_dict
 
@@ -437,11 +440,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 "-S",
                 "1970-01-01",
             ]  # override start time limit
-            stdout = call_command(args, quiet=True)
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
             job_statuses: dict[int, tuple[str | None, int | None]] = {}
+
+            try:
+                stdout = call_command(args, quiet=True)
+            except OSError as e:
+                if e.errno == errno.E2BIG:
+                    # Argument list is too big, recurse on half the argument list
+                    if len(job_id_list) == 1:
+                        # 1 is too big, we can't recurse further, bail out
+                        raise
+                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[:len(job_id_list)//2]))
+                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[len(job_id_list)//2:]))
+                    return job_statuses
+                else:
+                    raise
+
             for job_id in job_id_list:
                 job_statuses[job_id] = (None, None)
 

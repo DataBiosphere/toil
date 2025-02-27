@@ -1,3 +1,4 @@
+import errno
 import textwrap
 from queue import Queue
 
@@ -29,6 +30,9 @@ def call_sacct(args, **_) -> str:
         1236|FAILED|0:2
         1236.extern|COMPLETED|0:0
     """
+    if sum(len(a) for a in args) > 1000:
+        # Simulate if the argument list is too long
+        raise OSError(errno.E2BIG, "Argument list is too long")
     # Fake output per fake job-id.
     sacct_info = {
         609663: "609663|FAILED|0:2\n609663.extern|COMPLETED|0:0\n",
@@ -261,6 +265,13 @@ class SlurmTest(ToilTest):
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobDetailsFromSacct_argument_list_too_big(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        expected_result = {i: (None, None) for i in range(2000)}
+        result = self.worker._getJobDetailsFromSacct(list(expected_result))
+        assert result == expected_result, f"{result} != {expected_result}"
+
 
     ####
     #### tests for _getJobDetailsFromScontrol()
