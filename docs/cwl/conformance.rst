@@ -1,12 +1,12 @@
 .. _cwlConformance:
 
-Toil CWL Conformance v1.2.1
+Toil CWL Conformance
 ===========================
 
 Note: To fully support `inplace_update`, ``--bypass-file-store`` should be enabled.
 See :ref:`inplaceupdaterequirement`.
 
-The following conformance tests are tested against the latest version of master:
+The badges below show Toil's support for different aspects of the CWL specification. They describe the current development version of Toil, not necessarily the release documented here.
 
 |command_line_tool|
 

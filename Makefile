@@ -151,6 +151,7 @@ download_cwl_spec:
 	git clone https://github.com/common-workflow-language/cwl-v1.2.git src/toil/test/cwl/spec_v12 || true && cd src/toil/test/cwl/spec_v12 && git checkout 0d538a0dbc5518f3c6083ce4571926f65cb84f76
 	git clone https://github.com/common-workflow-language/cwl-v1.1.git src/toil/test/cwl/spec_v11 || true && cd src/toil/test/cwl/spec_v11 && git checkout 664835e83eb5e57eee18a04ce7b05fb9d70d77b7
 	git clone https://github.com/common-workflow-language/common-workflow-language.git src/toil/test/cwl/spec || true && cd src/toil/test/cwl/spec && git checkout 6a955874ade22080b8ef962b4e0d6e408112c1ef
+        # Add .cwltest to filenames so the Pytest plugin can see them
 	cp src/toil/test/cwl/spec_v12/conformance_tests.yaml src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml
 	cp src/toil/test/cwl/spec_v11/conformance_tests.yaml src/toil/test/cwl/spec_v11/conformance_tests.cwltest.yaml
 	cp src/toil/test/cwl/spec/v1.0/conformance_test_v1.0.yaml src/toil/test/cwl/spec/v1.0/conformance_test_v1.0.cwltest.yaml
