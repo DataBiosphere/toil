@@ -934,7 +934,7 @@ class CWLWorkflowTest(ToilTest):
             f"--outdir={out_dir}",
             "--clean=always",
         ]
-        cmd = [toil] + options + ["revsort.cwl", "revsort-job-missing.json"]
+        cmd = [toil] + options + ["src/toil/test/cwl/revsort.cwl", "src/toil/test/cwl/revsort-job-missing.json"]
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         # Make sure that the missing file is mentioned in the log so the user knows
