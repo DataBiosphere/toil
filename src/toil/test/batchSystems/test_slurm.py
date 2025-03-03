@@ -173,6 +173,26 @@ def call_sacct_raises(*_):
         1, "sacct: error: Problem talking to the database: " "Connection timed out"
     )
 
+def call_sinfo(*_) -> str:
+    """
+    Simulate asking for partition info from Slurm
+    """
+    stdout = textwrap.dedent(
+        """\
+        PARTITION GRES TIMELIMIT PRIO_TIER CPUS MEMORY
+        short* (null) 1:00:00 500 256+ 1996800+
+        medium (null) 12:00:00 500 256+ 1996800+
+        long (null) 14-00:00:00 500 256+ 1996800+
+        gpu gpu:A100:8 7-00:00:00 5000 256 996800
+        gpu gpu:A5500:8 7-00:00:00 5000 256 1996800
+        high_priority gpu:A5500:8 7-00:00:00 65000 256 1996800
+        high_priority (null) 7-00:00:00 65000 256+ 1996800+
+        simple_nodelist gpu:A100:8 1:00 65000 256 996800
+        simple_nodelist gpu:A5500:8 1:00 65000 256 1996800
+        simple_nodelist (null) 1:00 65000 256+ 1996800+
+        """
+    )
+    return stdout
 
 class FakeBatchSystem:
     """
@@ -449,3 +469,34 @@ class SlurmTest(ToilTest):
             pass
         else:
             assert False, "Exception CalledProcessErrorStderr not raised"
+
+    ###
+    ### Tests for partition selection
+    ##
+
+    def test_PartitionSet_get_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+
+        # At zero. short will win because simple_nodelist has higher priority.
+        self.assertEqual(ps.get_partition(0), "short")
+        # Easily within the partition
+        self.assertEqual(ps.get_partition(10 * 60), "short")
+        # Exactly on the boundary
+        self.assertEqual(ps.get_partition(60 * 60), "short")
+        # Well within the next partition
+        self.assertEqual(ps.get_partition(2 * 60 * 60), "medium")
+        # Can only fit in long
+        self.assertEqual(ps.get_partition(8 * 24 * 60 * 60), "long")
+        # Could fit in gpu or long
+        self.assertEqual(ps.get_partition(6 * 24 * 60 * 60), "long")
+        # Can't fit in anything
+        with self.assertRaises(Exception):
+            ps.get_partition(365 * 24 * 60 * 60)
+
+    def test_PartitionSet_default_gpu_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+
+        # Make sure we picked the useful-length GPU partition and not the super short one.
+        self.assertEqual(ps.default_gpu_partition.partition_name, "gpu")
