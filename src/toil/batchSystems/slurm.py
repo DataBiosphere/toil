@@ -670,6 +670,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
 
+            if any(option.startswith("--time=") or option == "--time" or option == "-t" for option in sbatch_line):
+                raise RuntimeError("Support for manual --time option has been replaced by Toil --slurmTime")
+
             time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
             if time_limit is not None:
                 # Put all the seconds in the seconds slot
