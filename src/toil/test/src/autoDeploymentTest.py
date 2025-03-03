@@ -4,7 +4,6 @@ import time
 from contextlib import contextmanager
 
 from toil.exceptions import FailedJobsException
-from toil.lib.iterables import concat
 from toil.test import ApplianceTestSupport, needs_local_appliance, needs_mesos, slow
 from toil.version import exactPython
 
@@ -85,7 +84,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 "--defaultMemory=10M",
                 "/data/jobstore",
             ]
-            command = concat(pythonArgs, toilArgs)
+            command = pythonArgs + toilArgs
             self.assertRaises(
                 subprocess.CalledProcessError, leader.runOnAppliance, *command
             )
@@ -96,7 +95,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
                 path=self.sitePackages, packagePath="foo.bar", script=userScript
             )
             # ... and restart Toil.
-            command = concat(pythonArgs, "--restart", toilArgs)
+            command = pythonArgs + ["--restart"] + toilArgs
             leader.runOnAppliance(*command)
 
     def testSplitRootPackages(self):

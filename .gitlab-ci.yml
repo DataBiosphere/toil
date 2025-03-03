@@ -69,6 +69,7 @@ lint:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - ${MAIN_PYTHON_PKG} -m pip freeze
     - ${MAIN_PYTHON_PKG} --version
+    - make mypy
     - make docs
     - check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
     # - make diff_pydocstyle_report
@@ -238,7 +239,6 @@ py313_main:
     - python3.13 -m virtualenv venv && . venv/bin/activate && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && pip install -U pip wheel && make prepare && make develop extras=[all]
     - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
-
 
 slurm_test:
   rules:

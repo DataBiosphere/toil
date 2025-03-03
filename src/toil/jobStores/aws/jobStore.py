@@ -37,7 +37,7 @@ import datetime
 
 from io import BytesIO
 from contextlib import contextmanager
-from urllib.parse import ParseResult, parse_qs, urlencode, urlsplit, urlunsplit
+from urllib.parse import ParseResult
 from typing import IO, TYPE_CHECKING, Optional, Union, cast, Tuple
 from botocore.exceptions import ClientError
 
@@ -123,7 +123,7 @@ class AWSJobStore(AbstractJobStore):
      - The Toil bucket should log the version of Toil it was initialized with and warn the user if restarting with
          a different version.
     """
-    def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE):
+    def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super(AWSJobStore, self).__init__(locator)
         # TODO: parsing of user options seems like it should be done outside of this class;
         #  pass in only the bucket name and region?
@@ -160,7 +160,7 @@ class AWSJobStore(AbstractJobStore):
 
         ###################################### CREATE/DESTROY JOBSTORE ######################################
 
-    def initialize(self, config):
+    def initialize(self, config) -> None:
         """
         Called when starting a new jobstore with a non-existent bucket.
 
@@ -180,7 +180,7 @@ class AWSJobStore(AbstractJobStore):
                              data='0')
         super(AWSJobStore, self).initialize(config)
 
-    def resume(self, sse_key_path: Optional[str] = None):
+    def resume(self, sse_key_path: Optional[str] = None) -> None:
         """Called when reusing an old jobstore with an existing bucket.  Raise if the bucket doesn't exist."""
         super(AWSJobStore, self).resume(sse_key_path)  # this sets self.config to not be None and configures encryption
         if self.bucket is None:
@@ -279,6 +279,8 @@ class AWSJobStore(AbstractJobStore):
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 if check:
                     raise NoSuchJobException(job_id)
+            else:
+                raise
         except self.s3_client.exceptions.NoSuchKey:
             if check:
                 raise NoSuchJobException(job_id)
@@ -516,7 +518,7 @@ class AWSJobStore(AbstractJobStore):
 
         ###################################### URI API ######################################
 
-    def _import_file(self, otherCls, url, shared_file_name=None, hardlink=False, symlink=False) -> FileID:
+    def _import_file(self, otherCls, url: str, shared_file_name=None, hardlink=False, symlink=False) -> FileID:
         """
         Upload a file into the s3 bucket jobstore from the source uri.
 
@@ -565,7 +567,7 @@ class AWSJobStore(AbstractJobStore):
                 self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
             return file_id
 
-    def _export_file(self, otherCls, file_id: str, url) -> None:
+    def _export_file(self, otherCls, file_id: str, url: str) -> None:
         """Export a file_id in the jobstore to the url."""
         # use a new session here to be thread-safe
         if issubclass(otherCls, AWSJobStore):

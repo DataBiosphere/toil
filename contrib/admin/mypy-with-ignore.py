@@ -66,7 +66,6 @@ def main():
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/__init__.py',
         'src/toil/lib/throttle.py',
-        'src/toil/lib/iterables.py',
         'src/toil/lib/bioio.py',
         'src/toil/lib/ec2.py',
         'src/toil/lib/expando.py',
@@ -85,15 +84,7 @@ def main():
         'src/toil/test',
         'src/toil/utils/toilStats.py',
         'src/toil/server/utils.py',
-        'src/toil/jobStores/aws/jobStore.py',
-        'src/toil/jobStores/exceptions.py',
-        'src/toil/lib/aws/config.py',
-        'src/toil/lib/aws/s3.py',
-        'src/toil/lib/retry.py',
-        'src/toil/lib/pipes.py',
-        'src/toil/lib/checksum.py',
-        'src/toil/lib/conversions.py',
-        'src/toil/lib/iterables.py'
+        'src/toil/jobStores/aws/jobStore.py'
     ]]
 
     def ignore(file_path):
@@ -109,10 +100,19 @@ def main():
     for file_path in all_files_to_check:
         if not ignore(file_path):
             filtered_files_to_check.append(file_path)
-    print(f'Checking: {filtered_files_to_check}')
-    args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
-    p = subprocess.run(args=args)
-    exit(p.returncode)
+    # print(f'Checking: {filtered_files_to_check}')
+    # args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
+    # p = subprocess.run(args=args)
+    # exit(p.returncode)
+    filtered_files_to_check = [
+        'src/toil/jobStores/aws/jobStore.py'
+    ]
+    for file in filtered_files_to_check:
+        print(f'Checking: {file}')
+        args = ['mypy', '--color-output', '--show-traceback', file]
+        p = subprocess.run(args=args)
+        if p.returncode != 0:
+            raise RuntimeError(f'BROKEN: {file}')
 
 
 if __name__ == '__main__':

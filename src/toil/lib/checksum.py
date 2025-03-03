@@ -15,9 +15,14 @@ import logging
 import hashlib
 
 from io import BytesIO
-from typing import BinaryIO, Union
+from typing import BinaryIO, Union, List, TYPE_CHECKING
 
 from toil.lib.aws.config import S3_PART_SIZE
+
+if TYPE_CHECKING:
+    # mypy complaint: https://github.com/python/typeshed/issues/2928
+    from hashlib import _Hash
+
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +33,13 @@ class ChecksumError(Exception):
 
 class Etag:
     """A hasher for s3 etags."""
-    def __init__(self, chunk_size):
-        self.etag_bytes = 0
-        self.etag_parts = []
-        self.etag_hasher = hashlib.md5()
-        self.chunk_size = chunk_size
+    def __init__(self, chunk_size: int) -> None:
+        self.etag_bytes: int = 0
+        self.etag_parts: List[bytes] = []
+        self.etag_hasher: "_Hash" = hashlib.md5()
+        self.chunk_size: int = chunk_size
 
-    def update(self, chunk):
+    def update(self, chunk: bytes) -> None:
         if self.etag_bytes + len(chunk) > self.chunk_size:
             chunk_head = chunk[:self.chunk_size - self.etag_bytes]
             chunk_tail = chunk[self.chunk_size - self.etag_bytes:]
@@ -47,7 +52,7 @@ class Etag:
             self.etag_hasher.update(chunk)
             self.etag_bytes += len(chunk)
 
-    def hexdigest(self):
+    def hexdigest(self) -> str:
         if self.etag_bytes:
             self.etag_parts.append(self.etag_hasher.digest())
             self.etag_bytes = 0
@@ -74,7 +79,7 @@ def compute_checksum_for_content(fh: Union[BinaryIO, BytesIO], algorithm: str = 
     Note: Chunk size matters for s3 etags, and must be the same to get the same hash from the same object.
     Therefore this buffer is not modifiable throughout Toil.
     """
-    hasher = hashers[algorithm]
+    hasher: "_Hash" = hashers[algorithm]  # type: ignore
     contents = fh.read(S3_PART_SIZE)
     while contents != b'':
         hasher.update(contents)

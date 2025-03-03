@@ -13,9 +13,11 @@
 # limitations under the License.
 import urllib.parse as urlparse
 
+from typing import Optional, List
+
 
 class InvalidImportExportUrlException(Exception):
-    def __init__(self, url):
+    def __init__(self, url: urlparse.ParseResult) -> None:
         """
         :param urlparse.ParseResult url:
         """
@@ -24,7 +26,7 @@ class InvalidImportExportUrlException(Exception):
 
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
-    def __init__(self, jobStoreID):
+    def __init__(self, jobStoreID: str) -> None:
         """
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
@@ -33,7 +35,7 @@ class NoSuchJobException(Exception):
 
 class ConcurrentFileModificationException(Exception):
     """Indicates that the file was attempted to be modified by multiple processes at once."""
-    def __init__(self, jobStoreFileID):
+    def __init__(self, jobStoreFileID: str) -> None:
         """
         :param str jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
@@ -43,7 +45,7 @@ class ConcurrentFileModificationException(Exception):
 
 class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
-    def __init__(self, jobStoreFileID, customName=None, *extra):
+    def __init__(self, jobStoreFileID: str, customName: Optional[str] = None, *extra: Optional[List[str]]) -> None:
         """
         :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
         :param str customName: optionally, an alternate name for the nonexistent file
@@ -66,13 +68,13 @@ class NoSuchFileException(Exception):
 
 class NoSuchJobStoreException(Exception):
     """Indicates that the specified job store does not exist."""
-    def __init__(self, locator):
+    def __init__(self, locator: str) -> None:
         super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
 
 
 class JobStoreExistsException(Exception):
     """Indicates that the specified job store already exists."""
-    def __init__(self, locator):
+    def __init__(self, locator: str) -> None:
         super().__init__(
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
             "the job store with 'toil clean' to start the workflow from scratch." % locator)
