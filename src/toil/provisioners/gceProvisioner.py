@@ -26,7 +26,7 @@ from libcloud.compute.types import Provider
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.lib.compatibility import compat_bytes_recursive
 from toil.lib.conversions import human2bytes
-from toil.lib.web import session
+from toil.lib.web import web_session
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.node import Node
@@ -83,11 +83,11 @@ class GCEProvisioner(AbstractProvisioner):
         """
         metadata_server = "http://metadata/computeMetadata/v1/instance/"
         metadata_flavor = {"Metadata-Flavor": "Google"}
-        zone = session.get(metadata_server + "zone", headers=metadata_flavor).text
+        zone = web_session.get(metadata_server + "zone", headers=metadata_flavor).text
         self._zone = zone.split("/")[-1]
 
         project_metadata_server = "http://metadata/computeMetadata/v1/project/"
-        self._projectId = session.get(
+        self._projectId = web_session.get(
             project_metadata_server + "project-id", headers=metadata_flavor
         ).text
 
@@ -95,7 +95,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._googleJson = ""
         self._clientEmail = ""
 
-        self._tags = session.get(
+        self._tags = web_session.get(
             metadata_server + "description", headers=metadata_flavor
         ).text
         tags = json.loads(self._tags)

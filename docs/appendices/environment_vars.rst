@@ -244,9 +244,12 @@ There are several environment variables that affect the way Toil runs.
 |                                  | in favor of CLI options when using launch cluster. |
 |                                  | For information on valid AWS tags, see `AWS Tags`_.|
 +----------------------------------+----------------------------------------------------+
-| TOIL_TRS_ROOT                    | Override for the Dockstore deployment to talk to   |
-|                                  | for workflow lookups and metrics publication, for  |
-|                                  | debugging.                                         |
+| TOIL_TRS_ROOT                    | Override for the Tool Registry Service endpoint or |
+|                                  | Dockstore deployment to talk to for workflow       |
+|                                  | lookups and metrics publication. Allows changing   |
+|                                  | the workflow lookup and metrics publication        |
+|                                  | destination to something else, such as             |
+|                                  | ``https://qa.dockstore.org``, for debugging.       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_DOCKSTORE_TOKEN             | When publishing workflow metrics, include this     |
 |                                  | Dockstore authentication token, for debugging.     |

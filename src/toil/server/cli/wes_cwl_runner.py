@@ -16,7 +16,7 @@ from configargparse import ArgumentParser
 from wes_client.util import WESClient  # type: ignore
 from wes_client.util import wes_reponse as wes_response
 
-from toil.lib.web import session
+from toil.lib.web import web_session
 from toil.wdl.utils import get_version as get_wdl_version
 
 """
@@ -314,7 +314,7 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
         data, files = self.build_wes_request(
             workflow_file, workflow_params_file, attachments, workflow_engine_parameters
         )
-        post_result = session.post(
+        post_result = web_session.post(
             urljoin(f"{self.proto}://{self.host}", "/ga4gh/wes/v1/runs"),
             data=data,
             files=files,

@@ -18,8 +18,8 @@ Contains functions for making web requests with Toil.
 All web requests should go through this module, to make sure they use the right
 user agent.
 
->>> from toil.lib.web import session
->>> session.get("https://example.com")
+>>> from toil.lib.web import web_session
+>>> web_session.get("https://example.com")
 
 """
 
@@ -34,5 +34,5 @@ from toil.version import baseVersion
 # We expect the Toil and Python version to not be personally identifiable even
 # in theory (someone might make a new Toil version first, but there's no way
 # to know for sure that nobody else did the same thing).
-session = requests.Session()
-session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})
+web_session = requests.Session()
+web_session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})

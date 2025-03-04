@@ -79,6 +79,22 @@ def job_execution_id(job_attempt: JobAttemptSummary) -> str:
 
     return job_attempt.id.replace("-", "_")
 
+def get_parsed_trs_spec(workflow_attempt: WorkflowAttemptSummary) -> tuple[str, str]:
+    """
+    Get the TRS ID and version of the workflow, or raise an error.
+    
+    :returns: The TRS ID and the TRS version of the wrokflow run.
+    :raises: ValueError if the workflow does not have a TRS spec or if the spec
+        does not contain a version.
+    """
+    # If it's submittable the TRS spec will be filled in.
+    if workflow_attempt.workflow_trs_spec is None:
+        raise ValueError("Workflow cannot be submitted without a TRS spec")
+    trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
+    if trs_version is None:
+        raise ValueError("Workflow stored in history with TRS ID but without TRS version")
+    return trs_id, trs_version
+
 class Submission:
     """
     Class holding a package of information to submit to Dockstore, and the
@@ -90,7 +106,7 @@ class Submission:
 
     def __init__(self) -> None:
         """
-        Crerate a new empty submission.
+        Create a new empty submission.
         """
 
         # This collects everything by TRS ID and version, and keeps separate lists for workflows and for task sets.
@@ -104,13 +120,7 @@ class Submission:
 
         May raise an exception if the workflow attempt is not well-formed.
         """
-        # If it's submittable the TRS spec will be filled in.
-        # Satisfy MyPy
-        # TODO: change the type?
-        assert workflow_attempt.workflow_trs_spec is not None
-        trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
-        if trs_version is None:
-            raise ValueError("Workflow stored in history with TRS ID but without TRS version")
+        trs_id, trs_version = get_parsed_trs_spec(workflow_attempt)
 
         # Figure out what kind of job store was used.
         job_store_type: Optional[str] = None
@@ -147,13 +157,7 @@ class Submission:
         Add the job attempts for a workflow attempt to the submission.
         """
 
-        # If it's submittable the TRS spec will be filled in.
-        # Satisfy MyPy
-        # TODO: change the type?
-        assert workflow_attempt.workflow_trs_spec is not None
-        trs_id, trs_version = parse_trs_spec(workflow_attempt.workflow_trs_spec)
-        if trs_version is None:
-            raise ValueError("Workflow stored in history with TRS ID but without TRS version")
+        trs_id, trs_version = get_parsed_trs_spec(workflow_attempt)
 
         # Pack it up
         per_task_metrics = [
@@ -297,7 +301,7 @@ def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> S
         job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
 
         if desired_tasks == 0 or total_tasks + len(job_attempts) > desired_tasks:
-            # Don't add any more task sets to the dubmission
+            # Don't add any more task sets to the submission
             break
 
         try:
@@ -570,17 +574,17 @@ def dialog_tui(title: str, text: str, options: dict[KeyType, str], timeout: floa
 # Define the dialog form in the abstract
 Decision = Union[Literal["all"], Literal["current"], Literal["no"], Literal["never"]]
 
-DIALOG_TITLE = "Publish Workflow Metrics on Dockstore?"
+DIALOG_TITLE = "Publish Workflow Metrics on Dockstore.org?"
 
 # We need to fromat the default config path in to the message, but we can't get
 # it until we can close the circular import loop. So it's a placeholder here.
 # We also leave this un-wrapped to let the dialog wrap it if needed.
 DIALOG_TEXT = """
-Would you like to publish execution metrics to Dockstore?
+Would you like to publish execution metrics on Dockstore.org?
 
 This includes information like a unique ID for the workflow execution and each job execution, the Tool Registry Service (TRS) ID of the workflow, the names of its jobs, when and for how long they run, how much CPU, memory, and disk they are allocated or use, whether they succeed or fail, the versions of Toil and Python used, the operating system platform and processor type, and which Toil or Toil plugin features are used.
 
-Dockstore uses this information to prepare reports about how well workflows run in different environments, and what resources they need, in order to help users plan their workflow runs. The Toil developers also consult this information to see which Toil features are the most popular and how popular Toil is overall.
+Dockstore.org uses this information to prepare reports about how well workflows run in different environments, and what resources they need, in order to help users plan their workflow runs. The Toil developers also consult this information to see which Toil features are the most popular and how popular Toil is overall.
 
 Note that publishing is PERMANENT! You WILL NOT be able to recall or un-publish any published metrics!
 

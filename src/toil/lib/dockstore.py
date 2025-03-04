@@ -33,7 +33,7 @@ import requests
 from toil.lib.misc import unix_seconds_to_timestamp, seconds_to_duration
 from toil.lib.trs import TRS_ROOT
 from toil.lib.retry import retry
-from toil.lib.web import session
+from toil.lib.web import web_session
 from toil.version import baseVersion
 
 if sys.version_info < (3, 11):
@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 
 # We assume TRS_ROOT is actually a Dockstore instance.
 
-# How shoudl we authenticate our Dockstore requests?
-DOCKSTORE_TOKEN = None if "TOIL_DOCKSTORE_TOKEN" not in os.environ else os.environ["TOIL_DOCKSTORE_TOKEN"]
+# How should we authenticate our Dockstore requests?
+DOCKSTORE_TOKEN = os.environ.get("TOIL_DOCKSTORE_TOKEN")
 
 
 # This is a https://schema.org/CompletedActionStatus
@@ -364,7 +364,7 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
     logger.debug("With headers: %s", headers)
 
     try:
-        result = session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
+        result = web_session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
         result.raise_for_status()
     except requests.HTTPError as e:
         logger.warning("Workflow metrics were not accepted by Dockstore. Dockstore complained: %s", e.response.text)

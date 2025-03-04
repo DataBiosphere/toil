@@ -239,9 +239,15 @@ class StatsAndLogging:
                 pass
             else:
                 for job in jobs:
-                    assert config.workflowID is not None
                     try:
                         # Here we're talking to job._executor which fills in these stats.
+
+                        # Convince MyPy we won't be sent any job stats without
+                        # a workflow ID. You can't set up the job store without
+                        # one, but if we're somehow missing one, keep the stats
+                        # and logging thread up.
+                        assert config.workflowID is not None
+
                         # TODO: Use better job names!
                         HistoryManager.record_job_attempt(
                             config.workflowID,
@@ -249,7 +255,7 @@ class StatsAndLogging:
                             job.class_name,
                             job.succeeded == "True",
                             float(job.start),
-                            float(job.time), 
+                            float(job.time),
                             cores=float(job.requested_cores),
                             cpu_seconds=float(job.clock),
                             memory_bytes=int(job.memory) * 1024,

@@ -662,7 +662,7 @@ def update_config(filepath: str, key: str, new_value: Union[str, bool, int, floa
     if isinstance(new_value, str):
         # Strings with some values (no, yes) will be interpreted as booleans on
         # load if not quoted. But ruamel is not determining that this is needed
-        # on serialization for nwly-added values. So if we set something to a
+        # on serialization for newly-added values. So if we set something to a
         # string we always quote it.
         data[key] = DoubleQuotedScalarString(new_value)
     else:
@@ -935,9 +935,11 @@ class Toil(ContextManager["Toil"]):
 
         :param options: command line options specified by the user
         :param workflow_name: A human-readable name (probably a filename, URL,
-            or TRS specifier) for the workflow being run.
+            or TRS specifier) for the workflow being run. Used for Toil history
+            storage.
         :param trs_spec: A TRS id:version string for the workflow being run, if
-            any.
+            any. Used for Toil history storage and publishing workflow
+            execution metrics to Dockstore.
         """
         super().__init__()
         self.options = options
@@ -950,7 +952,10 @@ class Toil(ContextManager["Toil"]):
             import __main__
             if hasattr(__main__, '__file__'):
                 workflow_name = __main__.__file__
-        self._workflow_name = workflow_name
+        if workflow_name is None:
+            # If there's no file, say this is an interactive usage of Toil.
+            workflow_name = "<interactive>"
+        self._workflow_name: str = workflow_name
         self._trs_spec = trs_spec
 
     def __enter__(self) -> "Toil":
@@ -1036,18 +1041,17 @@ class Toil(ContextManager["Toil"]):
 
             if self.config.publish_workflow_metrics == "all":
                 # Publish metrics for all workflows, including previous ones.
-                while True:
-                    # Keep making submissions until we've uploaded the whole
-                    # history or something goes wrong.
-                    submission = create_history_submission()
-                    if submission.empty():
-                        # Nothing else to submit
-                        break
+                submission = create_history_submission()
+                while not submission.empty():
                     if not submission.submit():
                         # Submitting this batch failed. An item might be broken
                         # and we don't want to get stuck making no progress on
                         # a batch of stuff that can't really be submitted.
                         break
+                    # Keep making submissions until we've uploaded the whole
+                    # history or something goes wrong.
+                    submission = create_history_submission()
+
             elif self.config.publish_workflow_metrics == "current" and self.config.workflowID is not None:
                 # Publish metrics for this run only. Might be empty if we had no TRS ID.
                 create_current_submission(self.config.workflowID, self.config.workflowAttemptNumber).submit()
@@ -1101,7 +1105,7 @@ class Toil(ContextManager["Toil"]):
         self._assertContextManagerUsed()
 
         assert self.config.workflowID is not None
-        HistoryManager.record_workflow_metadata(self.config.workflowID, self._workflow_name or "<interactive>", self._trs_spec)
+        HistoryManager.record_workflow_metadata(self.config.workflowID, self._workflow_name, self._trs_spec)
 
         from toil.job import Job
 

@@ -1109,7 +1109,7 @@ def add_base_toil_options(
         dest="publish_workflow_metrics",
         choices=["all", "current", "no"],
         default=None,
-        help="Whether to publish workflow metrics reports (including uniqe workflow "
+        help="Whether to publish workflow metrics reports (including unique workflow "
         "and task run IDs, job names, and version and Toil feature use information) to "
         "Dockstore when a workflow completes. Selecting \"current\" will publish metrics "
         "for the current workflow. Selecting \"all\" will also publish prior workflow "

@@ -19,7 +19,7 @@ import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from toil.lib.web import session
+from toil.lib.web import web_session
 
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
@@ -425,7 +425,7 @@ def requestCheckRegularDocker(
     ioURL = "https://{webhost}/v2/{pathName}/manifests/{tag}" "".format(
         webhost=registryName, pathName=imageName, tag=tag
     )
-    response = session.head(ioURL)
+    response = web_session.head(ioURL)
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
     else:
@@ -459,10 +459,10 @@ def requestCheckDockerIo(origAppliance: str, imageName: str, tag: str) -> bool:
     )
     requests_url = f"https://registry-1.docker.io/v2/{imageName}/manifests/{tag}"
 
-    token = session.get(token_url)
+    token = web_session.get(token_url)
     jsonToken = token.json()
     bearer = jsonToken["token"]
-    response = session.head(
+    response = web_session.head(
         requests_url, headers={"Authorization": f"Bearer {bearer}"}
     )
     if not response.ok:

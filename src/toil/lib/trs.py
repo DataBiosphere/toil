@@ -31,7 +31,7 @@ import requests
 
 from toil.lib.retry import retry
 from toil.lib.io import file_digest, robust_rmtree
-from toil.lib.web import session
+from toil.lib.web import web_session
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,7 @@ def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None)
     # See e.g. https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fdockstore-testing%2Fmd5sum-checker
     trs_workflow_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
     logger.debug("Get versions: %s", trs_workflow_url)
-    trs_workflow_response = session.get(trs_workflow_url)
+    trs_workflow_response = web_session.get(trs_workflow_url)
     if trs_workflow_response.status_code in (400, 404):
         # If the workflow ID isn't in Dockstore's accepted format (and also thus doesn't exist), we can get a 400
         raise FileNotFoundError(f"Workflow {trs_workflow_id} does not exist.")
@@ -227,7 +227,7 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
     logger.debug("Workflow files URL: %s", trs_files_url)
-    trs_files_response = session.get(trs_files_url)
+    trs_files_response = web_session.get(trs_files_url)
     if trs_files_response.status_code in (204, 400, 404):
         # We can get a 204 No Content response if the version doesn't exist.
         # That's successful, so we need to handle it specifically. See
@@ -301,7 +301,7 @@ def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str
             }
             # If we don't set stream=True, we can't actually read anything from the
             # raw stream, since Requests will have done it already.
-            with session.get(trs_zip_file_url, headers=headers, stream=True) as response:
+            with web_session.get(trs_zip_file_url, headers=headers, stream=True) as response:
                 response_content_length = response.headers.get("Content-Length")
                 logger.debug("Server reports content length: %s", response_content_length)
                 shutil.copyfileobj(response.raw, zip_file)

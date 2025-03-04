@@ -3177,7 +3177,7 @@ class Job:
                 )
                 stats.jobs.append(
                     # TODO: We represent everything as strings in the stats
-                    # even thought he JSON transport can take bools and floats.
+                    # even though the JSON transport can take bools and floats.
                     Expando(
                         start=str(startTime),
                         time=str(time.time() - startTime),
