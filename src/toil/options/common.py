@@ -467,7 +467,8 @@ def add_base_toil_options(
     )
 
     caching = file_store_options.add_mutually_exclusive_group()
-    caching_help = "Enable or disable caching for your workflow, specifying this overrides default from job store"
+    caching_help = ("Enable or disable worker level file caching for your workflow, specifying this overrides default from batch system. "
+                    "Does not affect CWL or WDL task caching.")
     caching.add_argument(
         "--caching",
         dest="caching",

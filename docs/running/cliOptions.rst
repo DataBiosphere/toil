@@ -299,11 +299,10 @@ Allows configuring Toil's data storage.
                         initial location. Setting this option to True instead
                         copies the files into the output directory. Applies to
                         filesystem-based job stores only. (Default=False)
-  --caching BOOL
-                        Set caching options. This must be set to "false"
-                        to use a batch system that does not support
-                        cleanup. Set to "true" if caching
-                        is desired.
+  --caching BOOL        
+                        Enable or disable worker level file caching. Set to "true" if
+                        caching is desired. By default, caching is enabled on supported
+                        batch systems. Does not affect CWL or WDL task caching.
   --symlinkJobStoreReads BOOL
                         Allow reads and container mounts from a JobStore's
                         shared filesystem directly via symlink. Can be turned

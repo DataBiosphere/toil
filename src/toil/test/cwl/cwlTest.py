@@ -703,6 +703,50 @@ class CWLWorkflowTest(ToilTest):
         except subprocess.CalledProcessError:
             pass
 
+    def test_caching(self) -> None:
+        log.info("Running CWL caching test.")
+        from toil.cwl import cwltoil
+
+        outDir = self._createTempDir()
+        cacheDir = self._createTempDir()
+
+        cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
+        log_path = os.path.join(outDir, "log")
+        cmd = [
+            "--outdir",
+            outDir,
+            "--jobStore",
+            os.path.join(outDir, "jobStore"),
+            "--clean=always",
+            "--no-container",
+            "--cachedir",
+            cacheDir,
+            os.path.join(cwlDir, "revsort.cwl"),
+            os.path.join(cwlDir, "revsort-job.json"),
+        ]
+        st = StringIO()
+        ret = cwltoil.main(cmd, stdout=st)
+        assert ret == 0
+        # cwltool hashes certain steps into directories, ensure it exists
+        # since cwltool caches per task and revsort has 2 cwl tasks, there should be 2 directories and 2 status files
+        assert (len(os.listdir(cacheDir)) == 4)
+
+        # Rerun the workflow to ensure there is a cache hit and that we don't rerun the tools
+        st = StringIO()
+        cmd = [
+                  "--writeLogsFromAllJobs=True",
+                  "--writeLogs",
+                  log_path
+              ] + cmd
+        ret = cwltoil.main(cmd, stdout=st)
+        assert ret == 0
+
+        # Ensure all of the worker logs are using their cached outputs
+        for file in os.listdir(log_path):
+            assert "Using cached output" in open(os.path.join(log_path, file), encoding="utf-8").read()
+
+
+
     @needs_aws_s3
     def test_streamable(self, extra_args: Optional[list[str]] = None) -> None:
         """
@@ -1201,6 +1245,14 @@ class CWLv12Test(ToilTest):
         self.test_run_conformance(
             caching=True,
             junit_file=os.path.join(self.rootDir, "caching-conformance-1.2.junit.xml"),
+        )
+
+    @slow
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
+    def test_run_conformance_with_task_caching(self) -> None:
+        self.test_run_conformance(
+            junit_file=os.path.join(self.rootDir, "task-caching-conformance-1.2.junit.xml"),
+            extra_args=["--cachedir", self._createTempDir("task_cache")]
         )
 
     @slow

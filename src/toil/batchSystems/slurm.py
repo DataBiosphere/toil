@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import annotations
 
+import errno
 import logging
 import math
 import os
@@ -185,6 +186,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def get_partition(self, time_limit: float | None) -> str | None:
             """
             Get the partition name to use for a job with the given time limit.
+
+            :param time_limit: Time limit in seconds.
             """
 
             if time_limit is None:
@@ -193,17 +196,36 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             winning_partition = None
             for partition in self.all_partitions:
-                if partition.time_limit >= time_limit and (
-                    winning_partition is None
-                    or partition.time_limit < winning_partition.time_limit
-                ):
-                    # If this partition can fit the job and is faster than the current winner, take it
+                if partition.time_limit < time_limit:
+                    # Can't use this
+                    continue
+                if winning_partition is None:
+                    # Anything beats None
                     winning_partition = partition
+                    continue
+                if partition.gres and not winning_partition.gres:
+                    # Never use a partition witn GRES if you can avoid it
+                    continue
+                elif not partition.gres and winning_partition.gres:
+                    # Never keep a partition with GRES if we find one without
+                    winning_partition = partition
+                    continue
+                if partition.priority > winning_partition.priority:
+                    # After that, don't raise priority
+                    continue
+                elif partition.priority < winning_partition.priority:
+                    # And always lower it
+                    winning_partition = partition
+                    continue
+                if partition.time_limit < winning_partition.time_limit:
+                    # Finally, lower time limit
+                    winning_partition = partition
+
             # TODO: Store partitions in a better indexed way
             if winning_partition is None and len(self.all_partitions) > 0:
                 # We have partitions and none of them can fit this
                 raise RuntimeError(
-                    "Could not find a Slurm partition that can fit a job that runs for {time_limit} seconds"
+                    f"Could not find a Slurm partition that can fit a job that runs for {time_limit} seconds"
                 )
 
             if winning_partition is None:
@@ -344,7 +366,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             """
             try:
                 status_dict = self._getJobDetailsFromSacct(job_id_list)
-            except CalledProcessErrorStderr:
+            except (CalledProcessErrorStderr, OSError) as e:
+                if isinstance(e, OSError):
+                    logger.warning("Could not run sacct: %s", e)
                 status_dict = self._getJobDetailsFromScontrol(job_id_list)
             return status_dict
 
@@ -437,11 +461,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 "-S",
                 "1970-01-01",
             ]  # override start time limit
-            stdout = call_command(args, quiet=True)
 
             # Collect the job statuses in a dict; key is the job-id, value is a tuple containing
             # job state and exit status. Initialize dict before processing output of `sacct`.
             job_statuses: dict[int, tuple[str | None, int | None]] = {}
+
+            try:
+                stdout = call_command(args, quiet=True)
+            except OSError as e:
+                if e.errno == errno.E2BIG:
+                    # Argument list is too big, recurse on half the argument list
+                    if len(job_id_list) == 1:
+                        # 1 is too big, we can't recurse further, bail out
+                        raise
+                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[:len(job_id_list)//2]))
+                    job_statuses.update(self._getJobDetailsFromSacct(job_id_list[len(job_id_list)//2:]))
+                    return job_statuses
+                else:
+                    raise
+
             for job_id in job_id_list:
                 job_statuses[job_id] = (None, None)
 
@@ -648,6 +686,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
             if cpu is not None:
                 sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
+
+            if any(option.startswith("--time=") or option == "--time" or option == "-t" for option in sbatch_line):
+                raise RuntimeError("Support for manual --time option has been replaced by Toil --slurmTime")
 
             time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
             if time_limit is not None:
