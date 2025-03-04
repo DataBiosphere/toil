@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """
-Contains functions for integrating Toil with external services such as
-Dockstore.
+Contains functions for integrating Toil with GA4GH Tool Registry Service
+servers, for fetching workflows.
 """
 
 import hashlib
@@ -24,35 +24,29 @@ import shutil
 import sys
 import tempfile
 import zipfile
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Literal, Optional, Union, TypedDict, cast
 
 from urllib.parse import urlparse, unquote, quote
 import requests
 
 from toil.lib.retry import retry
 from toil.lib.io import file_digest, robust_rmtree
-from toil.version import baseVersion
+from toil.lib.web import web_session
 
 logger = logging.getLogger(__name__)
 
-# We manage a Requests session at the module level in case we're supposed to be
-# doing cookies, and to send a sensible user agent.
-# We expect the Toil and Python version to not be personally identifiable even
-# in theory (someone might make a new Toil version first, buit there's no way
-# to know for sure that nobody else did the same thing).
-session = requests.Session()
-session.headers.update({"User-Agent": f"Toil {baseVersion} on Python {'.'.join([str(v) for v in sys.version_info])}"})
+TRS_ROOT = "https://dockstore.org" if "TOIL_TRS_ROOT" not in os.environ else os.environ["TOIL_TRS_ROOT"]
 
-def is_dockstore_workflow(workflow: str) -> bool:
+def is_trs_workflow(workflow: str) -> bool:
     """
-    Returns True if a workflow string smells Dockstore-y.
+    Returns True if a workflow string smells like TRS.
 
     Detects Dockstore page URLs and strings that could be Dockstore TRS IDs.
     """
 
-    return workflow.startswith("https://dockstore.org/workflows/") or workflow.startswith("#workflow/")
+    return workflow.startswith(f"{TRS_ROOT}/workflows/") or workflow.startswith(f"{TRS_ROOT}/my-workflows/") or workflow.startswith("#workflow/")
 
-def find_trs_spec(workflow: str) -> str:
+def extract_trs_spec(workflow: str) -> str:
     """
     Parse a Dockstore workflow URL or TSR ID to a string that is definitely a TRS ID.
     """
@@ -63,13 +57,16 @@ def find_trs_spec(workflow: str) -> str:
         logger.debug("Workflow %s is a TRS specifier already", workflow)
         trs_spec = workflow
     else:
-        # We need to get the right TRS ID from the Docstore URL
+        # We need to get the right TRS ID from the Dockstore URL
         parsed = urlparse(workflow)
-        # TODO: We assume the Docksotre page URL structure and the TRS IDs are basically the same.
+        # TODO: We assume the Dockstore page URL structure and the TRS IDs are basically the same.
         page_path = unquote(parsed.path)
-        if not page_path.startswith("/workflows/"):
+        if page_path.startswith("/workflows/"):
+            trs_spec = "#workflow/" + page_path[len("/workflows/"):]
+        elif page_path.startswith("/my-workflows/"):
+            trs_spec = "#workflow/" + page_path[len("/my-workflows/"):]
+        else:
             raise RuntimeError("Cannot parse Dockstore URL " + workflow)
-        trs_spec = "#workflow/" + page_path[len("/workflows/"):]
         logger.debug("Translated %s to TRS: %s", workflow, trs_spec)
 
     return trs_spec
@@ -88,27 +85,36 @@ def parse_trs_spec(trs_spec: str) -> tuple[str, Optional[str]]:
         trs_version = None
     return trs_workflow_id, trs_version
 
-@retry(errors=[requests.exceptions.ConnectionError])
-def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
+def compose_trs_spec(trs_workflow_id: str, trs_version: str) -> str:
     """
-    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow.
+    Compose a TRS ID from a workflow ID and version ID.
+    """
+    return f"{trs_workflow_id}:{trs_version}"
+
+@retry(errors=[requests.exceptions.ConnectionError])
+def find_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, str, str]:
+    """
+    Given a Dockstore URL or TRS identifier, get the root WDL or CWL URL for the workflow, along with the TRS workflow ID and version.
 
     Accepts inputs like:
 
         - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
         - #workflow/github.com/dockstore-testing/md5sum-checker
 
-    Assumes the input is actually one of the supported formats. See is_dockstore_workflow().
+    Assumes the input is actually one of the supported formats. See is_trs_workflow().
 
     TODO: Needs to handle multi-workflow files if Dockstore can.
 
+    :raises FileNotFoundError: if the workflow or version doesn't exist.
+    :raises ValueError: if the version is not specified but cannot be
+        automatically determined. 
     """
 
     if supported_languages is not None and len(supported_languages) == 0:
         raise ValueError("Set of supported languages must be nonempty if provided.")
 
     # Get the TRS id[:version] string from what might be a Dockstore URL
-    trs_spec = find_trs_spec(workflow)
+    trs_spec = extract_trs_spec(workflow)
     # Parse out workflow and possible version
     trs_workflow_id, trs_version = parse_trs_spec(trs_spec)
 
@@ -116,8 +122,14 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
     # Fetch the main TRS document.
     # See e.g. https://dockstore.org/api/ga4gh/trs/v2/tools/%23workflow%2Fgithub.com%2Fdockstore-testing%2Fmd5sum-checker
-    trs_workflow_url = f"https://dockstore.org/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
-    trs_workflow_document = session.get(trs_workflow_url).json()
+    trs_workflow_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}"
+    logger.debug("Get versions: %s", trs_workflow_url)
+    trs_workflow_response = web_session.get(trs_workflow_url)
+    if trs_workflow_response.status_code in (400, 404):
+        # If the workflow ID isn't in Dockstore's accepted format (and also thus doesn't exist), we can get a 400
+        raise FileNotFoundError(f"Workflow {trs_workflow_id} does not exist.")
+    trs_workflow_response.raise_for_status()
+    trs_workflow_document = trs_workflow_response.json()
 
     # Make a map from version to version info. We will need the
     # "descriptor_type" array to find eligible languages, and the "url" field
@@ -146,12 +158,10 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
                 continue
         eligible_workflow_versions.add(version_name)
 
-    for default_version in ['main', 'master']:
-        if trs_version is None and default_version in eligible_workflow_versions:
-            # Fill in a version if the user didn't provide one.
-            trs_version = default_version
-            logger.debug("Defaulting to workflow version %s", default_version)
-            break
+    # TODO: Dockstore has a concept of a "default version", but doesn't expose
+    # it over TRS. To avoid defaulting to something that *isn't* the Dockstore
+    # default version, we refuse to choose a version when there are multiple
+    # possibilities.
 
     if trs_version is None and len(eligible_workflow_versions) == 1:
         # If there's just one version use that.
@@ -161,26 +171,31 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
 
     # If we don't like what we found we compose a useful error message.
     problems: list[str] = []
+    problem_type: type[Exception] = RuntimeError
     if trs_version is None:
         problems.append(f"Workflow {workflow} does not specify a version")
+        problem_type = ValueError
     elif trs_version not in workflow_versions:
         problems.append(f"Workflow version {trs_version} from {workflow} does not exist")
+        problem_type = FileNotFoundError
     elif trs_version not in eligible_workflow_versions:
         message = f"Workflow version {trs_version} from {workflow} is not available"
         if supported_languages is not None:
             message += f" in any of: {', '.join(supported_languages)}"
         problems.append(message)
+        problem_type = FileNotFoundError
     if len(problems) > 0:
         if len(eligible_workflow_versions) == 0:
             message = "No versions of the workflow are available"
             if supported_languages is not None:
                 message += f" in any of: {', '.join(supported_languages)}"
             problems.append(message)
+            problem_type = FileNotFoundError
         elif trs_version is None:
             problems.append(f"Add ':' and the name of a workflow version ({', '.join(eligible_workflow_versions)}) after '{trs_workflow_id}'")
         else:
             problems.append(f"Replace '{trs_version}' with one of ({', '.join(eligible_workflow_versions)})")
-        raise RuntimeError("; ".join(problems))
+        raise problem_type("; ".join(problems))
 
     # Tell MyPy we now have a version, or we would have raised
     assert trs_version is not None
@@ -192,12 +207,35 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             language = candidate_language
 
     logger.debug("Going to use %s version %s in %s", trs_workflow_id, trs_version, language)
-    trs_version_url = workflow_versions[trs_version]["url"]
+
+    return trs_workflow_id, trs_version, language
+    
+@retry(errors=[requests.exceptions.ConnectionError])
+def fetch_workflow(trs_workflow_id: str, trs_version: str, language: str) -> str:
+    """
+    Returns a URL or local path to a workflow's primary descriptor file.
+
+    The file will be in context with its required files so it can actually run.
+
+    :raises FileNotFoundError: if the workflow or version doesn't exist.
+    """
+
+    # TODO: We should probably use HATEOAS and pull this from the worflow
+    # document we probably already fetched but aren't passing.
+    trs_version_url = f"{TRS_ROOT}/api/ga4gh/trs/v2/tools/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}"
 
     # Fetch the list of all the files
     trs_files_url = f"{trs_version_url}/{language}/files"
     logger.debug("Workflow files URL: %s", trs_files_url)
-    trs_files_document = session.get(trs_files_url).json()
+    trs_files_response = web_session.get(trs_files_url)
+    if trs_files_response.status_code in (204, 400, 404):
+        # We can get a 204 No Content response if the version doesn't exist.
+        # That's successful, so we need to handle it specifically. See
+        # <https://github.com/dockstore/dockstore/issues/6048>
+        # We can also get a 400 if the workflow ID is not in Dockstore's expected format (3 slash-separated segments).
+        raise FileNotFoundError(f"Workflow {trs_workflow_id} version {trs_version} in language {language} does not exist.")
+    trs_files_response.raise_for_status()
+    trs_files_document = trs_files_response.json()
 
     # Find the information we need to ID the primary descriptor file
     primary_descriptor_path: Optional[str] = None
@@ -210,7 +248,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             primary_descriptor_hash = file_info["checksum"]["checksum"]
             break
     if primary_descriptor_path is None or primary_descriptor_hash is None or primary_descriptor_hash_algorithm is None:
-        raise RuntimeError("Could not find a primary descriptor file for the workflow")
+        raise RuntimeError(f"Could not find a primary descriptor file for workflow {trs_workflow_id} version {trs_version} in language {language}")
     primary_descriptor_basename = os.path.basename(primary_descriptor_path)
 
     # Work out how to compute the hash we are looking for. See
@@ -263,7 +301,7 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
             }
             # If we don't set stream=True, we can't actually read anything from the
             # raw stream, since Requests will have done it already.
-            with session.get(trs_zip_file_url, headers=headers, stream=True) as response:
+            with web_session.get(trs_zip_file_url, headers=headers, stream=True) as response:
                 response_content_length = response.headers.get("Content-Length")
                 logger.debug("Server reports content length: %s", response_content_length)
                 shutil.copyfileobj(response.raw, zip_file)
@@ -308,27 +346,38 @@ def get_workflow_root_from_dockstore(workflow: str, supported_languages: Optiona
                     logger.debug("Rejected %s because its %s hash %s is not %s", file_path, python_hash_name, file_hash, primary_descriptor_hash)
     if found_path is None:
         # We couldn't find the promised primary descriptor
-        raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash}")
+        raise RuntimeError(f"Could not find a {primary_descriptor_basename} with {primary_descriptor_hash_algorithm} hash {primary_descriptor_hash} for workflow {trs_workflow_id} version {trs_version} in language {language}")
 
     return found_path
 
-def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> str:
+def resolve_workflow(workflow: str, supported_languages: Optional[set[str]] = None) -> tuple[str, Optional[str]]:
     """
     Find the real workflow URL or filename from a command line argument.
 
     Transform a workflow URL or path that might actually be a Dockstore page
-    URL or TRS specifier to an actual URL or path to a workflow document.
+    URL or TRS specifier to an actual URL or path to a workflow document, and
+    optional TRS specifier.
+
+    Accepts inputs like
+
+        - https://dockstore.org/workflows/github.com/dockstore-testing/md5sum-checker:master?tab=info
+        - #workflow/github.com/dockstore-testing/md5sum-checker
+        - ./local.cwl
+        - https://example.com/~myuser/workflow/main.cwl
+
+    :raises FileNotFoundError: if the workflow or version should be in Dockstore but doesn't seem to exist.
     """
 
-    if is_dockstore_workflow(workflow):
-        # Ask Dockstore where to find Dockstore-y things
-        resolved = get_workflow_root_from_dockstore(workflow, supported_languages=supported_languages)
-        logger.info("Resolved Dockstore workflow %s to %s", workflow, resolved)
-        return resolved
+    if is_trs_workflow(workflow):
+        # Ask TRS host where to find TRS-looking things
+        trs_workflow_id, trs_version, language = find_workflow(workflow, supported_languages)
+        resolved = fetch_workflow(trs_workflow_id, trs_version, language)
+        logger.info("Resolved TRS workflow %s to %s", workflow, resolved)
+        return resolved, compose_trs_spec(trs_workflow_id, trs_version)
     else:
         # Pass other things through.
-        return workflow
-
+        # TODO: Find out if they have TRS names.
+        return workflow, None
 
 
 

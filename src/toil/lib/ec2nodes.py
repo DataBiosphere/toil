@@ -21,7 +21,8 @@ import textwrap
 from typing import Any, Union
 
 import enlighten  # type: ignore
-import requests
+
+from toil.lib.web import web_session
 
 logger = logging.getLogger(__name__)
 manager = enlighten.get_manager()
@@ -193,7 +194,7 @@ def download_region_json(filename: str, region: str = "us-east-1") -> None:
              aws instance name (example: 't2.micro'), and the value is an
              InstanceType object representing that aws instance name.
     """
-    response = requests.get(
+    response = web_session.get(
         f"https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/{region}/index.json",
         stream=True,
     )

@@ -24,21 +24,21 @@ objects wrapping Exceptions to include additional conditions.
 
 For example, retrying on a one Exception (HTTPError)::
 
-    from requests import get
+    from toil.lib.web import web_session
     from requests.exceptions import HTTPError
 
     @retry(errors=[HTTPError])
     def update_my_wallpaper():
-        return get('https://www.deviantart.com/')
+        return web_session.get('https://www.deviantart.com/')
 
 Or::
 
-    from requests import get
+    from toil.lib.web import web_session
     from requests.exceptions import HTTPError
 
     @retry(errors=[HTTPError, ValueError])
     def update_my_wallpaper():
-        return get('https://www.deviantart.com/')
+        return web_session.get('https://www.deviantart.com/')
 
 The examples above will retry for the default interval on any errors specified
 the "errors=" arg list.
@@ -46,7 +46,7 @@ the "errors=" arg list.
 To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition
 object instead, for example::
 
-    from requests import get
+    from toil.lib.web import web_session
     from requests.exceptions import HTTPError
 
     @retry(errors=[
@@ -55,11 +55,11 @@ object instead, for example::
                    error_codes=[500, 502, 503, 504]
                )])
     def update_my_wallpaper():
-        return requests.get('https://www.deviantart.com/')
+        return web_session.get('https://www.deviantart.com/')
 
 To retry on specifically errors containing the phrase "NotFound"::
 
-    from requests import get
+    from toil.lib.web import web_session
     from requests.exceptions import HTTPError
 
     @retry(errors=[
@@ -68,11 +68,11 @@ To retry on specifically errors containing the phrase "NotFound"::
             error_message_must_include="NotFound"
         )])
     def update_my_wallpaper():
-        return requests.get('https://www.deviantart.com/')
+        return web_session.get('https://www.deviantart.com/')
 
 To retry on all HTTPError errors EXCEPT an HTTPError containing the phrase "NotFound"::
 
-    from requests import get
+    from toil.lib.web import web_session
     from requests.exceptions import HTTPError
 
     @retry(errors=[
@@ -83,7 +83,7 @@ To retry on all HTTPError errors EXCEPT an HTTPError containing the phrase "NotF
                    retry_on_this_condition=False
                )])
     def update_my_wallpaper():
-        return requests.get('https://www.deviantart.com/')
+        return web_session.get('https://www.deviantart.com/')
 
 To retry on boto3's specific status errors, an example of the implementation is::
 

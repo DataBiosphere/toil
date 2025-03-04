@@ -11,8 +11,29 @@ from contextlib import contextmanager
 from io import BytesIO
 from typing import IO, Any, Callable, Optional, Protocol, Union
 
+from toil.lib.memoize import memoize
+
 logger = logging.getLogger(__name__)
 
+@memoize
+def get_toil_home() -> str:
+    """
+    Get the Toil home directory for storing configuration and global state.
+
+    Raises an error if it does not exist and cannot be created. Safe to run
+    simultaneously in multiple processes.
+    """
+   
+    # TODO: should this use an XDG config directory or ~/.config to not clutter the
+    # base home directory?
+    toil_home_dir = os.path.join(os.path.expanduser("~"), ".toil")
+
+    dir_path = try_path(toil_home_dir)
+    if dir_path is None:
+        raise RuntimeError(
+            f"Cannot create or access Toil configuration directory {toil_home_dir}"
+        )
+    return dir_path
 
 TOIL_URI_SCHEME = "toilfile:"
 
@@ -177,7 +198,7 @@ def atomic_install(tmp_path, final_path) -> None:
 def AtomicFileCreate(final_path: str, keep: bool = False) -> Iterator[str]:
     """Context manager to create a temporary file.  Entering returns path to
     the temporary file in the same directory as finalPath.  If the code in
-    context succeeds, the file renamed to its actually name.  If an error
+    context succeeds, the file renamed to its actual name.  If an error
     occurs, the file is not installed and is removed unless keep is specified.
     """
     tmp_path = atomic_tmp_file(final_path)

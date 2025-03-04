@@ -24,6 +24,7 @@ from typing import IO, TYPE_CHECKING, Any, Callable, Optional, Union
 
 from toil.lib.conversions import strtobool
 from toil.lib.expando import Expando
+from toil.lib.history import HistoryManager
 from toil.lib.resources import ResourceMonitor
 
 if TYPE_CHECKING:
@@ -168,6 +169,7 @@ class StatsAndLogging:
         The following function is used for collating stats/reporting log messages from the workers.
         Works inside of a thread, collates as long as the stop flag is not True.
         """
+
         #  Overall timing
         startTime = time.time()
         startClock = ResourceMonitor.get_total_cpu_time()
@@ -231,8 +233,40 @@ class StatsAndLogging:
                 )
                 cls.writeLogFiles(jobNames, messages, config=config)
 
+            try:
+                jobs = stats.jobs
+            except AttributeError:
+                pass
+            else:
+                for job in jobs:
+                    try:
+                        # Here we're talking to job._executor which fills in these stats.
+
+                        # Convince MyPy we won't be sent any job stats without
+                        # a workflow ID. You can't set up the job store without
+                        # one, but if we're somehow missing one, keep the stats
+                        # and logging thread up.
+                        assert config.workflowID is not None
+
+                        # TODO: Use better job names!
+                        HistoryManager.record_job_attempt(
+                            config.workflowID,
+                            config.workflowAttemptNumber,
+                            job.class_name,
+                            job.succeeded == "True",
+                            float(job.start),
+                            float(job.time),
+                            cores=float(job.requested_cores),
+                            cpu_seconds=float(job.clock),
+                            memory_bytes=int(job.memory) * 1024,
+                            disk_bytes=int(job.disk)
+                        )
+                    except:
+                        logger.exception("Could not record job attempt in history!")
+                        # Keep going. Don't fail the workflow for history-related issues.
+
         while True:
-            # This is a indirect way of getting a message to the thread to exit
+            # This is an indirect way of getting a message to the thread to exit
             if stop.is_set():
                 jobStore.read_logs(callback)
                 break

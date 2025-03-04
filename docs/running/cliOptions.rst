@@ -37,7 +37,7 @@ You can manually generate an example configuration file to a path you select. To
 
     $ toil config [filename].yaml
 
-Then uncomment options as necessary and change/provide new values. 
+Then uncomment options as necessary and change/provide new values.
 
 After editing the config file, you can run Toil with its settings by passing it on the command line::
 
@@ -220,14 +220,14 @@ levels in toil are based on priority from the logging module:
                         and lsf.
   --statePollingTimeout STATEPOLLINGTIMEOUT
                         Time, in seconds, to retry against a broken scheduler.
-                        Only works for grid engine batch systems such as 
+                        Only works for grid engine batch systems such as
                         gridengine, htcondor, torque, slurm, and lsf.
   --batchLogsDir BATCHLOGSDIR
                         Directory to tell the backing batch system to log into.
                         Should be available on both the leader and the workers,
                         if the backing batch system writes logs to the worker
                         machines' filesystems, as many HPC schedulers do. If
-                        unset, the Toil work directory will be used. Only 
+                        unset, the Toil work directory will be used. Only
                         works for grid engine batch systems such as gridengine,
                         htcondor, torque, slurm, and lsf.
   --mesosEndpoint MESOSENDPOINT
@@ -284,7 +284,7 @@ levels in toil are based on priority from the logging module:
 **Data Storage Options**
 Allows configuring Toil's data storage.
 
-  --symlinkImports BOOL 
+  --symlinkImports BOOL
                         When using a filesystem based job store, CWL input files
                         are by default symlinked in. Setting this option to True
                         instead copies the files into the job store, which may
@@ -292,7 +292,7 @@ Allows configuring Toil's data storage.
                         to False and as long as caching is enabled, Toil will
                         protect the file automatically by changing the permissions
                         to read-only. (Default=True)
-  --moveOutputs BOOL    
+  --moveOutputs BOOL
                         When using a filesystem based job store, output files
                         are by default moved to the output directory, and a
                         symlink to the moved exported file is created at the
@@ -327,7 +327,7 @@ autoscaled cluster, as well as parameters to control the level of provisioning.
                         bid set off by a colon, making the node type preemptible. Instance
                         types may appear in multiple node types, and the same node type
                         may appear as both preemptible and non-preemptible.
-                        
+
                         Valid argument specifying two node types:
                             c5.4xlarge/c5a.4xlarge:0.42,t2.large
                         Node types:
@@ -486,7 +486,7 @@ systems have issues!).
                         by the batch system. Expert parameter.
   --jobStoreTimeout FLOAT
                         Maximum time (in seconds) to wait for a job's update to
-                        the job store before declaring it failed. 
+                        the job store before declaring it failed.
 
 **Log Management Options**
 
@@ -550,6 +550,17 @@ systems have issues!).
                         (default=3600)
   --disableProgress     Disables the progress bar shown when standard error is
                         a terminal.
+  --publishWorkflowMetrics PUBLISHWORKFLOWMETRICS
+                        Whether to publish workflow metrics reports (including
+                        unique workflow and task run IDs, job names, and
+                        version and Toil feature use information) to Dockstore
+                        when a workflow completes. Selecting "current" will
+                        publish metrics for the current workflow. Selecting
+                        "all" will also publish prior workflow runs from the
+                        Toil history database, even if they themselves were run
+                        with "no". Note that once published, workflow metrics
+                        CANNOT be deleted or un-published; they will stay
+                        published forever!
 
 **Debug Options**
 Debug options for finding problems or helping with testing.
