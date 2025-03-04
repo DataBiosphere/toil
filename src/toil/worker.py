@@ -242,7 +242,7 @@ def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
         if child.returncode != 0:
             # Something went wrong, which is suspicious. Either it failed or it
             # timed out and could not be killed promptly.
-            logger.warning("Could not list open files on ourselves.")
+            logger.warning("Could not list open files on ourselves. Return code: %s", child.returncode)
 
         # Wait the interval.
         time.sleep(interval)
