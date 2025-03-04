@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import atexit
 import base64
 import copy
 import json
@@ -22,7 +23,9 @@ import shutil
 import signal
 import socket
 import stat
+import subprocess
 import sys
+import threading
 import time
 import traceback
 from collections.abc import Iterator
@@ -58,7 +61,6 @@ class StatsDict(MagicExpando):
     """Subclass of MagicExpando for type-checking purposes."""
 
     jobs: list[MagicExpando]
-
 
 def nextChainable(
     predecessor: JobDescription, job_store: AbstractJobStore, config: Config
@@ -165,6 +167,85 @@ def nextChainable(
     # Made it through! This job is chainable.
     return successor
 
+def unstick_worker(interval: float = 120, timeout: float = 120) -> None:
+    """
+    Thread function that tries to prevent the process from getting stuck.
+
+    Meant to be used as a daemon thread: does not have a shutdown signal but
+    cleans up on exit.
+
+    :param interval: Try to unstick the process at intervals of this many
+        seconds.
+    :param timeout: Stop child processes that take longer than this many
+        seconds to finish.
+    """
+
+    # We've observed Toil getting stuck reading the job from the job store,
+    # either due to a problem with the FileJobStore or with local temp storage,
+    # but then get unstuck as soon as someone logged in and ran lsof on the
+    # Toil process. So we make sure to do that to ourselves every once in a
+    # while as long as the worker is running.
+
+    # Figure out our process ID
+    pid = os.getpid()
+
+    child: Optional[subprocess.Popen[bytes]] = None
+
+    def clean_up_child() -> None:
+        """
+        Cleanup function to run at daemon thread shutdown when the main thread
+        terminates without shutting us down.
+
+        Also used to kill the child process if it takes too long.
+        """
+        if child is not None:
+            # Kill the child immediately if it is running
+            child.kill()
+            try:
+                # Wait one last time to try and reap the child process
+                child.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+
+    atexit.register(clean_up_child)
+
+    # TODO: If we handle daemon thread shutdown just fine, why do we bother
+    # with all the event stuff? Why not cut it?
+
+    # Wait the interval before trying the first unstick
+    time.sleep(interval)
+
+    while True:
+        # Run an lsof on our PID, which has been observed to unstick reads.
+        #
+        # We rely on the thread being able to go away and atexit() hooks
+        # happening in the middle of a wait with a timeout.
+        #
+        # We also want to handle the case where the child process gets so
+        # gummed up that it can't exit when killed.
+
+        # Preserve errors form child process but not output
+        child = subprocess.Popen(
+            ["lsof", "-p", str(pid)],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+        )
+        try:
+            child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning("Running lsof took too long!")
+            clean_up_child()
+            if child.returncode is None:
+                # Kill didn't take
+                logger.warning("Could not promptly kill child process: %s", child.pid)
+
+        if child.returncode != 0:
+            # Something went wrong, which is suspicious. Either it failed or it
+            # timed out and could not be killed promptly.
+            logger.warning("Could not list open files on ourselves. Return code: %s", child.returncode)
+
+        # Wait the interval.
+        time.sleep(interval)
 
 def workerScript(
     job_store: AbstractJobStore,
@@ -239,6 +320,13 @@ def workerScript(
 
         # We don't need to reap the child. Either it kills us, or we finish
         # before it does. Either way, init will have to clean it up for us.
+
+    ##########################################
+    # Create the worker unsticker
+    ##########################################
+    unstick_thread = threading.Thread(target=unstick_worker, args=())
+    unstick_thread.daemon = True
+    unstick_thread.start()
 
     ##########################################
     # Load the environment for the job
