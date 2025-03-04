@@ -284,8 +284,9 @@ cwl_v1.2:
 
 cwl_badge:
   rules:
+    - if: $CI_COMMIT_TAG
+      when: never
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH
       changes:
@@ -302,7 +303,7 @@ cwl_badge:
     - make download_cwl_spec
     - rm -rf badges1.2
     # We have to run this on one thread to avoid a race condition: https://github.com/common-workflow-language/cwltest/issues/239
-    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
+    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
   allow_failure: true
   artifacts:
     paths:
@@ -314,7 +315,7 @@ cwl_badge:
     expire_in: 365 day
 
 cwl_badge_release:
-  # For releases, keep the conformance badges indefinitely
+  # For releases, keep the conformance badges indefinitely and not the JUnit files.
   # Everything else is same as cwl_badge
   rules:
     - if: $CI_COMMIT_TAG
@@ -325,14 +326,11 @@ cwl_badge_release:
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make download_cwl_spec
     - rm -rf badges1.2
-    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
+    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
   allow_failure: true
   artifacts:
     paths:
     - "badges1.2"
-    - "*.junit.xml"
-    reports:
-      junit: "*.junit.xml"
     when: always
     expire_in: never
 
