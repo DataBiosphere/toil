@@ -37,6 +37,7 @@ If using Toil for your research, please cite
 
    cwl/introduction
    cwl/running
+   cwl/conformance
 
 .. toctree::
    :caption: Workflow Description Language (WDL)

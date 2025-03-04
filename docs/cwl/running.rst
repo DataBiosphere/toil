@@ -116,6 +116,8 @@ To run a CWL workflow in AWS with toil see :ref:`awscwl`.
 .. _secondaryFiles: http://www.commonwl.org/v1.0/CommandLineTool.html#CommandInputParameter
 .. _InitialWorkDirRequirement: http://www.commonwl.org/v1.0/CommandLineTool.html#InitialWorkDirRequirement
 
+.. _inplaceupdaterequirement:
+
 Running CWL workflows with InplaceUpdateRequirement
 ---------------------------------------------------
 
