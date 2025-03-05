@@ -3602,6 +3602,7 @@ class CWLInstallImportsJob(Job):
         """
         Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
         """
+
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
@@ -4264,8 +4265,18 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
+    if options.cachedir is not None:
+        runtime_context.cachedir = os.path.abspath(options.cachedir)
+        # Automatically bypass the file store to be compatible with cwltool caching
+        # Otherwise, the CWL caching code makes links to temporary local copies
+        # of filestore files and caches those.
+        logger.debug("CWL task caching is turned on. Bypassing file store.")
+        options.bypass_file_store = True
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
+    if cwltool.main.check_working_directories(runtime_context) is not None:
+        logger.error("Failed to create directory. If using tmpdir_prefix, tmpdir_outdir_prefix, or cachedir, consider changing directory locations.")
+        return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)

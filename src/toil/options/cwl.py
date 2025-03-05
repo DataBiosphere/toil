@@ -419,3 +419,13 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         type=str,
         help=suppress_help or "Specify a cloud bucket endpoint for output files.",
     )
+    parser.add_argument(
+        "--cachedir",
+        type=str,
+        help=suppress_help
+        or "Directory to cache intermediate workflow outputs to avoid "
+        "recomputing steps. Can be very helpful in the development and "
+        "troubleshooting of CWL documents. This automatically bypasses the file store."
+        " Not to be confused with --caching.",
+        dest="cachedir"
+    )
