@@ -781,7 +781,7 @@ def addOptions(
         :param typ: string of either "cwl" or "wdl" to specify which runner to check against
         :return: None, raise parser error if option is found
         """
-        check_parser = ArgParser()
+        check_parser = ArgParser(allow_abbrev=False)
         if typ == "wdl":
             add_cwl_options(check_parser)
         if typ == "cwl":

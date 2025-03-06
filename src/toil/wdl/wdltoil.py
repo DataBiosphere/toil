@@ -68,7 +68,8 @@ import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser, Namespace
 from WDL._util import byte_size_units, chmod_R_plus
-from WDL.CLI import print_error
+from WDL.CLI import print_error, outline
+import WDL.Lint
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.error import DownloadFailed
@@ -5499,6 +5500,29 @@ def main() -> None:
                             "Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file."
                         )
                         options.all_call_outputs = True
+
+                WDL.Lint.lint(document)
+
+                strict = options.strict
+                shown = [0]
+
+                fp = io.StringIO()
+                outline(
+                    document,
+                    0,
+                    file=fp,
+                    show_called=(document.workflow is not None),
+                    shown=shown,
+                )
+
+                if getattr(WDL.Lint, "_shellcheck_available", None) is False:
+                    logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
+
+                if shown[0]:
+                    logger.warning('Workflow lint warnings:\n%s', fp.getvalue().rstrip())
+                    if strict:
+                        logger.critical(f'Workflow did not pass linting in strict mode')
+                        sys.exit(2)
 
                 # If our input really comes from a URI or path, remember it.
                 input_source_uri = None
