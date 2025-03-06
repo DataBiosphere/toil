@@ -29,6 +29,7 @@ task make_file {
     input {
         Int number = 5
         File needed_only_for_task
+        File file_with_default = write_lines(["This file is created in a task inputs section"])
     }
     
     command <<<
@@ -36,6 +37,10 @@ task make_file {
         echo "This file is collected as a task output twice" >testfile.txt
         echo "This task file is not used" >badfile.txt
     >>>
+
+    runtime {
+        runtime_file: write_lines(["This file is created in a runtime section"])
+    }
 
     output {
         File out_file_1 = stdout()

@@ -309,10 +309,9 @@ class WDLTests(BaseWDLTest):
         
         # These are all created inside the workflow and not output
         assert "This file is imported by local path in the workflow" not in all_file_values
-        # TODO: Add machinery to find files created for task/workflow inputs
-        # but not in enclosing environment or task/workflow output and clena
-        # them up.
-        #assert "This file is consumed by a task call" not in all_file_values
+        assert "This file is consumed by a task call" not in all_file_values
+        assert "This file is created in a task inputs section" not in all_file_values
+        assert "This file is created in a runtime section" not in all_file_values
         assert "This task file is not used" not in all_file_values
         assert "This file should be discarded" not in all_file_values
         assert "This file gets stored in a variable" not in all_file_values
