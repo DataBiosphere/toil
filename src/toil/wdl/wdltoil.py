@@ -5513,7 +5513,7 @@ def main() -> None:
                     file=fp,
                     show_called=(document.workflow is not None),
                     shown=shown,
-                )
+                )  # type: ignore[no-untyped-call]
 
                 if getattr(WDL.Lint, "_shellcheck_available", None) is False:
                     logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
