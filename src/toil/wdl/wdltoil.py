@@ -4126,7 +4126,7 @@ class WDLTaskJob(WDLBaseJob):
                 miniwdl_config=miniwdl_config,
             )
 
-        # Clean up anything from the task call inputs: block or the runtime
+        # Clean up anything from the task call input: block or the runtime
         # section that isn't getting output or available in the enclosing
         # section. Runtime sections aren't meant to have files, but nothing
         # actually stops them from being there.
