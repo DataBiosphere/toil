@@ -1245,7 +1245,10 @@ class NonDownloadingSize(WDL.StdLib._Size):
         return WDL.Value.Float(total_size)
 
 
-def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
+def extract_file_values(environment: WDLBindings) -> list[str]:
+    """
+    Get a list of all File object values in the given bindings.
+    """
     filenames = list()
 
     def add_filename(file: WDL.Value.File) -> WDL.Value.File:
@@ -1255,6 +1258,22 @@ def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
     map_over_files_in_bindings(environment, add_filename)
     return filenames
 
+def extract_file_virtualized_values(environment: WDLBindings) -> list[str]:
+    """
+    Get a list of all File object virtualized values in the given bindings.
+
+    If a file hasn't been virtualized, it won't contribute to the list.
+    """
+    values = list()
+
+    def add_value(file: WDL.Value.File) -> WDL.Value.File:
+        value = get_file_virtualized_value(file)
+        if value is not None:
+            values.append(value)
+        return file
+
+    map_over_files_in_bindings(environment, add_value)
+    return values
 
 def convert_files(
     environment: WDLBindings,
@@ -1641,12 +1660,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def _virtualize_file(
         self, file: WDL.Value.File, enforce_existence: bool = True
     ) -> WDL.Value.File:
-        logger.debug("Virtualizing %s", file)
-        # If enforce_existence is true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
         if get_file_virtualized_value(file) is not None:
-            logger.debug("File is marked nonexistent so passing it through")
+            # Already virtualized
             return file
 
+        logger.debug("Virtualizing %s", file)
+
+        # If enforce_existence is true, then if a file is detected as
+        # nonexistent, raise an error. Else, let it pass through
         if enforce_existence is False:
             # We only want to error on a nonexistent file in the output section
             # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
@@ -2535,7 +2556,7 @@ def devirtualize_files(
     that are actually available to command line commands.
     The same virtual file always maps to the same devirtualized filename even with duplicates
     """
-    logger.info("Devirtualizing files")
+    logger.debug("Devirtualizing files")
     return map_over_files_in_bindings(environment, stdlib._devirtualize_file)
 
 
@@ -2546,7 +2567,7 @@ def virtualize_files(
     Make sure all the File values embedded in the given bindings point to files
     that are usable from other machines.
     """
-    logger.info("Virtualizing files")
+    logger.debug("Virtualizing files")
     virtualize_func = partial(
         stdlib._virtualize_file, enforce_existence=enforce_existence
     )
@@ -5065,6 +5086,10 @@ class WDLWorkflowJob(WDLSectionJob):
 
         # Combine the bindings we get from previous jobs.
         bindings = combine_bindings(unwrap_all(self._prev_node_results))
+        # Save these off as the bindings coming into the workflow.
+        # Anything not already virtualized at this point will be virtualized by
+        # us and eligible for deletion if not output.
+        bindings_into_workflow = bindings
 
         # At this point we have what MiniWDL would call the "inputs" to the
         # call (i.e. what you would put in a JSON file, without any defaulted
@@ -5100,6 +5125,7 @@ class WDLWorkflowJob(WDLSectionJob):
         outputs_job = WDLOutputsJob(
             self._workflow,
             sink.rv(),
+            bindings_into_workflow,
             wdl_options=self._wdl_options,
             cache_key=cache_key,
             local=True,
@@ -5121,6 +5147,7 @@ class WDLOutputsJob(WDLBaseJob):
         self,
         workflow: WDL.Tree.Workflow,
         bindings: Promised[WDLBindings],
+        bindings_into_workflow: WDLBindings,
         wdl_options: WDLContext,
         cache_key: str | None = None,
         **kwargs: Any,
@@ -5128,6 +5155,11 @@ class WDLOutputsJob(WDLBaseJob):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
 
+        :param bindings: Bindings after execution of the workflow body.
+
+        :param bindings_into_workflow: Bindings that were passed to the
+            workflow to set up its inputs.
+    
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
@@ -5135,6 +5167,7 @@ class WDLOutputsJob(WDLBaseJob):
         super().__init__(wdl_options=wdl_options, **kwargs)
 
         self._bindings = bindings
+        self._bindings_into_workflow = bindings_into_workflow
         self._workflow = workflow
         self._cache_key = cache_key
 
@@ -5226,6 +5259,25 @@ class WDLOutputsJob(WDLBaseJob):
             output_bindings = fill_execution_cache(
                 self._cache_key, output_bindings, file_store, self._wdl_options
             )
+
+        # Let Files that are not output go out of scope.
+
+        # Collect a set of all virtualized values for Files in the output
+        files_in_output = set(extract_file_virtualized_values(output_bindings))
+
+        # Collect a set of all virtualized values for Files that went into the workflow
+        files_into_workflow = set(extract_file_virtualized_values(self._bindings_into_workflow))
+
+        # Collect a set of all virtualized values for files created in the
+        # workflow and bound to variables that do not leave
+        unused_files = set(extract_file_virtualized_values(unwrap(self._bindings))).difference(files_in_output, files_into_workflow)
+
+        for file_uri in unused_files:
+            # Delete them
+            if is_toil_url(file_uri):
+                logger.debug("Delete file %s that is not needed outside the workflow", file_uri)
+                file_id, _, _, _ = unpack_toil_uri(file_uri)
+                file_store.deleteGlobalFile(file_id)
 
         return self.postprocess(output_bindings)
 
@@ -5348,7 +5400,7 @@ class WDLImportWrapper(WDLSectionJob):
         self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
-        filenames = extract_workflow_inputs(self._inputs)
+        filenames = extract_file_values(self._inputs)
         file_to_data = get_file_sizes(
             filenames,
             file_store.jobStore,
