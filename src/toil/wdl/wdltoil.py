@@ -2573,6 +2573,29 @@ def virtualize_files(
     )
     return map_over_files_in_bindings(environment, virtualize_func)
 
+def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[WDLBindings], file_store: AbstractFileStore) -> None:
+    """
+    Delete any files that in the given bindings but not in the live list.
+
+    Operates on the virtualized values of File objects anywhere in the bindings.
+    """
+
+    # Get all the files in the first bindings and not any of the others.
+    unused_files = set(
+        extract_file_virtualized_values(internal_bindings)
+    ).difference(
+        *(
+            extract_file_virtualized_values(bindings)
+            for bindings in live_bindings_list
+        )
+    )
+
+    for file_uri in unused_files:
+        # Delete them
+        if is_toil_url(file_uri):
+            logger.debug("Delete file %s that is not needed", file_uri)
+            file_id, _, _, _ = unpack_toil_uri(file_uri)
+            file_store.deleteGlobalFile(file_id)
 
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
@@ -5319,30 +5342,6 @@ class WDLOutputsJob(WDLBaseJob):
         )
 
         return self.postprocess(output_bindings)
-
-def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[WDLBindings], file_store: AbstractFileStore):
-    """
-    Delete any files that in the given bindings but not in the live list.
-
-    Operates on the virtualized values of File objects anywhere in the bindings.
-    """
-
-    # Get all the files in the first bindings and not any of the others.
-    unused_files = set(
-        extract_file_virtualized_values(internal_bindings)
-    ).difference(
-        *(
-            extract_file_virtualized_values(bindings)
-            for bindings in live_bindings_list
-        )
-    )
-
-    for file_uri in unused_files:
-        # Delete them
-        if is_toil_url(file_uri):
-            logger.debug("Delete file %s that is not needed", file_uri)
-            file_id, _, _, _ = unpack_toil_uri(file_uri)
-            file_store.deleteGlobalFile(file_id)
 
 class WDLStartJob(WDLSectionJob):
     """

@@ -1,5 +1,7 @@
 version 1.0
 
+import "drop_files_subworkflow.wdl" as subwf
+
 # Workflow for testing discarding un-output files a tthe end of a workflow.
 # Does a bunch of unusual things with files.
 workflow wf {
@@ -13,15 +15,22 @@ workflow wf {
         number = 3,
         needed_only_for_task = write_lines(["This file is consumed by a task call"])
     }
-
+    
     File will_discard = write_lines(["This file should be discarded"])
     File will_keep = write_lines(["This file should be kept"])
     File will_keep_because = will_keep
 
+    call subwf.subwf {
+    input:
+        kept_file = write_lines(["This file is kept by a subworkflow"]),
+        # Even though we pass will_keep to the subworkflow and it doesn't output it, it should not get deleted.
+        dropped_files = [write_lines(["This file is dropped by a subworkflow"]), will_keep]
+    }
+
     File will_remember_one_of = select_first([write_lines(["This file gets stored in a variable"]), write_lines(["This file never gets stored in a variable"])])
 
     output {
-        Array[File] files_kept = [make_file.out_file_1, make_file.out_file_2, will_keep_because]
+        Array[File] files_kept = [make_file.out_file_1, make_file.out_file_2, will_keep_because, subwf.keep]
     }
 }
 

@@ -287,7 +287,7 @@ class WDLTests(BaseWDLTest):
                 "--jobStore",
                 job_store,
                 "--clean=never",
-                "--logDebug",
+                "--logInfo",
                 "--retryCount=0",
                 "--input={\"file_in\": \"sent_in.txt\"}"
             ],
@@ -314,6 +314,7 @@ class WDLTests(BaseWDLTest):
         assert "This file is created in a runtime section" not in all_file_values
         assert "This task file is not used" not in all_file_values
         assert "This file should be discarded" not in all_file_values
+        assert "This file is dropped by a subworkflow" not in all_file_values
         assert "This file gets stored in a variable" not in all_file_values
         assert "This file never gets stored in a variable" not in all_file_values 
         
@@ -321,8 +322,9 @@ class WDLTests(BaseWDLTest):
         assert "3" in all_file_values
         assert "This file is collected as a task output twice"
         assert "This file should be kept" in all_file_values
+        assert "This file is kept by a subworkflow" in all_file_values
         
-        # These are sent into the wrokflow from the enclosing environment and
+        # These are sent into the workflow from the enclosing environment and
         # should not be deleted.
         assert "This file is sent in as input" in all_file_values
 
