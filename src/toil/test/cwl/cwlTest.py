@@ -970,6 +970,58 @@ class CWLWorkflowTest(ToilTest):
             }
         }
 
+    def test_missing_import(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+        toil = "toil-cwl-runner"
+        options = [
+            f"--outdir={out_dir}",
+            "--clean=always",
+        ]
+        cmd = [toil] + options + ["src/toil/test/cwl/revsort.cwl", "src/toil/test/cwl/revsort-job-missing.json"]
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        # Make sure that the missing file is mentioned in the log so the user knows
+        assert b"missing.txt" in stderr
+        assert p.returncode == 1
+
+    @needs_aws_s3
+    def test_optional_secondary_files_exists(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+
+        cwlfile = "src/toil/test/cwl/optional-file.cwl"
+        jobfile = "src/toil/test/cwl/optional-file-exists.json"
+
+        args = [
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+            f"--outdir={out_dir}"
+        ]
+        from toil.cwl import cwltoil
+
+        ret = cwltoil.main(args)
+        assert ret == 0
+        assert os.path.exists(os.path.join(out_dir, "wdl_templates_old.zip"))
+
+    @needs_aws_s3
+    def test_optional_secondary_files_missing(self) -> None:
+        tmp_path = self._createTempDir()
+        out_dir = os.path.join(tmp_path, "cwl-out-dir")
+
+        cwlfile = "src/toil/test/cwl/optional-file.cwl"
+        jobfile = "src/toil/test/cwl/optional-file-missing.json"
+
+        args = [
+            os.path.join(self.rootDir, cwlfile),
+            os.path.join(self.rootDir, jobfile),
+            f"--outdir={out_dir}"
+        ]
+        from toil.cwl import cwltoil
+
+        ret = cwltoil.main(args)
+        assert ret == 0
+        assert not os.path.exists(os.path.join(out_dir, "hello_old.zip"))
 
 @needs_cwl
 @needs_online

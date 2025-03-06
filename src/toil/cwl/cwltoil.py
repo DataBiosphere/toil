@@ -1214,7 +1214,7 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-# When a file we want to have is missing, we can give it this sentinal location
+# When a file we want to have is missing, we can give it this sentinel location
 # URI instead of raising an error right away, in case it is optional.
 MISSING_FILE = "missing://"
 
@@ -1812,6 +1812,9 @@ def convert_file_uri_to_toil_uri(
     # with unsupportedRequirement when retrieving later with getFile
     elif file_uri.startswith("_:"):
         return file_uri
+    elif file_uri.startswith(MISSING_FILE):
+        # We cannot import a missing file
+        raise FileNotFoundError(f"Could not find {file_uri[len(MISSING_FILE):]}")
     else:
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
@@ -1876,7 +1879,7 @@ def extract_file_uri_once(
     ):
         if mark_broken:
             logger.debug("File %s is missing", file_metadata)
-            file_metadata["location"] = location = MISSING_FILE
+            file_metadata["location"] = location = MISSING_FILE + location
         else:
             raise cwl_utils.errors.WorkflowException(
                 "File is missing: %s" % file_metadata
@@ -3955,10 +3958,10 @@ def filtered_secondary_files(
                 sf,
             )
     # remove secondary files that are not present in the filestore or pointing
-    # to existant things on disk
+    # to existent things on disk
     for sf in intermediate_secondary_files:
         sf_loc = cast(str, sf.get("location", ""))
-        if sf_loc != MISSING_FILE or sf.get("class", "") == "Directory":
+        if not sf_loc.startswith(MISSING_FILE) or sf.get("class", "") == "Directory":
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
         else:
@@ -4586,6 +4589,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         InvalidImportExportUrlException,
         UnimplementedURLException,
         JobTooBigError,
+        FileNotFoundError
     ) as err:
         logging.error(err)
         return 1
