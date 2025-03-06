@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import platform
 import pickle
 import re
 import signal
@@ -53,6 +54,7 @@ import requests
 from configargparse import ArgParser, YAMLConfigFileParser
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from toil import logProcessContext, lookupEnvVar
 from toil.batchSystems.options import set_batchsystem_options
@@ -69,7 +71,10 @@ from toil.bus import (
 )
 from toil.fileStores import FileID
 from toil.lib.compatibility import deprecated
-from toil.lib.io import AtomicFileCreate, try_path
+from toil.lib.history import HistoryManager
+from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
+from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
+from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
 from toil.options.common import JOBSTORE_HELP, add_base_toil_options
@@ -79,7 +84,7 @@ from toil.options.wdl import add_wdl_options
 from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
-from toil.version import dockerRegistry, dockerTag, version
+from toil.version import dockerRegistry, dockerTag, version, baseVersion
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -92,11 +97,14 @@ if TYPE_CHECKING:
 UUID_LENGTH = 32
 logger = logging.getLogger(__name__)
 
-# TODO: should this use an XDG config directory or ~/.config to not clutter the
-# base home directory?
-TOIL_HOME_DIR: str = os.path.join(os.path.expanduser("~"), ".toil")
-DEFAULT_CONFIG_FILE: str = os.path.join(TOIL_HOME_DIR, "default.yaml")
+@memoize
+def get_default_config_path() -> str:
+    """
+    Get the default path where the Toil configuration file lives.
 
+    The file at the path will not necessarily exist.
+    """
+    return os.path.join(get_toil_home(), "default.yaml")
 
 class Config:
     """Class to represent configuration operations for a toil workflow run."""
@@ -213,6 +221,9 @@ class Config:
     writeLogsFromAllJobs: bool
     write_messages: Optional[str]
     realTimeLogging: bool
+
+    # Data publishing
+    publish_workflow_metrics: Union[Literal["all"], Literal["current"], Literal["no"], None]
 
     # Misc
     environment: dict[str, str]
@@ -387,6 +398,9 @@ class Config:
         set_option("writeLogsGzip")
         set_option("writeLogsFromAllJobs")
         set_option("write_messages")
+        
+        # Data Publishing Options
+        set_option("publish_workflow_metrics")
 
         if self.write_messages is None:
             # The user hasn't specified a place for the message bus so we
@@ -463,44 +477,20 @@ class Config:
     def __hash__(self) -> int:
         return self.__dict__.__hash__()  # type: ignore
 
-
-def check_and_create_toil_home_dir() -> None:
+def ensure_config(filepath: str) -> None:
     """
-    Ensure that TOIL_HOME_DIR exists.
+    If the config file at the filepath does not exist, create it.
+    The parent directory should be created prior to calling this.
 
-    Raises an error if it does not exist and cannot be created. Safe to run
-    simultaneously in multiple processes.
-    """
-
-    dir_path = try_path(TOIL_HOME_DIR)
-    if dir_path is None:
-        raise RuntimeError(
-            f"Cannot create or access Toil configuration directory {TOIL_HOME_DIR}"
-        )
-
-
-def check_and_create_default_config_file() -> None:
-    """
-    If the default config file does not exist, create it in the Toil home directory. Create the Toil home directory
-    if needed
-
-    Raises an error if the default config file cannot be created.
+    Raises an error if the config file cannot be created.
     Safe to run simultaneously in multiple processes. If this process runs
-    this function, it will always see the default config file existing with
+    this function, it will always see the config file existing with
     parseable contents, even if other processes are racing to create it.
 
-    No process will see an empty or partially-written default config file.
-    """
-    check_and_create_toil_home_dir()
-    # The default config file did not appear to exist when we checked.
-    # It might exist now, though. Try creating it.
-    check_and_create_config_file(DEFAULT_CONFIG_FILE)
+    No process will see a new empty or partially-written config file. The
+    caller should still check to make sure there isn't a preexisting empty file
+    here.
 
-
-def check_and_create_config_file(filepath: str) -> None:
-    """
-    If the config file at the filepath does not exist, try creating it.
-    The parent directory should be created prior to calling this
     :param filepath: path to config file
     :return: None
     """
@@ -648,9 +638,39 @@ def generate_config(filepath: str) -> None:
                 yaml.dump(
                     data,
                     f,
+                    # Comment everything out, Unix config file style, to show defaults
                     transform=lambda s: re.sub(r"^(.)", r"#\1", s, flags=re.MULTILINE),
                 )
 
+def update_config(filepath: str, key: str, new_value: Union[str, bool, int, float]) -> None:
+    """
+    Set the given top-level key to the given value in the given YAML config
+    file.
+
+    Does not dramatically alter comments or formatting, and does not make a
+    partially-written file visible.
+
+    :param key: Setting to set. Must be the command-line option name, not the
+        destination variable name.
+    """
+    
+    yaml = YAML(typ="rt")
+    data = yaml.load(open(filepath))
+
+    logger.info("Change config field %s from %s to %s", key, repr(data.get(key, None)), repr(new_value))
+
+    if isinstance(new_value, str):
+        # Strings with some values (no, yes) will be interpreted as booleans on
+        # load if not quoted. But ruamel is not determining that this is needed
+        # on serialization for newly-added values. So if we set something to a
+        # string we always quote it.
+        data[key] = DoubleQuotedScalarString(new_value)
+    else:
+        data[key] = new_value
+
+    with AtomicFileCreate(filepath) as temp_path:
+        with open(temp_path, "w") as f:
+            yaml.dump(data, f)
 
 def parser_with_common_options(
     provisioner_options: bool = False,
@@ -708,11 +728,13 @@ def addOptions(
             f"Unanticipated class: {parser.__class__}.  Must be: argparse.ArgumentParser or ArgumentGroup."
         )
 
+    config_path = get_default_config_path()
+
     if isinstance(parser, ArgParser):
         # in case the user passes in their own configargparse instance instead of calling getDefaultArgumentParser()
         # this forces configargparser to process the config file in YAML rather than in it's own format
         parser._config_file_parser = YAMLConfigFileParser()  # type: ignore[misc]
-        parser._default_config_files = [DEFAULT_CONFIG_FILE]  # type: ignore[misc]
+        parser._default_config_files = [config_path]  # type: ignore[misc]
     else:
         # configargparse advertises itself as a drag and drop replacement, and running the normal argparse ArgumentParser
         # through this code still seems to work (with the exception of --config and environmental variables)
@@ -723,24 +745,24 @@ def addOptions(
             DeprecationWarning,
         )
 
-    check_and_create_default_config_file()
+    ensure_config(config_path)
     # Check on the config file to make sure it is sensible
-    config_status = os.stat(DEFAULT_CONFIG_FILE)
+    config_status = os.stat(config_path)
     if config_status.st_size == 0:
         # If we have an empty config file, someone has to manually delete
         # it before we will work again.
         raise RuntimeError(
-            f"Config file {DEFAULT_CONFIG_FILE} exists but is empty. Delete it! Stat says: {config_status}"
+            f"Config file {config_path} exists but is empty. Delete it! Stat says: {config_status}"
         )
     try:
-        with open(DEFAULT_CONFIG_FILE) as f:
+        with open(config_path) as f:
             yaml = YAML(typ="safe")
             s = yaml.load(f)
             logger.debug("Initialized default configuration: %s", json.dumps(s))
     except:
         # Something went wrong reading the default config, so dump its
         # contents to the log.
-        logger.info("Configuration file contents: %s", open(DEFAULT_CONFIG_FILE).read())
+        logger.info("Configuration file contents: %s", open(config_path).read())
         raise
 
     # Add base toil options
@@ -902,8 +924,9 @@ class Toil(ContextManager["Toil"]):
     _jobStore: "AbstractJobStore"
     _batchSystem: "AbstractBatchSystem"
     _provisioner: Optional["AbstractProvisioner"]
+    _start_time: float
 
-    def __init__(self, options: Namespace) -> None:
+    def __init__(self, options: Namespace, workflow_name: Optional[str] = None, trs_spec: Optional[str] = None) -> None:
         """
         Initialize a Toil object from the given options.
 
@@ -911,12 +934,29 @@ class Toil(ContextManager["Toil"]):
         done when the context is entered.
 
         :param options: command line options specified by the user
+        :param workflow_name: A human-readable name (probably a filename, URL,
+            or TRS specifier) for the workflow being run. Used for Toil history
+            storage.
+        :param trs_spec: A TRS id:version string for the workflow being run, if
+            any. Used for Toil history storage and publishing workflow
+            execution metrics to Dockstore.
         """
         super().__init__()
         self.options = options
         self._jobCache: dict[Union[str, "TemporaryID"], "JobDescription"] = {}
         self._inContextManager: bool = False
         self._inRestart: bool = False
+
+        if workflow_name is None:
+            # Try to use the entrypoint file.
+            import __main__
+            if hasattr(__main__, '__file__'):
+                workflow_name = __main__.__file__
+        if workflow_name is None:
+            # If there's no file, say this is an interactive usage of Toil.
+            workflow_name = "<interactive>"
+        self._workflow_name: str = workflow_name
+        self._trs_spec = trs_spec
 
     def __enter__(self) -> "Toil":
         """
@@ -937,9 +977,16 @@ class Toil(ContextManager["Toil"]):
             # Set the caching option because it wasn't set originally, resuming jobstore rebuilds config from CLI options
             self.options.caching = config.caching
 
+        if self._trs_spec and config.publish_workflow_metrics is None:
+            # We could potentially publish this workflow run. Get a call from the user.
+            config.publish_workflow_metrics = ask_user_about_publishing_metrics()
+
         if not config.restart:
             config.prepare_start()
             jobStore.initialize(config)
+            assert config.workflowID is not None
+            # Record that there is a workflow beign run
+            HistoryManager.record_workflow_creation(config.workflowID, self.canonical_locator(config.jobStore))
         else:
             jobStore.resume()
             # Merge configuration from job store with command line options
@@ -949,6 +996,7 @@ class Toil(ContextManager["Toil"]):
             jobStore.write_config()
         self.config = config
         self._jobStore = jobStore
+        self._start_time = time.time()
         self._inContextManager = True
 
         # This will make sure `self.__exit__()` is called when we get a SIGTERM signal.
@@ -968,6 +1016,50 @@ class Toil(ContextManager["Toil"]):
         Depending on the configuration, delete the job store.
         """
         try:
+            if self.config.workflowID is not None:
+                # Record that this attempt to run the workflow succeeded or failed.
+                # TODO: Get ahold of the timing from statsAndLogging instead of redoing it here!
+                # To record the batch system, we need to avoid capturing typos/random text the user types instead of a real batch system.
+                batch_system_type="<Not Initialized>"
+                if hasattr(self, "_batchSystem"):
+                    batch_system_type = type(self._batchSystem).__module__ + "." + type(self._batchSystem).__qualname__
+                HistoryManager.record_workflow_attempt(
+                    self.config.workflowID,
+                    self.config.workflowAttemptNumber,
+                    exc_type is None,
+                    self._start_time,
+                    time.time() - self._start_time,
+                    batch_system=batch_system_type,
+                    caching=self.config.caching,
+                    # Use the git-hash-free Toil version which should not be unique
+                    toil_version=baseVersion,
+                    # This should always be major.minor.patch.
+                    python_version=platform.python_version(),
+                    platform_system=platform.system(),
+                    platform_machine=platform.machine()
+                )
+
+            if self.config.publish_workflow_metrics == "all":
+                # Publish metrics for all workflows, including previous ones.
+                submission = create_history_submission()
+                while not submission.empty():
+                    if not submission.submit():
+                        # Submitting this batch failed. An item might be broken
+                        # and we don't want to get stuck making no progress on
+                        # a batch of stuff that can't really be submitted.
+                        break
+                    # Keep making submissions until we've uploaded the whole
+                    # history or something goes wrong.
+                    submission = create_history_submission()
+
+            elif self.config.publish_workflow_metrics == "current" and self.config.workflowID is not None:
+                # Publish metrics for this run only. Might be empty if we had no TRS ID.
+                create_current_submission(self.config.workflowID, self.config.workflowAttemptNumber).submit()
+
+            # Make sure the history doesn't stay too big
+            HistoryManager.enforce_byte_size_limit()
+
+
             if (
                 exc_type is not None
                 and self.config.clean == "onError"
@@ -1011,6 +1103,9 @@ class Toil(ContextManager["Toil"]):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+
+        assert self.config.workflowID is not None
+        HistoryManager.record_workflow_metadata(self.config.workflowID, self._workflow_name, self._trs_spec)
 
         from toil.job import Job
 
@@ -1110,6 +1205,8 @@ class Toil(ContextManager["Toil"]):
             )
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
+    JOB_STORE_TYPES = ["file", "aws", "google"]
+
     @classmethod
     def getJobStore(cls, locator: str) -> "AbstractJobStore":
         """
@@ -1137,6 +1234,14 @@ class Toil(ContextManager["Toil"]):
 
     @staticmethod
     def parseLocator(locator: str) -> tuple[str, str]:
+        """
+        Parse a job store locator to a type string and the data needed for that
+        implementation to connect to it.
+
+        Does not validate the set of possible job store types.
+
+        :raises RuntimeError: if the locator is not in the approproate syntax.
+        """
         if locator[0] in "/." or ":" not in locator:
             return "file", locator
         else:
@@ -1152,6 +1257,17 @@ class Toil(ContextManager["Toil"]):
         if ":" in name:
             raise ValueError(f"Can't have a ':' in the name: '{name}'.")
         return f"{name}:{rest}"
+
+    @classmethod
+    def canonical_locator(cls, locator: str) -> str:
+        """
+        Turn a job store locator into one that will work from any directory and
+        always includes the explicit type of job store.
+        """
+        job_store_type, rest = cls.parseLocator(locator)
+        if job_store_type == "file":
+            rest = os.path.abspath(rest)
+        return cls.buildLocator(job_store_type, rest)
 
     @classmethod
     def resumeJobStore(cls, locator: str) -> "AbstractJobStore":

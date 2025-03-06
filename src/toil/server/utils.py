@@ -19,10 +19,9 @@ from datetime import datetime
 from typing import Optional
 from urllib.parse import urlparse
 
-import requests
-
 from toil.lib.io import AtomicFileCreate
 from toil.lib.retry import retry
+from toil.lib.web import web_session
 
 try:
     from toil.lib.aws import get_current_aws_region
@@ -63,7 +62,7 @@ def download_file_from_internet(
     """
     Download a file from the Internet and write it to dest.
     """
-    response = requests.get(src)
+    response = web_session.get(src)
 
     if not response.ok:
         raise RuntimeError("Request failed with a client error or a server error.")

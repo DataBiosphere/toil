@@ -933,7 +933,7 @@ class WDLToilBenchTests(ToilTest):
         )
         self.assertEqual(same_id, first_chosen)
 
-        # If we use a different ID we shoudl get a different result still obeying the constraints
+        # If we use a different ID we should get a different result still obeying the constraints
         diff_id = choose_human_readable_directory(
             "root", "taskname", "222-333-444", state
         )

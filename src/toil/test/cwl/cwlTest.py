@@ -449,7 +449,7 @@ class CWLWorkflowTest(ToilTest):
         main_args = [
             "--outdir",
             self.outDir,
-            "#workflow/github.com/dockstore-testing/md5sum-checker",
+            "#workflow/github.com/dockstore-testing/md5sum-checker:master",
             "https://raw.githubusercontent.com/dockstore-testing/md5sum-checker/refs/heads/master/md5sum/md5sum-input-cwl.json"
         ]
         cwltoil.main(main_args, stdout=stdout)

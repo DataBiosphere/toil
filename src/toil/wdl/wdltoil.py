@@ -103,8 +103,8 @@ from toil.jobStores.abstractJobStore import (
 from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
+from toil.lib.trs import resolve_workflow
 from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
-from toil.lib.integration import resolve_workflow
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -5442,17 +5442,25 @@ def main() -> None:
     )
 
     try:
-        with Toil(options) as toil:
+        wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
+
+        with Toil(options, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec) as toil:
             if options.restart:
                 output_bindings = toil.restart()
             else:
                 # TODO: Move all the input parsing outside the Toil context
                 # manager to avoid leaving a job store behind if the workflow
                 # can't start.
+                
+                # MiniWDL load code internally uses asyncio.get_event_loop()
+                # which might not get an event loop if somebody has ever called
+                # set_event_loop. So we need to make sure an event loop is
+                # available.
+                asyncio.set_event_loop(asyncio.new_event_loop())
 
-                # Load the WDL document
+                # Load the WDL document.
                 document: WDL.Tree.Document = WDL.load(
-                    resolve_workflow(options.wdl_uri, supported_languages={"WDL"}),
+                    wdl_uri,
                     read_source=toil_read_source,
                 )
 
@@ -5568,12 +5576,14 @@ def main() -> None:
                     inputs_search_path.append(input_source_uri)
 
                     match = re.match(
-                        r"https://raw\.githubusercontent\.com/[^/]*/[^/]*/[^/]*/",
+                        r"https://raw\.githubusercontent\.com/[^/]*/[^/]*/(refs/heads/)?[^/]*/",
                         input_source_uri,
                     )
                     if match:
                         # Special magic for Github repos to make e.g.
                         # https://raw.githubusercontent.com/vgteam/vg_wdl/44a03d9664db3f6d041a2f4a69bbc4f65c79533f/params/giraffe.json
+                        # or
+                        # https://raw.githubusercontent.com/vgteam/vg_wdl/refs/heads/giraffedv/params/giraffe.json
                         # work when it references things relative to repo root.
                         logger.info(
                             "Inputs appear to come from a Github repository; adding repository root to file search path"
