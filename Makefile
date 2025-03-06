@@ -105,15 +105,18 @@ marker=""
 # Number of tests to run in parallel.
 threads:="auto"
 
+dist:="loadscope"
+pytest_args:=""
+
 # Only pass the threading options if running parallel tests. Otherwise we lose
 # live logging. See <https://stackoverflow.com/q/62533239>
 ifeq "$(threads)" "auto"
-	threadopts=-n $(threads) --dist loadscope
+	threadopts=-n $(threads) --dist $(dist)
 else
 ifeq "$(threads)" "1"
 	threadopts=
 else
-	threadopts=-n $(threads) --dist loadscope
+	threadopts=-n $(threads) --dist $(dist)
 endif
 endif
 
@@ -144,14 +147,24 @@ clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
 
+download_cwl_spec:
+	git clone https://github.com/common-workflow-language/cwl-v1.2.git src/toil/test/cwl/spec_v12 || true && cd src/toil/test/cwl/spec_v12 && git checkout 0d538a0dbc5518f3c6083ce4571926f65cb84f76
+	git clone https://github.com/common-workflow-language/cwl-v1.1.git src/toil/test/cwl/spec_v11 || true && cd src/toil/test/cwl/spec_v11 && git checkout 664835e83eb5e57eee18a04ce7b05fb9d70d77b7
+	git clone https://github.com/common-workflow-language/common-workflow-language.git src/toil/test/cwl/spec || true && cd src/toil/test/cwl/spec && git checkout 6a955874ade22080b8ef962b4e0d6e408112c1ef
+        # Add .cwltest to filenames so the Pytest plugin can see them
+	cp src/toil/test/cwl/spec_v12/conformance_tests.yaml src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml
+	cp src/toil/test/cwl/spec_v11/conformance_tests.yaml src/toil/test/cwl/spec_v11/conformance_tests.cwltest.yaml
+	cp src/toil/test/cwl/spec/v1.0/conformance_test_v1.0.yaml src/toil/test/cwl/spec/v1.0/conformance_test_v1.0.cwltest.yaml
+
+
 # Setting SET_OWNER_TAG will tag cloud resources so that UCSC's cloud murder bot won't kill them.
 test: check_venv check_build_reqs
 	TOIL_OWNER_TAG="shared" \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -o log_cli=true --log-cli-level INFO -r s $(cov) $(threadopts) $(tests) -m "$(marker)" --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -o log_cli=true --log-cli-level INFO -r s $(cov) $(threadopts) $(tests) $(pytest_args) -m "$(marker)" --color=yes
 
 test_debug: check_venv check_build_reqs
 	TOIL_OWNER_TAG="$(whoami)" \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) -m "$(marker)" --tb=native --maxfail=1 --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" --durations=0 --strict-markers --log-level DEBUG -s -o log_cli=true --log-cli-level DEBUG -r s $(tests) $(pytest_args) -m "$(marker)" --tb=native --maxfail=1 --color=yes
 
 
 # This target will skip building docker and all docker based tests
@@ -160,12 +173,12 @@ test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 	TOIL_SKIP_ONLINE=True \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist loadscope $(tests) -m "$(marker)" --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=600 --strict-markers --log-level DEBUG --log-cli-level INFO $(cov) -n $(threads) --dist $(dist) $(tests) $(pytest_args) -m "$(marker)" --color=yes
 
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)" --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)" --color=yes
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -353,6 +366,7 @@ preflight: mypy touched_pylint
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
+		download_cwl_spec \
 		test test_offline test_1min \
 		docs clean_docs \
 		clean \

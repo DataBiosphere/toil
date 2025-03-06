@@ -1238,7 +1238,6 @@ class CWLv12Test(ToilTest):
             must_support_all_features=must_support_all_features,
             junit_file=junit_file,
         )
-
     @slow
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self) -> None:
