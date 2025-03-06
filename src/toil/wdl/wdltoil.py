@@ -2020,7 +2020,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             )
             # Make an environment of "file_sha256" to that as a WDL string, and
             # digest that, and make a write_ cache key. No need to transform to
-            # shared FS paths sonce no paths are in it.
+            # shared FS paths since no paths are in it.
             log_bindings(
                 logger.debug, "Digesting file bindings:", [file_input_bindings]
             )
@@ -4129,7 +4129,8 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             logger.info("Setting %s to %s", self._node.name, self._node.expr)
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
             bindings = incoming_bindings.bind(self._node.name, value)
-            return self.postprocess(bindings)
+            # TODO: Only virtualize the new binding
+            return self.postprocess(virtualize_files(bindings, standard_library))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -4150,6 +4151,8 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 standard_library,
                 inputs_mapping,
             )
+            # Prepare call inputs to move to another node
+            input_bindings = virtualize_files(input_bindings, standard_library)
 
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
@@ -4278,7 +4281,8 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                     node, "Unimplemented WorkflowNode: " + str(type(node))
                 )
 
-        return self.postprocess(current_bindings)
+        # TODO: Only virtualize the new bindings created
+        return self.postprocess(virtualize_files(current_bindings, standard_library))
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
