@@ -21,6 +21,7 @@ import pytest
 
 from toil.test import (
     ToilTest,
+    get_data,
     integrative,
     needs_fetchable_appliance,
     needs_google_project,
@@ -215,7 +216,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
             # Fixme: making this file larger causes the test to hang
             f.write("01234567890123456789012345678901")
         self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
+            get_data("test/sort/sort.py"),
             ":/home/sort.py",
         )
         self.rsyncUtil(fileToSort, ":/home/sortFile")
@@ -325,7 +326,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         with open(sseKeyFile, "w") as f:
             f.write("01234567890123456789012345678901")
         self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
+            get_data("test/sort/sort.py"),
             ":/home/sort.py",
         )
         self.rsyncUtil(sseKeyFile, ":/home/keyFile")
@@ -377,9 +378,7 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
 
     def _getScript(self):
         self.rsyncUtil(
-            os.path.join(
-                self._projectRootPath(), "src/toil/test/provisioners/restartScript.py"
-            ),
+            get_data("test/provisioners/restartScript.py"),
             ":" + self.scriptName,
         )
 

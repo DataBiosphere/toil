@@ -6,6 +6,7 @@ import sys
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.io import mkdtemp
+from toil.test import get_data
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -164,20 +165,18 @@ if __name__ == "__main__":
     with Toil(options) as toil:
 
         B_file0 = toil.importFile(
-            "file://"
-            + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/B_file.txt")
+            f"file://{get_data('test/utils/ABCWorkflowDebug/B_file.txt')}"
         )
         B_file0_preserveThisFilename = "B_file.txt"
         B_file = (B_file0, B_file0_preserveThisFilename)
 
         file_maker0 = toil.importFile(
-            "file://"
-            + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/mkFile.py")
+            f"file://{get_data('test/utils/ABCWorkflowDebug/mkFile.py')}"
         )
         file_maker0_preserveThisFilename = "mkFile.py"
         file_maker = (file_maker0, file_maker0_preserveThisFilename)
 
-        filepath = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/ABC.txt")
+        filepath = get_data("test/utils/ABCWorkflowDebug/ABC.txt")
 
         job0 = Job.wrapJobFn(initialize_jobs)
         job1 = Job.wrapJobFn(writeA, file_maker)

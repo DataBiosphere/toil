@@ -23,7 +23,7 @@ import unittest
 from toil.common import Toil
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.jobStores.utils import generate_locator
-from toil.test import ToilTest, needs_aws_s3, needs_cwl
+from toil.test import ToilTest, get_data, needs_aws_s3, needs_cwl
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +40,8 @@ class ToilKillTest(ToilTest):
 
     def setUp(self):
         """Shared test variables."""
-        self.cwl = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.cwl")
-        self.yaml = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.yaml")
+        self.cwl = get_data("test/utils/ABCWorkflowDebug/sleep.cwl")
+        self.yaml = get_data("test/utils/ABCWorkflowDebug/sleep.yaml")
 
     def tearDown(self):
         """Default tearDown for unittest."""
@@ -90,8 +90,8 @@ class ToilKillTest(ToilTest):
 class ToilKillTestWithAWSJobStore(ToilKillTest):
     """A set of test cases for "toil kill" using the AWS job store."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def setUp(self):
+        super().setUp()
         self.job_store = generate_locator("aws", decoration="testkill")
 
 
