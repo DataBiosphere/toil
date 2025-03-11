@@ -683,7 +683,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
-            time_limit: int | None = self.boss.config.slurm_time
+            time_limit: int | None = self.boss.config.slurm_time  # type: ignore[attr-defined] 
             partition: str | None = None
 
             if nativeConfig is not None:
@@ -796,8 +796,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 if partition is not None and partition not in self.boss.partitions.gpu_partitions:
                     # the specified partition is not compatible, so warn the user that the job may not work
                     logger.warning(
-                        f"Job {jobName} needs GPUs, but specified partition {partition_name} does not have them. This job may not work."
-                        f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}."
+                        f"Job {jobName} needs GPUs, but specified partition {partition} does not have them. This job may not work."
+                        f"Try specifying one of these partitions instead: {', '.join(self.boss.partitions.gpu_partitions)}."
                     )
             if mem is not None and self.boss.config.slurm_allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
