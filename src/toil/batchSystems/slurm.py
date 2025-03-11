@@ -671,19 +671,21 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                             return True
                     return False
                 return is_match
-            
+
             is_any_mem_option = any_option_detector(["mem", "mem-per-cpu", "mem-per-gpu"])
             is_any_cpus_option = any_option_detector([("cpus-per-task", "c"), "cpus-per-gpu"])
             is_export_option = option_detector("export")
+            is_export_file_option = option_detector("export-file")
             is_time_option = option_detector("time", "t")
             is_partition_option = option_detector("partition", "p")
 
             # We will fill these in with stuff parsed from TOIL_SLURM_ARGS, or
             # with our own determinations if they aren't there.
-            
+
             # --export=[ALL,]<environment_toil_variables>
-            set_exports = "--export=ALL"
-            time_limit: int | None = self.boss.config.slurm_time  # type: ignore[attr-defined] 
+            export_all = True
+            export_list = [] # Some items here may be multiple comma-separated values
+            time_limit: int | None = self.boss.config.slurm_time  # type: ignore[attr-defined]
             partition: str | None = None
 
             if nativeConfig is not None:
@@ -704,17 +706,22 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                             f"with Toil's own arguments to Slurm"
                         )
                     elif is_export_option(arg):
-                        # Capture the export argument and its value so we can modify it
-                        set_exports = arg
+                        # Capture the export argument value so we can modify it
+                        export_all = False
                         if "=" not in arg:
-                            # Also consume the next argument
                             if i + 1 >= len(args):
                                 raise ValueError(
                                     f"No value supplied for Slurm {arg} argument"
                                 )
                             i += 1
-                            # Convert to = syntax so it can be one args list entry
-                            set_exports += "=" + args[i]
+                            export_list.append(args[i])
+                        else:
+                            export_list.append(arg.split("=", 1)[1])
+                    elif is_export_file_option(arg):
+                        # Keep --export-file but turn off --export=ALL in that
+                        # case.
+                        export_all = False
+                        sbatch_line.append(arg)
                     elif is_time_option(arg):
                         # Capture the time limit in seconds so we can use it for picking a partition
                         if "=" not in arg:
@@ -743,24 +750,42 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                         sbatch_line.append(arg)
                     i += 1
 
+            if export_all:
+                # We don't have any export overrides so we ened to start with
+                # an ALL
+                export_list.append("ALL")
+
             if environment:
                 argList = []
 
                 for k, v in environment.items():
+                    # TODO: The sbatch man page doesn't say we can quote these;
+                    # if we need to send characters like , itself we need to
+                    # use --export-file and clean it up when the command has
+                    # been issued.
                     quoted_value = shlex.quote(os.environ[k] if v is None else v)
                     argList.append(f"{k}={quoted_value}")
 
-                set_exports += "," + ",".join(argList)
+                export_list.extend(argList)
 
-            # add --export to the sbatch
-            sbatch_line.append(set_exports)
-            
+            # If partition isn't set and we have a GPU partition override
+            # that applies, apply it
+            gpu_partition_override: str | None = self.boss.config.slurm_gpu_partition  # type: ignore[attr-defined]
+            if partition is None and gpus and gpu_partition_override:
+                partition = gpu_partition_override
+
             # If partition isn't set and we have a parallel partition override
             # that applies, apply it
             parallel_env: str | None = self.boss.config.slurm_pe  # type: ignore[attr-defined]
             if partition is None and cpu and cpu > 1 and parallel_env:
                 partition = parallel_env
-            
+
+            # If partition isn't set and we have a general partition override
+            # that applies, apply it
+            partition_override: str | None = self.boss.config.slurm_partition  # type: ignore[attr-defined]
+            if partition is None and partition_override:
+                partition = partition_override
+
             if partition is None and gpus:
                 # Send to a GPU partition
                 gpu_partition = self.boss.partitions.default_gpu_partition
@@ -785,9 +810,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if partition is None:
                 # Pick a partition based on time limit
                 partition = self.boss.partitions.get_partition(time_limit)
-            
 
             # Now generate all the arguments
+            if len(export_list) > 0:
+                # add --export to the sbatch
+                sbatch_line.append("--export=" + ",".join(export_list))
             if partition is not None:
                 sbatch_line.append(f"--partition={partition}")
             if gpus:
@@ -932,6 +959,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             help="Slurm job time limit, in [DD-]HH:MM:SS format.",
         )
         parser.add_argument(
+            "--slurmPartition",
+            dest="slurm_partition",
+            default=None,
+            env_var="TOIL_SLURM_PARTITION",
+            help="Partition to send Slurm jobs to.",
+        )
+        parser.add_argument(
+            "--slurmGPUPartition",
+            dest="slurm_gpu_partition",
+            default=None,
+            env_var="TOIL_SLURM_GPU_PARTITION",
+            help="Partition to send Slurm jobs to if they ask for GPUs.",
+        )
+        parser.add_argument(
             "--slurmPE",
             dest="slurm_pe",
             default=None,
@@ -953,5 +994,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         setOption("slurm_allocate_mem")
         setOption("slurm_default_all_mem")
         setOption("slurm_time")
+        setOption("slurm_partition")
+        setOption("slurm_gpu_partition")
         setOption("slurm_pe")
         setOption("slurm_args")
