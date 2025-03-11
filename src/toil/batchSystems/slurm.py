@@ -19,8 +19,8 @@ import math
 import os
 import sys
 from argparse import SUPPRESS, ArgumentParser, _ArgumentGroup
-from shlex import quote
-from typing import NamedTuple, TypeVar
+import shlex
+from typing import Callable, NamedTuple, TypeVar
 
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
@@ -650,132 +650,163 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # For parsing user-provided option overrides (or self-generated
             # options) we need a way to recognize long, long-with-equals, and
             # short forms.
-            def option_detector(long: str, short: Optional[str] = None) -> Callable[[str], bool]:
+            def option_detector(long: str, short: str | None = None) -> Callable[[str], bool]:
+                """
+                Get a function that returns true if it sees the long or short
+                option.
+                """
                 def is_match(option: str) -> bool:
                     return option == f"--{long}" or option.startswith(f"--{long}=") or (short is not None and option == f"-{short}")
                 return is_match
 
-            is_partition_option = option_detector("partition", "p")
-            is_time_option = option_detector("time", "t")
-            is_mem_option = option_detector("mem")
-            is_any_mem_option = lambda o: is_mem_option(o) or option_detector("mem-per-cpu")(o) or option_detector("mem-per-gpu")(o)
-            is_cpus_per_task_option = option_detector("cpus-per-task", "c")
-            is_any_cpus_option = lambda o: is_cpus_per_task_option(o) or option_detector("cpus-per-gpu")(o)
+            def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str], bool]:
+                """
+                Get a function that returns true if it sees any of the long
+                options or long or short option pairs.
+                """
+                detectors = [option_detector(o) if isinstance(o, str) else option_detector(*o) for o in options]
+                def is_match(option: str) -> bool:
+                    for detector in detectors:
+                        if detector(option):
+                            return True
+                    return False
+                return is_match
+            
+            is_any_mem_option = any_option_detector(["mem", "mem-per-cpu", "mem-per-gpu"])
+            is_any_cpus_option = any_option_detector([("cpus-per-task", "c"), "cpus-per-gpu"])
             is_export_option = option_detector("export")
+            is_time_option = option_detector("time", "t")
+            is_partition_option = option_detector("partition", "p")
 
+            # We will fill these in with stuff parsed from TOIL_SLURM_ARGS, or
+            # with our own determinations if they aren't there.
+            
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
+            time_limit: int | None = self.boss.config.slurm_time
+            partition: str | None = None
 
             if nativeConfig is not None:
                 logger.debug(
                     "Native SLURM options appended to sbatch: %s", nativeConfig
                 )
-                
-                next_for_export = False
-                for arg in nativeConfig.split():
-                    if next_for_export:
-                        # This argument is captured by the export option as its argument
-                        set_exports += " " + arg
-                        next_for_export = False
-                        continue
 
+                # Do a mini argument parse to pull out export and parse time if
+                # needed
+                args = shlex.split(nativeConfig)
+                i = 0
+                while i < len(args):
+                    arg = args[i]
                     if is_any_mem_option(arg) or is_any_cpus_option(arg):
+                        # Prohibit arguments that set CPUs or memory
                         raise ValueError(
-                            f"Some resource arguments are incompatible: {nativeConfig}"
+                            f"Cannot use Slurm argument {arg} which conflicts "
+                            f"with Toil's own arguments to Slurm"
                         )
-                    # repleace default behaviour by the one stated at TOIL_SLURM_ARGS
-                    if is_export_option(arg):
+                    elif is_export_option(arg):
+                        # Capture the export argument and its value so we can modify it
                         set_exports = arg
                         if "=" not in arg:
-                            # Needs an argument
-                            next_for_export = True
-                        continue
-
-                    # Take all the args that aren't unacceptable or diverted
-                    sbatch_line.append(arg)
+                            # Also consume the next argument
+                            if i + 1 >= len(args):
+                                raise ValueError(
+                                    f"No value supplied for Slurm {arg} argument"
+                                )
+                            i += 1
+                            # Convert to = syntax so it can be one args list entry
+                            set_exports += "=" + args[i]
+                    elif is_time_option(arg):
+                        # Capture the time limit in seconds so we can use it for picking a partition
+                        if "=" not in arg:
+                            if i + 1 >= len(args):
+                                raise ValueError(
+                                    f"No value supplied for Slurm {arg} argument"
+                                )
+                            i += 1
+                            time_string = args[i]
+                        else:
+                            time_string = arg.split("=", 1)[1]
+                        time_limit = parse_slurm_time(time_string)
+                    elif is_partition_option(arg):
+                        # Capture the partition so we can run checks on it and know not to assign one
+                        if "=" not in arg:
+                            if i + 1 >= len(args):
+                                raise ValueError(
+                                    f"No value supplied for Slurm {arg} argument"
+                                )
+                            i += 1
+                            partition = args[i]
+                        else:
+                            partition = arg.split("=", 1)[1]
+                    else:
+                        # Other arguments pass through.
+                        sbatch_line.append(arg)
+                    i += 1
 
             if environment:
                 argList = []
 
                 for k, v in environment.items():
-                    quoted_value = quote(os.environ[k] if v is None else v)
+                    quoted_value = shlex.quote(os.environ[k] if v is None else v)
                     argList.append(f"{k}={quoted_value}")
 
                 set_exports += "," + ",".join(argList)
 
             # add --export to the sbatch
             sbatch_line.append(set_exports)
+            
+            # If partition isn't set and we have a parallel partition override
+            # that applies, apply it
+            parallel_env: str | None = self.boss.config.slurm_pe  # type: ignore[attr-defined]
+            if partition is None and cpu and cpu > 1 and parallel_env:
+                partition = parallel_env
+            
+            if partition is None and gpus:
+                # Send to a GPU partition
+                gpu_partition = self.boss.partitions.default_gpu_partition
+                if gpu_partition is None:
+                    # no gpu partitions are available, raise an error
+                    raise RuntimeError(
+                        f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs"
+                    )
+                if (
+                    time_limit is not None
+                    and gpu_partition.time_limit < time_limit
+                ):
+                    # TODO: find the lowest-priority GPU partition that has at least each job's time limit!
+                    logger.warning(
+                        "Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds",
+                        time_limit,
+                        gpu_partition.partition_name,
+                        gpu_partition.time_limit,
+                    )
+                partition = gpu_partition.partition_name
 
-            parallel_env: str = self.boss.config.slurm_pe  # type: ignore[attr-defined]
-            if cpu and cpu > 1 and parallel_env:
-                sbatch_line.append(f"--partition={parallel_env}")
+            if partition is None:
+                # Pick a partition based on time limit
+                partition = self.boss.partitions.get_partition(time_limit)
+            
 
+            # Now generate all the arguments
+            if partition is not None:
+                sbatch_line.append(f"--partition={partition}")
+            if gpus:
+                # Generate GPU assignment argument
+                sbatch_line.append(f"--gres=gpu:{gpus}")
+                if partition is not None and partition not in self.boss.partitions.gpu_partitions:
+                    # the specified partition is not compatible, so warn the user that the job may not work
+                    logger.warning(
+                        f"Job {jobName} needs GPUs, but specified partition {partition_name} does not have them. This job may not work."
+                        f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}."
+                    )
             if mem is not None and self.boss.config.slurm_allocate_mem:  # type: ignore[attr-defined]
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f"--mem={math.ceil(mem / 2 ** 20)}")
             if cpu is not None:
                 sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
-
-            if any(is_time_option(option) for option in sbatch_line):
-                raise RuntimeError("Support for manual --time option has been replaced by Toil --slurmTime")
-
-            time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
             if time_limit is not None:
                 # Put all the seconds in the seconds slot
                 sbatch_line.append(f"--time=0:{time_limit}")
-
-            if gpus:
-                # This block will add a gpu supported partition only if no partition is supplied by the user
-                sbatch_line = sbatch_line[:1] + [f"--gres=gpu:{gpus}"] + sbatch_line[1:]
-                if not any(is_partition_option(option) for option in sbatch_line):
-                    # no partition specified, so specify one
-                    # try to get the name of the lowest priority gpu supported partition
-                    lowest_gpu_partition = self.boss.partitions.default_gpu_partition
-                    if lowest_gpu_partition is None:
-                        # no gpu partitions are available, raise an error
-                        raise RuntimeError(
-                            f"The job {jobName} is requesting GPUs, but the Slurm cluster does not appear to have an accessible partition with GPUs"
-                        )
-                    if (
-                        time_limit is not None
-                        and lowest_gpu_partition.time_limit < time_limit
-                    ):
-                        # TODO: find the lowest-priority GPU partition that has at least each job's time limit!
-                        logger.warning(
-                            "Trying to submit a job that needs %s seconds to partition %s that has a limit of %s seconds",
-                            time_limit,
-                            lowest_gpu_partition.partition_name,
-                            lowest_gpu_partition.time_limit,
-                        )
-                    sbatch_line.append(
-                        f"--partition={lowest_gpu_partition.partition_name}"
-                    )
-                else:
-                    # there is a partition specified already, check if the partition has GPUs
-                    for i, option in enumerate(sbatch_line):
-                        if is_partition_option(option):
-                            # grab the partition name depending on if it's specified via an "=" or a space
-                            if "=" in option:
-                                partition_name = option[len("--partition=") :]
-                            else:
-                                partition_name = option[i + 1]
-                            available_gpu_partitions = (
-                                self.boss.partitions.gpu_partitions
-                            )
-                            if partition_name not in available_gpu_partitions:
-                                # the specified partition is not compatible, so warn the user that the job may not work
-                                logger.warning(
-                                    f"Job {jobName} needs {gpus} GPUs, but specified partition {partition_name} is incompatible. This job may not work."
-                                    f"Try specifying one of these partitions instead: {', '.join(available_gpu_partitions)}."
-                                )
-                            break
-
-            if not any(is_partition_option(option) for option in sbatch_line):
-                # Pick a partition ourselves
-                chosen_partition = self.boss.partitions.get_partition(time_limit)
-                if chosen_partition is not None:
-                    # Route to that partition
-                    sbatch_line.append(f"--partition={chosen_partition}")
 
             stdoutfile: str = self.boss.format_std_out_err_path(jobID, "%j", "out")
             stderrfile: str = self.boss.format_std_out_err_path(jobID, "%j", "err")

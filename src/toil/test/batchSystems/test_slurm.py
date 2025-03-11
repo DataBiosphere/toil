@@ -2,6 +2,7 @@ import errno
 import textwrap
 from queue import Queue
 
+import logging
 import pytest
 import sys
 
@@ -14,6 +15,9 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.test import ToilTest
+
+logger = logging.getLogger(__name__)
+
 
 # TODO: Come up with a better way to mock the commands then monkey-patching the
 # command-calling functions.
@@ -514,16 +518,19 @@ class SlurmTest(ToilTest):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
 
-        # Make sure we picked the useful-length GPU partition and not the super short one.
+        # Make sure we picked the useful-length GPU partition and not the super
+        # short one.
         self.assertEqual(ps.default_gpu_partition.partition_name, "gpu")
 
     def test_prepareSbatch_partition(self):
         self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
         ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
         self.worker.boss.partitions = ps
+        # This is in seconds
         self.worker.boss.config.slurm_time = 30
 
-        # Without a partition override in the environment, we should get the "short" partition for this job
+        # Without a partition override in the environment, we should get the
+        # "short" partition for this job
         command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
         assert "--partition=short" in command
 
@@ -546,4 +553,40 @@ class SlurmTest(ToilTest):
         assert "--partition=short" not in command
         assert "-p" in command
         assert "foo" in command
+
+    def test_prepareSbatch_time(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        # This is in seconds
+        self.worker.boss.config.slurm_time = 30
+
+        # Without a time override in the environment, we should use the normal
+        # time and the "short" partition
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug(command)
+        assert "--time=0:30" in command
+        assert "--partition=short" in command
+
+        # With a time override, we should use it, slightly translated, and it
+        # should change the selected partition.
+        self.worker.boss.config.slurm_args = "--something --time 10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug(command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
+
+        # All ways of setting time should work, including =
+        self.worker.boss.config.slurm_args = "--something --time=10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug(command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
+
+        # And short options
+        self.worker.boss.config.slurm_args = "--something -t 10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug(command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
 
