@@ -3,11 +3,13 @@ import textwrap
 from queue import Queue
 
 import pytest
+import sys
 
 import toil.batchSystems.slurm
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
+    BatchSystemSupport,
 )
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
@@ -198,13 +200,13 @@ def call_sinfo(*_) -> str:
     )
     return stdout
 
-class FakeBatchSystem:
+class FakeBatchSystem(BatchSystemSupport):
     """
     Class that implements a minimal Batch System, needed to create a Worker (see below).
     """
 
     def __init__(self):
-        self.config = self.__fake_config()
+        super().__init__(self.__fake_config(), float("inf"), sys.maxsize, sys.maxsize)
 
     def getWaitDuration(self):
         return 10
@@ -224,6 +226,9 @@ class FakeBatchSystem:
         config.cleanWorkDir = "always"
         return config
 
+# Make the mock class not have abstract methods anymore, even though we don't
+# implement them. See <https://stackoverflow.com/a/17345619>.
+FakeBatchSystem.__abstractmethods__ = set()
 
 class SlurmTest(ToilTest):
     """
@@ -511,3 +516,34 @@ class SlurmTest(ToilTest):
 
         # Make sure we picked the useful-length GPU partition and not the super short one.
         self.assertEqual(ps.default_gpu_partition.partition_name, "gpu")
+
+    def test_prepareSbatch_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        self.worker.boss.config.slurm_time = 30
+
+        # Without a partition override in the environment, we should get the "short" partition for this job
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" in command
+
+        # With a partition override, we should not
+        self.worker.boss.config.slurm_args = "--something --partition foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "--partition" in command
+        assert "foo" in command
+
+        # All ways of setting partition should work, including =
+        self.worker.boss.config.slurm_args = "--something --partition=foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "--partition=foo" in command
+
+        # And short options
+        self.worker.boss.config.slurm_args = "--something -p foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "-p" in command
+        assert "foo" in command
+

@@ -647,6 +647,22 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # Also any extra arguments from --slurmArgs or TOIL_SLURM_ARGS
             nativeConfig: str = self.boss.config.slurm_args  # type: ignore[attr-defined]
 
+            # For parsing user-provided option overrides (or self-generated
+            # options) we need a way to recognize long, long-with-equals, and
+            # short forms.
+            def option_detector(long: str, short: Optional[str] = None) -> Callable[[str], bool]:
+                def is_match(option: str) -> bool:
+                    return option == f"--{long}" or option.startswith(f"--{long}=") or (short is not None and option == f"-{short}")
+                return is_match
+
+            is_partition_option = option_detector("partition", "p")
+            is_time_option = option_detector("time", "t")
+            is_mem_option = option_detector("mem")
+            is_any_mem_option = lambda o: is_mem_option(o) or option_detector("mem-per-cpu")(o) or option_detector("mem-per-gpu")(o)
+            is_cpus_per_task_option = option_detector("cpus-per-task", "c")
+            is_any_cpus_option = lambda o: is_cpus_per_task_option(o) or option_detector("cpus-per-gpu")(o)
+            is_export_option = option_detector("export")
+
             # --export=[ALL,]<environment_toil_variables>
             set_exports = "--export=ALL"
 
@@ -654,16 +670,29 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug(
                     "Native SLURM options appended to sbatch: %s", nativeConfig
                 )
-
+                
+                next_for_export = False
                 for arg in nativeConfig.split():
-                    if arg.startswith("--mem") or arg.startswith("--cpus-per-task"):
+                    if next_for_export:
+                        # This argument is captured by the export option as its argument
+                        set_exports += " " + arg
+                        next_for_export = False
+                        continue
+
+                    if is_any_mem_option(arg) or is_any_cpus_option(arg):
                         raise ValueError(
                             f"Some resource arguments are incompatible: {nativeConfig}"
                         )
                     # repleace default behaviour by the one stated at TOIL_SLURM_ARGS
-                    if arg.startswith("--export"):
+                    if is_export_option(arg):
                         set_exports = arg
-                sbatch_line.extend(nativeConfig.split())
+                        if "=" not in arg:
+                            # Needs an argument
+                            next_for_export = True
+                        continue
+
+                    # Take all the args that aren't unacceptable or diverted
+                    sbatch_line.append(arg)
 
             if environment:
                 argList = []
@@ -687,7 +716,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append(f"--cpus-per-task={math.ceil(cpu)}")
 
-            if any(option.startswith("--time=") or option == "--time" or option == "-t" for option in sbatch_line):
+            if any(is_time_option(option) for option in sbatch_line):
                 raise RuntimeError("Support for manual --time option has been replaced by Toil --slurmTime")
 
             time_limit: int = self.boss.config.slurm_time  # type: ignore[attr-defined]
@@ -698,7 +727,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if gpus:
                 # This block will add a gpu supported partition only if no partition is supplied by the user
                 sbatch_line = sbatch_line[:1] + [f"--gres=gpu:{gpus}"] + sbatch_line[1:]
-                if not any(option.startswith("--partition") for option in sbatch_line):
+                if not any(is_partition_option(option) for option in sbatch_line):
                     # no partition specified, so specify one
                     # try to get the name of the lowest priority gpu supported partition
                     lowest_gpu_partition = self.boss.partitions.default_gpu_partition
@@ -724,7 +753,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 else:
                     # there is a partition specified already, check if the partition has GPUs
                     for i, option in enumerate(sbatch_line):
-                        if option.startswith("--partition"):
+                        if is_partition_option(option):
                             # grab the partition name depending on if it's specified via an "=" or a space
                             if "=" in option:
                                 partition_name = option[len("--partition=") :]
@@ -741,7 +770,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                                 )
                             break
 
-            if not any(option.startswith("--partition") for option in sbatch_line):
+            if not any(is_partition_option(option) for option in sbatch_line):
                 # Pick a partition ourselves
                 chosen_partition = self.boss.partitions.get_partition(time_limit)
                 if chosen_partition is not None:
