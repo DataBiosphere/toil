@@ -104,7 +104,7 @@ Specifying Commandline Arguments
 
 To allow command line control of the options we can use the
 :func:`toil.job.Job.Runner.getDefaultArgumentParser`
-method to create a :class:`argparse.ArgumentParser` object which can be used to
+method to create a :class:`configargparse.ArgParser` object which can be used to
 parse command line options for a Toil Python workflow. For example:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_arguments.py
@@ -113,9 +113,12 @@ This creates a fully fledged Toil Python workflow with all the options Toil expo
 line arguments. Running this program with ``--help`` will print the full list of
 options.
 
-Alternatively an existing :class:`argparse.ArgumentParser`
-object can have Toil command line options
-added to it with the :func:`toil.job.Job.Runner.addToilOptions` method.
+Alternatively, any existing :class:`argparse.ArgumentParser` object can have
+Toil command line options added to it with the
+:func:`toil.job.Job.Runner.addToilOptions` method. However, if it is not also a
+:class:`configargparse.ArgParser`, it will not read the Toil config file or the
+environment variables that Toil specifies as alternatives to command-line
+options, which may lead to unexpected behavior.
 
 
 Resuming a Workflow

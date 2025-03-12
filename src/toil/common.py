@@ -678,6 +678,17 @@ def parser_with_common_options(
     prog: Optional[str] = None,
     default_log_level: Optional[int] = None,
 ) -> ArgParser:
+    """
+    Get a command-line option parser for a Toil subcommand.
+
+    The returned parser just has basic options (like version reporting and
+    logging) used by all Toil subcommands.
+
+    Toil Python workflows should use
+    :meth:`toil.job.Job.Runner.getDefaultArgumentParser` instead, which makes
+    sure to add all the important options for actually running a workflow.
+    """
+
     parser = ArgParser(
         prog=prog or "Toil", formatter_class=ArgumentDefaultsHelpFormatter
     )
