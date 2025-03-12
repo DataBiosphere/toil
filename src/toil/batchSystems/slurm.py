@@ -101,6 +101,32 @@ def parse_slurm_time(slurm_time: str) -> int:
             total_seconds += multiplier * int(elapsed_split[index])
     return total_seconds
 
+# For parsing user-provided option overrides (or self-generated
+# options) for sbatch, we need a way to recognize long, long-with-equals, and
+# short forms.
+def option_detector(long: str, short: str | None = None) -> Callable[[str], bool]:
+    """
+    Get a function that returns true if it sees the long or short
+    option.
+    """
+    def is_match(option: str) -> bool:
+        return option == f"--{long}" or option.startswith(f"--{long}=") or (short is not None and option == f"-{short}")
+    return is_match
+
+def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str], bool]:
+    """
+    Get a function that returns true if it sees any of the long
+    options or long or short option pairs.
+    """
+    detectors = [option_detector(o) if isinstance(o, str) else option_detector(*o) for o in options]
+    def is_match(option: str) -> bool:
+        for detector in detectors:
+            if detector(option):
+                return True
+        return False
+    return is_match
+
+
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     class PartitionInfo(NamedTuple):
@@ -646,31 +672,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             # Also any extra arguments from --slurmArgs or TOIL_SLURM_ARGS
             nativeConfig: str = self.boss.config.slurm_args  # type: ignore[attr-defined]
-
-            # For parsing user-provided option overrides (or self-generated
-            # options) we need a way to recognize long, long-with-equals, and
-            # short forms.
-            def option_detector(long: str, short: str | None = None) -> Callable[[str], bool]:
-                """
-                Get a function that returns true if it sees the long or short
-                option.
-                """
-                def is_match(option: str) -> bool:
-                    return option == f"--{long}" or option.startswith(f"--{long}=") or (short is not None and option == f"-{short}")
-                return is_match
-
-            def any_option_detector(options: list[str | tuple[str, str]]) -> Callable[[str], bool]:
-                """
-                Get a function that returns true if it sees any of the long
-                options or long or short option pairs.
-                """
-                detectors = [option_detector(o) if isinstance(o, str) else option_detector(*o) for o in options]
-                def is_match(option: str) -> bool:
-                    for detector in detectors:
-                        if detector(option):
-                            return True
-                    return False
-                return is_match
 
             is_any_mem_option = any_option_detector(["mem", "mem-per-cpu", "mem-per-gpu"])
             is_any_cpus_option = any_option_detector([("cpus-per-task", "c"), "cpus-per-gpu"])

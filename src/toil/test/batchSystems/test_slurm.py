@@ -619,3 +619,30 @@ class SlurmTest(ToilTest):
         command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
         assert "--export=ALL" not in command
 
+    def test_option_detector(self):
+        detector = toil.batchSystems.slurm.option_detector("foobar", "f")
+
+        self.assertTrue(detector("--foobar"))
+        self.assertTrue(detector("--foobar=1"))
+        self.assertTrue(detector("-f"))
+        self.assertFalse(detector("-F"))
+        self.assertFalse(detector("--foo-bar"))
+        self.assertFalse(detector("foobar"))
+        self.assertFalse(detector("-foobar"))
+        self.assertFalse(detector("f"))
+
+    def test_any_option_detector(self):
+        detector = toil.batchSystems.slurm.any_option_detector([])
+        self.assertFalse(detector("--anything"))
+
+        detector = toil.batchSystems.slurm.any_option_detector([("foobar", "f"), "many-bothans", ("bazz-only", "B")])
+
+        self.assertTrue(detector("--foobar"))
+        self.assertTrue(detector("-f"))
+        self.assertTrue(detector("--many-bothans=False"))
+        self.assertTrue(detector("--bazz-only"))
+        self.assertTrue(detector("-B"))
+        self.assertFalse(detector("--no-bazz"))
+        self.assertFalse(detector("--foo-bar=--bazz-only"))
+       
+
