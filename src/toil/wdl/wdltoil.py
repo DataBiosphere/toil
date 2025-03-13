@@ -1282,19 +1282,21 @@ def convert_files(
     task_path: str,
 ) -> WDLBindings:
     """
-    Resolve relative-URI files in the given environment convert the file values to a new value made from a given mapping.
+    Fill in the virtualized_value fields for File objects in a WDL environment.
 
-    Will return bindings with file values set to their corresponding relative-URI.
-
-    :param environment: Bindings to evaluate on
-    :return: new bindings object
+    :param environment: Bindings to evaluate on. Will not be modified.
+    :param file_to_id: Maps from imported URI to Toil FileID with the data.
+    :param file_to_data: Maps from WDL-level file calue to metadata about the
+        file, including URI that would have been imported.
+    :return: new bindings object with the annotated File objects in it.
     """
     dir_ids = {t[1] for t in file_to_data.values()}
     dir_to_id = {k: uuid.uuid4() for k in dir_ids}
 
     def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
         """
-        Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
+        Produce a WDL File with the virtualized_value set to the Toil URI for
+        the already-imported data, but the same value.
         """
         candidate_uri = file_to_data[file.value][0]
         file_id = file_to_id[candidate_uri]
@@ -4191,7 +4193,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
             bindings = incoming_bindings.bind(self._node.name, value)
             # TODO: Only virtualize the new binding
-            return self.postprocess(virtualize_files(bindings, standard_library))
+            return self.postprocess(virtualize_files(bindings, standard_library, enforce_existence=False))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -4213,7 +4215,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 inputs_mapping,
             )
             # Prepare call inputs to move to another node
-            input_bindings = virtualize_files(input_bindings, standard_library)
+            input_bindings = virtualize_files(input_bindings, standard_library, enforce_existence=False)
 
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
@@ -4345,7 +4347,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                 )
 
         # TODO: Only virtualize the new bindings created
-        return self.postprocess(virtualize_files(current_bindings, standard_library))
+        return self.postprocess(virtualize_files(current_bindings, standard_library, enforce_existence=False))
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
