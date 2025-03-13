@@ -90,7 +90,7 @@ cwl_dependency_is_stand_alone:
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
     echo -e "\e[0Ksection_end:$(date +%s):prepare\r\e[0K"
     echo -e "\e[0Ksection_start:$(date +%s):test\r\e[0KRun a single CWL test: test_run_revsort"
-    make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_revsort
+    make test threads="1" tests=src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_revsort
     echo -e "\e[0Ksection_end:$(date +%s):test\r\e[0K"
 
 wdl_dependency_is_stand_alone:
@@ -103,7 +103,7 @@ wdl_dependency_is_stand_alone:
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun a single WDL test: test_run_MD5sum"
-    make test threads="${TEST_THREADS}" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
+    make test threads="1" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 quick_test_offline:
