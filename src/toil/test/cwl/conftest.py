@@ -34,7 +34,7 @@ def pytest_cwl_execute_test(
         processfile: str,
         jobfile: Optional[str]
 ) -> Tuple[int, Optional[Dict[str, Any]]]:
-    """Use the CWL reference runner (cwltool) to execute tests."""
+    """Use Toil to execute CWL tests (equivalent to running toil-cwl-runner)."""
     from toil.cwl.cwltoil import main
 
     stdout = StringIO()
