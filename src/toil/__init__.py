@@ -481,37 +481,30 @@ def logProcessContext(config: "Config") -> None:
     log.debug("Configuration: %s", config.__dict__)
 
 
-try:
-    cache_path = "~/.cache/aws/cached_temporary_credentials"
-    datetime_format = (
-        "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
-    )
-    log = logging.getLogger(__name__)
 
-    # But in addition to our manual cache, we also are going to turn on boto3's
-    # new built-in caching layer.
+datetime_format = (
+    "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
+)
+log = logging.getLogger(__name__)
 
-    def datetime_to_str(dt):
-        """
-        Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
+def datetime_to_str(dt):
+    """
+    Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
 
-        >>> datetime_to_str(datetime(1970, 1, 1, 0, 0, 0))
-        '1970-01-01T00:00:00Z'
-        """
-        return dt.strftime(datetime_format)
+    >>> datetime_to_str(datetime(1970, 1, 1, 0, 0, 0))
+    '1970-01-01T00:00:00Z'
+    """
+    return dt.strftime(datetime_format)
 
-    def str_to_datetime(s):
-        """
-        Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
+def str_to_datetime(s):
+    """
+    Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
 
-        >>> str_to_datetime( '1970-01-01T00:00:00Z' )
-        datetime.datetime(1970, 1, 1, 0, 0)
+    >>> str_to_datetime( '1970-01-01T00:00:00Z' )
+    datetime.datetime(1970, 1, 1, 0, 0)
 
-        Just to show that the constructor args for seconds and microseconds are optional:
-        >>> datetime(1970, 1, 1, 0, 0, 0)
-        datetime.datetime(1970, 1, 1, 0, 0)
-        """
-        return datetime.strptime(s, datetime_format)
-
-except ImportError:
-    pass
+    Just to show that the constructor args for seconds and microseconds are optional:
+    >>> datetime(1970, 1, 1, 0, 0, 0)
+    datetime.datetime(1970, 1, 1, 0, 0)
+    """
+    return datetime.strptime(s, datetime_format)
