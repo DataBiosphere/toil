@@ -54,10 +54,13 @@ from toil.version import distVersion
 
 import pytest
 
+from typing_extensions import Self
+
 try:
     from botocore.exceptions import ProxyConnectionError
 except ImportError:
-    class ProxyConnectionError(BaseException):
+
+    class ProxyConnectionError(BaseException):  # type: ignore[no-redef]
         ...
 
 logger = logging.getLogger(__name__)
@@ -510,7 +513,7 @@ def needs_google_storage(test_item: MT) -> MT:
     """
     test_item = _mark_test("google-storage", needs_online(test_item))
     try:
-        from google.cloud import storage  # noqa
+        from google.cloud import storage  # type: ignore[import-untyped]
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'google' extra to include this test."
@@ -573,11 +576,11 @@ def _is_kubernetes_installed_and_configured() -> bool:
         import kubernetes
 
         try:
-            kubernetes.config.load_kube_config()
-        except kubernetes.config.ConfigException:
+            kubernetes.config.load_kube_config()  # type: ignore[attr-defined]
+        except kubernetes.config.ConfigException:  # type: ignore[attr-defined]
             try:
-                kubernetes.config.load_incluster_config()
-            except kubernetes.config.ConfigException:
+                kubernetes.config.load_incluster_config()  # type: ignore[attr-defined]
+            except kubernetes.config.ConfigException:  # type: ignore[attr-defined]
                 return False
     except ImportError:
         return False
@@ -612,7 +615,7 @@ def needs_mesos(test_item: MT) -> MT:
         )(test_item)
     try:
         import psutil  # noqa
-        import pymesos  # noqa
+        import pymesos  # type: ignore[import-not-found]
     except ImportError:
         return unittest.skip(
             "Install Mesos (and Toil with the 'mesos' extra) to include this test."
@@ -620,7 +623,7 @@ def needs_mesos(test_item: MT) -> MT:
     return test_item
 
 
-def _mesos_avail() -> None:
+def _mesos_avail() -> bool:
     if not (which("mesos-master") or which("mesos-agent")):
         return False
     try:
@@ -654,7 +657,7 @@ def needs_htcondor(test_item: MT) -> MT:
     """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test("htcondor", test_item)
     try:
-        import htcondor
+        import htcondor  # type: ignore[import-not-found]
 
         htcondor.Collector(os.getenv("TOIL_HTCONDOR_COLLECTOR")).query(
             constraint="False"
@@ -860,7 +863,7 @@ def needs_server(test_item: MT) -> MT:
     test_item = _mark_test("server_mode", test_item)
     try:
         # noinspection PyUnresolvedReferences
-        import connexion
+        import connexion  # type: ignore[import-untyped]
 
         print(connexion.__file__)  # keep this import from being removed.
     except ImportError:
@@ -1050,7 +1053,11 @@ def timeLimit(seconds: int) -> Generator[None, None, None]:
         signal.alarm(0)
 
 
-def make_tests(generalMethod, targetClass, **kwargs):
+def make_tests(
+    generalMethod: Callable[[Any], Any],
+    targetClass: Optional[Callable[[Any], Any]],
+    **kwargs: Any,
+) -> None:
     """
     This method dynamically generates test methods using the generalMethod as a template. Each
     generated function is the result of a unique combination of parameters applied to the
@@ -1106,7 +1113,9 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
     """
 
-    def permuteIntoLeft(left, rParamName, right):
+    def permuteIntoLeft(
+        left: dict[str, dict[str, str]], rParamName: str, right: dict[str, str]
+    ) -> None:
         """
         Permutes values in right dictionary into each parameter: value dict pair in the left
         dictionary. Such that the left dictionary will contain a new set of keys each of which is
@@ -1141,10 +1150,10 @@ def make_tests(generalMethod, targetClass, **kwargs):
                 left[prmValName + nextPrmVal] = aggDict
             left.pop(prmValName)
 
-    def insertMethodToClass():
+    def insertMethodToClass() -> None:
         """Generate and insert test methods."""
 
-        def fx(self, prms=prms):
+        def fx(self: Any, prms: Any = prms) -> Any:
             if prms is not None:
                 return generalMethod(self, **prms)
             else:
@@ -1254,7 +1263,7 @@ class ApplianceTestSupport(ToilTest):
             self.containerName = str(uuid.uuid4())
             self.popen: Optional[subprocess.Popen[bytes]] = None
 
-        def __enter__(self) -> "Appliance":
+        def __enter__(self) -> Self:
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
