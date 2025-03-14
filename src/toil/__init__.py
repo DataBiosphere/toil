@@ -480,31 +480,3 @@ def logProcessContext(config: "Config") -> None:
     log.info("Running Toil version %s on host %s.", version, socket.gethostname())
     log.debug("Configuration: %s", config.__dict__)
 
-
-
-datetime_format = (
-    "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
-)
-log = logging.getLogger(__name__)
-
-def datetime_to_str(dt):
-    """
-    Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
-
-    >>> datetime_to_str(datetime(1970, 1, 1, 0, 0, 0))
-    '1970-01-01T00:00:00Z'
-    """
-    return dt.strftime(datetime_format)
-
-def str_to_datetime(s):
-    """
-    Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
-
-    >>> str_to_datetime( '1970-01-01T00:00:00Z' )
-    datetime.datetime(1970, 1, 1, 0, 0)
-
-    Just to show that the constructor args for seconds and microseconds are optional:
-    >>> datetime(1970, 1, 1, 0, 0, 0)
-    datetime.datetime(1970, 1, 1, 0, 0)
-    """
-    return datetime.strptime(s, datetime_format)
