@@ -6,7 +6,7 @@ import sys
 from configargparse import ArgumentParser
 
 
-def make_parser():
+def make_parser() -> ArgumentParser:
     p = ArgumentParser()
     p.add_argument(
         "progargs", nargs=argparse.REMAINDER, help="The program and its arguments"
@@ -19,18 +19,18 @@ def make_parser():
 
 
 class Runner:
-    def __init__(self):
+    def __init__(self) -> None:
         if sys.stdin.isatty():
             self.indata = None
         else:
             self.indata = sys.stdin.read().encode(sys.stdin.encoding)
 
-    def run_once(self, args: list[str]):
+    def run_once(self, args: list[str]) -> None:
         subprocess.run(
             args, input=self.indata, stdout=sys.stdout, stderr=sys.stderr
         ).check_returncode()
 
-    def run_many(self, n: int, args: list[str]):
+    def run_many(self, n: int, args: list[str]) -> None:
         for i in range(n):
             self.run_once(args)
 

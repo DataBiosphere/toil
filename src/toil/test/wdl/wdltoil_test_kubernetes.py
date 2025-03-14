@@ -20,7 +20,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
     Ensure WDL works on the Kubernetes batchsystem.
     """
 
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         super().__init__(name)
         self.clusterName = "wdl-integration-test-" + str(uuid4())
         # t2.medium is the minimum t2 instance that permits Kubernetes
@@ -46,7 +46,7 @@ class WDLKubernetesClusterTest(AbstractClusterTest):
             ]
         )
 
-    def test_wdl_kubernetes_cluster(self):
+    def test_wdl_kubernetes_cluster(self) -> None:
         """
         Test that a wdl workflow works on a kubernetes cluster. Launches a cluster with 1 worker. This runs a wdl
         workflow that performs an image pull on the worker.
