@@ -45,8 +45,15 @@ logger = logging.getLogger(__name__)
 
 # We assume TRS_ROOT is actually a Dockstore instance.
 
+# This is a publish-able token for production Dockstore for Toil to use.
+# This is NOT a secret value.
+DEFAULT_DOCKSTORE_TOKEN = "2bff46294daddef6df185452b04db6143ea8a59f52ee3c325d3e1df418511b7d"
+
 # How should we authenticate our Dockstore requests?
-DOCKSTORE_TOKEN = os.environ.get("TOIL_DOCKSTORE_TOKEN")
+DOCKSTORE_TOKEN = os.environ.get("TOIL_DOCKSTORE_TOKEN", DEFAULT_DOCKSTORE_TOKEN)
+
+# What platform should we report metrics as?
+DOCKSTORE_PLATFORM = "TOIL"
 
 
 # This is a https://schema.org/CompletedActionStatus
@@ -346,7 +353,7 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
 
     # Set the submission query string metadata
     submission_params = {
-        "platform": "OTHER",
+        "platform": DOCKSTORE_PLATFORM,
         "description": "Workflow status from Toil"
     }
 
@@ -375,5 +382,5 @@ def get_metrics_url(trs_workflow_id: str, trs_version: str, execution_id: str) -
     Get the URL where a workflow metrics object (for a workflow, or for a set of tasks) can be fetched back from.
     """
 
-    return f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/execution?platform=OTHER&executionId={quote(execution_id, safe='')}"
+    return f"{TRS_ROOT}/api/api/ga4gh/v2/extended/{quote(trs_workflow_id, safe='')}/versions/{quote(trs_version, safe='')}/execution?platform={DOCKSTORE_PLATFORM}&executionId={quote(execution_id, safe='')}"
 
