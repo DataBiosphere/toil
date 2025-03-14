@@ -82,7 +82,18 @@ def main():
         'src/toil/lib/encryption/__init__.py',
         'src/toil/lib/aws/__init__.py',
         'src/toil/server/utils.py',
-        'src/toil/test',
+        'src/toil/test/batchSystems',
+        'src/toil/test/cactus',
+        'src/toil/test/docs',
+        'src/toil/test/jobStores',
+        'src/toil/test/lib',
+        'src/toil/test/mesos',
+        'src/toil/test/options',
+        'src/toil/test/provisioners',
+        'src/toil/test/server',
+        'src/toil/test/sort',
+        'src/toil/test/src',
+        'src/toil/test/utils',
         'src/toil/utils/toilStats.py'
     ]]
 
