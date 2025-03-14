@@ -5,6 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   MAIN_PYTHON_PKG: "python3.13"
   # Used to tell pytest which tests to be run by specifying markers,
   # Allows partitioning of tests to prevent duplicate running of tests in different jobs.
@@ -64,6 +65,11 @@ lint:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
+      - .mypy_cache
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all dependencies (except htcondor)"
@@ -84,6 +90,10 @@ cwl_dependency_is_stand_alone:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:$(date +%s):prepare\r\e[0KDownload and install the CWL dependencies"
@@ -97,6 +107,10 @@ wdl_dependency_is_stand_alone:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: linting_and_dependencies
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install the WDL dependencies"
@@ -110,6 +124,10 @@ quick_test_offline:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: basic_tests
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     ${MAIN_PYTHON_PKG} -m virtualenv venv
     . venv/bin/activate
@@ -130,6 +148,10 @@ py39_appliance_build:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.9.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.9
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -149,6 +171,10 @@ py39_main:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.9.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.9
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -167,6 +193,10 @@ py310_appliance_build:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.10.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.10
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -186,6 +216,10 @@ py310_main:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.10.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.10
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -204,6 +238,10 @@ py311_appliance_build:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.11.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.11
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -223,6 +261,10 @@ py311_main:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.11.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.11
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -241,6 +283,10 @@ py312_appliance_build:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.12.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.12
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -260,6 +306,10 @@ py312_main:
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
     - if: $CI_COMMIT_BRANCH =~ /.*3\.12.*/
   stage: basic_tests
+  cache:
+    key: cache-python3.12
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -272,6 +322,10 @@ py312_main:
 
 py313_appliance_build:
   stage: basic_tests
+  cache:
+    key: cache-python3.13
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all the dependencies, including htcondor"
@@ -287,6 +341,10 @@ py313_main:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: basic_tests
+  cache:
+    key: cache-python3.13
+    paths:
+      - .cache/pip
   script: |
     pwd
     # todo: htcondor is not out for python 3.13 yet, we don't actively test htcondor batchsystems but should still test an htcondor install
@@ -323,6 +381,10 @@ cwl_v1.2:
           - 'src/toil/cwl/*'
           - 'src/toil/test/cwl/*'
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
@@ -354,6 +416,10 @@ cwl_badge:
           - 'src/toil/cwl/*'
           - 'src/toil/test/cwl/*'
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
@@ -382,6 +448,10 @@ cwl_badge_release:
   rules:
     - if: $CI_COMMIT_TAG
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
@@ -433,6 +503,10 @@ cwl_misc:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: main_tests
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
@@ -468,6 +542,10 @@ wdl:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script: |
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install default-jew, and all the Python dependencies except htcondor"
@@ -482,6 +560,10 @@ jobstore:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -491,6 +573,10 @@ provisioner:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: main_tests
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -505,6 +591,10 @@ jobstore_integration:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -522,6 +612,10 @@ server_integration:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -540,6 +634,10 @@ provisioner_integration:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -559,6 +657,10 @@ google_jobstore:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH =~ /.*-fix-ci/
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
@@ -583,6 +685,10 @@ mesos:
           - 'src/toil/test/mesos/*'
           - 'src/toil/batchSystems/mesos/*'
   stage: integration
+  cache:
+    key: cache-python3.10
+    paths:
+      - .cache/pip
   script:
     - pwd
     - python3.10 -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[mesos,aws]
@@ -617,6 +723,10 @@ batchsystem:
             - 'src/toil/test/batchSystems/test_gridengine.py'
             - 'src/toil/batchSystems/gridengine.py'
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/test_gridengine.py::GridEngineTest
@@ -633,6 +743,10 @@ cactus_integration:
         paths:
           - 'src/toil/test/cactus/test_cactus_integration.py'
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - export CACTUS_COMMIT_SHA=03295e9af99e2e9168ccd02e78a9f4c0c8dcd490
     - set -e
@@ -648,6 +762,10 @@ plugin:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"
   stage: integration
+  cache:
+    key: cache-$MAIN_PYTHON_PKG
+    paths:
+      - .cache/pip
   script:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[all]
     - make test threads="${TEST_THREADS}" tests=src/toil/test/batchSystems/batch_system_plugin_test.py
