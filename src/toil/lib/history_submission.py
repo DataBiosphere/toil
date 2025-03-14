@@ -82,7 +82,7 @@ def job_execution_id(job_attempt: JobAttemptSummary) -> str:
 def get_parsed_trs_spec(workflow_attempt: WorkflowAttemptSummary) -> tuple[str, str]:
     """
     Get the TRS ID and version of the workflow, or raise an error.
-    
+
     :returns: The TRS ID and the TRS version of the wrokflow run.
     :raises: ValueError if the workflow does not have a TRS spec or if the spec
         does not contain a version.
@@ -259,7 +259,7 @@ class Submission:
         return all_submitted_and_marked
 
 
-def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> Submission:
+def create_history_submission(batch_size: Optional[int] = None, desired_tasks: Optional[int] = None) -> Submission:
     """
     Make a package of data about recent workflow runs to send in.
 
@@ -270,6 +270,12 @@ def create_history_submission(batch_size: int = 10, desired_tasks: int = 0) -> S
     :param desired_tasks: Number of tasks to try and put into a task submission
         batch. Use 0 to not submit any task information.
     """
+
+    # By default, include the things we are set to track history for.
+    if batch_size is None:
+        batch_size = 10 if HistoryManager.WORKFLOW_HISTORY_ENABLED else 0
+    if desired_tasks is None:
+        desired_tasks = 50 if HistoryManager.JOB_HISTORY_ENABLED else 0
 
     # Collect together some workflows and some lists of tasks into a submission.
     submission = Submission()
@@ -325,15 +331,16 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
     submission = Submission()
     try:
         workflow_attempt = HistoryManager.get_workflow_attempt(workflow_id, attempt_number)
-        if workflow_attempt is not None:
+        if workflow_attempt is not None and HistoryManager.WORKFLOW_HISTORY_ENABLED:
             if not workflow_attempt.submitted_to_dockstore:
                 submission.add_workflow_attempt(workflow_attempt)
-            try:
-                job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
-                submission.add_job_attempts(workflow_attempt, job_attempts)
-            except:
-                logger.exception("Could not compose metrics report for workflow task set")
-                # Keep going with just the workflow.
+            if HistoryManager.JOB_HISTORY_ENABLED:
+                try:
+                    job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
+                    submission.add_job_attempts(workflow_attempt, job_attempts)
+                except:
+                    logger.exception("Could not compose metrics report for workflow task set")
+                    # Keep going with just the workflow.
     except:
         logger.exception("Could not compose metrics report for workflow execution")
         # Keep going with an empty submission.
@@ -492,6 +499,13 @@ def display_dialog_tkinter(title: str, text: str, options: dict[KeyType, str], t
         if timeout:
             # If we run out of time, hide the window and move on without a choice.
             root.after(int(timeout * 1000), close_root)
+
+        # To make the dialog pop up over the terminal instead of behind it, we
+        # lift it and temporarily make it topmost. We don't keep it topmost
+        # because we want to let the user switch away from it.
+        root.attributes('-topmost', True)
+        root.after(10, lambda: root.attributes('-topmost', False))
+        root.lift()
 
         # Run the window's main loop
         root.mainloop()
