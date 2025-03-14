@@ -13,6 +13,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import atexit
 import datetime
 import logging
 import os
@@ -28,8 +29,10 @@ import uuid
 import zoneinfo
 from abc import ABCMeta, abstractmethod
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from importlib.resources import as_file, files
 from inspect import getsource
+from pathlib import Path
 from shutil import which
 from tempfile import mkstemp
 from textwrap import dedent
@@ -50,6 +53,24 @@ from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.version import distVersion
 
 logger = logging.getLogger(__name__)
+
+
+def get_data(filename: str) -> str:
+    """Returns an absolute path for a file from this package."""
+    # normalizing path depending on OS or else it will cause problem when joining path
+    filename = os.path.normpath(filename)
+    filepath = None
+    # import ipdb; ipdb.set_trace()
+    try:
+        file_manager = ExitStack()
+        atexit.register(file_manager.close)
+        traversable = files("toil") / filename
+        filepath = file_manager.enter_context(as_file(traversable))
+    except ModuleNotFoundError:
+        pass
+    if not filepath or not os.path.isfile(filepath):
+        filepath = Path(os.path.dirname(__file__)) / ".." / ".." / ".." / filename
+    return str(filepath.resolve())
 
 
 class ToilTest(unittest.TestCase):

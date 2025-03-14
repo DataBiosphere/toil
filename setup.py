@@ -111,9 +111,7 @@ def run_setup():
         extras_require=extras_require,
         package_dir={"": "src"},
         packages=find_packages(where="src"),
-        package_data={
-            "": ["*.yml", "*.yaml", "cloud-config", "*.cwl"],
-        },
+        include_package_data=True,
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
         # easy to search for.
