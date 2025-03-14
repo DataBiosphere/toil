@@ -257,7 +257,8 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``https://qa.dockstore.org``, for debugging.       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_DOCKSTORE_TOKEN             | When publishing workflow metrics, include this     |
-|                                  | Dockstore authentication token, for debugging.     |
+|                                  | Dockstore authentication token instead of the      |
+|                                  | default public Toil one.                           |
 +----------------------------------+----------------------------------------------------+
 | SINGULARITY_DOCKER_HUB_MIRROR    | An http or https URL for the Singularity wrapper   |
 |                                  | in the Toil Docker container to use as a mirror    |
