@@ -74,9 +74,9 @@ lint:
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all dependencies (except htcondor)"
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     ${MAIN_PYTHON_PKG} -m pip freeze
     ${MAIN_PYTHON_PKG} --version
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:mypy\r\e[0KCheck the Python types with mypy"
     make mypy
     echo -e "\e[0Ksection_end:`date +%s`:mypy\r\e[0K"
@@ -389,8 +389,8 @@ cwl_v1.2:
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     # Run CWL integration tests excluded from cwl_misc
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests excluded from cwl_misc"
     time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and integrative'"
@@ -424,15 +424,15 @@ cwl_badge:
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    # Run CWL integration tests excluded from cwl_misc
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:download_tests\r\e[0KDownload the CWL conformance tests"
     make download_cwl_spec
-    echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     rm -rf badges1.2
+    echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
     make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   artifacts:
     paths:
     - "badges1.2"
@@ -456,13 +456,15 @@ cwl_badge_release:
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:download_tests\r\e[0KDownload the CWL conformance tests"
     make download_cwl_spec
-    echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
     rm -rf badges1.2
+    echo -e "\e[0Ksection_end:`date +%s`:download_tests\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the CWL v1.2 conformance tests."
     make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
+    echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   artifacts:
     paths:
     - "badges1.2"
@@ -511,8 +513,8 @@ cwl_misc:
     pwd
     echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install cwl & aws dependencies"
     ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
-    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the miscellaneous CWL tests"
     make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and not integrative'" dist=worksteal
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
