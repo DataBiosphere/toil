@@ -2,7 +2,7 @@ version 1.0
 
 import "drop_files_subworkflow.wdl" as subwf
 
-# Workflow for testing discarding un-output files a tthe end of a workflow.
+# Workflow for testing discarding un-output files at the end of a workflow.
 # Does a bunch of unusual things with files.
 workflow wf {
     input {

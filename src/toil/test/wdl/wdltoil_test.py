@@ -320,7 +320,7 @@ class WDLTests(BaseWDLTest):
         
         # These are created inside the workflow and output
         assert "3" in all_file_values
-        assert "This file is collected as a task output twice"
+        assert "This file is collected as a task output twice" in all_file_values
         assert "This file should be kept" in all_file_values
         assert "This file is kept by a subworkflow" in all_file_values
         
