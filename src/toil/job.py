@@ -4117,7 +4117,8 @@ class ImportsJob(Job):
                     # schedule the individual file
                     per_batch_files.append(filename)
                 file_batches.append(per_batch_files)
-                # reset batching calculation
+                # reset batch to empty
+                per_batch_files = []
                 per_batch_size = 0
             else:
                 per_batch_size += filesize
