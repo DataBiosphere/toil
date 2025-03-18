@@ -66,7 +66,7 @@ If you want to reproduce the failure later, or on another machine, you can first
 
     toil status --failed --noAggStats ./store
 
-This will produce something like:
+This will produce something like::
 
     [2024-03-14T17:45:15-0400] [MainThread] [I] [toil.utils.toilStatus] Traversing the job graph gathering jobs. This may take a couple of minutes.
     Failed jobs:
