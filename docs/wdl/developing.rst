@@ -30,19 +30,13 @@ Toil in a Slurm environment, but they can also apply in other situations.
 Using the Official WDL tutorials
 --------------------------------
 
-You can also learn to write WDL workflows for Toil by following the `official WDL tutorials`_.
+You can also learn to write WDL workflows for Toil by following the `official WDL quickstart guide`_.
 
-When you reach the point of `executing your workflow`_, instead of running with
-Cromwell::
-
-    java -jar Cromwell.jar run myWorkflow.wdl --inputs myWorkflow_inputs.json
-
-you can instead run with ``toil-wdl-runner``::
+Once you have your workflow ``.wdl`` file and your input ``.json``, you can run the workflow on the inputs with ``toil-wdl-runner``::
 
     toil-wdl-runner myWorkflow.wdl --input myWorkflow_inputs.json
 
-.. _`official WDL tutorials`: https://wdl-docs.readthedocs.io/en/stable/
-.. _`executing your workflow`: https://wdl-docs.readthedocs.io/en/stable/WDL/execute/
+.. _`official WDL quickstart guide`: https://docs.openwdl.org/getting-started/quickstart.html
 
 Using the Learn WDL Video Tutorials
 -----------------------------------
