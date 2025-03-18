@@ -257,6 +257,84 @@ class WDLTests(BaseWDLTest):
         assert isinstance(result["wait.result"], str)
         self.assertEqual(result["wait.result"], "waited")
 
+
+    @needs_singularity_or_docker
+    def test_workflow_file_deletion(self):
+        """
+        Test if Toil can delete non-output outputs at the end of a workflow.
+        """
+        wdl = os.path.abspath("src/toil/test/wdl/testfiles/drop_files.wdl")
+
+        # Keep a job store around to inspect for files.
+        job_store = os.path.join(self._createTempDir("jobStore"), "tree")
+
+        # Make a working directory to run in
+        work_dir = self._createTempDir("workDir")
+        # Make the file that will be imported from a string in the workflow
+        referenced_file = os.path.join(work_dir, "localfile.txt")
+        with open(referenced_file, 'w') as f:
+            f.write("This file is imported by local path in the workflow")
+        # Make the file to pass as input
+        sent_in_file = os.path.join(work_dir, "sent_in.txt")
+        with open(sent_in_file, 'w') as f:
+            f.write("This file is sent in as input")
+
+        result_json = subprocess.check_output(
+            self.base_command + [
+                wdl,
+                "-o",
+                self.output_dir,
+                "--jobStore",
+                job_store,
+                "--clean=never",
+                "--logInfo",
+                "--retryCount=0",
+                "--input={\"file_in\": \"sent_in.txt\"}"
+            ],
+            cwd=work_dir
+        )
+        result = json.loads(result_json)
+
+        # Get all the file values in the job store.
+        all_file_values = set()
+        for directory, _, files in os.walk(job_store):
+            for filename in files:
+                with open(os.path.join(directory, filename), encoding='utf-8', errors='replace') as f:
+                    all_file_values.add(f.read().rstrip())
+
+        # Make sure the files with the right contents are in the job store and
+        # the files with the wrong contents aren't anymore.
+        #
+        # This assumes no top-level cleanup in the main driver script.
+        
+        # These are all created inside the workflow and not output
+        assert "This file is imported by local path in the workflow" not in all_file_values
+        assert "This file is consumed by a task call" not in all_file_values
+        assert "This file is created in a task inputs section" not in all_file_values
+        assert "This file is created in a runtime section" not in all_file_values
+        assert "This task file is not used" not in all_file_values
+        assert "This file should be discarded" not in all_file_values
+        assert "This file is dropped by a subworkflow" not in all_file_values
+        assert "This file gets stored in a variable" not in all_file_values
+        assert "This file never gets stored in a variable" not in all_file_values 
+        
+        # These are created inside the workflow and output
+        assert "3" in all_file_values
+        assert "This file is collected as a task output twice" in all_file_values
+        assert "This file should be kept" in all_file_values
+        assert "This file is kept by a subworkflow" in all_file_values
+        
+        # These are sent into the workflow from the enclosing environment and
+        # should not be deleted.
+        assert "This file is sent in as input" in all_file_values
+
+        # Make sure we didn't somehow delete the file sent as input
+        assert os.path.exists(sent_in_file)
+        
+        
+
+        
+
     @needs_singularity_or_docker
     def test_all_call_outputs(self):
         """

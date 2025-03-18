@@ -917,8 +917,8 @@ def set_shared_fs_path(file: WDL.Value.File, path: str) -> WDL.Value.File:
 
 
 def view_shared_fs_paths(
-    bindings: WDL.Env.Bindings[WDL.Value.Base],
-) -> WDL.Env.Bindings[WDL.Value.Base]:
+    bindings: WDLBindings,
+) -> WDLBindings:
     """
     Given WDL bindings, return a copy where all files have their shared filesystem paths as their values.
     """
@@ -1137,11 +1137,11 @@ def choose_human_readable_directory(
 
 def evaluate_decls_to_bindings(
     decls: list[WDL.Tree.Decl],
-    all_bindings: WDL.Env.Bindings[WDL.Value.Base],
+    all_bindings: WDLBindings,
     standard_library: ToilWDLStdLibBase,
     include_previous: bool = False,
     drop_missing_files: bool = False,
-) -> WDL.Env.Bindings[WDL.Value.Base]:
+) -> WDLBindings:
     """
     Evaluate decls with a given bindings environment and standard library.
     Creates a new bindings object that only contains the bindings from the given decls.
@@ -1156,7 +1156,7 @@ def evaluate_decls_to_bindings(
     """
     # all_bindings contains current bindings + previous all_bindings
     # bindings only contains the decl bindings themselves so that bindings from other sections prior aren't included
-    bindings: WDL.Env.Bindings[WDL.Value.Base] = WDL.Env.Bindings()
+    bindings: WDLBindings = WDL.Env.Bindings()
     drop_if_missing_with_workdir = partial(
         drop_if_missing, standard_library=standard_library
     )
@@ -1245,7 +1245,10 @@ class NonDownloadingSize(WDL.StdLib._Size):
         return WDL.Value.Float(total_size)
 
 
-def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
+def extract_file_values(environment: WDLBindings) -> list[str]:
+    """
+    Get a list of all File object values in the given bindings.
+    """
     filenames = list()
 
     def add_filename(file: WDL.Value.File) -> WDL.Value.File:
@@ -1255,6 +1258,22 @@ def extract_workflow_inputs(environment: WDLBindings) -> list[str]:
     map_over_files_in_bindings(environment, add_filename)
     return filenames
 
+def extract_file_virtualized_values(environment: WDLBindings) -> list[str]:
+    """
+    Get a list of all File object virtualized values in the given bindings.
+
+    If a file hasn't been virtualized, it won't contribute to the list.
+    """
+    values = list()
+
+    def add_value(file: WDL.Value.File) -> WDL.Value.File:
+        value = get_file_virtualized_value(file)
+        if value is not None:
+            values.append(value)
+        return file
+
+    map_over_files_in_bindings(environment, add_value)
+    return values
 
 def convert_files(
     environment: WDLBindings,
@@ -1263,19 +1282,21 @@ def convert_files(
     task_path: str,
 ) -> WDLBindings:
     """
-    Resolve relative-URI files in the given environment convert the file values to a new value made from a given mapping.
+    Fill in the virtualized_value fields for File objects in a WDL environment.
 
-    Will return bindings with file values set to their corresponding relative-URI.
-
-    :param environment: Bindings to evaluate on
-    :return: new bindings object
+    :param environment: Bindings to evaluate on. Will not be modified.
+    :param file_to_id: Maps from imported URI to Toil FileID with the data.
+    :param file_to_data: Maps from WDL-level file calue to metadata about the
+        file, including URI that would have been imported.
+    :return: new bindings object with the annotated File objects in it.
     """
     dir_ids = {t[1] for t in file_to_data.values()}
     dir_to_id = {k: uuid.uuid4() for k in dir_ids}
 
     def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
         """
-        Calls import_filename to detect if a potential URI exists and imports it. Will modify the File object value to the new URI and tack on the virtualized file.
+        Produce a WDL File with the virtualized_value set to the Toil URI for
+        the already-imported data, but the same value.
         """
         candidate_uri = file_to_data[file.value][0]
         file_id = file_to_id[candidate_uri]
@@ -1641,12 +1662,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     def _virtualize_file(
         self, file: WDL.Value.File, enforce_existence: bool = True
     ) -> WDL.Value.File:
-        logger.debug("Virtualizing %s", file)
-        # If enforce_existence is true, then if a file is detected as nonexistent, raise an error. Else, let it pass through
         if get_file_virtualized_value(file) is not None:
-            logger.debug("File is marked nonexistent so passing it through")
+            # Already virtualized
             return file
 
+        logger.debug("Virtualizing %s", file)
+
+        # If enforce_existence is true, then if a file is detected as
+        # nonexistent, raise an error. Else, let it pass through
         if enforce_existence is False:
             # We only want to error on a nonexistent file in the output section
             # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
@@ -1999,7 +2022,7 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
             )
             # Make an environment of "file_sha256" to that as a WDL string, and
             # digest that, and make a write_ cache key. No need to transform to
-            # shared FS paths sonce no paths are in it.
+            # shared FS paths since no paths are in it.
             log_bindings(
                 logger.debug, "Digesting file bindings:", [file_input_bindings]
             )
@@ -2535,7 +2558,7 @@ def devirtualize_files(
     that are actually available to command line commands.
     The same virtual file always maps to the same devirtualized filename even with duplicates
     """
-    logger.info("Devirtualizing files")
+    logger.debug("Devirtualizing files")
     return map_over_files_in_bindings(environment, stdlib._devirtualize_file)
 
 
@@ -2546,12 +2569,35 @@ def virtualize_files(
     Make sure all the File values embedded in the given bindings point to files
     that are usable from other machines.
     """
-    logger.info("Virtualizing files")
+    logger.debug("Virtualizing files")
     virtualize_func = partial(
         stdlib._virtualize_file, enforce_existence=enforce_existence
     )
     return map_over_files_in_bindings(environment, virtualize_func)
 
+def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[WDLBindings], file_store: AbstractFileStore) -> None:
+    """
+    Delete any files that in the given bindings but not in the live list.
+
+    Operates on the virtualized values of File objects anywhere in the bindings.
+    """
+
+    # Get all the files in the first bindings and not any of the others.
+    unused_files = set(
+        extract_file_virtualized_values(internal_bindings)
+    ).difference(
+        *(
+            extract_file_virtualized_values(bindings)
+            for bindings in live_bindings_list
+        )
+    )
+
+    for file_uri in unused_files:
+        # Delete them
+        if is_toil_url(file_uri):
+            logger.debug("Delete file %s that is not needed", file_uri)
+            file_id, _, _, _ = unpack_toil_uri(file_uri)
+            file_store.deleteGlobalFile(file_id)
 
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
@@ -3025,12 +3071,18 @@ class WDLTaskWrapperJob(WDLBaseJob):
         self,
         task: WDL.Tree.Task,
         prev_node_results: Sequence[Promised[WDLBindings]],
+        enclosing_bindings: WDLBindings,
         task_id: list[str],
         wdl_options: WDLContext,
         **kwargs: Any,
     ) -> None:
         """
         Make a new job to determine resources and run a task.
+
+        :param enclosing_bindings: Bindings in the enclosing section,
+            containing files not to clean up. Files that are passed as inputs
+            but not uses as outputs or present in the enclosing section
+            bindings will be deleted after the task call completes.
 
         :param namespace: The namespace that the task's *contents* exist in.
                The caller has alredy added the task's own name.
@@ -3052,6 +3104,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
 
         self._task = task
         self._prev_node_results = prev_node_results
+        self._enclosing_bindings = enclosing_bindings
         self._task_id = task_id
 
     @report_wdl_errors("evaluate task code", exit=True)
@@ -3091,10 +3144,23 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # TODO: What if the same file is passed through several tasks, and
             # we get cache hits on those tasks? Won't we upload it several
             # times?
+
+            # Load output bindings from the cache
+            cached_bindings = virtualize_files(
+                cached_result, standard_library, enforce_existence=False
+            )
+            
+            # Throw away anything input but not available outside the call or
+            # output.
+            delete_dead_files(
+                bindings,
+                [cached_bindings, self._enclosing_bindings],
+                file_store
+            )
+            
+            # Postprocess and ship the output bindings.
             return self.postprocess(
-                virtualize_files(
-                    cached_result, standard_library, enforce_existence=False
-                )
+                cached_bindings
             )
 
         if self._task.inputs:
@@ -3231,6 +3297,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             virtualize_files(
                 runtime_bindings, standard_library, enforce_existence=False
             ),
+            self._enclosing_bindings,
             self._task_id,
             cores=runtime_cores or self.cores,
             memory=runtime_memory or self.memory,
@@ -3266,6 +3333,7 @@ class WDLTaskJob(WDLBaseJob):
         task: WDL.Tree.Task,
         task_internal_bindings: Promised[WDLBindings],
         runtime_bindings: Promised[WDLBindings],
+        enclosing_bindings: WDLBindings,
         task_id: list[str],
         mount_spec: dict[str | None, int],
         wdl_options: WDLContext,
@@ -3274,6 +3342,9 @@ class WDLTaskJob(WDLBaseJob):
     ) -> None:
         """
         Make a new job to run a task.
+
+        :param enclosing_bindings: Bindings outside the workflow call, with
+            files that should not be cleaned up at the end of the task.
 
         :param namespace: The namespace that the task's *contents* exist in.
                The caller has alredy added the task's own name.
@@ -3298,6 +3369,7 @@ class WDLTaskJob(WDLBaseJob):
         self._task = task
         self._task_internal_bindings = task_internal_bindings
         self._runtime_bindings = runtime_bindings
+        self._enclosing_bindings = enclosing_bindings
         self._task_id = task_id
         self._cache_key = cache_key
         self._mount_spec = mount_spec
@@ -4056,6 +4128,18 @@ class WDLTaskJob(WDLBaseJob):
                 miniwdl_config=miniwdl_config,
             )
 
+        # Clean up anything from the task call input: block or the runtime
+        # section that isn't getting output or available in the enclosing
+        # section. Runtime sections aren't meant to have files, but nothing
+        # actually stops them from being there.
+        delete_dead_files(
+            combine_bindings([bindings, runtime_bindings]),
+            [output_bindings, self._enclosing_bindings],
+            file_store
+        )
+        # If File objects somehow made it to the runtime block they shouldn't
+        # have been virtualized so don't bother with them.
+
         # Do postprocessing steps to e.g. apply namespaces.
         output_bindings = self.postprocess(output_bindings)
 
@@ -4108,7 +4192,8 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             logger.info("Setting %s to %s", self._node.name, self._node.expr)
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
             bindings = incoming_bindings.bind(self._node.name, value)
-            return self.postprocess(bindings)
+            # TODO: Only virtualize the new binding
+            return self.postprocess(virtualize_files(bindings, standard_library, enforce_existence=False))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -4129,6 +4214,8 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 standard_library,
                 inputs_mapping,
             )
+            # Prepare call inputs to move to another node
+            input_bindings = virtualize_files(input_bindings, standard_library, enforce_existence=False)
 
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
@@ -4146,6 +4233,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 subjob: WDLBaseJob = WDLWorkflowJob(
                     self._node.callee,
                     [input_bindings, passed_down_bindings],
+                    incoming_bindings,
                     self._node.callee_id,
                     wdl_options=wdl_options,
                     local=True,
@@ -4156,6 +4244,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 subjob = WDLTaskWrapperJob(
                     self._node.callee,
                     [input_bindings, passed_down_bindings],
+                    incoming_bindings,
                     self._node.callee_id,
                     wdl_options=wdl_options,
                     local=True,
@@ -4257,7 +4346,8 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                     node, "Unimplemented WorkflowNode: " + str(type(node))
                 )
 
-        return self.postprocess(current_bindings)
+        # TODO: Only virtualize the new bindings created
+        return self.postprocess(virtualize_files(current_bindings, standard_library, enforce_existence=False))
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
@@ -5020,6 +5110,7 @@ class WDLWorkflowJob(WDLSectionJob):
         self,
         workflow: WDL.Tree.Workflow,
         prev_node_results: Sequence[Promised[WDLBindings]],
+        enclosing_bindings: WDLBindings,
         workflow_id: list[str],
         wdl_options: WDLContext,
         **kwargs: Any,
@@ -5027,6 +5118,13 @@ class WDLWorkflowJob(WDLSectionJob):
         """
         Create a subtree that will run a WDL workflow. The job returns the
         return value of the workflow.
+
+        :param prev_node_results: Bindings fed into the workflow call as inputs.
+
+        :param enclosing_bindings: Bindings in the enclosing section,
+            containing files not to clean up. Files that are passed as inputs
+            but not uses as outputs or present in the enclosing section
+            bindings will be deleted after the workflow call completes.
 
         :param namespace: the namespace that the workflow's *contents* will be
                in. Caller has already added the workflow's own name.
@@ -5044,6 +5142,7 @@ class WDLWorkflowJob(WDLSectionJob):
 
         self._workflow = workflow
         self._prev_node_results = prev_node_results
+        self._enclosing_bindings = enclosing_bindings
         self._workflow_id = workflow_id
 
     @report_wdl_errors("run workflow")
@@ -5095,11 +5194,13 @@ class WDLWorkflowJob(WDLSectionJob):
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
 
-        # To support the all call outputs feature, run an outputs job even if
-        # we have a declared but empty outputs section.
+        # To support the all call outputs feature and cleanup of files created
+        # in input: blocks, run an outputs job even if we have a declared but
+        # empty outputs section.
         outputs_job = WDLOutputsJob(
             self._workflow,
             sink.rv(),
+            self._enclosing_bindings,
             wdl_options=self._wdl_options,
             cache_key=cache_key,
             local=True,
@@ -5121,6 +5222,7 @@ class WDLOutputsJob(WDLBaseJob):
         self,
         workflow: WDL.Tree.Workflow,
         bindings: Promised[WDLBindings],
+        enclosing_bindings: WDLBindings,
         wdl_options: WDLContext,
         cache_key: str | None = None,
         **kwargs: Any,
@@ -5128,6 +5230,11 @@ class WDLOutputsJob(WDLBaseJob):
         """
         Make a new WDLWorkflowOutputsJob for the given workflow, with the given set of bindings after its body runs.
 
+        :param bindings: Bindings after execution of the workflow body.
+
+        :param enclosing_bindings: Bindings outside the workflow call, with
+            files that should not be cleaned up at the end of the workflow.
+    
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
@@ -5135,6 +5242,7 @@ class WDLOutputsJob(WDLBaseJob):
         super().__init__(wdl_options=wdl_options, **kwargs)
 
         self._bindings = bindings
+        self._enclosing_bindings = enclosing_bindings
         self._workflow = workflow
         self._cache_key = cache_key
 
@@ -5227,8 +5335,15 @@ class WDLOutputsJob(WDLBaseJob):
                 self._cache_key, output_bindings, file_store, self._wdl_options
             )
 
-        return self.postprocess(output_bindings)
+        # Let Files that are not output or available outside the call go out of
+        # scope.
+        delete_dead_files(
+            unwrap(self._bindings),
+            [output_bindings, self._enclosing_bindings],
+            file_store
+        )
 
+        return self.postprocess(output_bindings)
 
 class WDLStartJob(WDLSectionJob):
     """
@@ -5263,18 +5378,24 @@ class WDLStartJob(WDLSectionJob):
         if isinstance(self._target, WDL.Tree.Workflow):
             # Create a workflow job. We rely in this to handle entering the input
             # namespace if needed, or handling free-floating inputs.
+            # Pass top-level inputs as enclosing section inputs to avoid
+            # bothering to separately delete them.
             job: WDLBaseJob = WDLWorkflowJob(
                 self._target,
                 [inputs],
+                inputs,
                 [self._target.name],
                 wdl_options=self._wdl_options,
                 local=True,
             )
         else:
             # There is no workflow. Create a task job.
+            # Pass top-level inputs as enclosing section inputs to avoid
+            # bothering to separately delete them.
             job = WDLTaskWrapperJob(
                 self._target,
                 [inputs],
+                inputs,
                 [self._target.name],
                 wdl_options=self._wdl_options,
                 local=True,
@@ -5348,7 +5469,7 @@ class WDLImportWrapper(WDLSectionJob):
         self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
-        filenames = extract_workflow_inputs(self._inputs)
+        filenames = extract_file_values(self._inputs)
         file_to_data = get_file_sizes(
             filenames,
             file_store.jobStore,
