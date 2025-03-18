@@ -39,7 +39,7 @@ If you have a failing job's ID or name, you can reproduce its failure on your lo
 
 For example, say you have this WDL workflow in ``test.wdl``. This workflow **cannot succeed**, due to the typo in the echo command:
 
-.. code-block:: wdl
+.. code-block::
    
     version 1.0
     workflow test {
