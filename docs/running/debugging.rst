@@ -5,6 +5,11 @@ Toil Debugging
 
 Toil has a number of tools to assist in debugging.  Here we provide help in working through potential problems that a user might encounter in attempting to run a workflow.
 
+Failing Fast
+------------
+
+If you have a workflow you are testing, you can pass ``--stopOnFirstFailure=True`` to have Toil stop the workflow as soon as any job is complely failed (i.e. runs out of retry attempts). If you don't want Toil to retry failing jobs, you can pass ``--retryCount=0``.
+
 Reading the Log
 ---------------
 
