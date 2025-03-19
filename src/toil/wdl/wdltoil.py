@@ -5566,61 +5566,79 @@ def main() -> None:
         wdl_uri, trs_spec = resolve_workflow(options.wdl_uri, supported_languages={"WDL"})
 
         with Toil(options, workflow_name=trs_spec or wdl_uri, trs_spec=trs_spec) as toil:
+            # TODO: Move all the input parsing outside the Toil context
+            # manager to avoid leaving a job store behind if the workflow
+            # can't start.
+
+            # Both start and restart need us to have the workflow and the
+            # wdl_options WDLContext. 
+            
+            # MiniWDL load code internally uses asyncio.get_event_loop()
+            # which might not get an event loop if somebody has ever called
+            # set_event_loop. So we need to make sure an event loop is
+            # available.
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
+            # Load the WDL document.
+            document: WDL.Tree.Document = WDL.load(
+                wdl_uri,
+                read_source=toil_read_source,
+            )
+
+            # See if we're going to run a workflow or a task
+            target: WDL.Tree.Workflow | WDL.Tree.Task
+            if document.workflow:
+                target = document.workflow
+            elif len(document.tasks) == 1:
+                target = document.tasks[0]
+            elif len(document.tasks) > 1:
+                raise WDL.Error.InputError(
+                    "Multiple tasks found with no workflow! Either add a workflow or keep one task."
+                )
+            else:
+                raise WDL.Error.InputError("WDL document is empty!")
+
+            if "croo_out_def" in target.meta:
+                # This workflow or task wants to have its outputs
+                # "organized" by the Cromwell Output Organizer:
+                # <https://github.com/ENCODE-DCC/croo>.
+                #
+                # TODO: We don't support generating anything that CROO can read.
+                logger.warning(
+                    "This WDL expects to be used with the Cromwell Output Organizer (croo) <https://github.com/ENCODE-DCC/croo>. Toil cannot yet produce the outputs that croo requires. You will not be able to use croo on the output of this Toil run!"
+                )
+
+                # But we can assume that we need to preserve individual
+                # taks outputs since the point of CROO is fetching those
+                # from Cromwell's output directories.
+                #
+                # This isn't quite WDL spec compliant but it will rescue
+                # runs of the popular
+                # <https://github.com/ENCODE-DCC/atac-seq-pipeline>
+                if options.all_call_outputs is None:
+                    logger.warning(
+                        "Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file."
+                    )
+                    options.all_call_outputs = True
+
+            # Get the execution directory
+            execution_dir = os.getcwd()
+
+            # Configure workflow interpreter options.
+            # TODO: Would be nice to somehow be able to change some of these on
+            # restart. For now we assume we are computing the same values.
+            wdl_options: WDLContext = {
+                "execution_dir": execution_dir,
+                "container": options.container,
+                "task_path": target.name,
+                "namespace": target.name,
+                "all_call_outputs": options.all_call_outputs,
+            }
+            assert wdl_options.get("container") is not None
+
             if options.restart:
                 output_bindings = toil.restart()
             else:
-                # TODO: Move all the input parsing outside the Toil context
-                # manager to avoid leaving a job store behind if the workflow
-                # can't start.
-                
-                # MiniWDL load code internally uses asyncio.get_event_loop()
-                # which might not get an event loop if somebody has ever called
-                # set_event_loop. So we need to make sure an event loop is
-                # available.
-                asyncio.set_event_loop(asyncio.new_event_loop())
-
-                # Load the WDL document.
-                document: WDL.Tree.Document = WDL.load(
-                    wdl_uri,
-                    read_source=toil_read_source,
-                )
-
-                # See if we're going to run a workflow or a task
-                target: WDL.Tree.Workflow | WDL.Tree.Task
-                if document.workflow:
-                    target = document.workflow
-                elif len(document.tasks) == 1:
-                    target = document.tasks[0]
-                elif len(document.tasks) > 1:
-                    raise WDL.Error.InputError(
-                        "Multiple tasks found with no workflow! Either add a workflow or keep one task."
-                    )
-                else:
-                    raise WDL.Error.InputError("WDL document is empty!")
-
-                if "croo_out_def" in target.meta:
-                    # This workflow or task wants to have its outputs
-                    # "organized" by the Cromwell Output Organizer:
-                    # <https://github.com/ENCODE-DCC/croo>.
-                    #
-                    # TODO: We don't support generating anything that CROO can read.
-                    logger.warning(
-                        "This WDL expects to be used with the Cromwell Output Organizer (croo) <https://github.com/ENCODE-DCC/croo>. Toil cannot yet produce the outputs that croo requires. You will not be able to use croo on the output of this Toil run!"
-                    )
-
-                    # But we can assume that we need to preserve individual
-                    # taks outputs since the point of CROO is fetching those
-                    # from Cromwell's output directories.
-                    #
-                    # This isn't quite WDL spec compliant but it will rescue
-                    # runs of the popular
-                    # <https://github.com/ENCODE-DCC/atac-seq-pipeline>
-                    if options.all_call_outputs is None:
-                        logger.warning(
-                            "Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file."
-                        )
-                        options.all_call_outputs = True
-
                 # If our input really comes from a URI or path, remember it.
                 input_source_uri = None
                 # Also remember where we need to report JSON parse errors as
@@ -5712,19 +5730,6 @@ def main() -> None:
                         inputs_search_path.append(match.group(0))
 
                 # TODO: Automatically set a good MINIWDL__SINGULARITY__IMAGE_CACHE ?
-
-                # Get the execution directory
-                execution_dir = os.getcwd()
-
-                # Configure workflow interpreter options
-                wdl_options: WDLContext = {
-                    "execution_dir": execution_dir,
-                    "container": options.container,
-                    "task_path": target.name,
-                    "namespace": target.name,
-                    "all_call_outputs": options.all_call_outputs,
-                }
-                assert wdl_options.get("container") is not None
 
                 # Run the workflow and get its outputs namespaced with the workflow name.
                 root_job = make_root_job(
