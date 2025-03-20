@@ -1767,7 +1767,7 @@ class Job:
         # Holds flags set by set_debug_flag()
         self._debug_flags: set[str] = set()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Produce a useful logging string to identify this Job and distinguish it
         from its JobDescription.
@@ -1812,16 +1812,16 @@ class Job:
         return self.description.disk
 
     @disk.setter
-    def disk(self, val):
+    def disk(self, val: int) -> None:
         self.description.disk = val
 
     @property
-    def memory(self):
+    def memory(self) -> int:
         """The maximum number of bytes of memory the job will require to run."""
         return self.description.memory
 
     @memory.setter
-    def memory(self, val):
+    def memory(self, val: int) -> None:
         self.description.memory = val
 
     @property
@@ -1830,7 +1830,7 @@ class Job:
         return self.description.cores
 
     @cores.setter
-    def cores(self, val):
+    def cores(self, val: int) -> None:
         self.description.cores = val
 
     @property
@@ -1848,11 +1848,11 @@ class Job:
         return self.description.preemptible
 
     @deprecated(new_function_name="preemptible")
-    def preemptable(self):
+    def preemptable(self) -> bool:
         return self.description.preemptible
 
     @preemptible.setter
-    def preemptible(self, val):
+    def preemptible(self, val: bool) -> None:
         self.description.preemptible = val
 
     @property
@@ -1865,13 +1865,13 @@ class Job:
         return self.description.files_to_use
 
     @files_to_use.setter
-    def files_to_use(self, val: set[FileID]):
+    def files_to_use(self, val: set[FileID]) -> None:
         self.description.files_to_use = val
 
-    def add_to_files_to_use(self, val: FileID):
+    def add_to_files_to_use(self, val: FileID) -> None:
         self.description.files_to_use.add(val)
 
-    def remove_from_files_to_use(self, val: FileID):
+    def remove_from_files_to_use(self, val: FileID) -> None:
         self.description.files_to_use.remove(val)
 
     def assignConfig(self, config: Config) -> None:
@@ -2296,7 +2296,7 @@ class Job:
 
         return {self._registry[jid] for jid in roots}
 
-    def checkJobGraphConnected(self):
+    def checkJobGraphConnected(self) -> None:
         """
         :raises toil.job.JobGraphDeadlockException: if :func:`toil.job.Job.getRootJobs` does \
         not contain exactly one root job.
@@ -2312,7 +2312,7 @@ class Job:
                 "Graph does not contain exactly one" " root job: %s" % rootJobs
             )
 
-    def checkJobGraphAcylic(self):
+    def checkJobGraphAcylic(self) -> None:
         """
         :raises toil.job.JobGraphDeadlockException: if the connected component \
         of jobs containing this job contains any cycles of child/followOn dependencies \
@@ -3313,7 +3313,9 @@ class FunctionWrappingJob(Job):
     Job used to wrap a function. In its `run` method the wrapped function is called.
     """
 
-    def __init__(self, userFunction, *args, **kwargs):
+    def __init__(
+        self, userFunction: Callable[[...], Any], *args: Any, **kwargs: Any
+    ) -> None:
         """
         :param callable userFunction: The function to wrap. It will be called with ``*args`` and
                ``**kwargs`` as arguments.
@@ -3336,7 +3338,9 @@ class FunctionWrappingJob(Job):
                 list(zip(argSpec.args[-len(argSpec.defaults) :], argSpec.defaults))
             )
 
-        def resolve(key, default=None, dehumanize=False):
+        def resolve(
+            key, default: Optional[Any] = None, dehumanize: bool = False
+        ) -> Any:
             try:
                 # First, try constructor arguments, ...
                 value = kwargs.pop(key)
@@ -3370,7 +3374,7 @@ class FunctionWrappingJob(Job):
         self._args = args
         self._kwargs = kwargs
 
-    def _getUserFunction(self):
+    def _getUserFunction(self) -> Callable[..., Any]:
         logger.debug(
             "Loading user function %s from module %s.",
             self.userFunctionName,
@@ -3379,14 +3383,14 @@ class FunctionWrappingJob(Job):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-    def run(self, fileStore):
+    def run(self, fileStore: "AbstractFileStore") -> Any:
         userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
-    def getUserScript(self):
+    def getUserScript(self) -> Str:
         return self.userFunctionModule
 
-    def _jobName(self):
+    def _jobName(self) -> str:
         return ".".join(
             (
                 self.__class__.__name__,
@@ -3424,10 +3428,10 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     """
 
     @property
-    def fileStore(self):
+    def fileStore(self) -> "AbstractFileStore":
         return self._fileStore
 
-    def run(self, fileStore):
+    def run(self, fileStore: "AbstractFileStore") -> Any:
         userFunction = self._getUserFunction()
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
@@ -3996,7 +4000,7 @@ class CombineImportsJob(Job):
         self._d = d
         super().__init__(**kwargs)
 
-    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
         """
         Merge the dicts
         """
@@ -4051,7 +4055,7 @@ class WorkerImportJob(Job):
                 path_to_fileid[file] = imported
         return path_to_fileid
 
-    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
         """
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
@@ -4087,7 +4091,7 @@ class ImportsJob(Job):
         self._import_worker_disk = import_worker_disk
 
     def run(
-        self, file_store: AbstractFileStore
+        self, file_store: "AbstractFileStore"
     ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
