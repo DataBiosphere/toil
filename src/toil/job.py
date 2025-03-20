@@ -51,11 +51,10 @@ from typing import (
 from urllib.error import HTTPError
 from urllib.parse import urlsplit, unquote, urljoin
 
-from toil import memoize
-
 import dill
 from configargparse import ArgParser
 
+from toil.lib import memoize
 from toil.lib.io import is_remote_url
 
 if sys.version_info < (3, 11):
@@ -141,8 +140,8 @@ class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
     """
 
     def __init__(
-        self, message, host_and_job_paths: Optional[list[tuple[str, str]]] = None
-    ):
+        self, message: str, host_and_job_paths: Optional[list[tuple[str, str]]] = None
+    ) -> None:
         super().__init__(message)
 
         # Save the host and user-code-visible paths of files, in case we're
@@ -308,7 +307,7 @@ def parse_accelerator(
                 parsed["model"] = possible_description
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
-        parsed.update(spec)
+        parsed.update(cast(AcceleratorRequirement, spec))
         # TODO: make sure they didn't misspell keys or something
     else:
         raise TypeError(
@@ -2582,13 +2581,13 @@ class Job:
 
         def __init__(
             self,
-            memory=None,
-            cores=None,
-            disk=None,
-            accelerators=None,
-            preemptible=None,
-            unitName=None,
-        ):
+            memory: Optional[ParseableIndivisibleResource] = None,
+            cores: Optional[ParseableDivisibleResource] = None,
+            disk: Optional[ParseableIndivisibleResource] = None,
+            accelerators: Optional[ParseableAcceleratorRequirement] = None,
+            preemptible: Optional[ParseableFlag] = None,
+            unitName: Optional[str] = "",
+        ) -> None:
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -2614,7 +2613,7 @@ class Job:
             self.hostID = None
 
         @abstractmethod
-        def start(self, job: "Job") -> Any:
+        def start(self, job: "ServiceHostJob") -> Any:
             """
             Start the service.
 
@@ -2627,7 +2626,7 @@ class Job:
             """
 
         @abstractmethod
-        def stop(self, job: "Job") -> None:
+        def stop(self, job: "ServiceHostJob") -> None:
             """
             Stops the service. Function can block until complete.
 
