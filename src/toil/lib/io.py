@@ -6,12 +6,15 @@ import stat
 import sys
 import tempfile
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Iterable
 from contextlib import contextmanager
 from io import BytesIO
-from typing import IO, Any, Callable, Optional, Protocol, Union
+from typing import IO, Any, Callable, Optional, Protocol, Union, TYPE_CHECKING
 
 from toil.lib.memoize import memoize
+
+if TYPE_CHECKING:
+    from _typeshed import StrOrBytesPath
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +191,7 @@ def atomic_tmp_file(final_path: str) -> str:
     return os.path.join(final_dir, base_name)
 
 
-def atomic_install(tmp_path, final_path) -> None:
+def atomic_install(tmp_path: "StrOrBytesPath", final_path: "StrOrBytesPath") -> None:
     """atomic install of tmp_path as final_path"""
     if os.path.dirname(os.path.normpath(final_path)) != "/dev":
         os.rename(tmp_path, final_path)
@@ -250,23 +253,23 @@ def make_public_dir(in_directory: str, suggested_name: Optional[str] = None) -> 
     our old default.
     """
     if suggested_name is not None:
-        generated_dir_path: str = os.path.join(in_directory, suggested_name)
+        generated_dir_path1 = os.path.join(in_directory, suggested_name)
         try:
-            os.mkdir(generated_dir_path)
-            os.chmod(generated_dir_path, 0o777)
-            return generated_dir_path
+            os.mkdir(generated_dir_path1)
+            os.chmod(generated_dir_path1, 0o777)
+            return generated_dir_path1
         except FileExistsError:
             pass
     for i in range(
         4, 32 + 1
     ):  # make random uuids and truncate to lengths starting at 4 and working up to max 32
         for _ in range(10):  # make 10 attempts for each length
-            truncated_uuid: str = str(uuid.uuid4()).replace("-", "")[:i]
-            generated_dir_path: str = os.path.join(in_directory, truncated_uuid)
+            truncated_uuid = str(uuid.uuid4()).replace("-", "")[:i]
+            generated_dir_path2 = os.path.join(in_directory, truncated_uuid)
             try:
-                os.mkdir(generated_dir_path)
-                os.chmod(generated_dir_path, 0o777)
-                return generated_dir_path
+                os.mkdir(generated_dir_path2)
+                os.chmod(generated_dir_path2, 0o777)
+                return generated_dir_path2
             except FileExistsError:
                 pass
     this_should_never_happen: str = os.path.join(in_directory, str(uuid.uuid4()))
@@ -328,7 +331,7 @@ class WriteWatchingStream:
 
         self.backingStream = backingStream
         # We have no write listeners yet
-        self.writeListeners = []
+        self.writeListeners: list[Callable[[int], None]] = []
 
     def onWrite(self, listener: Callable[[int], None]) -> None:
         """
@@ -339,7 +342,7 @@ class WriteWatchingStream:
 
     # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
 
-    def write(self, data):
+    def write(self, data: bytes) -> None:
         """
         Write the given data to the file.
         """
@@ -351,7 +354,7 @@ class WriteWatchingStream:
             # Send out notifications
             listener(len(data))
 
-    def writelines(self, datas):
+    def writelines(self, datas: Iterable[bytes]) -> None:
         """
         Write each string from the given iterable, without newlines.
         """
@@ -359,14 +362,14 @@ class WriteWatchingStream:
         for data in datas:
             self.write(data)
 
-    def flush(self):
+    def flush(self) -> None:
         """
         Flush the backing stream.
         """
 
         self.backingStream.flush()
 
-    def close(self):
+    def close(self) -> None:
         """
         Close the backing stream.
         """
