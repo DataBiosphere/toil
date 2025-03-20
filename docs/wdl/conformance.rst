@@ -1,7 +1,7 @@
 .. _conformanceWdl:
 
-WDL Conformance Testing
-=======================
+WDL Conformance
+===============
 
 The Toil team maintains a set of `WDL Conformance Tests`_. Much like the 
 `CWL Conformance Tests`_ for CWL, the WDL Conformance Tests are useful for
