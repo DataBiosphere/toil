@@ -716,7 +716,8 @@ def needs_docker(test_item: MT) -> MT:
 
 
 pneeds_docker = pytest.mark.skipif(
-    (os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true" or not which("docker")),
+    os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true"
+    or not which("docker"),
     reason="Requested to skip docker test or docker is not installed.",
 )
 
