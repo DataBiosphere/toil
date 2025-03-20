@@ -100,7 +100,6 @@ def main():
         'src/toil/test/src/promisedRequirementTest.py',
         'src/toil/test/src/regularLogTest.py',
         'src/toil/test/src/resumabilityTest.py',
-        'src/toil/test/src/jobServiceTest.py',
         'src/toil/test/src/jobDescriptionTest.py',
         'src/toil/test/src/autoDeploymentTest.py',
         'src/toil/test/src/dockerCheckTest.py',
