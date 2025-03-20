@@ -15,6 +15,8 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
 import sys
+from typing import Optional
+import logging
 from urllib.parse import ParseResult
 
 
@@ -39,15 +41,15 @@ class panic:
     the primary exception will be reraised.
     """
 
-    def __init__(self, log=None):
+    def __init__(self, log: Optional[logging.Logger] = None) -> None:
         super().__init__()
         self.log = log
         self.exc_info = None
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         self.exc_info = sys.exc_info()
 
-    def __exit__(self, *exc_info):
+    def __exit__(self, *exc_info) -> None:
         if self.log is not None and exc_info and exc_info[0]:
             self.log.warning("Exception during panic", exc_info=exc_info)
         exc_type, exc_value, traceback = self.exc_info

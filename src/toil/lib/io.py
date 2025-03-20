@@ -16,6 +16,7 @@ from toil.lib.misc import StrPath
 
 logger = logging.getLogger(__name__)
 
+
 @memoize
 def get_toil_home() -> str:
     """

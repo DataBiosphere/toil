@@ -109,7 +109,6 @@ def main():
         'src/toil/test/src/systemTest.py',
         'src/toil/test/src/restartDAGTest.py',
         'src/toil/test/src/promisesTest.py',
-        'src/toil/test/src/miscTests.py',
         'src/toil/test/src/checkpointTest.py',
         'src/toil/test/src/threadingTest.py',
         'src/toil/test/src/jobFileStoreTest.py',
