@@ -87,6 +87,7 @@ from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
 
 if TYPE_CHECKING:
+    from _typeshed import StrPath
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
     from toil.batchSystems.options import OptionSetter
     from toil.job import AcceleratorRequirement, Job, JobDescription, TemporaryID
@@ -2030,7 +2031,7 @@ def cacheDirName(workflowID: str) -> str:
     return f"cache-{workflowID}"
 
 
-def getDirSizeRecursively(dirPath: str) -> int:
+def getDirSizeRecursively(dirPath: "StrPath") -> int:
     """
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.
