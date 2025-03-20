@@ -3524,7 +3524,7 @@ class EncapsulatedJob(Job):
     the same value after A or A.encapsulate() has been run.
     """
 
-    def __init__(self, job, unitName=None):
+    def __init__(self, job: Optional[Job], unitName: Optional[str] = None) -> None:
         """
         :param toil.job.Job job: the job to encapsulate.
         :param str unitName: human-readable name to identify this job instance.
@@ -3558,7 +3558,7 @@ class EncapsulatedJob(Job):
             self.encapsulatedJob = None
             self.encapsulatedFollowOn = None
 
-    def addChild(self, childJob):
+    def addChild(self, childJob: Job) -> Job:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Children cannot be added to EncapsulatedJob while it is running"
@@ -3574,7 +3574,7 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn, service, parentService=parentService
         )
 
-    def addFollowOn(self, followOnJob):
+    def addFollowOn(self, followOnJob: Job) -> Job:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Follow-ons cannot be added to EncapsulatedJob while it is running"

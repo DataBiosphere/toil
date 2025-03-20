@@ -15,6 +15,7 @@ import collections
 import logging
 import os
 import random
+from typing import TYPE_CHECKING
 import unittest
 
 import pytest
@@ -23,6 +24,9 @@ from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
 from toil.test import ToilTest, get_temp_file, slow
+
+if TYPE_CHECKING:
+    from _typeshed import FileDescriptorOrPath
 
 logger = logging.getLogger(__name__)
 
@@ -676,7 +680,7 @@ def simpleJobFn(job, value):
     job.fileStore.log_to_leader(value)
 
 
-def fn1Test(string, outputFile):
+def fn1Test(string: str, outputFile: "FileDescriptorOrPath") -> str:
     """
     Function appends the next character after the last character in the given
     string to the string, writes the string to a file, and returns it. For
