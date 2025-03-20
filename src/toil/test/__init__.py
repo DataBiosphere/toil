@@ -54,6 +54,12 @@ from toil.version import distVersion
 
 import pytest
 
+try:
+    from botocore.exceptions import ProxyConnectionError
+except ImportError:
+    class ProxyConnectionError(BaseException):
+        ...
+
 logger = logging.getLogger(__name__)
 
 
@@ -410,6 +416,10 @@ def needs_aws_s3(test_item: MT) -> MT:
         boto3_credentials = session.get_credentials()
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(
+            test_item
+        )
+    except ProxyConnectionError as e:
+        return unittest.skip(f"Proxy error: {e}, skipping this test.")(
             test_item
         )
     from toil.lib.aws import running_on_ec2
