@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import contextmanager, AbstractContextManager
 import datetime
 import logging
 import os
@@ -29,7 +28,7 @@ import uuid
 import zoneinfo
 from abc import ABCMeta, abstractmethod
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from importlib.resources import as_file, files
 from inspect import getsource
 from pathlib import Path
@@ -41,6 +40,9 @@ from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+import pytest
+from typing_extensions import Self
+
 from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
 from toil.lib.accelerators import (
     have_working_nvidia_docker_runtime,
@@ -51,10 +53,6 @@ from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.version import distVersion
-
-import pytest
-
-from typing_extensions import Self
 
 try:
     from botocore.exceptions import ProxyConnectionError

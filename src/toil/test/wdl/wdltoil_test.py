@@ -1,14 +1,14 @@
-from collections.abc import Generator
 import json
 import logging
 import os
-from pathlib import Path
 import re
 import shutil
 import string
 import subprocess
-from typing import cast, Any, Optional, Union
 import unittest
+from collections.abc import Generator
+from pathlib import Path
+from typing import Any, Optional, Union, cast
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -286,7 +286,6 @@ class TestWDL:
             assert "wait.result" in result
             assert isinstance(result["wait.result"], str)
             assert result["wait.result"] == "waited"
-
 
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
