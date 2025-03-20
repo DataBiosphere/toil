@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 class AbstractClusterTest(ToilTest):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
-        self.keyName = os.getenv("TOIL_AWS_KEYNAME").strip() or "id_rsa"
+        self.keyName = os.getenv("TOIL_AWS_KEYNAME", "id_rsa").strip()
         self.clusterName = f"aws-provisioner-test-{uuid4()}"
         self.leaderNodeType = "t2.medium"
         self.clusterType = "mesos"
@@ -276,12 +276,12 @@ class CWLOnARMTest(AbstractClusterTest):
             ]
         )
 
-        # Runs the CWLv12Test on an ARM instance
+        # Runs the TestCWLv12 on an ARM instance
         self.sshUtil(
             [
                 "bash",
                 "-c",
-                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::TestCWLv12::test_run_conformance",
             ]
         )
 

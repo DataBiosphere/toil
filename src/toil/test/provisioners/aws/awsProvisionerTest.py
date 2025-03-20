@@ -28,6 +28,7 @@ from toil.provisioners import cluster_factory
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import (
     ToilTest,
+    get_data,
     integrative,
     needs_aws_ec2,
     needs_fetchable_appliance,
@@ -135,7 +136,7 @@ class AbstractAWSAutoscaleTest(AbstractClusterTest):
         """
         return os.path.join(self.dataDir, filename)
 
-    def rsyncUtil(self, src, dest):
+    def rsyncUtil(self, src: str, dest: str) -> None:
         subprocess.check_call(
             [
                 "toil",
@@ -285,10 +286,11 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         with open(fileToSort, "w") as f:
             # Fixme: making this file larger causes the test to hang
             f.write("01234567890123456789012345678901")
-        self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
-            ":" + self.script(),
-        )
+        with get_data("test/sort/sort.py") as sort_py:
+            self.rsyncUtil(
+                sort_py,
+                ":" + self.script(),
+            )
         self.rsyncUtil(fileToSort, ":" + self.data("sortFile"))
         os.unlink(fileToSort)
 
@@ -501,10 +503,11 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         sseKeyFile = os.path.join(os.getcwd(), "keyFile")
         with open(sseKeyFile, "w") as f:
             f.write("01234567890123456789012345678901")
-        self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
-            ":" + self.script(),
-        )
+        with get_data("test/sort/sort.py") as sort_py:
+            self.rsyncUtil(
+                sort_py,
+                ":" + self.script(),
+            )
         self.rsyncUtil(sseKeyFile, ":" + self.data("keyFile"))
         os.unlink(sseKeyFile)
 

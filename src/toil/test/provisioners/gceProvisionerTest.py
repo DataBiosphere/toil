@@ -21,6 +21,7 @@ import pytest
 
 from toil.test import (
     ToilTest,
+    get_data,
     integrative,
     needs_fetchable_appliance,
     needs_google_project,
@@ -214,10 +215,11 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         with open(fileToSort, "w") as f:
             # Fixme: making this file larger causes the test to hang
             f.write("01234567890123456789012345678901")
-        self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
-            ":/home/sort.py",
-        )
+        with get_data("test/sort/sort.py") as sort_py:
+            self.rsyncUtil(
+                sort_py,
+                ":/home/sort.py",
+            )
         self.rsyncUtil(fileToSort, ":/home/sortFile")
         os.unlink(fileToSort)
 
@@ -324,10 +326,11 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         sseKeyFile = os.path.join(os.getcwd(), "keyFile")
         with open(sseKeyFile, "w") as f:
             f.write("01234567890123456789012345678901")
-        self.rsyncUtil(
-            os.path.join(self._projectRootPath(), "src/toil/test/sort/sort.py"),
-            ":/home/sort.py",
-        )
+        with get_data("test/sort/sort.py") as sort_py:
+            self.rsyncUtil(
+                sort_py,
+                ":/home/sort.py",
+            )
         self.rsyncUtil(sseKeyFile, ":/home/keyFile")
         os.unlink(sseKeyFile)
 
@@ -376,12 +379,11 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
         self.jobStore = f"google:{self.projectID}:restart-{uuid4()}"
 
     def _getScript(self):
-        self.rsyncUtil(
-            os.path.join(
-                self._projectRootPath(), "src/toil/test/provisioners/restartScript.py"
-            ),
-            ":" + self.scriptName,
-        )
+        with get_data("test/provisioners/restartScript.py") as restartScript:
+            self.rsyncUtil(
+                restartScript,
+                ":" + self.scriptName,
+            )
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
