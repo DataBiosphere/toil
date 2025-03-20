@@ -74,6 +74,7 @@ from toil.lib.compatibility import deprecated
 from toil.lib.history import HistoryManager
 from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
 from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
+from toil.lib.misc import StrPath
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
@@ -87,7 +88,6 @@ from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
 
 if TYPE_CHECKING:
-    from _typeshed import StrPath
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
     from toil.batchSystems.options import OptionSetter
     from toil.job import AcceleratorRequirement, Job, JobDescription, TemporaryID
@@ -2031,7 +2031,7 @@ def cacheDirName(workflowID: str) -> str:
     return f"cache-{workflowID}"
 
 
-def getDirSizeRecursively(dirPath: "StrPath") -> int:
+def getDirSizeRecursively(dirPath: StrPath) -> int:
     """
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.

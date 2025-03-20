@@ -20,18 +20,15 @@ import random
 import sys
 from types import FrameType
 from uuid import uuid4
-from typing import cast, TYPE_CHECKING
+from typing import cast
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
 from toil.lib.io import AtomicFileCreate, atomic_install, atomic_tmp_file, mkdtemp
-from toil.lib.misc import CalledProcessErrorStderr, call_command
+from toil.lib.misc import CalledProcessErrorStderr, StrPath, call_command
 from toil.test import pslow as slow
 
 import pytest
-
-if TYPE_CHECKING:
-    from _typeshed import StrPath
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -63,7 +60,7 @@ class TestMisc:
         from toil.common import getDirSizeRecursively
 
         # a list of the directories used in the test
-        directories: list["StrPath"] = [tmp_path]
+        directories: list[StrPath] = [tmp_path]
         # A dict of {FILENAME: FILESIZE or FILELINK} for all files used in the test
         files: dict[Path, int | str] = {}
         # Create a random directory structure

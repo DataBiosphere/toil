@@ -17,7 +17,7 @@ import logging
 import os
 from pathlib import Path
 import random
-from typing import cast, TYPE_CHECKING, Optional, Any, NoReturn
+from typing import cast, Optional, Any, NoReturn
 
 import pytest
 
@@ -31,10 +31,8 @@ from toil.job import (
     ServiceHostJob,
     Promise,
 )
+from toil.lib.misc import FileDescriptorOrPath
 from toil.test import pslow as slow
-
-if TYPE_CHECKING:
-    from _typeshed import FileDescriptorOrPath
 
 logger = logging.getLogger(__name__)
 
@@ -674,7 +672,7 @@ def simpleJobFn(job: ServiceHostJob, value: str) -> None:
     job.fileStore.log_to_leader(value)
 
 
-def fn1Test(string: str, outputFile: "FileDescriptorOrPath") -> str:
+def fn1Test(string: str, outputFile: FileDescriptorOrPath) -> str:
     """
     Function appends the next character after the last character in the given
     string to the string, writes the string to a file, and returns it. For

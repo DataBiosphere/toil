@@ -55,6 +55,7 @@ import dill
 from configargparse import ArgParser
 
 from toil.lib import memoize
+from toil.lib.misc import StrPath
 from toil.lib.io import is_remote_url
 
 if sys.version_info < (3, 11):
@@ -76,7 +77,6 @@ from toil.statsAndLogging import set_logging_from_options
 from toil.lib.exceptions import UnimplementedURLException
 
 if TYPE_CHECKING:
-    from _typeshed import StrPath
     from optparse import OptionParser
 
     from toil.batchSystems.abstractBatchSystem import (
@@ -2502,7 +2502,7 @@ class Job:
 
         @staticmethod
         def getDefaultOptions(
-            jobStore: Optional["StrPath"] = None, jobstore_as_flag: bool = False
+            jobStore: Optional[StrPath] = None, jobstore_as_flag: bool = False
         ) -> Namespace:
             """
             Get default options for a toil workflow.

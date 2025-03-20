@@ -9,12 +9,10 @@ import uuid
 from collections.abc import Iterator, Iterable
 from contextlib import contextmanager
 from io import BytesIO
-from typing import IO, Any, Callable, Optional, Protocol, Union, TYPE_CHECKING
+from typing import IO, Any, Callable, Optional, Protocol, Union
 
 from toil.lib.memoize import memoize
-
-if TYPE_CHECKING:
-    from _typeshed import StrPath
+from toil.lib.misc import StrPath
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +80,7 @@ def is_file_url(filename: str) -> bool:
 def mkdtemp(
     suffix: Optional[str] = None,
     prefix: Optional[str] = None,
-    dir: Optional["StrPath"] = None,
+    dir: Optional[StrPath] = None,
 ) -> str:
     """
     Make a temporary directory like tempfile.mkdtemp, but with relaxed permissions.
@@ -177,7 +175,7 @@ def robust_rmtree(path: Union[str, bytes]) -> None:
             raise
 
 
-def atomic_tmp_file(final_path: "StrPath") -> str:
+def atomic_tmp_file(final_path: StrPath) -> str:
     """Return a tmp file name to use with atomic_install.  This will be in the
     same directory as final_path. The temporary file will have the same extension
     as finalPath.  It the final path is in /dev (/dev/null, /dev/stdout), it is
@@ -191,14 +189,14 @@ def atomic_tmp_file(final_path: "StrPath") -> str:
     return os.path.join(final_dir, base_name)
 
 
-def atomic_install(tmp_path: "StrPath", final_path: "StrPath") -> None:
+def atomic_install(tmp_path: StrPath, final_path: StrPath) -> None:
     """atomic install of tmp_path as final_path"""
     if os.path.dirname(os.path.normpath(final_path)) != "/dev":
         os.rename(tmp_path, final_path)
 
 
 @contextmanager
-def AtomicFileCreate(final_path: "StrPath", keep: bool = False) -> Iterator[str]:
+def AtomicFileCreate(final_path: StrPath, keep: bool = False) -> Iterator[str]:
     """Context manager to create a temporary file.  Entering returns path to
     the temporary file in the same directory as finalPath.  If the code in
     context succeeds, the file renamed to its actual name.  If an error
