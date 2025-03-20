@@ -771,8 +771,31 @@ class FileJobStore(AbstractJobStore):
             ) as f:
                 yield f
 
+    @overload
     @contextmanager
-    def read_shared_file_stream(self, shared_file_name, encoding=None, errors=None):
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: str,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[str]]: ...
+
+    @overload
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[bytes]]: ...
+
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
+    ) -> Union[Iterator[IO[bytes]], Iterator[IO[str]]]:
         self._requireValidSharedFileName(shared_file_name)
         try:
             with open(
