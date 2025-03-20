@@ -118,7 +118,6 @@ def main():
         'src/toil/test/src/jobFileStoreTest.py',
         'src/toil/test/src/userDefinedJobArgTypeTest.py',
         'src/toil/test/src/importExportFileTest.py',
-        'src/toil/test/src/deferredFunctionTest.py',
         'src/toil/test/src/helloWorldTest.py',
         'src/toil/test/src/toilContextManagerTest.py',
         'src/toil/test/src/environmentTest.py',
