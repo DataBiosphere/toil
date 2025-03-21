@@ -144,7 +144,8 @@ class WESClientWithWorkflowEngineParameters(WESClient):  # type: ignore
             return "3.8"
         elif extension == "cwl":
             with open(workflow_file) as f:
-                return str(ruamel.yaml.safe_load(f)["cwlVersion"])
+                yaml = ruamel.yaml.YAML(typ='safe', pure=True)
+                return str(yaml.load(f)["cwlVersion"])
         elif extension == "wdl":
             with open(workflow_file) as f:
                 return get_wdl_version(f)
