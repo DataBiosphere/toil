@@ -1780,6 +1780,15 @@ class Leader:
 
                 self._updatePredecessorStatus(job_id)
 
+        if self.config.stop_on_first_failure:
+            # We want to stop the workflow on the first complete failure of a job.
+            logger.error("Stopping workflow on first failure, which was: %s", job_desc)
+            raise FailedJobsException(
+                self.jobStore,
+                [self.toilState.get_job(job_id)],
+                exit_code=self.recommended_fail_exit_code,
+            )
+
     def _updatePredecessorStatus(self, jobStoreID: str) -> None:
         """Update status of predecessors for finished (possibly failed) successor job."""
         if jobStoreID in self.toilState.service_to_client:

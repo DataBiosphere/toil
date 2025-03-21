@@ -861,6 +861,14 @@ def add_base_toil_options(
         f"labeling job failed. default={1}",
     )
     job_options.add_argument(
+        "--stopOnFirstFailure",
+        dest="stop_on_first_failure",
+        type=strtobool,
+        default=False,
+        metavar="BOOL",
+        help="Stop the workflow at the first complete job failure.",
+    )
+    job_options.add_argument(
         "--enableUnlimitedPreemptibleRetries",
         "--enableUnlimitedPreemptableRetries",
         dest="enableUnlimitedPreemptibleRetries",
