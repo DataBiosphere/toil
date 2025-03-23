@@ -328,9 +328,11 @@ def needs_online(test_item: MT) -> MT:
     return test_item
 
 
-pneeds_online = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true", reason="Skipping online test."
-)
+def _skip_online() -> bool:
+    return os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true"
+
+
+pneeds_online = pytest.mark.skipif(_skip_online(), reason="Skipping online test.")
 
 
 def needs_aws_s3(test_item: MT) -> MT:
@@ -384,7 +386,7 @@ def _aws_s3_avail() -> bool:
 
 
 pneeds_aws_s3 = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true" or not _aws_s3_avail(),
+    _skip_online() or not _aws_s3_avail(),
     reason="Install Toil with the 'aws' extra or configure AWS credentials to include this test.",
 )
 
@@ -524,8 +526,7 @@ def needs_kubernetes(test_item: MT) -> MT:
 
 
 pneeds_kubernetes = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true"
-    or not _is_kubernetes_installed_and_configured(),
+    _skip_online() or not _is_kubernetes_installed_and_configured(),
     reason="Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
     "or current pod) to include this test.",
 )
@@ -643,6 +644,7 @@ def needs_docker(test_item: MT) -> MT:
 
 
 pneeds_docker = pytest.mark.skipif(
+    _skip_online() or
     os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true"
     or not which("docker"),
     reason="Requested to skip docker test or docker is not installed.",
@@ -712,7 +714,7 @@ def needs_docker_cuda(test_item: MT) -> MT:
 
 
 pneeds_docker_cuda = pytest.mark.skipif(
-    not have_working_nvidia_docker_runtime(),
+    _skip_online() or not have_working_nvidia_docker_runtime(),
     reason="Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test.",
 )
 
@@ -844,7 +846,7 @@ def _is_wes_server_avail() -> bool:
 
 
 pneeds_wes_server = pytest.mark.skipif(
-    not _is_wes_server_avail(),
+    _skip_online() or not _is_wes_server_avail(),
     reason="Set TOIL_WES_ENDPOINT, or run a WES server at that location to include this test.",
 )
 
