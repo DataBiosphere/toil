@@ -43,7 +43,7 @@ from urllib.request import urlopen
 import pytest
 from typing_extensions import Self
 
-from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
+from toil import ApplianceImageNotFound, applianceSelf
 from toil.lib.accelerators import (
     have_working_nvidia_docker_runtime,
     have_working_nvidia_smi,
@@ -83,6 +83,7 @@ def get_data(filename: str) -> AbstractContextManager[Path]:
     return _fallback_get_data(filename)
 
 
+@pytest.mark.usefixtures("rootpath")
 class ToilTest(unittest.TestCase):
     """
     A common base class for Toil tests.
@@ -99,6 +100,7 @@ class ToilTest(unittest.TestCase):
     Otherwise, left-over files will not be removed.
     """
 
+    _rootpath: Path
     _tempBaseDir: Optional[str] = None
     _tempDirs: list[str] = []
 
@@ -115,9 +117,7 @@ class ToilTest(unittest.TestCase):
         super().setUpClass()
         tempBaseDir = os.environ.get("TOIL_TEST_TEMP", None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
-            tempBaseDir = os.path.abspath(
-                os.path.join(cls._projectRootPath(), tempBaseDir)
-            )
+            tempBaseDir = os.path.abspath(cls._rootpath / tempBaseDir)
             os.makedirs(tempBaseDir, exist_ok=True)
         cls._tempBaseDir = tempBaseDir
 
@@ -180,28 +180,6 @@ class ToilTest(unittest.TestCase):
         assert region
         return region.group(1)
 
-    @classmethod
-    def _getUtilScriptPath(cls, script_name: str) -> str:
-        return os.path.join(toilPackageDirPath(), "utils", script_name + ".py")
-
-    @classmethod
-    def _projectRootPath(cls) -> str:
-        """
-        Return the path to the project root.
-
-        i.e. the directory that typically contains the .git and src subdirectories.
-        This method has limited utility. It only works if in "develop"
-        mode, since it assumes the existence of a src subdirectory which, in a regular install
-        wouldn't exist. Then again, in that mode project root has no meaning anyways.
-        """
-        assert re.search(r"__init__\.pyc?$", __file__)
-        projectRootPath = os.path.dirname(os.path.abspath(__file__))
-        packageComponents = __name__.split(".")
-        expectedSuffix = os.path.join("src", *packageComponents)
-        assert projectRootPath.endswith(expectedSuffix)
-        projectRootPath = projectRootPath[: -len(expectedSuffix)]
-        return projectRootPath
-
     def _createTempDir(self, purpose: Optional[str] = None) -> str:
         return self._createTempDirEx(self._testMethodName, purpose)
 
@@ -228,57 +206,6 @@ class ToilTest(unittest.TestCase):
         # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
         os.rmdir(path)
         return path
-
-    @classmethod
-    def _getSourceDistribution(cls) -> str:
-        """
-        Find the sdist tarball for this project and return the path to it.
-
-        Also assert that the sdist is up-to date
-        """
-        sdistPath = os.path.join(
-            cls._projectRootPath(), "dist", "toil-%s.tar.gz" % distVersion
-        )
-        assert os.path.isfile(sdistPath), (
-            "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
-        )
-        excluded = set(
-            cast(
-                str,
-                cls._run(
-                    "git",
-                    "ls-files",
-                    "--others",
-                    "-i",
-                    "--exclude-standard",
-                    capture=True,
-                    cwd=cls._projectRootPath(),
-                ),
-            ).splitlines()
-        )
-        dirty = cast(
-            str,
-            cls._run(
-                "find",
-                "src",
-                "-type",
-                "f",
-                "-newer",
-                sdistPath,
-                capture=True,
-                cwd=cls._projectRootPath(),
-            ),
-        ).splitlines()
-        assert all(path.startswith("src") for path in dirty)
-        dirty_set = set(dirty)
-        dirty_set.difference_update(excluded)
-        assert (
-            not dirty_set
-        ), "Run 'make clean_sdist sdist'. Files newer than {}: {!r}".format(
-            sdistPath,
-            list(dirty_set),
-        )
-        return sdistPath
 
     @classmethod
     def _run(cls, command: str, *args: str, **kwargs: Any) -> Optional[str]:
