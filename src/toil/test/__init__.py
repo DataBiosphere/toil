@@ -409,7 +409,7 @@ pneeds_online = pytest.mark.skipif(
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
-    test_item = _mark_test("aws-s3", needs_online(test_item))
+    test_item = _mark_test("aws_s3", needs_online(test_item))
     try:
         from boto3 import Session
 
@@ -465,7 +465,7 @@ pneeds_aws_s3 = pytest.mark.skipif(
 def needs_aws_ec2(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
     # Assume we need S3 as well as EC2
-    test_item = _mark_test("aws-ec2", needs_aws_s3(test_item))
+    test_item = _mark_test("aws_ec2", needs_aws_s3(test_item))
     # In addition to S3 we also need an SSH key to deploy with.
     # TODO: We assume that if this is set we have EC2 access.
     test_item = needs_env_var("TOIL_AWS_KEYNAME", "an AWS-stored SSH key")(test_item)
@@ -478,7 +478,7 @@ def needs_aws_batch(test_item: MT) -> MT:
     is usable.
     """
     # Assume we need S3 as well as Batch
-    test_item = _mark_test("aws-batch", needs_aws_s3(test_item))
+    test_item = _mark_test("aws_batch", needs_aws_s3(test_item))
     # Assume we have Batch if the user has set these variables.
     test_item = needs_env_var("TOIL_AWS_BATCH_QUEUE", "an AWS Batch queue name or ARN")(
         test_item
@@ -509,7 +509,7 @@ def needs_google_storage(test_item: MT) -> MT:
     Cloud is installed and we ought to be able to access public Google Storage
     URIs.
     """
-    test_item = _mark_test("google-storage", needs_online(test_item))
+    test_item = _mark_test("google_storage", needs_online(test_item))
     try:
         from google.cloud import storage  # type: ignore[import-untyped]
     except ImportError:
@@ -524,7 +524,7 @@ def needs_google_project(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
     """
-    test_item = _mark_test("google-project", needs_online(test_item))
+    test_item = _mark_test("google_project", needs_online(test_item))
     test_item = needs_env_var("TOIL_GOOGLE_PROJECTID", "a Google project ID")(test_item)
     return test_item
 
