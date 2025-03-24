@@ -108,7 +108,7 @@ marker=""
 # Number of tests to run in parallel.
 threads:="auto"
 
-dist:="loadscope"
+dist:="worksteal"
 pytest_args:=""
 
 # Only pass the threading options if running parallel tests. Otherwise we lose
