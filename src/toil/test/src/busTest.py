@@ -14,7 +14,9 @@
 
 import logging
 import os
+from pathlib import Path
 from threading import Thread, current_thread
+from typing import NoReturn
 
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.bus import (
@@ -26,18 +28,17 @@ from toil.bus import (
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import Job
-from toil.test import ToilTest, get_temp_file
 
 logger = logging.getLogger(__name__)
 
 
-class MessageBusTest(ToilTest):
+class TestMessageBus:
 
-    def test_enum_ints_in_file(self) -> None:
+    def test_enum_ints_in_file(self, tmp_path: Path) -> None:
         """
         Make sure writing bus messages to files works with enums.
         """
-        bus_file = get_temp_file()
+        bus_file = tmp_path / "bus"
 
         bus = MessageBus()
         # Connect the handler and hold the result to protect it from GC
@@ -73,7 +74,7 @@ class MessageBusTest(ToilTest):
             # Message should always arrive in the main thread.
             nonlocal message_count
             logger.debug("Got message: %s", received)
-            self.assertEqual(current_thread(), main_thread)
+            assert current_thread() == main_thread
             message_count += 1
 
         bus.subscribe(JobIssuedMessage, handler)
@@ -101,28 +102,27 @@ class MessageBusTest(ToilTest):
             t.join()
 
         # We should ge tone message per thread, plus our own
-        self.assertEqual(box.count(JobIssuedMessage), 11)
+        assert box.count(JobIssuedMessage) == 11
         # And having polled for those, our handler should have run
-        self.assertEqual(message_count, 11)
+        assert message_count == 11
 
-    def test_restart_without_bus_path(self) -> None:
+    def test_restart_without_bus_path(self, tmp_path: Path) -> None:
         """
         Test the ability to restart a workflow when the message bus path used
         by the previous attempt is gone.
         """
-        temp_dir = self._createTempDir(purpose="tempDir")
-        job_store = self._getTestJobStorePath()
+        temp_dir = tmp_path / "tempDir"
+        temp_dir.mkdir()
+        job_store = tmp_path / "jobstore"
 
-        bus_holder_dir = os.path.join(temp_dir, "bus_holder")
-        os.mkdir(bus_holder_dir)
+        bus_holder_dir = temp_dir / "bus_holder"
+        bus_holder_dir.mkdir()
 
         start_options = Job.Runner.getDefaultOptions(job_store)
         start_options.logLevel = "DEBUG"
         start_options.retryCount = 0
         start_options.clean = "never"
-        start_options.write_messages = os.path.abspath(
-            os.path.join(bus_holder_dir, "messagebus.txt")
-        )
+        start_options.write_messages = str(bus_holder_dir / "messagebus.txt")
 
         root = Job.wrapJobFn(failing_job_fn)
 
@@ -137,7 +137,7 @@ class MessageBusTest(ToilTest):
 
         # Get rid of the bus
         os.unlink(start_options.write_messages)
-        os.rmdir(bus_holder_dir)
+        bus_holder_dir.rmdir()
 
         logger.info("Making second attempt")
 
@@ -158,7 +158,7 @@ class MessageBusTest(ToilTest):
         logger.info("Second attempt successfully failed")
 
 
-def failing_job_fn(job: Job) -> None:
+def failing_job_fn(job: Job) -> NoReturn:
     """
     This function is guaranteed to fail.
     """

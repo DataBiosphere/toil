@@ -289,5 +289,5 @@ class CWLOnARMTest(AbstractClusterTest):
         # Bring it back to be an artifact.
         self.rsync_util(
             f":{self.cwl_test_dir}/toil/conformance-1.2.junit.xml",
-            os.path.join(self._projectRootPath(), "arm-conformance-1.2.junit.xml"),
+            str(self._rootpath / "arm-conformance-1.2.junit.xml"),
         )
