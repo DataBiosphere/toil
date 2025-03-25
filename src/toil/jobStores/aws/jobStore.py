@@ -18,10 +18,11 @@ This docstring is about the organization of the file.
 
 All direct AWS boto calls should live in toil.lib.aws, except for creating the
 session instance and the resource/client (which should only be made ONCE in the jobstore).
-Reasons for this:
+
+Reasons for this
  - DRY.
  - All retries are on their individual boto functions, instead of here.
- - Simple clear functions ~> simple clear unit tests (ideally).
+ - Simple clear functions => simple clear unit tests (ideally).
 
 Variables defining part size, parallelization, and other constants should live in toil.lib.aws.config.
 """
@@ -81,7 +82,7 @@ from toil.lib.aws.s3 import (create_s3_bucket,
                              AWSKeyAlreadyExistsError)
 from toil.lib.aws.utils import get_object_for_url, list_objects_for_url
 from toil.common import Config
-from toil.jobStores.exceptions import NoSuchFileException
+from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.lib.ec2nodes import EC2Regions
 from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.retry import get_error_status
@@ -96,51 +97,49 @@ logger = logging.getLogger(__name__)
 
 class AWSJobStore(AbstractJobStore):
     """
-    The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
-    centralize, store, and track files for the workflow.
-
-    The AWS jobstore stores 4 things:
-        1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
-            A job's file is deleted when finished, and its absence means it completed.
-        2. Files: The inputs and outputs of jobs.  Each file is actually two keys in s3:
-              1. The actual file content, written with the file pattern: "files/{etag}"
-              2. The file's reference and metadata, written with the file pattern: "metadata/{uuid}".
-                 Note: This is a small json containing only: etag checksum, & executibility.
-            The reference files act like unique keys in a database, referencing the original content.
-            This deduplicates data on s3 if 2+ inputs/outputs have the same content.
-        3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process. (check this!)
-        4. Shared Files: These are a small set of special files.  Most are needed by all jobs:
-            * environment.pickle:  (environment variables)
-            * config.pickle        (user options)
-            * pid.log              (process ID of the workflow; when it finishes, the workflow either succeeded/failed)
-            * userScript           (hot deployment(?);  this looks like the job module;  poke this)
-            * rootJobReturnValue   (workflow succeeded or not)
-            * TODO: are there any others?  do either vg or cactus use this?  should these have locks and when are they
-               accessed?  are these only written once, but read many times?
-            * TODO: A file with the date and toil version the workflow/bucket/jobstore was initialized with
-
-    NOTES:
-     - The AWS jobstore does not use a database (directly, at least) currently.  We can get away with this because:
-           1. AWS s3 has strong consistency.
-           2. s3's filter/query speed is pretty good.
-         However, there may be reasons in the future to provide users with a database:
-           * s3 throttling has limits (3,500/5,000 requests; something like dynamodb supports 100,000+ requests).
-           * Access and filtering would be sped up, though how much faster this would be needs testing.
-         ALSO NOTE: The caching filestore uses a local (per node) database with a very similar structure that maybe
-                    could be synced up with this.
-
-     - Etags are s3's native checksum, so we use that for file integrity checking since it's free when fetching
-         object headers from s3.  Using an md5sum in addition to this would work well with the current filestore.
-         WARNING: Etag values differ for the same file when the part size changes, so part size should always
-         be Set In Stone, unless we hit s3's 10,000 part limit, and we need to account for that.
-
-     - This class inherits self.config only when initialized/restarted and is None upon class instantiation.  These
-         are the options/config set by the user.  When jobs are loaded/unpickled, they must re-incorporate this.
-         The config.sse_key is the source of truth for bucket encryption and a clear error should be raised if
-         restarting a bucket with a different encryption key set than it was initialized with.
-
-     - The Toil bucket should log the version of Toil it was initialized with and warn the user if restarting with
-         a different version.
+    # The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
+    # centralize, store, and track files for the workflow.
+    #
+    # The AWS jobstore stores 4 things
+    #     1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
+    #         A job's file is deleted when finished, and its absence means it completed.
+    #     2. Files: The inputs and outputs of jobs.  Each file is actually two keys in s3:
+    #           1. The actual file content, written with the file pattern: "files/{etag}"
+    #           2. The file's reference and metadata, written with the file pattern: "metadata/{uuid}".
+    #              Note: This is a small json containing only: etag checksum, & executibility.
+    #     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process. (check this!)
+    #     4. Shared Files: These are a small set of special files.  Most are needed by all jobs:
+    #         * environment.pickle   (environment variables)
+    #         * config.pickle        (user options)
+    #         * pid.log              (process ID of the workflow; when it finishes, the workflow either succeeded/failed)
+    #         * userScript           (hot deployment(?);  this looks like the job module;  poke this)
+    #         * rootJobReturnValue   (workflow succeeded or not)
+    #         * TODO: are there any others?  do either vg or cactus use this?  should these have locks and when are they
+    #            accessed?  are these only written once, but read many times?
+    #         * TODO: A file with the date and toil version the workflow/bucket/jobstore was initialized with
+    #
+    # NOTES
+    #  - The AWS jobstore does not use a database (directly, at least) currently.  We can get away with this because:
+    #        1. AWS s3 has strong consistency.
+    #        2. s3's filter/query speed is pretty good.
+    #      However, there may be reasons in the future to provide users with a database:
+    #        * s3 throttling has limits (3,500/5,000 requests; something like dynamodb supports 100,000+ requests).
+    #        * Access and filtering would be sped up, though how much faster this would be needs testing.
+    #      ALSO NOTE: The caching filestore uses a local (per node) database with a very similar structure that maybe
+    #                 could be synced up with this.
+    #
+    #  - Etags are s3's native checksum, so we use that for file integrity checking since it's free when fetching
+    #      object headers from s3.  Using an md5sum in addition to this would work well with the current filestore.
+    #      WARNING: Etag values differ for the same file when the part size changes, so part size should always
+    #      be Set In Stone, unless we hit s3's 10,000 part limit, and we need to account for that.
+    #
+    #  - This class inherits self.config only when initialized/restarted and is None upon class instantiation.  These
+    #      are the options/config set by the user.  When jobs are loaded/unpickled, they must re-incorporate this.
+    #      The config.sse_key is the source of truth for bucket encryption and a clear error should be raised if
+    #      restarting a bucket with a different encryption key set than it was initialized with.
+    #
+    #  - The Toil bucket should log the version of Toil it was initialized with and warn the user if restarting with
+    #      a different version.
     """
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super(AWSJobStore, self).__init__(locator)
@@ -336,16 +335,16 @@ class AWSJobStore(AbstractJobStore):
 
     def write_file(self, local_path: str, job_id: Optional[str] = None, cleanup: bool = False) -> FileID:
         """
-        Write a local file into the jobstore and return a file_id referencing it.
-
-        job_id:
-            If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
-            file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
-
-        cleanup:
-            If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
-            file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
-            TODO: we don't need cleanup; remove it and only use job_id
+        # Write a local file into the jobstore and return a file_id referencing it.
+        #
+        # job_id:
+        #     If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
+        #     file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
+        #
+        # cleanup:
+        #     If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
+        #     file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
+        #     TODO: we don't need cleanup; remove it and only use job_id
         """
         file_id = str(uuid.uuid4())  # mint a new file_id
 

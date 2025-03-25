@@ -61,10 +61,6 @@ DEFAULT_AWS_CHUNK_SIZE = 128 * MIB
 assert AWS_MAX_CHUNK_SIZE > DEFAULT_AWS_CHUNK_SIZE > AWS_MIN_CHUNK_SIZE
 
 
-class NoSuchFileException(Exception):
-    pass
-
-
 class AWSKeyNotFoundError(Exception):
     pass
 
