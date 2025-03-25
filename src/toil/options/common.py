@@ -362,12 +362,13 @@ def add_base_toil_options(
         action="store_true",
         help="Do not capture standard output and error from batch system jobs.",
     )
+    # TODO: Should this be deprecated since we always save stats now for history tracking?
     core_options.add_argument(
         "--stats",
         dest="stats",
         default=False,
         action="store_true",
-        help="Records statistics about the toil workflow to be used by 'toil stats'.",
+        help="Keep statistics about the toil workflow to be used by 'toil stats'.",
     )
     clean_choices = ["always", "onError", "never", "onSuccess"]
     core_options.add_argument(
@@ -466,7 +467,8 @@ def add_base_toil_options(
     )
 
     caching = file_store_options.add_mutually_exclusive_group()
-    caching_help = "Enable or disable caching for your workflow, specifying this overrides default from job store"
+    caching_help = ("Enable or disable worker level file caching for your workflow, specifying this overrides default from batch system. "
+                    "Does not affect CWL or WDL task caching.")
     caching.add_argument(
         "--caching",
         dest="caching",
@@ -859,6 +861,14 @@ def add_base_toil_options(
         f"labeling job failed. default={1}",
     )
     job_options.add_argument(
+        "--stopOnFirstFailure",
+        dest="stop_on_first_failure",
+        type=strtobool,
+        default=False,
+        metavar="BOOL",
+        help="Stop the workflow at the first complete job failure.",
+    )
+    job_options.add_argument(
         "--enableUnlimitedPreemptibleRetries",
         "--enableUnlimitedPreemptableRetries",
         dest="enableUnlimitedPreemptibleRetries",
@@ -1101,6 +1111,19 @@ def add_base_toil_options(
         action="store_true",
         default=False,
         help="Disables the progress bar shown when standard error is a terminal.",
+    )
+    misc_options.add_argument(
+        "--publishWorkflowMetrics",
+        dest="publish_workflow_metrics",
+        choices=["all", "current", "no"],
+        default=None,
+        help="Whether to publish workflow metrics reports (including unique workflow "
+        "and task run IDs, job names, and version and Toil feature use information) to "
+        "Dockstore when a workflow completes. Selecting \"current\" will publish metrics "
+        "for the current workflow. Selecting \"all\" will also publish prior workflow "
+        "runs from the Toil history database, even if they themselves were run with \"no\". "
+        "Note that once published, workflow metrics CANNOT be deleted or un-published; they "
+        "will stay published forever!"
     )
 
     # Debug options

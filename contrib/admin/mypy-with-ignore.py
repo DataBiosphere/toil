@@ -22,7 +22,8 @@ def main():
 
     # TODO: Remove these paths as typing is added and mypy conflicts are addressed.
     # These are handled as path prefixes.
-    ignore_paths = [os.path.abspath(f) for f in [
+
+    ignore_paths = [os.path.join(pkg_root, f) for f in [
         'docs/_build',
         'docker/Dockerfile.py',
         'docs/conf.py',
@@ -73,6 +74,7 @@ def main():
         'src/toil/lib/__init__.py',
         'src/toil/lib/generatedEC2Lists.py',
         'src/toil/lib/retry.py',
+        'src/toil/lib/threading.py',
         'src/toil/lib/objects.py',
         'src/toil/lib/io.py',
         'src/toil/lib/docker.py',
@@ -83,8 +85,7 @@ def main():
         'src/toil/server/utils.py',
         'src/toil/test',
         'src/toil/utils/toilStats.py',
-        'src/toil/server/utils.py',
-        'src/toil/jobStores/aws/jobStore.py'
+        'src/toil/server/utils.py'
     ]]
 
     def ignore(file_path):
@@ -100,19 +101,9 @@ def main():
     for file_path in all_files_to_check:
         if not ignore(file_path):
             filtered_files_to_check.append(file_path)
-    # print(f'Checking: {filtered_files_to_check}')
-    # args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
-    # p = subprocess.run(args=args)
-    # exit(p.returncode)
-    filtered_files_to_check = [
-        'src/toil/jobStores/aws/jobStore.py'
-    ]
-    for file in filtered_files_to_check:
-        print(f'Checking: {file}')
-        args = ['mypy', '--color-output', '--show-traceback', file]
-        p = subprocess.run(args=args)
-        if p.returncode != 0:
-            raise RuntimeError(f'BROKEN: {file}')
+    args = ['mypy', '--color-output', '--show-traceback'] + filtered_files_to_check
+    p = subprocess.run(args=args)
+    exit(p.returncode)
 
 
 if __name__ == '__main__':

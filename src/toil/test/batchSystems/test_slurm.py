@@ -1,16 +1,23 @@
+import errno
 import textwrap
 from queue import Queue
 
+import logging
 import pytest
+import sys
 
 import toil.batchSystems.slurm
 from toil.batchSystems.abstractBatchSystem import (
     EXIT_STATUS_UNAVAILABLE_VALUE,
     BatchJobExitReason,
+    BatchSystemSupport,
 )
 from toil.common import Config
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.test import ToilTest
+
+logger = logging.getLogger(__name__)
+
 
 # TODO: Come up with a better way to mock the commands then monkey-patching the
 # command-calling functions.
@@ -29,6 +36,9 @@ def call_sacct(args, **_) -> str:
         1236|FAILED|0:2
         1236.extern|COMPLETED|0:0
     """
+    if sum(len(a) for a in args) > 1000:
+        # Simulate if the argument list is too long
+        raise OSError(errno.E2BIG, "Argument list is too long")
     # Fake output per fake job-id.
     sacct_info = {
         609663: "609663|FAILED|0:2\n609663.extern|COMPLETED|0:0\n",
@@ -173,14 +183,34 @@ def call_sacct_raises(*_):
         1, "sacct: error: Problem talking to the database: " "Connection timed out"
     )
 
+def call_sinfo(*_) -> str:
+    """
+    Simulate asking for partition info from Slurm
+    """
+    stdout = textwrap.dedent(
+        """\
+        PARTITION GRES TIMELIMIT PRIO_TIER CPUS MEMORY
+        short* (null) 1:00:00 500 256+ 1996800+
+        medium (null) 12:00:00 500 256+ 1996800+
+        long (null) 14-00:00:00 500 256+ 1996800+
+        gpu gpu:A100:8 7-00:00:00 5000 256 996800
+        gpu gpu:A5500:8 7-00:00:00 5000 256 1996800
+        high_priority gpu:A5500:8 7-00:00:00 65000 256 1996800
+        high_priority (null) 7-00:00:00 65000 256+ 1996800+
+        simple_nodelist gpu:A100:8 1:00 65000 256 996800
+        simple_nodelist gpu:A5500:8 1:00 65000 256 1996800
+        simple_nodelist (null) 1:00 65000 256+ 1996800+
+        """
+    )
+    return stdout
 
-class FakeBatchSystem:
+class FakeBatchSystem(BatchSystemSupport):
     """
     Class that implements a minimal Batch System, needed to create a Worker (see below).
     """
 
     def __init__(self):
-        self.config = self.__fake_config()
+        super().__init__(self.__fake_config(), float("inf"), sys.maxsize, sys.maxsize)
 
     def getWaitDuration(self):
         return 10
@@ -198,8 +228,12 @@ class FakeBatchSystem:
 
         config.workflowID = str(uuid4())
         config.cleanWorkDir = "always"
+        toil.batchSystems.slurm.SlurmBatchSystem.setOptions(lambda o: setattr(config, o, None))
         return config
 
+# Make the mock class not have abstract methods anymore, even though we don't
+# implement them. See <https://stackoverflow.com/a/17345619>.
+FakeBatchSystem.__abstractmethods__ = set()
 
 class SlurmTest(ToilTest):
     """
@@ -261,6 +295,13 @@ class SlurmTest(ToilTest):
         expected_result = {1234: (None, None), 1235: (None, None), 1236: (None, None)}
         result = self.worker._getJobDetailsFromSacct(list(expected_result))
         assert result == expected_result, f"{result} != {expected_result}"
+
+    def test_getJobDetailsFromSacct_argument_list_too_big(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sacct)
+        expected_result = {i: (None, None) for i in range(2000)}
+        result = self.worker._getJobDetailsFromSacct(list(expected_result))
+        assert result == expected_result, f"{result} != {expected_result}"
+
 
     ####
     #### tests for _getJobDetailsFromScontrol()
@@ -449,3 +490,159 @@ class SlurmTest(ToilTest):
             pass
         else:
             assert False, "Exception CalledProcessErrorStderr not raised"
+
+    ###
+    ### Tests for partition selection
+    ##
+
+    def test_PartitionSet_get_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+
+        # At zero. short will win because simple_nodelist has higher priority.
+        self.assertEqual(ps.get_partition(0), "short")
+        # Easily within the partition
+        self.assertEqual(ps.get_partition(10 * 60), "short")
+        # Exactly on the boundary
+        self.assertEqual(ps.get_partition(60 * 60), "short")
+        # Well within the next partition
+        self.assertEqual(ps.get_partition(2 * 60 * 60), "medium")
+        # Can only fit in long
+        self.assertEqual(ps.get_partition(8 * 24 * 60 * 60), "long")
+        # Could fit in gpu or long
+        self.assertEqual(ps.get_partition(6 * 24 * 60 * 60), "long")
+        # Can't fit in anything
+        with self.assertRaises(Exception):
+            ps.get_partition(365 * 24 * 60 * 60)
+
+    def test_PartitionSet_default_gpu_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+
+        # Make sure we picked the useful-length GPU partition and not the super
+        # short one.
+        self.assertEqual(ps.default_gpu_partition.partition_name, "gpu")
+
+    def test_prepareSbatch_partition(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        # This is in seconds
+        self.worker.boss.config.slurm_time = 30
+
+        # Without a partition override in the environment, we should get the
+        # "short" partition for this job
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" in command
+
+        # With a partition override, we should not. But the override will be rewritten.
+        self.worker.boss.config.slurm_args = "--something --partition foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "--partition=foo" in command
+
+        # All ways of setting partition should work, including =
+        self.worker.boss.config.slurm_args = "--something --partition=foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "--partition=foo" in command
+
+        # And short options
+        self.worker.boss.config.slurm_args = "--something -p foo --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=short" not in command
+        assert "--partition=foo" in command
+
+        # Partition settings from the config should override automatic selection
+        self.worker.boss.config.slurm_partition = "foobar"
+        self.worker.boss.config.slurm_args = "--something --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=foobar" in command
+
+        # But they should be overridden by the argument overrides
+        self.worker.boss.config.slurm_args = "--something --partition=baz --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--partition=baz" in command
+
+    def test_prepareSbatch_time(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+        # This is in seconds
+        self.worker.boss.config.slurm_time = 30
+
+        # Without a time override in the environment, we should use the normal
+        # time and the "short" partition
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug("Command: %s", command)
+        assert "--time=0:30" in command
+        assert "--partition=short" in command
+
+        # With a time override, we should use it, slightly translated, and it
+        # should change the selected partition.
+        self.worker.boss.config.slurm_args = "--something --time 10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug("Command: %s", command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
+
+        # All ways of setting time should work, including =
+        self.worker.boss.config.slurm_args = "--something --time=10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug("Command: %s", command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
+
+        # And short options
+        self.worker.boss.config.slurm_args = "--something -t 10:00:00 --somethingElse"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        logger.debug("Command: %s", command)
+        assert "--partition=medium" in command
+        assert "--time=0:36000" in command
+
+    def test_prepareSbatch_export(self):
+        self.monkeypatch.setattr(toil.batchSystems.slurm, "call_command", call_sinfo)
+        ps = toil.batchSystems.slurm.SlurmBatchSystem.PartitionSet()
+        self.worker.boss.partitions = ps
+
+        # Without any overrides, we need --export=ALL
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--export=ALL" in command
+
+        # With overrides, we don't get --export=ALL
+        self.worker.boss.config.slurm_args = "--export=foo"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--export=ALL" not in command
+
+        # With --export-file, we don't get --export=ALL as documented.
+        self.worker.boss.config.slurm_args = "--export-file=./thefile.txt"
+        command = self.worker.prepareSbatch(1, 100, 5, "job5", None, None)
+        assert "--export=ALL" not in command
+
+    def test_option_detector(self):
+        detector = toil.batchSystems.slurm.option_detector("foobar", "f")
+
+        self.assertTrue(detector("--foobar"))
+        self.assertTrue(detector("--foobar=1"))
+        self.assertTrue(detector("-f"))
+        self.assertFalse(detector("-F"))
+        self.assertFalse(detector("--foo-bar"))
+        self.assertFalse(detector("foobar"))
+        self.assertFalse(detector("-foobar"))
+        self.assertFalse(detector("f"))
+
+    def test_any_option_detector(self):
+        detector = toil.batchSystems.slurm.any_option_detector([])
+        self.assertFalse(detector("--anything"))
+
+        detector = toil.batchSystems.slurm.any_option_detector([("foobar", "f"), "many-bothans", ("bazz-only", "B")])
+
+        self.assertTrue(detector("--foobar"))
+        self.assertTrue(detector("-f"))
+        self.assertTrue(detector("--many-bothans=False"))
+        self.assertTrue(detector("--bazz-only"))
+        self.assertTrue(detector("-B"))
+        self.assertFalse(detector("--no-bazz"))
+        self.assertFalse(detector("--foo-bar=--bazz-only"))
+       
+

@@ -1,0 +1,6 @@
+{
+  "inputFile": {
+    "class": "File",
+    "path": "s3://toil-datasets/hello.txt"
+  }
+}

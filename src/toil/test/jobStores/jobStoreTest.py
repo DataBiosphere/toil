@@ -1435,21 +1435,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         assert isinstance(self.jobstore_initialized, AWSJobStore)  # type hinting
         self.jobstore_initialized.destroy()
 
-    @slow
-    def testInlinedFiles(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-
-        jobstore = self.jobstore_initialized
-        for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize()
-            sizes = (1, n // 2, n - 1, n, n + 1, 2 * n)
-            for size in chain(sizes, islice(reversed(sizes), 1)):
-                s = os.urandom(size)
-                with jobstore.write_shared_file_stream("foo") as f:
-                    f.write(s)
-                with jobstore.read_shared_file_stream("foo") as f:
-                    self.assertEqual(s, f.read())
-
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized
         jobRequirements = dict(memory=12, cores=34, disk=35, preemptible=True)
@@ -1568,12 +1553,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             "s3", region_name=self.awsRegion()
         )
         delete_s3_bucket(resource, bucket.name)
-
-    def _largeLogEntrySize(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-
-        # So we get into the else branch of reader() in uploadStream(multiPart=False):
-        return AWSJobStore.FileInfo.maxBinarySize() * 2
 
 
 # @needs_aws_s3

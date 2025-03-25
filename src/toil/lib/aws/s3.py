@@ -231,7 +231,7 @@ def copy_local_to_s3(s3_resource: "S3ServiceResource", local_file_path: str, dst
 
 
 class MultiPartPipe(WritablePipe):
-    def __init__(self, part_size: int, s3_resource: "S3ServiceResource", bucket_name: str, file_id: str, encryption_args: Optional[Dict[Any, Any]], encoding: str, errors: str) -> None:
+    def __init__(self, part_size: int, s3_resource: "S3ServiceResource", bucket_name: str, file_id: str, encryption_args: Optional[Dict[Any, Any]], encoding: Optional[str] = None, errors: Optional[str] = None) -> None:
         super(MultiPartPipe, self).__init__()
         self.encoding = encoding
         self.errors = errors

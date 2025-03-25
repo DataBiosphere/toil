@@ -21,7 +21,8 @@ import textwrap
 from typing import Any, Union
 
 import enlighten  # type: ignore
-import requests
+
+from toil.lib.web import web_session
 
 logger = logging.getLogger(__name__)
 manager = enlighten.get_manager()
@@ -148,7 +149,7 @@ def parse_storage(
         return [0, 0]
     else:
         specs = storage_info.strip().split()
-        if is_number(specs[0]) and specs[1] == "x" and is_number(specs[2]):
+        if is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2]):
             return float(specs[0].replace(",", "")), float(specs[2].replace(",", ""))
         elif (
             is_number(specs[0])
@@ -157,9 +158,11 @@ def parse_storage(
             and specs[3] == "SSD"
         ):
             return 1, float(specs[0].replace(",", ""))
+        elif is_number(specs[0]) and specs[1].lower() == "x" and is_number(specs[2][:-2]) and specs[2][-2:] == "GB":
+            return float(specs[0].replace(",", "")), float(specs[2][:-2].replace(",", ""))
         else:
             raise RuntimeError(
-                "EC2 JSON format has likely changed.  Error parsing disk specs."
+                f"EC2 JSON format has likely changed.  Error parsing disk specs : {storage_info.strip()}"
             )
 
 
@@ -191,7 +194,7 @@ def download_region_json(filename: str, region: str = "us-east-1") -> None:
              aws instance name (example: 't2.micro'), and the value is an
              InstanceType object representing that aws instance name.
     """
-    response = requests.get(
+    response = web_session.get(
         f"https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/{region}/index.json",
         stream=True,
     )

@@ -14,7 +14,7 @@
 
 import logging
 import os
-import shutil
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -23,7 +23,7 @@ import unittest
 from toil.common import Toil
 from toil.jobStores.abstractJobStore import NoSuchFileException, NoSuchJobStoreException
 from toil.jobStores.utils import generate_locator
-from toil.test import ToilTest, needs_aws_s3, needs_cwl
+from toil.test import get_data, needs_aws_s3, needs_cwl
 
 logger = logging.getLogger(__name__)
 
@@ -31,68 +31,69 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noq
 sys.path.insert(0, pkg_root)  # noqa
 
 
-class ToilKillTest(ToilTest):
+class _ToilKillTest:
     """A set of test cases for "toil kill"."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.job_store = os.path.join(os.getcwd(), "testkill")
-
-    def setUp(self):
-        """Shared test variables."""
-        self.cwl = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.cwl")
-        self.yaml = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/sleep.yaml")
-
-    def tearDown(self):
-        """Default tearDown for unittest."""
-        cmd = ["toil", "clean", self.job_store]
-        subprocess.check_call(cmd)
-
-        if os.path.exists("tmp"):
-            shutil.rmtree("tmp")
-        unittest.TestCase.tearDown(self)
-
-    @needs_cwl
-    def test_cwl_toil_kill(self):
+    def _test_cwl_toil_kill(self, job_store: str) -> None:
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
 
-        run_cmd = ["toil-cwl-runner", "--jobStore", self.job_store, self.cwl, self.yaml]
-        kill_cmd = ["toil", "kill", self.job_store]
+        with get_data("test/utils/ABCWorkflowDebug/sleep.cwl") as cwl_file:
+            with get_data("test/utils/ABCWorkflowDebug/sleep.yaml") as input_file:
+                run_cmd = [
+                    "toil-cwl-runner",
+                    "--jobStore",
+                    job_store,
+                    str(cwl_file),
+                    str(input_file),
+                ]
+                kill_cmd = ["toil", "kill", job_store]
 
-        # run the sleep workflow
-        logger.info("Running workflow: %s", " ".join(run_cmd))
-        cwl_process = subprocess.Popen(run_cmd)
+                # run the sleep workflow
+                logger.info("Running workflow: %s", " ".join(run_cmd))
+                cwl_process = subprocess.Popen(run_cmd)
 
-        # wait until workflow starts running
-        while True:
-            assert cwl_process.poll() is None, "toil-cwl-runner finished too soon"
-            try:
-                job_store = Toil.resumeJobStore(self.job_store)
-                job_store.read_leader_pid()
-                # pid file exists, now wait for the kill flag to exist
-                if not job_store.read_kill_flag():
-                    # kill flag exists to be deleted to kill the leader
-                    break
-                else:
-                    logger.info("Waiting for kill flag...")
-            except (NoSuchJobStoreException, NoSuchFileException):
-                logger.info("Waiting for job store to be openable...")
-            time.sleep(2)
+                # wait until workflow starts running
+                while True:
+                    assert (
+                        cwl_process.poll() is None
+                    ), "toil-cwl-runner finished too soon"
+                    try:
+                        job_store_real = Toil.resumeJobStore(job_store)
+                        job_store_real.read_leader_pid()
+                        # pid file exists, now wait for the kill flag to exist
+                        if not job_store_real.read_kill_flag():
+                            # kill flag exists to be deleted to kill the leader
+                            break
+                        else:
+                            logger.info("Waiting for kill flag...")
+                    except (NoSuchJobStoreException, NoSuchFileException):
+                        logger.info("Waiting for job store to be openable...")
+                    time.sleep(2)
 
-        # run toil kill
-        subprocess.check_call(kill_cmd)
+                # run toil kill
+                subprocess.check_call(kill_cmd)
 
-        # after toil kill succeeds, the workflow should've exited
-        assert cwl_process.poll() is None
+                # after toil kill succeeds, the workflow should've exited
+                assert cwl_process.poll() is None
+
+
+class TestToilKill(_ToilKillTest):
+    """A set of test cases for "toil kill"."""
+
+    @needs_cwl
+    def test_cwl_toil_kill(self, tmp_path: Path) -> None:
+        """Test "toil kill" on a CWL workflow with a 100 second sleep."""
+        self._test_cwl_toil_kill(str(tmp_path / "job_store"))
 
 
 @needs_aws_s3
-class ToilKillTestWithAWSJobStore(ToilKillTest):
+class TestToilKillWithAWSJobStore(_ToilKillTest):
     """A set of test cases for "toil kill" using the AWS job store."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.job_store = generate_locator("aws", decoration="testkill")
+    @needs_cwl
+    def test_cwl_toil_kill(self) -> None:
+        """Test "toil kill" on a CWL workflow with a 100 second sleep."""
+        self._test_cwl_toil_kill(generate_locator("aws", decoration="testkill"))
 
 
 if __name__ == "__main__":
