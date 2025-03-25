@@ -22,7 +22,7 @@ def main():
 
     # TODO: Remove these paths as typing is added and mypy conflicts are addressed.
     # These are handled as path prefixes.
-    ignore_paths = [os.path.abspath(f) for f in [
+    ignore_paths = [os.path.join(pkg_root, f) for f in [
         'docs/_build',
         'docker/Dockerfile.py',
         'docs/conf.py',
@@ -105,7 +105,7 @@ def main():
     # p = subprocess.run(args=args)
     # exit(p.returncode)
     filtered_files_to_check = [
-        'src/toil/jobStores/aws/jobStore.py'
+        os.path.join(pkg_root, 'src/toil/jobStores/aws/jobStore.py')
     ]
     for file in filtered_files_to_check:
         print(f'Checking: {file}')

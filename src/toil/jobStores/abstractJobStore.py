@@ -88,7 +88,7 @@ class InvalidImportExportUrlException(Exception):
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
 
-    def __init__(self, jobStoreID: FileID):
+    def __init__(self, jobStoreID: Union[FileID, str]):
         """
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
@@ -98,7 +98,7 @@ class NoSuchJobException(Exception):
 class ConcurrentFileModificationException(Exception):
     """Indicates that the file was attempted to be modified by multiple processes at once."""
 
-    def __init__(self, jobStoreFileID: FileID):
+    def __init__(self, jobStoreFileID: Union[FileID, str]):
         """
         :param jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
@@ -110,7 +110,7 @@ class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
 
     def __init__(
-        self, jobStoreFileID: FileID, customName: Optional[str] = None, *extra: Any
+        self, jobStoreFileID: Union[FileID, str], customName: Optional[str] = None, *extra: Any
     ):
         """
         :param jobStoreFileID: the ID of the file that was mistakenly assumed to exist
@@ -224,7 +224,7 @@ class AbstractJobStore(ABC):
         ) as fileHandle:
             pickle.dump(self.__config, fileHandle, pickle.HIGHEST_PROTOCOL)
 
-    def resume(self) -> None:
+    def resume(self, sse_key_path: Optional[str] = None) -> None:
         """
         Connect this instance to the physical storage it represents and load the Toil configuration
         into the :attr:`AbstractJobStore.config` attribute.
@@ -1154,15 +1154,6 @@ class AbstractJobStore(ABC):
         :param toil.job.JobDescription job_description: The JobDescription to give an ID to
         """
         raise NotImplementedError()
-
-    @contextmanager
-    def batch(self) -> Iterator[None]:
-        """
-        If supported by the batch system, calls to create() with this context
-        manager active will be performed in a batch after the context manager
-        is released.
-        """
-        yield
 
     @deprecated(new_function_name="create_job")
     def create(self, jobDescription: JobDescription) -> JobDescription:
