@@ -811,7 +811,7 @@ class HistoryManager:
         # TODO: Consolidate with the other 2 ways to query workflow attempts!
 
         if not cls.enabled():
-            return []
+            return None
 
         attempts = []
 
