@@ -5,10 +5,30 @@ Toil Debugging
 
 Toil has a number of tools to assist in debugging.  Here we provide help in working through potential problems that a user might encounter in attempting to run a workflow.
 
+Failing Fast
+------------
+
+If you have a workflow you are testing, you can pass ``--stopOnFirstFailure=True`` to have Toil stop the workflow as soon as any job is complely failed (i.e. runs out of retry attempts). If you don't want Toil to retry failing jobs, you can pass ``--retryCount=0``.
+
 Reading the Log
 ---------------
 
 Usually, at the end of a failed Toil worklfow, Toil will reproduce the job logs for the jobs that failed. You can look at the end of your workflow log and use the job logs to identify which jobs are failing and why.
+
+.. _debuggingLog:
+
+Using ``DEBUG`` Logging
+-----------------------
+
+When debugging a broken workflow, you can run the workflow with ``--logDebug``, to set the log level to ``DEBUG``.
+
+When debug logging is on, the log from every Toil job is inserted in the main Toil log between these markers::
+
+    =========>
+         Toil job log is here
+    <=========
+
+Normally, only the logs of failing jobs and the output of commands run from WDL are reproduced like this.
 
 Finding Failed Jobs in the Jobstore 
 -----------------------------------
@@ -22,8 +42,10 @@ Running a Job Locally
 
 If you have a failing job's ID or name, you can reproduce its failure on your local machine with ``toil debug-job``. See :ref:`cli_debug_job`.
 
-For example, say you have this WDL workflow in ``test.wdl``. This workflow **cannot succeed**, due to the typo in the echo command::
+For example, say you have this WDL workflow in ``test.wdl``. This workflow **cannot succeed**, due to the typo in the echo command:
 
+.. code-block::
+   
     version 1.0
     workflow test {
       call hello
@@ -49,7 +71,7 @@ If you want to reproduce the failure later, or on another machine, you can first
 
     toil status --failed --noAggStats ./store
 
-This will produce something like:
+This will produce something like::
 
     [2024-03-14T17:45:15-0400] [MainThread] [I] [toil.utils.toilStatus] Traversing the job graph gathering jobs. This may take a couple of minutes.
     Failed jobs:
@@ -82,7 +104,7 @@ You can try and fail to run it like this::
 
     toil-wdl-runner --jobStore ./store example_alwaysfail_with_files.wdl --retryCount 0
 
-If you then dump the files from the failing job::
+If you dump the files from the failing job::
 
     toil debug-job ./store WDLTaskJob --retrieveTaskDirectory dumpdir
 

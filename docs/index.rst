@@ -37,6 +37,7 @@ If using Toil for your research, please cite
 
    cwl/introduction
    cwl/running
+   cwl/conformance
 
 .. toctree::
    :caption: Workflow Description Language (WDL)
@@ -45,6 +46,7 @@ If using Toil for your research, please cite
    wdl/running
    wdl/developing
    wdl/conformance
+   wdl/tutorial
 
 .. toctree::
    :caption: Advanced Toil Usage
