@@ -38,16 +38,13 @@ class HistoryTest(ToilTest):
         HistoryManager.database_path_override = os.path.join(temp_dir, "test-db.sqlite")
 
         # Flag on job history tracking
-        self.original_flag = HistoryManager.JOB_HISTORY_ENABLED
-        HistoryManager.JOB_HISTORY_ENABLED = True
-        
+        self.monkeypatch = pytest.MonkeyPatch()
+        self.monkeypatch.setattr(HistoryManager, "enabled", lambda: True)
+        self.monkeypatch.setattr(HistoryManager, "enabled_job", lambda: True)
 
     def tearDown(self) -> None:
         # Remove the temp dir override from history tracking
         HistoryManager.database_path_override = None
-
-        # Restore job history tracking flag
-        HistoryManager.JOB_HISTORY_ENABLED = self.original_flag
 
         super().tearDown()
 
