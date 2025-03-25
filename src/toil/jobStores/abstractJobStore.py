@@ -31,7 +31,7 @@ from typing import (
     Optional,
     Union,
     cast,
-    overload,
+    overload
 )
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
@@ -138,11 +138,12 @@ class NoSuchJobStoreException(LocatorException):
     def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
+        :param str prefix: The type of job store
         """
         super().__init__(
-            "The job store '%s' does not exist, so there is nothing to restart.",
+            "The job store '%s' does not exist in %s, so there is nothing to restart.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -748,7 +749,6 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError(f"No implementation for {url}")
 
-    @classmethod
     @abstractmethod
     def _write_to_url(
         cls,
@@ -1493,6 +1493,7 @@ class AbstractJobStore(ABC):
     ) -> ContextManager[IO[str]]: ...
 
     @abstractmethod
+    @contextmanager  # type: ignore
     def read_file_stream(
         self,
         file_id: Union[FileID, str],
