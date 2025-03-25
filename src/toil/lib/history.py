@@ -27,6 +27,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Iterable, Iterator, Optional, TypeVar, Callable
 
+from toil.lib.conversions import strtobool
 from toil.lib.io import get_toil_home
 from toil.lib.retry import ErrorCondition, retry
 
@@ -126,15 +127,26 @@ class HistoryManager:
     Class responsible for managing the history of Toil runs.
     """
 
-    # Should workflow run history be recorded?
-    WORKFLOW_HISTORY_ENABLED = True
-    # Should job history be recorded? Can only be true if
-    # WORKFLOW_HISTORY_ENABLED is also true.
-    #
-    # TODO: When Dockstore can take job metrics alongside whole-workflow
-    # metrics, and we've tested to make sure history recording doesn't slow
-    # down our leader job processing rate, turn on actual job history logging.
-    JOB_HISTORY_ENABLED = False
+    @classmethod
+    def enabled(cls) -> bool:
+        """
+        Return True if history should be read from and written to the database.
+
+        If False, no access at all shoulf be made to the database.
+        """
+        return strtobool(os.environ.get("TOIL_HISTORY", 'True')) 
+
+    @classmethod
+    def enabled_job(cls) -> bool:
+        """
+        Return True if job history should be read from and written to the database.
+
+        Always returns False if enabled() returns False.
+        """
+        # TODO: When Dockstore can take job metrics alongside whole-workflow
+        # metrics, and we've tested to make sure history recording doesn't slow
+        # down our leader job processing rate, turn on actual job history logging.
+        return cls.enabled() and strtobool(os.environ.get("TOIL_JOB_HISTORY", 'False')) 
 
     # For testing, we can move the database path for the class.
     database_path_override: Optional[str] = None
@@ -164,6 +176,12 @@ class HistoryManager:
         on Python versions that support it. In order to run any commands
         outside of a transaction use the no_transaction context manager.
         """
+
+        if not cls.enabled():
+            # Make sure we're not missing an enabled check along any codepath
+            # that wants to access the database.
+            raise RuntimeError("Attempting to connect to database when HistoryManager is disabled!")
+
         if not os.path.exists(cls.database_path()):
             # Make the database and protect it from snoopers and busybodies
             con = sqlite3.connect(cls.database_path())
@@ -345,7 +363,7 @@ class HistoryManager:
             updated.
         """
 
-        if not cls.WORKFLOW_HISTORY_ENABLED:
+        if not cls.enabled():
             return
 
         logger.info("Recording workflow creation of %s in %s", workflow_id, job_store_spec)
@@ -375,7 +393,7 @@ class HistoryManager:
 
         # TODO: Make name of this function less general?
 
-        if not cls.WORKFLOW_HISTORY_ENABLED:
+        if not cls.enabled():
             return
 
         logger.info("Workflow %s is a run of %s", workflow_id, workflow_name)
@@ -431,7 +449,7 @@ class HistoryManager:
         :param disk_bytes: Observed job disk usage.
         """
 
-        if not cls.WORKFLOW_HISTORY_ENABLED or not cls.JOB_HISTORY_ENABLED:
+        if not cls.enabled_job():
             return
 
         logger.debug("Workflow %s ran job %s", workflow_id, job_name)
@@ -506,7 +524,7 @@ class HistoryManager:
         :param platform_machine: CPU type ("AMD64", etc.) used to run the workflow leader.
         """
 
-        if not cls.WORKFLOW_HISTORY_ENABLED:
+        if not cls.enabled():
             return
 
         logger.info("Workflow %s stopped. Success: %s", workflow_id, succeeded)
@@ -577,6 +595,9 @@ class HistoryManager:
         List all known workflows and their summary statistics.
         """
 
+        if not cls.enabled():
+            return []
+
         workflows = []
 
         con = cls.connection()
@@ -631,6 +652,9 @@ class HistoryManager:
 
         :param limit: Get no more than this many.
         """
+
+        if not cls.enabled():
+            return []
 
         attempts = []
 
@@ -705,6 +729,9 @@ class HistoryManager:
 
         :param limit: Get no more than this many.
         """
+
+        if not cls.enabled_job():
+            return []
 
         attempts = []
 
@@ -783,6 +810,9 @@ class HistoryManager:
 
         # TODO: Consolidate with the other 2 ways to query workflow attempts!
 
+        if not cls.enabled():
+            return None
+
         attempts = []
 
         con = cls.connection()
@@ -857,6 +887,9 @@ class HistoryManager:
         Doesn't check to make sure the workflow has a TRS ID.
         """
 
+        if not cls.enabled_job():
+            return []
+
         attempts = []
 
         con = cls.connection()
@@ -922,6 +955,9 @@ class HistoryManager:
         Does not mark the workflow attempt's job attempts as submitted.
         """
 
+        if not cls.enabled():
+            return
+
         con = cls.connection()
         cur = con.cursor()
         try:
@@ -944,6 +980,9 @@ class HistoryManager:
         """
         Mark a collection of job attempts as submitted to Dockstore in a single transaction.
         """
+
+        if not cls.enabled_job():
+            return
 
         con = cls.connection()
         cur = con.cursor()
@@ -969,6 +1008,10 @@ class HistoryManager:
         """
         Count workflows in the database.
         """
+        
+        if not cls.enabled():
+            return 0
+
         con = cls.connection()
         cur = con.cursor()
         try:
@@ -994,6 +1037,10 @@ class HistoryManager:
         """
         Count workflow attempts in the database.
         """
+
+        if not cls.enabled():
+            return 0
+
         con = cls.connection()
         cur = con.cursor()
         try:
@@ -1019,6 +1066,10 @@ class HistoryManager:
         """
         Count job attempts in the database.
         """
+
+        if not cls.enabled_job():
+            return 0
+
         con = cls.connection()
         cur = con.cursor()
         try:
@@ -1044,6 +1095,10 @@ class HistoryManager:
         """
         Get workflows that have a successful attempt and no unsubmitted attempts or job attempts.
         """
+
+        if not cls.enabled():
+            return []
+
         ids = []
 
         con = cls.connection()
@@ -1105,6 +1160,9 @@ class HistoryManager:
         Get workflows that are old.
         """
 
+        if not cls.enabled():
+            return []
+
         ids = []
 
         con = cls.connection()
@@ -1150,6 +1208,9 @@ class HistoryManager:
         Succeeds if the workflow does not exist.
         """
 
+        if not cls.enabled():
+            return
+
         con = cls.connection()
         cur = con.cursor()
         try:
@@ -1172,6 +1233,9 @@ class HistoryManager:
         """
         Get the total number of bytes used by the database.
         """
+
+        if not cls.enabled():
+            return 0
 
         con = cls.connection()
         cur = con.cursor()
@@ -1202,6 +1266,9 @@ class HistoryManager:
         """
         Shrink the database to remove unused space.
         """
+
+        if not cls.enabled():
+            return
         
         con = cls.connection()
         cur = con.cursor()
@@ -1225,6 +1292,9 @@ class HistoryManager:
         Throws data away in a sensible order, least important to most
         important.
         """
+
+        if not cls.enabled():
+            return
 
         db_size = cls.get_database_byte_size()
 
@@ -1264,6 +1334,10 @@ class HistoryManager:
 
         For debugging tests.
         """
+
+        if not cls.enabled():
+            return []
+
         return cls.connection().iterdump()
 
 
