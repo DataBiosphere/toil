@@ -111,7 +111,7 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.cwl import check_cwltool_version
-from toil.lib.integration import resolve_workflow
+from toil.lib.trs import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
 
@@ -1214,7 +1214,7 @@ def toil_make_tool(
     return cwltool.workflow.default_make_tool(toolpath_object, loadingContext)
 
 
-# When a file we want to have is missing, we can give it this sentinal location
+# When a file we want to have is missing, we can give it this sentinel location
 # URI instead of raising an error right away, in case it is optional.
 MISSING_FILE = "missing://"
 
@@ -1812,6 +1812,9 @@ def convert_file_uri_to_toil_uri(
     # with unsupportedRequirement when retrieving later with getFile
     elif file_uri.startswith("_:"):
         return file_uri
+    elif file_uri.startswith(MISSING_FILE):
+        # We cannot import a missing file
+        raise FileNotFoundError(f"Could not find {file_uri[len(MISSING_FILE):]}")
     else:
         file_uri = existing.get(file_uri, file_uri)
         if file_uri not in index:
@@ -1876,7 +1879,7 @@ def extract_file_uri_once(
     ):
         if mark_broken:
             logger.debug("File %s is missing", file_metadata)
-            file_metadata["location"] = location = MISSING_FILE
+            file_metadata["location"] = location = MISSING_FILE + location
         else:
             raise cwl_utils.errors.WorkflowException(
                 "File is missing: %s" % file_metadata
@@ -2976,7 +2979,7 @@ def makeRootJob(
         # This will consist of files that we were not able to get a file size for
         leader_metadata = dict()
         for filename, file_data in metadata.items():
-            if file_data.size is None:
+            if file_data[2] is None:  # size
                 leader_metadata[filename] = file_data
             else:
                 worker_metadata[filename] = file_data
@@ -3599,6 +3602,7 @@ class CWLInstallImportsJob(Job):
         """
         Given a mapping of filenames to Toil file IDs, replace the filename with the file IDs throughout the CWL object.
         """
+
         def fill_in_file(filename: str) -> FileID:
             """
             Return the file name's associated Toil file ID
@@ -3954,10 +3958,10 @@ def filtered_secondary_files(
                 sf,
             )
     # remove secondary files that are not present in the filestore or pointing
-    # to existant things on disk
+    # to existent things on disk
     for sf in intermediate_secondary_files:
         sf_loc = cast(str, sf.get("location", ""))
-        if sf_loc != MISSING_FILE or sf.get("class", "") == "Directory":
+        if not sf_loc.startswith(MISSING_FILE) or sf.get("class", "") == "Directory":
             # Pass imported files, and all Directories
             final_secondary_files.append(sf)
         else:
@@ -4166,15 +4170,15 @@ def get_options(args: list[str]) -> Namespace:
         description=textwrap.dedent(
             """
             positional arguments:
-              
+
               WORKFLOW              CWL file to run.
 
               INFILE                YAML or JSON file of workflow inputs.
-              
+
               WF_OPTIONS            Additional inputs to the workflow as command-line
                                     flags. If CWL workflow takes an input, the name of the
                                     input can be used as an option. For example:
-                                    
+
                                       %(prog)s workflow.cwl --file1 file
 
                                     If an input has the same name as a Toil option, pass
@@ -4261,8 +4265,18 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
     runtime_context.move_outputs = "leave"
     runtime_context.rm_tmpdir = False
     runtime_context.streaming_allowed = not options.disable_streaming
+    if options.cachedir is not None:
+        runtime_context.cachedir = os.path.abspath(options.cachedir)
+        # Automatically bypass the file store to be compatible with cwltool caching
+        # Otherwise, the CWL caching code makes links to temporary local copies
+        # of filestore files and caches those.
+        logger.debug("CWL task caching is turned on. Bypassing file store.")
+        options.bypass_file_store = True
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
+    if cwltool.main.check_working_directories(runtime_context) is not None:
+        logger.error("Failed to create directory. If using tmpdir_prefix, tmpdir_outdir_prefix, or cachedir, consider changing directory locations.")
+        return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)
@@ -4293,6 +4307,10 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     try:
 
+        # We might have workflow metadata to pass to Toil
+        workflow_name=None
+        trs_spec = None
+
         if not options.restart:
             # Make a version of the config based on the initial options, for
             # setting up CWL option stuff
@@ -4302,7 +4320,9 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # Before showing the options to any cwltool stuff that wants to
             # load the workflow, transform options.cwltool, where our
             # argument for what to run is, to handle Dockstore workflows.
-            options.cwltool = resolve_workflow(options.cwltool)
+            options.cwltool, trs_spec = resolve_workflow(options.cwltool)
+            # Figure out what to call the workflow
+            workflow_name = trs_spec or options.cwltool
 
             # TODO: why are we doing this? Does this get applied to all
             # tools as a default or something?
@@ -4474,7 +4494,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
             logger.debug("Root tool: %s", tool)
             tool = remove_pickle_problems(tool)
 
-        with Toil(options) as toil:
+        with Toil(options, workflow_name=workflow_name, trs_spec=trs_spec) as toil:
             if options.restart:
                 outobj = toil.restart()
             else:
@@ -4575,6 +4595,7 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         InvalidImportExportUrlException,
         UnimplementedURLException,
         JobTooBigError,
+        FileNotFoundError
     ) as err:
         logging.error(err)
         return 1

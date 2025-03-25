@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 
 from toil.lib.resources import glob
-from toil.test import ToilTest, needs_wdl, slow
+from toil.test import ToilTest, get_data, needs_wdl, slow
 from toil.version import python
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,14 @@ logger = logging.getLogger(__name__)
 
 def workflow_debug_jobstore() -> str:
     job_store_path = os.path.join(tempfile.mkdtemp(), "toilWorkflowRun")
-    subprocess.check_call(
-        [
-            python,
-            os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py"),
-            job_store_path,
-        ]
-    )
+    with get_data("test/utils/ABCWorkflowDebug/debugWorkflow.py") as debugWorkflow_py:
+        subprocess.check_call(
+            [
+                python,
+                str(debugWorkflow_py),
+                job_store_path,
+            ]
+        )
     return job_store_path
 
 
@@ -46,15 +47,16 @@ def testJobStoreContents():
     """
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
 
-    subprocess.check_call(
-        [
-            python,
-            os.path.abspath("src/toil/utils/toilDebugFile.py"),
-            workflow_debug_jobstore(),
-            "--logDebug",
-            "--listFilesInJobStore=True",
-        ]
-    )
+    with get_data("utils/toilDebugFile.py") as toilDebugFile:
+        subprocess.check_call(
+            [
+                python,
+                str(toilDebugFile),
+                workflow_debug_jobstore(),
+                "--logDebug",
+                "--listFilesInJobStore=True",
+            ]
+        )
     jobstoreFileContents = os.path.abspath("jobstore_files.txt")
     files = []
     match = 0
@@ -84,21 +86,22 @@ def fetchFiles(symLink: bool, jobStoreDir: str, outputDir: str):
     then delete them.
     """
     contents = ["A.txt", "B.txt", "C.txt", "ABC.txt", "mkFile.py"]
-    cmd = [
-        python,
-        os.path.abspath("src/toil/utils/toilDebugFile.py"),
-        jobStoreDir,
-        "--fetch",
-        "*A.txt",
-        "*B.txt",
-        "*C.txt",
-        "*ABC.txt",
-        "*mkFile.py",
-        f"--localFilePath={outputDir}",
-        f"--useSymlinks={symLink}",
-    ]
-    print(cmd)
-    subprocess.check_call(cmd)
+    with get_data("utils/toilDebugFile.py") as toilDebugFile:
+        cmd = [
+            python,
+            toilDebugFile,
+            jobStoreDir,
+            "--fetch",
+            "*A.txt",
+            "*B.txt",
+            "*C.txt",
+            "*ABC.txt",
+            "*mkFile.py",
+            f"--localFilePath={outputDir}",
+            f"--useSymlinks={symLink}",
+        ]
+        print(cmd)
+        subprocess.check_call(cmd)
     for xfile in contents:
         matchingFilesFound = glob(glob_pattern="*" + xfile, directoryname=outputDir)
         assert len(matchingFilesFound) >= 1
@@ -134,17 +137,20 @@ class DebugJobTest(ToilTest):
         logger.info("Running workflow that always fails")
         try:
             # Run an always-failing workflow
-            subprocess.check_call(
-                [
-                    python,
-                    os.path.abspath("src/toil/test/docs/scripts/example_alwaysfail.py"),
-                    "--retryCount=0",
-                    "--logCritical",
-                    "--disableProgress",
-                    job_store,
-                ],
-                stderr=subprocess.DEVNULL,
-            )
+            with get_data(
+                "test/docs/scripts/example_alwaysfail.py"
+            ) as example_alwaysfail_py:
+                subprocess.check_call(
+                    [
+                        python,
+                        str(example_alwaysfail_py),
+                        "--retryCount=0",
+                        "--logCritical",
+                        "--disableProgress",
+                        job_store,
+                    ],
+                    stderr=subprocess.DEVNULL,
+                )
             raise RuntimeError("Failing workflow succeeded!")
         except subprocess.CalledProcessError:
             # Should fail to run
@@ -169,23 +175,24 @@ class DebugJobTest(ToilTest):
 
         logger.info("Running workflow that always fails")
         # Run an always-failing workflow
-        wf_result = subprocess.run(
-            [
-                "toil-wdl-runner",
-                os.path.abspath(
-                    "src/toil/test/docs/scripts/example_alwaysfail_with_files.wdl"
-                ),
-                "--retryCount=0",
-                "--logDebug",
-                "--disableProgress",
-                "--jobStore",
-                job_store,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            encoding="utf-8",
-            errors="replace",
-        )
+        with get_data(
+            "test/docs/scripts/example_alwaysfail_with_files.wdl"
+        ) as wdl_file:
+            wf_result = subprocess.run(
+                [
+                    "toil-wdl-runner",
+                    str(wdl_file),
+                    "--retryCount=0",
+                    "--logDebug",
+                    "--disableProgress",
+                    "--jobStore",
+                    job_store,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                encoding="utf-8",
+                errors="replace",
+            )
         logger.debug("Always-failing workflow output: %s", wf_result.stdout)
         if wf_result.returncode == 0:
             raise RuntimeError("Failing workflow succeeded!")

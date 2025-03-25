@@ -33,6 +33,7 @@ from toil.job import Job
 from toil.lib.bioio import system
 from toil.test import (
     ToilTest,
+    get_data,
     get_temp_file,
     integrative,
     needs_aws_ec2,
@@ -395,7 +396,7 @@ class UtilsTest(ToilTest):
                 current_status,
                 status,
                 time_elapsed,
-                seconds
+                seconds,
             )
             time.sleep(0.5)
             time_elapsed += 0.5
@@ -411,14 +412,20 @@ class UtilsTest(ToilTest):
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
+        self.check_status(
+            "RUNNING", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+        )
         wf.wait()
-        self.check_status("COMPLETED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
+        self.check_status(
+            "COMPLETED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+        )
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, "files/shared/pid.log"))
-        self.check_status("QUEUED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60)
+        self.check_status(
+            "QUEUED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+        )
 
     def testGetStatusFailedToilWF(self):
         """
@@ -428,75 +435,92 @@ class UtilsTest(ToilTest):
         """
         # --badWorker is set to force failure.
         wf = subprocess.Popen(self.sort_workflow_cmd + ["--badWorker=1"])
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
+        self.check_status(
+            "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+        )
         wf.wait()
-        self.check_status("ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
+        self.check_status(
+            "ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+        )
 
     @needs_cwl
     @needs_docker
     def testGetStatusFailedCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
-        # --badWorker is set to force failure.
-        cmd = [
-            "toil-cwl-runner",
-            "--logDebug",
-            "--jobStore",
-            self.toilDir,
-            "--clean=never",
-            "--badWorker=1",
-            "src/toil/test/cwl/sorttool.cwl",
-            "--reverse",
-            "--input",
-            "src/toil/test/cwl/whale.txt",
-            f"--outdir={self.tempDir}",
-        ]
-        logger.info("Run command: %s", " ".join(cmd))
-        wf = subprocess.Popen(cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
-        wf.wait()
-        self.check_status("ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
+        with get_data("test/cwl/sorttool.cwl") as cwl_file:
+            with get_data("test/cwl/whale.txt") as input_file:
+                # --badWorker is set to force failure.
+                cmd = [
+                    "toil-cwl-runner",
+                    "--logDebug",
+                    "--jobStore",
+                    self.toilDir,
+                    "--clean=never",
+                    "--badWorker=1",
+                    str(cwl_file),
+                    "--reverse",
+                    "--input",
+                    str(input_file),
+                    f"--outdir={self.tempDir}",
+                ]
+                logger.info("Run command: %s", " ".join(cmd))
+                wf = subprocess.Popen(cmd)
+                self.check_status(
+                    "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                )
+                wf.wait()
+                self.check_status(
+                    "ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                )
 
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
-        cmd = [
-            "toil-cwl-runner",
-            "--jobStore",
-            self.toilDir,
-            "--clean=never",
-            "src/toil/test/cwl/sorttool.cwl",
-            "--reverse",
-            "--input",
-            "src/toil/test/cwl/whale.txt",
-            f"--outdir={self.tempDir}",
-        ]
-        wf = subprocess.Popen(cmd)
-        self.check_status("RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
-        wf.wait()
-        self.check_status("COMPLETED", status_fn=ToilStatus.getStatus, process=wf, seconds=60)
+        with get_data("test/cwl/sorttool.cwl") as cwl_file:
+            with get_data("test/cwl/whale.txt") as input_file:
+                cmd = [
+                    "toil-cwl-runner",
+                    "--jobStore",
+                    self.toilDir,
+                    "--clean=never",
+                    str(cwl_file),
+                    "--reverse",
+                    "--input",
+                    str(input_file),
+                    f"--outdir={self.tempDir}",
+                ]
+                wf = subprocess.Popen(cmd)
+                self.check_status(
+                    "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                )
+                wf.wait()
+                self.check_status(
+                    "COMPLETED", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                )
 
     @needs_cwl
     @patch("builtins.print")
     def testPrintJobLog(self, mock_print):
         """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
         # Run a workflow that will always fail
-        cmd = [
-            "toil-cwl-runner",
-            "--logDebug",
-            "--jobStore",
-            self.toilDir,
-            "--clean=never",
-            "src/toil/test/cwl/alwaysfails.cwl",
-            "--message",
-            "Testing",
-        ]
-        logger.info("Run command: %s", " ".join(cmd))
-        wf = subprocess.Popen(cmd)
-        wf.wait()
-        # print log and check output
-        status = ToilStatus(self.toilDir)
-        status.printJobLog()
+        with get_data("test/cwl/alwaysfails.cwl") as cwl_file:
+            cmd = [
+                "toil-cwl-runner",
+                "--logDebug",
+                "--jobStore",
+                self.toilDir,
+                "--clean=never",
+                str(cwl_file),
+                "--message",
+                "Testing",
+            ]
+            logger.info("Run command: %s", " ".join(cmd))
+            wf = subprocess.Popen(cmd)
+            wf.wait()
+            # print log and check output
+            status = ToilStatus(self.toilDir)
+            status.printJobLog()
 
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args

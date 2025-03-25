@@ -2486,9 +2486,12 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgumentParser:
+        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgParser:
             """
             Get argument parser with added toil workflow options.
+
+            This is the Right Way to get an argument parser in a Toil Python
+            workflow.
 
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The argument parser used by a toil workflow with added Toil options.
@@ -2533,6 +2536,13 @@ class Job:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
             parser object.
+
+            Consider using :meth:`getDefaultArgumentParser` instead, which will
+            produce a parser of the correct class to use Toil's config file and
+            environment variables. If ther parser passed here is just an
+            :class:`argparse.ArgumentParser` and not a
+            :class:`configargparse.ArgParser`, the Toil config file and
+            environment variables will not be respected.
 
             :param parser: Options object to add toil options to.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
@@ -3141,45 +3151,54 @@ class Job:
             startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
 
-        yield
+        succeeded = False
+        try:
+            yield
 
-        if "download_only" in self._debug_flags:
-            # We should stop right away
-            logger.debug("Job did not stop itself after downloading files; stopping.")
-            raise DebugStoppingPointReached()
+            if "download_only" in self._debug_flags:
+                # We should stop right away
+                logger.debug("Job did not stop itself after downloading files; stopping.")
+                raise DebugStoppingPointReached()
 
-        # If the job is not a checkpoint job, add the promise files to delete
-        # to the list of jobStoreFileIDs to delete
-        # TODO: why is Promise holding a global list here???
-        if not self.checkpoint:
-            for jobStoreFileID in Promise.filesToDelete:
-                # Make sure to wrap the job store ID in a FileID object so the file store will accept it
-                # TODO: talk directly to the job store here instead.
-                fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
-        else:
-            # Else copy them to the job description to delete later
-            self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
-        Promise.filesToDelete.clear()
-        # Now indicate the asynchronous update of the job can happen
-        fileStore.startCommit(jobState=True)
-        # Change dir back to cwd dir, if changed by job (this is a safety issue)
-        if os.getcwd() != baseDir:
-            os.chdir(baseDir)
-        # Finish up the stats
-        if stats is not None:
-            totalCpuTime, totalMemoryUsage = (
-                ResourceMonitor.get_total_cpu_time_and_memory_usage()
-            )
-            stats.jobs.append(
-                Expando(
-                    time=str(time.time() - startTime),
-                    clock=str(totalCpuTime - startClock),
-                    class_name=self._jobName(),
-                    memory=str(totalMemoryUsage),
-                    requested_cores=str(self.cores),
-                    disk=str(fileStore.get_disk_usage()),
+            # If the job is not a checkpoint job, add the promise files to delete
+            # to the list of jobStoreFileIDs to delete
+            # TODO: why is Promise holding a global list here???
+            if not self.checkpoint:
+                for jobStoreFileID in Promise.filesToDelete:
+                    # Make sure to wrap the job store ID in a FileID object so the file store will accept it
+                    # TODO: talk directly to the job store here instead.
+                    fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
+            else:
+                # Else copy them to the job description to delete later
+                self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
+            Promise.filesToDelete.clear()
+            # Now indicate the asynchronous update of the job can happen
+            fileStore.startCommit(jobState=True)
+
+            succeeded = True
+        finally:
+            # Change dir back to cwd dir, if changed by job (this is a safety issue)
+            if os.getcwd() != baseDir:
+                os.chdir(baseDir)
+            # Finish up the stats
+            if stats is not None:
+                totalCpuTime, total_memory_kib = (
+                    ResourceMonitor.get_total_cpu_time_and_memory_usage()
                 )
-            )
+                stats.jobs.append(
+                    # TODO: We represent everything as strings in the stats
+                    # even though the JSON transport can take bools and floats.
+                    Expando(
+                        start=str(startTime),
+                        time=str(time.time() - startTime),
+                        clock=str(totalCpuTime - startClock),
+                        class_name=self._jobName(),
+                        memory=str(total_memory_kib),
+                        requested_cores=str(self.cores), # TODO: Isn't this really consumed cores?
+                        disk=str(fileStore.get_disk_usage()),
+                        succeeded=str(succeeded),
+                    )
+                )
 
     def _runner(
         self,
@@ -4098,7 +4117,8 @@ class ImportsJob(Job):
                     # schedule the individual file
                     per_batch_files.append(filename)
                 file_batches.append(per_batch_files)
-                # reset batching calculation
+                # reset batch to empty
+                per_batch_files = []
                 per_batch_size = 0
             else:
                 per_batch_size += filesize

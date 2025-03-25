@@ -1,6 +1,6 @@
 .. _runWdl:
 
-Running WDL with Toil
+Running WDL Workflows
 =====================
 
 Toil has beta support for running WDL workflows, using the ``toil-wdl-runner``
@@ -86,6 +86,8 @@ the `Cromwell Output Organizer (croo)`_, will default to ``True``.
 
 Any number of other Toil options may also be specified. For defined Toil options,
 see :ref:`commandRef`.
+
+.. _logging:
 
 Managing Workflow Logs
 ----------------------

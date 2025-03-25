@@ -19,8 +19,10 @@ from collections.abc import Iterable, Iterator
 from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, Union, cast
 from urllib.parse import ParseResult, urlparse
 
+# To import toil.lib.aws.session, the AWS libraries must be installed 
 from toil.lib.aws import AWSRegionName, AWSServerErrors, session
 from toil.lib.conversions import strtobool
+from toil.lib.memoize import memoize
 from toil.lib.misc import printq
 from toil.lib.retry import (
     DEFAULT_DELAYS,
@@ -37,12 +39,7 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.service_resource import Object as S3Object
     from mypy_boto3_sdb.type_defs import AttributeTypeDef
 
-try:
-    from botocore.exceptions import ClientError, EndpointConnectionError
-except ImportError:
-    ClientError = None  # type: ignore
-    EndpointConnectionError = None  # type: ignore
-    # AWS/boto extra is not installed
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +229,7 @@ def get_bucket_region(
     bucket_name: str,
     endpoint_url: Optional[str] = None,
     only_strategies: Optional[set[int]] = None,
+    anonymous: Optional[bool] = None
 ) -> str:
     """
     Get the AWS region name associated with the given S3 bucket, or raise NoBucketLocationError.
@@ -241,9 +239,13 @@ def get_bucket_region(
     Takes an optional S3 API URL override.
 
     :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
+
+    :raises NoBucketLocationError: if the bucket's region cannot be determined
+        (possibly due to lack of permissions).
     """
 
-    s3_client = session.client("s3", endpoint_url=endpoint_url)
+    config = session.ANONYMOUS_CONFIG if anonymous else None
+    s3_client = session.client("s3", endpoint_url=endpoint_url, config=config)
 
     def attempt_get_bucket_location() -> Optional[str]:
         """
@@ -267,7 +269,7 @@ def get_bucket_region(
         # It could also be because AWS open data buckets (which we tend to
         # encounter this problem for) tend to actually themselves be in
         # us-east-1.
-        backup_s3_client = session.client("s3", region_name="us-east-1")
+        backup_s3_client = session.client("s3", region_name="us-east-1", config=config)
         return backup_s3_client.get_bucket_location(Bucket=bucket_name).get(
             "LocationConstraint", None
         )
@@ -321,22 +323,42 @@ def get_bucket_region(
                         raise
                 except KeyError as e:
                     # If we get a weird head response we will have a KeyError
-                    logger.debug(
-                        "Strategy %d to get bucket location did not work: %s", i + 1, e
-                    )
+                    logger.debug("Strategy %d to get bucket location did not work: %s", i + 1, e)
                     error_logs.append((i + 1, str(e)))
                     last_error = e
 
     error_messages = []
     for rank, message in error_logs:
-        error_messages.append(
-            f"Strategy {rank} failed to get bucket location because: {message}"
-        )
+        error_messages.append(f"Strategy {rank} failed to get bucket location because: {message}")
     # If we get here we ran out of attempts.
     raise NoBucketLocationError(
         "Could not get bucket location: " + "\n".join(error_messages)
     ) from last_error
 
+@memoize
+def get_bucket_region_if_available(
+    bucket_name: str,
+    endpoint_url: Optional[str] = None,
+    only_strategies: Optional[set[int]] = None,
+    anonymous: Optional[bool] = None
+) -> Optional[str]:
+    """
+    Get the AWS region name associated with the given S3 bucket, or return None.
+
+    Caches results, so may not return the location for a bucket that has been
+    created but was previously observed to be nonexistent.
+
+    :param only_strategies: For testing, use only strategies with 1-based numbers in this set.
+    """
+
+    try:
+        return get_bucket_region(bucket_name, endpoint_url, only_strategies, anonymous)
+    except Exception as e:
+        if isinstance(e, NoBucketLocationError) or (isinstance(e, ClientError) and get_error_status(e) == 403):
+            # We can't know
+            return None
+        else:
+            raise
 
 def region_to_bucket_location(region: str) -> str:
     return "" if region == "us-east-1" else region
@@ -346,7 +368,7 @@ def bucket_location_to_region(location: Optional[str]) -> str:
     return "us-east-1" if location == "" or location is None else location
 
 
-def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = None) -> "S3Object":
+def get_object_for_url(url: ParseResult, existing: Optional[bool] = None, anonymous: Optional[bool] = None) -> "S3Object":
     """
     Extracts a key (object) from a given parsed s3:// URL.
 
@@ -354,10 +376,11 @@ def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = 
 
     :param bool existing: If True, key is expected to exist. If False, key is expected not to
             exists and it will be created. If None, the key will be created if it doesn't exist.
-    """
-    if isinstance(url, str):
-        url = urlparse(url)
 
+    :raises FileNotFoundError: when existing is True and the object does not exist.
+    :raises RuntimeError: when existing is False but the object exists.
+    :raises PermissionError: when we are not authorized to look at the object.
+    """
     key_name = url.path[1:]
     bucket_name = url.netloc
 
@@ -374,17 +397,19 @@ def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = 
     # TODO: OrdinaryCallingFormat equivalent in boto3?
     # if botoargs:
     #     botoargs['calling_format'] = boto.s3.connection.OrdinaryCallingFormat()
-
-    try:
-        # Get the bucket's region to avoid a redirect per request
-        region = get_bucket_region(bucket_name, endpoint_url=endpoint_url)
-        s3 = session.resource("s3", region_name=region, endpoint_url=endpoint_url)
-    except NoBucketLocationError as e:
-        # Probably don't have permission.
-        # TODO: check if it is that
-        logger.debug("Couldn't get bucket location: %s", e)
+    
+    config = session.ANONYMOUS_CONFIG if anonymous else None
+    # Get the bucket's region to avoid a redirect per request.
+    # Cache the result
+    region = get_bucket_region_if_available(bucket_name, endpoint_url=endpoint_url, anonymous=anonymous)
+    if region is not None:
+        s3 = session.resource("s3", region_name=region, endpoint_url=endpoint_url, config=config)
+    else:
+        # We can't get the bucket location, perhaps because we don't have
+        # permission to do that.
+        logger.debug("Couldn't get bucket location")
         logger.debug("Fall back to not specifying location")
-        s3 = session.resource("s3", endpoint_url=endpoint_url)
+        s3 = session.resource("s3", endpoint_url=endpoint_url, config=config)
 
     obj = s3.Object(bucket_name, key_name)
     objExists = True
@@ -394,6 +419,10 @@ def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = 
     except ClientError as e:
         if get_error_status(e) == 404:
             objExists = False
+        elif get_error_status(e) == 403:
+            raise PermissionError(
+                f"Key '{key_name}' is not accessible in bucket '{bucket_name}'."
+            ) from e
         else:
             raise
     if existing is True and not objExists:
@@ -404,19 +433,26 @@ def get_object_for_url(url: Union[ParseResult, str], existing: Optional[bool] = 
         raise RuntimeError(f"Key '{key_name}' exists in bucket '{bucket_name}'.")
 
     if not objExists:
-        obj.put()  # write an empty file
+        try:
+            obj.put()  # write an empty file
+        except ClientError as e:
+            if get_error_status(e) == 403:
+                raise PermissionError(
+                    f"Key '{key_name}' is not writable in bucket '{bucket_name}'."
+                ) from e
+            else:
+                raise
     return obj
 
 
 @retry(errors=[AWSServerErrors])
-def list_objects_for_url(url: Union[ParseResult, str]) -> list[str]:
+def list_objects_for_url(url: ParseResult, anonymous: Optional[bool] = None) -> list[str]:
     """
     Extracts a key (object) from a given parsed s3:// URL. The URL will be
     supplemented with a trailing slash if it is missing.
-    """
-    if isinstance(url, str):
-        url = urlparse(url)
 
+    :raises PermissionError: when we are not authorized to do the list operation.
+    """
     key_name = url.path[1:]
     bucket_name = url.netloc
 
@@ -435,23 +471,33 @@ def list_objects_for_url(url: Union[ParseResult, str]) -> list[str]:
         protocol = "http"
     if host:
         endpoint_url = f"{protocol}://{host}" + f":{port}" if port else ""
-
-    client = session.client("s3", endpoint_url=endpoint_url)
+    
+    config = session.ANONYMOUS_CONFIG if anonymous else None
+    client = session.client("s3", endpoint_url=endpoint_url, config=config)
 
     listing = []
+    
+    try:
+        paginator = client.get_paginator("list_objects_v2")
+        result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter="/")
+        for page in result:
+            if "CommonPrefixes" in page:
+                for prefix_item in page["CommonPrefixes"]:
+                    listing.append(prefix_item["Prefix"][len(key_name) :])
+            if "Contents" in page:
+                for content_item in page["Contents"]:
+                    if content_item["Key"] == key_name:
+                        # Ignore folder name itself
+                        continue
+                    listing.append(content_item["Key"][len(key_name) :])
+    except ClientError as e:
+        if get_error_status(e) == 403:
+            raise PermissionError(
+                f"Prefix '{key_name}' is not authorized to be listed in bucket '{bucket_name}'."
+            ) from e
+        else:
+            raise
 
-    paginator = client.get_paginator("list_objects_v2")
-    result = paginator.paginate(Bucket=bucket_name, Prefix=key_name, Delimiter="/")
-    for page in result:
-        if "CommonPrefixes" in page:
-            for prefix_item in page["CommonPrefixes"]:
-                listing.append(prefix_item["Prefix"][len(key_name) :])
-        if "Contents" in page:
-            for content_item in page["Contents"]:
-                if content_item["Key"] == key_name:
-                    # Ignore folder name itself
-                    continue
-                listing.append(content_item["Key"][len(key_name) :])
 
     logger.debug("Found in %s items: %s", url, listing)
     return listing

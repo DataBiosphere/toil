@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import pytest
 import re
 import shutil
 import string
@@ -11,12 +10,14 @@ from typing import Any, Optional, Union
 from unittest.mock import patch
 from uuid import uuid4
 
+import pytest
 import WDL.Error
 import WDL.Expr
 
 from toil.fileStores import FileID
 from toil.test import (
     ToilTest,
+    get_data,
     needs_docker,
     needs_docker_cuda,
     needs_google_storage,
@@ -71,17 +72,16 @@ WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
     69,  # Same as 68
     87,  # MiniWDL does not handle metacharacters properly when running regex, https://github.com/chanzuckerberg/miniwdl/issues/709
     97,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/701
-    105, # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
-    107, # object not supported
-    108, # object not supported
-    109, # object not supported
-    110, # object not supported
-    120, # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
-    131, # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
-    134, # same as 131
-    144  # miniwdl and toil bug
+    105,  # miniwdl (and toil) bug, unserializable json is serialized, see https://github.com/chanzuckerberg/miniwdl/issues/702
+    107,  # object not supported
+    108,  # object not supported
+    109,  # object not supported
+    110,  # object not supported
+    120,  # miniwdl bug, see https://github.com/chanzuckerberg/miniwdl/issues/699
+    131,  # miniwdl bug, evalerror, see https://github.com/chanzuckerberg/miniwdl/issues/700
+    134,  # same as 131
+    144,  # miniwdl and toil bug
 ]
-
 
 
 class WDLConformanceTests(BaseWDLTest):
@@ -203,338 +203,479 @@ class WDLTests(BaseWDLTest):
     def test_MD5sum(self):
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.json")
+        with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
+            with get_data("test/wdl/md5sum/md5sum.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        self.output_dir,
+                        "--logDebug",
+                        "--retryCount=0",
+                    ]
+                )
+                result = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command
-            + [wdl, json_file, "-o", self.output_dir, "--logDebug", "--retryCount=0"]
-        )
-        result = json.loads(result_json)
-
-        assert "ga4ghMd5.value" in result
-        assert isinstance(result["ga4ghMd5.value"], str)
-        assert os.path.exists(result["ga4ghMd5.value"])
-        assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+                assert "ga4ghMd5.value" in result
+                assert isinstance(result["ga4ghMd5.value"], str)
+                assert os.path.exists(result["ga4ghMd5.value"])
+                assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
     def test_url_to_file(self):
         """
         Test if web URL strings can be coerced to usable Files.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/url_to_file.wdl")
+        with get_data("test/wdl/testfiles/url_to_file.wdl") as wdl:
+            result_json = subprocess.check_output(
+                self.base_command
+                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+            )
+            result = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command
-            + [wdl, "-o", self.output_dir, "--logInfo", "--retryCount=0"]
-        )
-        result = json.loads(result_json)
-
-        assert "url_to_file.first_line" in result
-        assert isinstance(result["url_to_file.first_line"], str)
-        self.assertEqual(result["url_to_file.first_line"], "chr1\t248387328")
+            assert "url_to_file.first_line" in result
+            assert isinstance(result["url_to_file.first_line"], str)
+            self.assertEqual(result["url_to_file.first_line"], "chr1\t248387328")
 
     @needs_docker
     def test_wait(self):
         """
         Test if Bash "wait" works in WDL scripts.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/wait.wdl")
+        with get_data("test/wdl/testfiles/wait.wdl") as wdl:
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    "--wdlContainer=docker",
+                ]
+            )
+            result = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command
-            + [
-                wdl,
-                "-o",
-                self.output_dir,
-                "--logInfo",
-                "--retryCount=0",
-                "--wdlContainer=docker",
-            ]
-        )
-        result = json.loads(result_json)
+            assert "wait.result" in result
+            assert isinstance(result["wait.result"], str)
+            self.assertEqual(result["wait.result"], "waited")
 
-        assert "wait.result" in result
-        assert isinstance(result["wait.result"], str)
-        self.assertEqual(result["wait.result"], "waited")
+
+    @needs_singularity_or_docker
+    def test_workflow_file_deletion(self):
+        """
+        Test if Toil can delete non-output outputs at the end of a workflow.
+        """
+        # Keep a job store around to inspect for files.
+        job_store = os.path.join(self._createTempDir("jobStore"), "tree")
+
+        # Make a working directory to run in
+        work_dir = self._createTempDir("workDir")
+        # Make the file that will be imported from a string in the workflow
+        referenced_file = os.path.join(work_dir, "localfile.txt")
+        with open(referenced_file, 'w') as f:
+            f.write("This file is imported by local path in the workflow")
+        # Make the file to pass as input
+        sent_in_file = os.path.join(work_dir, "sent_in.txt")
+        with open(sent_in_file, 'w') as f:
+            f.write("This file is sent in as input")
+
+        with get_data("test/wdl/testfiles/drop_files.wdl") as wdl:
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--jobStore",
+                    job_store,
+                    "--clean=never",
+                    "--logInfo",
+                    "--retryCount=0",
+                    '--input={"file_in": "sent_in.txt"}',
+                ],
+                cwd=work_dir,
+            )
+            result = json.loads(result_json)
+
+            # Get all the file values in the job store.
+            all_file_values = set()
+            for directory, _, files in os.walk(job_store):
+                for filename in files:
+                    with open(
+                        os.path.join(directory, filename),
+                        encoding="utf-8",
+                        errors="replace",
+                    ) as f:
+                        all_file_values.add(f.read().rstrip())
+
+            # Make sure the files with the right contents are in the job store and
+            # the files with the wrong contents aren't anymore.
+            #
+            # This assumes no top-level cleanup in the main driver script.
+
+            # These are all created inside the workflow and not output
+            assert (
+                "This file is imported by local path in the workflow"
+                not in all_file_values
+            )
+            assert "This file is consumed by a task call" not in all_file_values
+            assert (
+                "This file is created in a task inputs section" not in all_file_values
+            )
+            assert "This file is created in a runtime section" not in all_file_values
+            assert "This task file is not used" not in all_file_values
+            assert "This file should be discarded" not in all_file_values
+            assert "This file is dropped by a subworkflow" not in all_file_values
+            assert "This file gets stored in a variable" not in all_file_values
+            assert "This file never gets stored in a variable" not in all_file_values
+
+            # These are created inside the workflow and output
+            assert "3" in all_file_values
+            assert "This file is collected as a task output twice" in all_file_values
+            assert "This file should be kept" in all_file_values
+            assert "This file is kept by a subworkflow" in all_file_values
+
+            # These are sent into the workflow from the enclosing environment and
+            # should not be deleted.
+            assert "This file is sent in as input" in all_file_values
+
+            # Make sure we didn't somehow delete the file sent as input
+            assert os.path.exists(sent_in_file)
 
     @needs_singularity_or_docker
     def test_all_call_outputs(self):
         """
         Test if Toil can collect all call outputs from a workflow that doesn't expose them.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/not_enough_outputs.wdl")
+        with get_data("test/wdl/testfiles/not_enough_outputs.wdl") as wdl:
+            # With no flag we don't include the call outputs
+            result_json = subprocess.check_output(
+                self.base_command
+                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+            )
+            result = json.loads(result_json)
 
-        # With no flag we don't include the call outputs
-        result_json = subprocess.check_output(
-            self.base_command
-            + [wdl, "-o", self.output_dir, "--logInfo", "--retryCount=0"]
-        )
-        result = json.loads(result_json)
+            assert "wf.only_result" in result
+            assert "wf.do_math.square" not in result
+            assert "wf.do_math.cube" not in result
+            assert "wf.should_never_output" not in result
 
-        assert "wf.only_result" in result
-        assert "wf.do_math.square" not in result
-        assert "wf.do_math.cube" not in result
-        assert "wf.should_never_output" not in result
+            # With flag off we don't include the call outputs
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    "--allCallOutputs=false",
+                ]
+            )
+            result = json.loads(result_json)
 
-        # With flag off we don't include the call outputs
-        result_json = subprocess.check_output(
-            self.base_command
-            + [
-                wdl,
-                "-o",
-                self.output_dir,
-                "--logInfo",
-                "--retryCount=0",
-                "--allCallOutputs=false",
-            ]
-        )
-        result = json.loads(result_json)
+            assert "wf.only_result" in result
+            assert "wf.do_math.square" not in result
+            assert "wf.do_math.cube" not in result
+            assert "wf.should_never_output" not in result
 
-        assert "wf.only_result" in result
-        assert "wf.do_math.square" not in result
-        assert "wf.do_math.cube" not in result
-        assert "wf.should_never_output" not in result
+            # With flag on we do include the call outputs
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    "--allCallOutputs=on",
+                ]
+            )
+            result = json.loads(result_json)
 
-        # With flag on we do include the call outputs
-        result_json = subprocess.check_output(
-            self.base_command
-            + [
-                wdl,
-                "-o",
-                self.output_dir,
-                "--logInfo",
-                "--retryCount=0",
-                "--allCallOutputs=on",
-            ]
-        )
-        result = json.loads(result_json)
-
-        assert "wf.only_result" in result
-        assert "wf.do_math.square" in result
-        assert "wf.do_math.cube" in result
-        assert "wf.should_never_output" not in result
+            assert "wf.only_result" in result
+            assert "wf.do_math.square" in result
+            assert "wf.do_math.cube" in result
+            assert "wf.should_never_output" not in result
 
     @needs_singularity_or_docker
     def test_croo_detection(self):
         """
         Test if Toil can detect and do something sensible with Cromwell Output Organizer workflows.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/croo.wdl")
+        with get_data("test/wdl/testfiles/croo.wdl") as wdl:
+            # With no flag we should include all task outputs
+            result_json = subprocess.check_output(
+                self.base_command
+                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+            )
+            result = json.loads(result_json)
 
-        # With no flag we should include all task outputs
-        result_json = subprocess.check_output(
-            self.base_command
-            + [wdl, "-o", self.output_dir, "--logInfo", "--retryCount=0"]
-        )
-        result = json.loads(result_json)
+            assert "wf.only_result" in result
+            assert "wf.do_math.square" in result
+            assert "wf.do_math.cube" in result
+            assert "wf.should_never_output" not in result
 
-        assert "wf.only_result" in result
-        assert "wf.do_math.square" in result
-        assert "wf.do_math.cube" in result
-        assert "wf.should_never_output" not in result
+            # With flag off we obey the WDL spec even if we're suspicious
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    "--allCallOutputs=off",
+                ]
+            )
+            result = json.loads(result_json)
 
-        # With flag off we obey the WDL spec even if we're suspicious
-        result_json = subprocess.check_output(
-            self.base_command
-            + [
-                wdl,
-                "-o",
-                self.output_dir,
-                "--logInfo",
-                "--retryCount=0",
-                "--allCallOutputs=off",
-            ]
-        )
-        result = json.loads(result_json)
-
-        assert "wf.only_result" in result
-        assert "wf.do_math.square" not in result
-        assert "wf.do_math.cube" not in result
-        assert "wf.should_never_output" not in result
+            assert "wf.only_result" in result
+            assert "wf.do_math.square" not in result
+            assert "wf.do_math.cube" not in result
+            assert "wf.should_never_output" not in result
 
     @needs_singularity_or_docker
     def test_caching(self):
         """
         Test if Toil can cache task runs.
         """
-        wdl = os.path.abspath('src/toil/test/wdl/testfiles/random.wdl')
+        with get_data("test/wdl/testfiles/random.wdl") as wdl:
+            caching_env = dict(os.environ)
+            caching_env["MINIWDL__CALL_CACHE__GET"] = "true"
+            caching_env["MINIWDL__CALL_CACHE__PUT"] = "true"
+            caching_env["MINIWDL__CALL_CACHE__DIR"] = self._createTempDir("cache")
 
-        caching_env = dict(os.environ)
-        caching_env["MINIWDL__CALL_CACHE__GET"] = "true"
-        caching_env["MINIWDL__CALL_CACHE__PUT"] = "true"
-        caching_env["MINIWDL__CALL_CACHE__DIR"] = self._createTempDir("cache")
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}',
+                ],
+                env=caching_env,
+            )
+            result_initial = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-                self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}'],
-            env=caching_env)
-        result_initial = json.loads(result_json)
+            assert "random.value_seen" in result_initial
+            assert "random.value_written" in result_initial
 
-        assert 'random.value_seen' in result_initial
-        assert 'random.value_written' in result_initial
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}',
+                ],
+                env=caching_env,
+            )
+            result_cached = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}'],
-            env=caching_env)
-        result_cached = json.loads(result_json)
+            assert "random.value_seen" in result_cached
+            assert "random.value_written" in result_cached
 
-        assert 'random.value_seen' in result_cached
-        assert 'random.value_written' in result_cached
+            assert (
+                result_cached["random.value_seen"]
+                == result_initial["random.value_seen"]
+            )
+            assert (
+                result_cached["random.value_written"]
+                == result_initial["random.value_written"]
+            )
 
-        assert result_cached['random.value_seen'] == result_initial['random.value_seen']
-        assert result_cached['random.value_written'] == result_initial['random.value_written']
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    '--inputs={"random.task_1_input": 2, "random.task_2_input": 1}',
+                ],
+                env=caching_env,
+            )
+            result_not_cached = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 2, "random.task_2_input": 1}'],
-            env=caching_env)
-        result_not_cached = json.loads(result_json)
+            assert "random.value_seen" in result_not_cached
+            assert "random.value_written" in result_not_cached
 
-        assert 'random.value_seen' in result_not_cached
-        assert 'random.value_written' in result_not_cached
+            assert (
+                result_not_cached["random.value_seen"]
+                != result_initial["random.value_seen"]
+            )
+            assert (
+                result_not_cached["random.value_written"]
+                != result_initial["random.value_written"]
+            )
 
-        assert result_not_cached['random.value_seen'] != result_initial['random.value_seen']
-        assert result_not_cached['random.value_written'] != result_initial['random.value_written']
+            result_json = subprocess.check_output(
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    self.output_dir,
+                    "--logInfo",
+                    "--retryCount=0",
+                    '--inputs={"random.task_1_input": 1, "random.task_2_input": 2}',
+                ],
+                env=caching_env,
+            )
+            result_part_cached = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command + [wdl, '-o', self.output_dir, '--logInfo', '--retryCount=0', '--inputs={"random.task_1_input": 1, "random.task_2_input": 2}'],
-            env=caching_env)
-        result_part_cached = json.loads(result_json)
+            assert "random.value_seen" in result_part_cached
+            assert "random.value_written" in result_part_cached
 
-        assert 'random.value_seen' in result_part_cached
-        assert 'random.value_written' in result_part_cached
-
-        assert result_part_cached['random.value_seen'] == result_initial['random.value_seen']
-        assert result_part_cached['random.value_written'] != result_initial['random.value_written']
-        assert result_part_cached['random.value_written'] != result_not_cached['random.value_written']
-
-
+            assert (
+                result_part_cached["random.value_seen"]
+                == result_initial["random.value_seen"]
+            )
+            assert (
+                result_part_cached["random.value_written"]
+                != result_initial["random.value_written"]
+            )
+            assert (
+                result_part_cached["random.value_written"]
+                != result_not_cached["random.value_written"]
+            )
 
     def test_url_to_optional_file(self):
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/testfiles/url_to_optional_file.wdl")
+        with get_data("test/wdl/testfiles/url_to_optional_file.wdl") as wdl:
 
-        def run_for_code(code: int) -> dict:
-            """
-            Run a workflow coercing URL to File? where the URL returns the given status code.
+            def run_for_code(code: int) -> dict:
+                """
+                Run a workflow coercing URL to File? where the URL returns the given status code.
 
-            Return the parsed output.
-            """
-            logger.info("Test optional file with HTTP code %s", code)
-            json_value = '{"url_to_optional_file.http_code": %d}' % code
-            result_json = subprocess.check_output(
-                self.base_command
-                + [
-                    wdl,
-                    json_value,
-                    "-o",
-                    self.output_dir,
-                    "--logInfo",
-                    "--retryCount=0",
-                ]
-            )
-            result = json.loads(result_json)
-            return result
+                Return the parsed output.
+                """
+                logger.info("Test optional file with HTTP code %s", code)
+                json_value = '{"url_to_optional_file.http_code": %d}' % code
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        json_value,
+                        "-o",
+                        self.output_dir,
+                        "--logInfo",
+                        "--retryCount=0",
+                    ]
+                )
+                result = json.loads(result_json)
+                return result
 
-        # Check files that exist
-        result = run_for_code(200)
-        assert "url_to_optional_file.out_file" in result
-        self.assertNotEqual(result["url_to_optional_file.out_file"], None)
-
-        for code in (404, 410):
-            # Check files that definitely don't
-            result = run_for_code(code)
+            # Check files that exist
+            result = run_for_code(200)
             assert "url_to_optional_file.out_file" in result
-            self.assertEqual(result["url_to_optional_file.out_file"], None)
+            self.assertNotEqual(result["url_to_optional_file.out_file"], None)
 
-        for code in (402, 418, 500, 502):
-            # Check that cases where the server refuses to say if the file
-            # exists stop the workflow.
-            with self.assertRaises(subprocess.CalledProcessError):
-                run_for_code(code)
+            for code in (404, 410):
+                # Check files that definitely don't
+                result = run_for_code(code)
+                assert "url_to_optional_file.out_file" in result
+                self.assertEqual(result["url_to_optional_file.out_file"], None)
+
+            for code in (402, 418, 500, 502):
+                # Check that cases where the server refuses to say if the file
+                # exists stop the workflow.
+                with self.assertRaises(subprocess.CalledProcessError):
+                    run_for_code(code)
 
     def test_missing_output_directory(self):
         """
         Test if Toil can run a WDL workflow into a new directory.
         """
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.json")
-        subprocess.check_call(
-            self.base_command
-            + [
-                wdl,
-                json_file,
-                "-o",
-                os.path.join(self.output_dir, "does", "not", "exist"),
-                "--logDebug",
-                "--retryCount=0",
-            ]
-        )
+        with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
+            with get_data("test/wdl/md5sum/md5sum.json") as json_file:
+                subprocess.check_call(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        os.path.join(self.output_dir, "does", "not", "exist"),
+                        "--logDebug",
+                        "--retryCount=0",
+                    ]
+                )
 
     @needs_singularity_or_docker
     def test_miniwdl_self_test(self, extra_args: Optional[list[str]] = None) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
-        wdl_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/self_test.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/miniwdl_self_test/inputs.json")
+        with get_data("test/wdl/miniwdl_self_test/self_test.wdl") as wdl_file:
+            with get_data("test/wdl/miniwdl_self_test/inputs.json") as json_file:
 
-        result_json = subprocess.check_output(
-            self.base_command
-            + [
-                wdl_file,
-                json_file,
-                "--logDebug",
-                "-o",
-                self.output_dir,
-                "--outputDialect",
-                "miniwdl",
-            ]
-            + (extra_args or [])
-        )
-        result = json.loads(result_json)
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl_file),
+                        str(json_file),
+                        "--logDebug",
+                        "-o",
+                        self.output_dir,
+                        "--outputDialect",
+                        "miniwdl",
+                    ]
+                    + (extra_args or [])
+                )
+                result = json.loads(result_json)
 
-        # Expect MiniWDL-style output with a designated "dir"
+                # Expect MiniWDL-style output with a designated "dir"
 
-        assert "dir" in result
-        assert isinstance(result["dir"], str)
-        out_dir = result["dir"]
+                assert "dir" in result
+                assert isinstance(result["dir"], str)
+                out_dir = result["dir"]
 
-        assert "outputs" in result
-        assert isinstance(result["outputs"], dict)
-        outputs = result["outputs"]
+                assert "outputs" in result
+                assert isinstance(result["outputs"], dict)
+                outputs = result["outputs"]
 
-        assert "hello_caller.message_files" in outputs
-        assert isinstance(outputs["hello_caller.message_files"], list)
-        assert len(outputs["hello_caller.message_files"]) == 2
-        for item in outputs["hello_caller.message_files"]:
-            # All the files should be strings in the "out" directory
-            assert isinstance(item, str), "File output must be a string"
-            assert item.startswith(
-                out_dir
-            ), "File output must be in the output directory"
+                assert "hello_caller.message_files" in outputs
+                assert isinstance(outputs["hello_caller.message_files"], list)
+                assert len(outputs["hello_caller.message_files"]) == 2
+                for item in outputs["hello_caller.message_files"]:
+                    # All the files should be strings in the "out" directory
+                    assert isinstance(item, str), "File output must be a string"
+                    assert item.startswith(
+                        out_dir
+                    ), "File output must be in the output directory"
 
-            # Look at the filename within that directory
-            name_in_out_dir = item[len(out_dir) :]
+                    # Look at the filename within that directory
+                    name_in_out_dir = item[len(out_dir) :]
 
-            # Ity should contain the job name of "hello", so they are human-readable.
-            assert (
-                "hello" in name_in_out_dir
-            ), f"File output {name_in_out_dir} should have the originating task name in it"
+                    # Ity should contain the job name of "hello", so they are human-readable.
+                    assert (
+                        "hello" in name_in_out_dir
+                    ), f"File output {name_in_out_dir} should have the originating task name in it"
 
-            # And it should not contain non-human-readable content.
-            #
-            # We use a threshold number of digits as a proxy for this, but
-            # don't try and get around this by just rolling other random
-            # strings; we want these outputs to be human-readable!!!
-            digit_count = len([c for c in name_in_out_dir if c in string.digits])
-            assert (
-                digit_count < 3
-            ), f"File output {name_in_out_dir} has {digit_count} digits, which is too many to be plausibly human-readable"
+                    # And it should not contain non-human-readable content.
+                    #
+                    # We use a threshold number of digits as a proxy for this, but
+                    # don't try and get around this by just rolling other random
+                    # strings; we want these outputs to be human-readable!!!
+                    digit_count = len(
+                        [c for c in name_in_out_dir if c in string.digits]
+                    )
+                    assert (
+                        digit_count < 3
+                    ), f"File output {name_in_out_dir} has {digit_count} digits, which is too many to be plausibly human-readable"
 
-        assert "hello_caller.messages" in outputs
-        assert outputs["hello_caller.messages"] == [
-            "Hello, Alyssa P. Hacker!",
-            "Hello, Ben Bitdiddle!",
-        ]
+                assert "hello_caller.messages" in outputs
+                assert outputs["hello_caller.messages"] == [
+                    "Hello, Alyssa P. Hacker!",
+                    "Hello, Ben Bitdiddle!",
+                ]
 
     @needs_singularity_or_docker
     def test_miniwdl_self_test_by_reference(self) -> None:
@@ -548,11 +689,25 @@ class WDLTests(BaseWDLTest):
     def test_dockstore_trs(self, extra_args: Optional[list[str]] = None) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
-        json_input = json.dumps({"hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"})
+        json_input = json.dumps(
+            {
+                "hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"
+            }
+        )
 
         result_json = subprocess.check_output(
-            self.base_command + [wdl_file, json_input, '--logDebug', '-o', self.output_dir, '--outputDialect',
-                                 'miniwdl'] + (extra_args or []))
+            self.base_command
+            + [
+                wdl_file,
+                json_input,
+                "--logDebug",
+                "-o",
+                self.output_dir,
+                "--outputDialect",
+                "miniwdl",
+            ]
+            + (extra_args or [])
+        )
         result = json.loads(result_json)
 
         with open(result.get("outputs", {}).get("hello_world.helloFile")) as f:
@@ -656,18 +811,18 @@ class WDLTests(BaseWDLTest):
     @needs_google_storage
     def test_gs_uri(self):
         """Test if Toil can access Google Storage URIs."""
-        wdl = os.path.abspath("src/toil/test/wdl/md5sum/md5sum.1.0.wdl")
-        json_file = os.path.abspath("src/toil/test/wdl/md5sum/md5sum-gs.json")
+        with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
+            with get_data("test/wdl/md5sum/md5sum-gs.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [str(wdl), str(json_file), "-o", self.output_dir, "--logDebug"]
+                )
+                result = json.loads(result_json)
 
-        result_json = subprocess.check_output(
-            self.base_command + [wdl, json_file, "-o", self.output_dir, "--logDebug"]
-        )
-        result = json.loads(result_json)
-
-        assert "ga4ghMd5.value" in result
-        assert isinstance(result["ga4ghMd5.value"], str)
-        assert os.path.exists(result["ga4ghMd5.value"])
-        assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
+                assert "ga4ghMd5.value" in result
+                assert isinstance(result["ga4ghMd5.value"], str)
+                assert os.path.exists(result["ga4ghMd5.value"])
+                assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
 
 class WDLToilBenchTests(ToilTest):
@@ -933,7 +1088,7 @@ class WDLToilBenchTests(ToilTest):
         )
         self.assertEqual(same_id, first_chosen)
 
-        # If we use a different ID we shoudl get a different result still obeying the constraints
+        # If we use a different ID we should get a different result still obeying the constraints
         diff_id = choose_human_readable_directory(
             "root", "taskname", "222-333-444", state
         )
@@ -1007,6 +1162,7 @@ class WDLToilBenchTests(ToilTest):
         self.assertEqual(specified_mount_point, "MOUNT_POINT")
         self.assertEqual(part_size, 2)
         self.assertEqual(part_suffix, "MB")
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

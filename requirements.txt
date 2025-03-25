@@ -3,7 +3,7 @@ requests<=2.31.0
 docker>=6.1.0, <8
 urllib3>=1.26.0,<3
 python-dateutil
-psutil >= 6.1.0, < 7
+psutil >= 6.1.0, < 8
 PyPubSub >=4.0.3, <5
 addict>=2.2.1, <2.5
 backports.zoneinfo[tzdata];python_version<"3.9"
@@ -13,3 +13,4 @@ ruamel.yaml>=0.15
 pyyaml>=6,<7
 typing-extensions>=4.6.2, <5
 coloredlogs>=15,<16
+prompt_toolkit>=3.0,<4
