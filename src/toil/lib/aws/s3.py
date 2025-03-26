@@ -28,7 +28,10 @@ from typing import (Any,
                     cast,
                     Literal,
                     Iterator,
+                    TYPE_CHECKING,
                     IO)
+
+from boto3.s3.transfer import TransferConfig
 
 from toil.lib.retry import retry, get_error_status, ErrorCondition
 from toil.lib.misc import printq
@@ -37,13 +40,17 @@ from toil.lib.aws.utils import enable_public_objects, flatten_tags
 from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
 
-from boto.exception import BotoServerError, S3ResponseError
-from botocore.exceptions import ClientError
-from boto3.s3.transfer import TransferConfig
-from mypy_boto3_s3 import S3Client, S3ServiceResource
-from mypy_boto3_s3.literals import BucketLocationConstraintType
-from mypy_boto3_s3.service_resource import Bucket, Object
-from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef, HeadObjectOutputTypeDef, GetObjectOutputTypeDef, PutObjectOutputTypeDef, ObjectTypeDef
+try:
+    from botocore.exceptions import ClientError
+    from boto.exception import BotoServerError, S3ResponseError
+except ImportError:
+    BotoServerError, S3ResponseError, ClientError = Exception, Exception, Exception
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client, S3ServiceResource
+    from mypy_boto3_s3.literals import BucketLocationConstraintType
+    from mypy_boto3_s3.service_resource import Bucket, Object
+    from mypy_boto3_s3.type_defs import ListMultipartUploadsOutputTypeDef, HeadObjectOutputTypeDef, GetObjectOutputTypeDef, PutObjectOutputTypeDef, ObjectTypeDef
 
 
 logger = logging.getLogger(__name__)

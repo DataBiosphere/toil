@@ -124,7 +124,6 @@ class WritablePipe(ABC):
                     if not e.errno == 9:
                         raise e
 
-
     @abstractmethod
     def readFrom(self, readable: IO[Any]) -> None:
         """

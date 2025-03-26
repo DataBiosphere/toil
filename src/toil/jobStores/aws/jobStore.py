@@ -55,7 +55,6 @@ from typing import (
     overload
 )
 from botocore.exceptions import ClientError
-from mypy_boto3_s3.type_defs import GetObjectOutputTypeDef
 
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
