@@ -50,7 +50,6 @@ from typing import (
     Callable,
     Dict,
     Any,
-    Generator,
     Iterator,
     Literal,
     overload
@@ -68,6 +67,7 @@ from toil.lib.aws.s3 import (create_s3_bucket,
                              bucket_exists,
                              copy_s3_to_s3,
                              copy_local_to_s3,
+                             copy_s3_to_local,
                              parse_s3_uri,
                              MultiPartPipe,
                              list_s3_items,
@@ -84,7 +84,6 @@ from toil.lib.aws.utils import get_object_for_url, list_objects_for_url
 from toil.common import Config
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.lib.ec2nodes import EC2Regions
-from toil.lib.checksum import compute_checksum_for_file, ChecksumError
 from toil.lib.retry import get_error_status
 from toil.version import version
 from toil.lib.aws.session import establish_boto3_session
@@ -100,13 +99,13 @@ class AWSJobStore(AbstractJobStore):
     # The AWS jobstore can be thought of as an AWS s3 bucket, with functions to
     # centralize, store, and track files for the workflow.
     #
-    # The AWS jobstore stores 4 things
+    # The AWS jobstore stores 4 things:
     #     1. Jobs: These are pickled as files, and contain the information necessary to run a job when unpickled.
     #         A job's file is deleted when finished, and its absence means it completed.
-    #     2. Files: The inputs and outputs of jobs.  Each file is actually two keys in s3:
-    #           1. The actual file content, written with the file pattern: "files/{etag}"
-    #           2. The file's reference and metadata, written with the file pattern: "metadata/{uuid}".
-    #              Note: This is a small json containing only: etag checksum, & executibility.
+    #     2. Files: The inputs and outputs of jobs.  Each file is written in s3 with the file pattern:
+    #        "files/{uuid4}/0/{original_filename}" or "files/{uuid4}/1/{original_filename}", where the file prefix
+    #        "files/{uuid4}" should only point to one file.
+    #        where 0 or 1 represent its executability (1 == executable).
     #     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process. (check this!)
     #     4. Shared Files: These are a small set of special files.  Most are needed by all jobs:
     #         * environment.pickle   (environment variables)
@@ -128,7 +127,7 @@ class AWSJobStore(AbstractJobStore):
     #      ALSO NOTE: The caching filestore uses a local (per node) database with a very similar structure that maybe
     #                 could be synced up with this.
     #
-    #  - Etags are s3's native checksum, so we use that for file integrity checking since it's free when fetching
+    #  - TODO: Etags are s3's native checksum, so use that for file integrity checking since it's free when fetching
     #      object headers from s3.  Using an md5sum in addition to this would work well with the current filestore.
     #      WARNING: Etag values differ for the same file when the part size changes, so part size should always
     #      be Set In Stone, unless we hit s3's 10,000 part limit, and we need to account for that.
@@ -138,8 +137,8 @@ class AWSJobStore(AbstractJobStore):
     #      The config.sse_key is the source of truth for bucket encryption and a clear error should be raised if
     #      restarting a bucket with a different encryption key set than it was initialized with.
     #
-    #  - The Toil bucket should log the version of Toil it was initialized with and warn the user if restarting with
-    #      a different version.
+    #  - TODO: The Toil bucket should log the version of Toil it was initialized with and
+    #      warn the user if restarting with a different version.
     """
     def __init__(self, locator: str, partSize: int = DEFAULT_AWS_PART_SIZE) -> None:
         super(AWSJobStore, self).__init__(locator)
@@ -160,13 +159,10 @@ class AWSJobStore(AbstractJobStore):
         self.job_key_prefix = 'jobs/'
         # job-file associations; these are empty files mimicing a db w/naming convention: job_uuid4.file_uuid4
         self.job_associations_key_prefix = 'job-associations/'
-        # the content of input/output files named with etag hashes to deduplicate
-        self.content_key_prefix = 'file-content/'
+        # input/output files named with uuid4
+        self.content_key_prefix = 'files/'
         # these are special files, like 'environment.pickle'; place them in root
         self.shared_key_prefix = ''
-        # these represent input/output files, but are small json files pointing to the files with the real content in
-        # self.content_key_prefix; also contains the file's metadata, like if it's executable; named with uuid4
-        self.metadata_key_prefix = 'file-meta/'
         # read and unread; named with uuid4
         self.logs_key_prefix = 'logs/'
 
@@ -204,7 +200,14 @@ class AWSJobStore(AbstractJobStore):
 
         ###################################### BUCKET UTIL API ######################################
 
-    def write_to_bucket(self, identifier: str, prefix: str, data: Optional[Union[bytes, str, Dict[Any, Any]]], bucket: Optional[str] = None, encrypted: bool = True) -> None:
+    def write_to_bucket(
+            self,
+            identifier: str,
+            prefix: str,
+            data: Optional[Union[bytes, str, Dict[Any, Any]]],
+            bucket: Optional[str] = None,
+            encrypted: bool = True
+    ) -> None:
         """Use for small files.  Does not parallelize or use multipart."""
         if not encrypted:  # only used if exporting to a URL
             self.encryption_args = {}
@@ -313,25 +316,28 @@ class AWSJobStore(AbstractJobStore):
 
     def delete_job(self, job_id: str) -> None:
         logger.debug("Deleting job %s", job_id)
+
+        # delete the actual job file
         self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{self.job_key_prefix}{job_id}')
+
+        # delete any files marked as associated with the job
+        job_file_associations_to_delete = []
         for associated_job_file in list_s3_items(self.s3_resource,
                                                  bucket=self.bucket_name,
                                                  prefix=f'{self.job_associations_key_prefix}{job_id}'):
+            job_file_associations_to_delete.append(associated_job_file['Key'])
             file_id = associated_job_file['Key'].split('.')[-1]
             self.delete_file(file_id)
-            # TODO: delete associated_job_file too
+
+        # delete the job-file association references (these are empty files the simply connect jobs to files)
+        for job_file_association in job_file_associations_to_delete:
+            self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{job_file_association}')
 
     def associate_job_with_file(self, job_id: str, file_id: str) -> None:
-        # associate this job with this file; the file reference will be deleted when the job is
+        # associate this job with this file; the file will be deleted when the job is
         self.write_to_bucket(identifier=f'{job_id}.{file_id}', prefix=self.job_associations_key_prefix, data=None)
 
         ###################################### FILES API ######################################
-
-    def get_file_metadata(self, file_id: str) -> Any:
-        return json.loads(self.read_from_bucket(identifier=file_id, prefix=self.metadata_key_prefix))
-
-    def put_file_metadata(self, file_id: str, metadata: Dict[Any, Any]) -> None:
-        self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
 
     def write_file(self, local_path: str, job_id: Optional[str] = None, cleanup: bool = False) -> FileID:
         """
@@ -345,27 +351,36 @@ class AWSJobStore(AbstractJobStore):
         #     If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
         #     file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
         #     TODO: we don't need cleanup; remove it and only use job_id
+        # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
         """
         file_id = str(uuid.uuid4())  # mint a new file_id
-
-        etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
         file_attributes = os.stat(local_path)
         size = file_attributes.st_size
         executable = file_attributes.st_mode & stat.S_IXUSR != 0
-
-        # upload metadata reference; there may be multiple references pointing to the same etag path
-        metadata = {'etag': etag, 'executable': executable}
-        self.write_to_bucket(identifier=file_id, prefix=self.metadata_key_prefix, data=metadata)
 
         if job_id and cleanup:
             # associate this job with this file; then the file reference will be deleted when the job is
             self.associate_job_with_file(job_id, file_id)
 
-        with open(local_path, 'rb') as f:
-            data = f.read()
-
-        self.write_to_bucket(identifier=file_id, prefix=self.content_key_prefix, data=data)
+        copy_local_to_s3(
+            s3_resource=self.s3_resource,
+            local_file_path=local_path,
+            dst_bucket=self.bucket_name,
+            dst_key=f'{file_id}/{1 if executable else 0}/{os.path.basename(local_path)}',
+            extra_args=self.encryption_args
+        )
         return FileID(file_id, size, executable)
+
+    def existing_full_s3_key_from_file_id(self, file_id: str):
+        """This finds an s3 key for which file_id is the prefix, and which already exists."""
+        prefix = f'{self.content_key_prefix}{file_id}'
+        s3_keys = [s3_item for s3_item in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=prefix)]
+        if len(s3_keys) == 0:
+            raise NoSuchFileException(f'File ID: {file_id} not found!')
+        if len(s3_keys) > 1:
+            # There can be only one.
+            raise RuntimeError(f'File ID: {file_id} should be unique, but includes: {s3_keys}')
+        return s3_keys[0]['Key']
 
     @contextmanager
     def write_file_stream(
@@ -376,15 +391,13 @@ class AWSJobStore(AbstractJobStore):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Iterator[tuple[IO[bytes], str]]:
-        # TODO: redundant with update_file_stream???
         file_id = str(uuid.uuid4())
         if job_id and cleanup:
             self.associate_job_with_file(job_id, file_id)
-        self.put_file_metadata(file_id, metadata={'etag': file_id, 'executable': 0})
         pipe = MultiPartPipe(part_size=self.part_size,
                              s3_resource=self.s3_resource,
                              bucket_name=self.bucket_name,
-                             file_id=f'{self.content_key_prefix}{file_id}',
+                             file_id=f'{self.content_key_prefix}{file_id}/0/{str(basename)}',
                              encryption_args=self.encryption_args,
                              encoding=encoding,
                              errors=errors)
@@ -401,7 +414,7 @@ class AWSJobStore(AbstractJobStore):
         pipe = MultiPartPipe(part_size=self.part_size,
                              s3_resource=self.s3_resource,
                              bucket_name=self.bucket_name,
-                             file_id=f'{self.content_key_prefix}{file_id}',
+                             file_id=self.existing_full_s3_key_from_file_id(file_id),
                              encryption_args=self.encryption_args,
                              encoding=encoding,
                              errors=errors)
@@ -427,15 +440,18 @@ class AWSJobStore(AbstractJobStore):
             yield writable
 
     def update_file(self, file_id: str, local_path: str) -> None:
-        # TODO: Throw an exception if the file in the bucket does not exist?  Do we need that?
-        with open(local_path, 'rb') as f:
-            data = f.read()
-        self.write_to_bucket(identifier=file_id, prefix=self.content_key_prefix, data=data)
+        copy_local_to_s3(
+            s3_resource=self.s3_resource,
+            local_file_path=local_path,
+            dst_bucket=self.bucket_name,
+            dst_key=self.existing_full_s3_key_from_file_id(file_id),
+            extra_args=self.encryption_args
+        )
 
     def file_exists(self, file_id: str) -> bool:
         return s3_key_exists(s3_resource=self.s3_resource,
                              bucket=self.bucket_name,
-                             key=f'{self.content_key_prefix}{file_id}',
+                             key=self.existing_full_s3_key_from_file_id(file_id),
                              extra_args=self.encryption_args)
 
     def get_file_size(self, file_id: str) -> int:
@@ -451,11 +467,16 @@ class AWSJobStore(AbstractJobStore):
             return 0
 
     def read_file(self, file_id: str, local_path: str, symlink: bool = False) -> None:
+        full_s3_key = self.existing_full_s3_key_from_file_id(file_id)
+        executable = int(full_s3_key.split('/')[1])  # 0 or 1
         try:
-            metadata = self.get_file_metadata(file_id)
-            executable = int(metadata["executable"])  # 0 or 1
-            with open(local_path, 'wb') as f:
-                f.write(self.read_from_bucket(identifier=file_id, prefix=self.content_key_prefix))
+            copy_s3_to_local(
+                s3_resource=self.s3_resource,
+                local_file_path=local_path,
+                src_bucket=self.bucket_name,
+                src_key=full_s3_key,
+                extra_args=self.encryption_args
+            )
             if executable:
                 os.chmod(local_path, os.stat(local_path).st_mode | stat.S_IXUSR)
         except self.s3_client.exceptions.NoSuchKey:
@@ -471,11 +492,11 @@ class AWSJobStore(AbstractJobStore):
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
     ) -> Union[ContextManager[IO[bytes]], ContextManager[IO[str]]]:
+        full_s3_key = self.existing_full_s3_key_from_file_id(file_id)
         try:
-            metadata = self.get_file_metadata(file_id)
             with download_stream(self.s3_resource,
                                  bucket=self.bucket_name,
-                                 key=f'{self.content_key_prefix}{file_id}',
+                                 key=full_s3_key,
                                  extra_args=self.encryption_args,
                                  encoding=encoding,
                                  errors=errors) as readable:
@@ -496,7 +517,7 @@ class AWSJobStore(AbstractJobStore):
         errors: Optional[str] = None,
     ) -> Iterator[IO[bytes]]:
         self._requireValidSharedFileName(shared_file_name)
-        if not s3_key_exists(s3_resource=self.s3_resource,  # necessary?
+        if not s3_key_exists(s3_resource=self.s3_resource,
                              bucket=self.bucket_name,
                              key=f'{self.shared_key_prefix}{shared_file_name}',
                              extra_args=self.encryption_args):
@@ -519,9 +540,8 @@ class AWSJobStore(AbstractJobStore):
                 raise NoSuchFileException(shared_file_name)
 
     def delete_file(self, file_id: str) -> None:
-        """Only delete the reference."""
-        self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{self.metadata_key_prefix}{file_id}')
-        self.s3_client.delete_object(Bucket=self.bucket_name, Key=f'{self.content_key_prefix}{file_id}')
+        full_s3_key = self.existing_full_s3_key_from_file_id(file_id)
+        self.s3_client.delete_object(Bucket=self.bucket_name, Key=full_s3_key)
 
         ###################################### URI API ######################################
 
@@ -539,69 +559,56 @@ class AWSJobStore(AbstractJobStore):
         This db entry's existence should always be in sync with the file's existence (when one exists,
         so must the other).
         """
-        # use a new session here to be thread-safe
         # we are copying from s3 to s3
         if isinstance(otherCls, AWSJobStore):
             src_bucket_name, src_key_name = parse_s3_uri(uri.geturl())
             response = head_s3_object(self.s3_resource, bucket=src_bucket_name, key=src_key_name, check=True)
             content_length = response['ContentLength']  # e.g. 65536
-            content_type = response['ContentType']  # e.g. "binary/octet-stream"
-            etag = response['ETag'].strip('\"')  # e.g. "\"586af4cbd7416e6aefd35ccef9cbd7c8\""
+            # content_type = response['ContentType']  # e.g. "binary/octet-stream"
+            # etag = response['ETag'].strip('\"')  # e.g. "\"586af4cbd7416e6aefd35ccef9cbd7c8\""
 
+            file_id = str(uuid.uuid4())
             if shared_file_name:
-                prefix = self.shared_key_prefix
-                file_name = shared_file_name
+                dst_key = f'{self.shared_key_prefix}{shared_file_name}'
             else:
-                prefix = self.content_key_prefix
-                file_name = str(uuid.uuid4())
+                dst_key = f'{self.content_key_prefix}{file_id}/0/{src_key_name.split("/")[-1]}'
 
-            # upload actual file content if it does not exist already
-            # etags are unique hashes, so this may exist if another process uploaded the exact same file
-                # AWS copy and copy_object functions should be used here, but don't work with sse-c encryption
-                # see: https://github.com/aws/aws-cli/issues/6012
-            with download_stream(self.s3_resource,
-                                 bucket=src_bucket_name,
-                                 key=src_key_name) as readable:
-                self.write_to_bucket(bucket=self.bucket_name,
-                                     identifier=file_name,
-                                     prefix=prefix,
-                                     data=readable.read())
-            # verify etag after copying here
+            copy_s3_to_s3(
+                s3_resource=self.s3_resource,
+                src_bucket=src_bucket_name,
+                src_key=src_key_name,
+                dst_bucket=self.bucket_name,
+                dst_key=dst_key,
+                extra_args=self.encryption_args
+            )
+            # TODO: verify etag after copying here?
 
-            if not shared_file_name:
-                # cannot determine exec bit from foreign s3 so default to False
-                metadata = {'etag': etag, 'executable': 0}
-                self.write_to_bucket(identifier=file_name, prefix=self.metadata_key_prefix, data=metadata)
-                return FileID(file_name, content_length)
+            # cannot determine exec bit from foreign s3 so default to False
+            return FileID(file_id, content_length) if not shared_file_name else None
         else:
-            file_id = super(AWSJobStore, self)._import_file(otherCls, uri, shared_file_name=shared_file_name)
-            if file_id:  # this will be None for shared_files and FileID for everything else
-                # rely on the other jobstore to determine exec bit
-                metadata = {'etag': None, 'executable': file_id.executable}
-                self.write_to_bucket(identifier=str(file_id), prefix=self.metadata_key_prefix, data=metadata)
-            return file_id
+            return super(AWSJobStore, self)._import_file(
+                otherCls=otherCls,
+                uri=uri,
+                shared_file_name=shared_file_name,
+                hardlink=hardlink,
+                symlink=symlink
+            )
 
     def _export_file(
         self, otherCls: "AbstractJobStore", jobStoreFileID: FileID, url: ParseResult
     ) -> None:
         """Export a file_id in the jobstore to the url."""
-        # use a new session here to be thread-safe
         if isinstance(otherCls, AWSJobStore):
+            src_full_s3_key = self.existing_full_s3_key_from_file_id(jobStoreFileID)
             dst_bucket_name, dst_key_name = parse_s3_uri(url.geturl())
-            metadata = self.get_file_metadata(jobStoreFileID)
-            if not self.encryption_args:
-                copy_s3_to_s3(s3_resource=self.s3_resource,
-                              src_bucket=self.bucket_name, src_key=f'{self.content_key_prefix}{jobStoreFileID}',
-                              dst_bucket=dst_bucket_name, dst_key=dst_key_name)
-            else:
-                # AWS copy and copy_object functions should be used here, but don't work with sse-c encryption
-                # see: https://github.com/aws/aws-cli/issues/6012
-                with self.read_file_stream(jobStoreFileID) as readable:  # type: ignore
-                    upload_to_s3(readable,
-                                 self.s3_resource,
-                                 dst_bucket_name,
-                                 dst_key_name,
-                                 extra_args=None)
+            copy_s3_to_s3(
+                s3_resource=self.s3_resource,
+                src_bucket=self.bucket_name,
+                src_key=src_full_s3_key,
+                dst_bucket=dst_bucket_name,
+                dst_key=dst_key_name,
+                extra_args=self.encryption_args
+            )
         else:
             super(AWSJobStore, self)._default_export_file(otherCls, jobStoreFileID, url)
 
@@ -673,8 +680,6 @@ class AWSJobStore(AbstractJobStore):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
-        except:
-            raise
 
     def get_shared_public_url(self, file_id: str) -> str:  # type: ignore
         """Turn s3:// into http:// and put a public-read ACL on it."""
@@ -689,8 +694,6 @@ class AWSJobStore(AbstractJobStore):
         except ClientError as e:
             if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
                 raise NoSuchFileException(file_id)
-        except:
-            raise
 
     @classmethod
     def _get_is_directory(cls, url: ParseResult) -> bool:
@@ -707,7 +710,7 @@ class AWSJobStore(AbstractJobStore):
         """Create an empty file in s3 and return a file_id referencing it."""
         file_id = str(uuid.uuid4())
         self.write_to_bucket(
-            identifier=file_id,
+            identifier=f'{file_id}/0/{basename}',
             prefix=self.content_key_prefix,
             data=None,
             bucket=self.bucket_name
@@ -731,7 +734,8 @@ class AWSJobStore(AbstractJobStore):
 
     def read_logs(self, callback: Callable[..., Any], read_all: bool = False) -> int:
         """
-        This fetches all referenced logs in the database from s3 as readable objects and runs "callback()" on them.
+        This fetches all referenced logs in the database from s3 as readable objects
+        and runs "callback()" on them.
         """
         items_processed = 0
         read_log_marker = self.read_from_bucket(identifier='most_recently_read_log.marker',

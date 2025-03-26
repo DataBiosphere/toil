@@ -141,7 +141,7 @@ class NoSuchJobStoreException(LocatorException):
         :param str prefix: The type of job store
         """
         super().__init__(
-            "The job store '%s' does not exist in %s, so there is nothing to restart.",
+            "The job store '%s' does not exist, so there is nothing to restart.",
             locator,
             prefix
         )
@@ -158,7 +158,7 @@ class JobStoreExistsException(LocatorException):
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
             "the job store with 'toil clean' to start the workflow from scratch.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -1251,6 +1251,15 @@ class AbstractJobStore(ABC):
     @deprecated(new_function_name="update_job")
     def update(self, jobDescription: JobDescription) -> None:
         return self.update_job(jobDescription)
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """
+        If supported by the batch system, calls to create() with this context
+        manager active will be performed in a batch after the context manager
+        is released.
+        """
+        yield
 
     @abstractmethod
     def update_job(self, job_description: JobDescription) -> None:

@@ -482,7 +482,7 @@ def needs_aws_batch(test_item: MT) -> MT:
         test_item
     )
     test_item = needs_env_var(
-        "TOIL_AWS_BATCH_JOB_ROLE_ARN", "an IAM role ARN that grants S3 and SDB access"
+        "TOIL_AWS_BATCH_JOB_ROLE_ARN", "an IAM role ARN that grants S3 access"
     )(test_item)
     try:
         from toil.lib.aws import get_current_aws_region

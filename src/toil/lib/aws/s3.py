@@ -27,7 +27,7 @@ from typing import (Any,
                     Tuple,
                     cast,
                     Literal,
-                    Generator,
+                    Iterator,
                     IO)
 
 from toil.lib.retry import retry, get_error_status, ErrorCondition
@@ -206,24 +206,40 @@ def list_multipart_uploads(bucket: str, region: str, prefix: str, max_uploads: i
 
 @retry(errors=[BotoServerError])
 def copy_s3_to_s3(s3_resource: "S3ServiceResource", src_bucket: str, src_key: str, dst_bucket: str, dst_key: str, extra_args: Optional[Dict[Any, Any]] = None) -> None:
-    if not extra_args:
-        source = {'Bucket': src_bucket, 'Key': src_key}
-        # Note: this may have errors if using sse-c because of
-        # a bug with encryption using copy_object and copy (which uses copy_object for files <5GB):
-        # https://github.com/aws/aws-cli/issues/6012
-        # this will only happen if we attempt to copy a file previously encrypted with sse-c
-        # copying an unencrypted file and encrypting it as sse-c seems to work fine though
-        kwargs = dict(CopySource=source, Bucket=dst_bucket, Key=dst_key, ExtraArgs=extra_args)
-        s3_resource.meta.client.copy(**kwargs)  # type: ignore
-    else:
-        pass
+    source = {'Bucket': src_bucket, 'Key': src_key}
+    # Note: this may have errors if using sse-c because of
+    # a bug with encryption using copy_object and copy (which uses copy_object for files <5GB):
+    # https://github.com/aws/aws-cli/issues/6012
+    # this will only happen if we attempt to copy a file previously encrypted with sse-c
+    # copying an unencrypted file and encrypting it as sse-c seems to work fine though
+    kwargs = dict(CopySource=source, Bucket=dst_bucket, Key=dst_key, ExtraArgs=extra_args)
+    s3_resource.meta.client.copy(**kwargs)  # type: ignore
 
 
 # TODO: Determine specific retries
 @retry(errors=[BotoServerError])
-def copy_local_to_s3(s3_resource: "S3ServiceResource", local_file_path: str, dst_bucket: str, dst_key: str, extra_args: Optional[Dict[Any, Any]] = None) -> None:
+def copy_local_to_s3(
+        s3_resource: "S3ServiceResource",
+        local_file_path: str,
+        dst_bucket: str,
+        dst_key: str,
+        extra_args: Optional[Dict[Any, Any]] = None
+) -> None:
     s3_client = s3_resource.meta.client
     s3_client.upload_file(local_file_path, dst_bucket, dst_key, ExtraArgs=extra_args)
+
+
+# TODO: Determine specific retries
+@retry(errors=[BotoServerError])
+def copy_s3_to_local(
+        s3_resource: "S3ServiceResource",
+        local_file_path: str,
+        src_bucket: str,
+        src_key: str,
+        extra_args: Optional[Dict[Any, Any]] = None
+) -> None:
+    s3_client = s3_resource.meta.client
+    s3_client.download_file(src_bucket, src_key, local_file_path, ExtraArgs=extra_args)
 
 
 class MultiPartPipe(WritablePipe):
@@ -295,7 +311,7 @@ def parse_s3_uri(uri: str) -> Tuple[str, str]:
     return bucket_name, key_name
 
 
-def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, startafter: Optional[str] = None) -> Generator[ObjectTypeDef]:
+def list_s3_items(s3_resource: "S3ServiceResource", bucket: str, prefix: str, startafter: Optional[str] = None) -> Iterator[ObjectTypeDef]:
     s3_client = s3_resource.meta.client
     paginator = s3_client.get_paginator('list_objects_v2')
     kwargs = dict(Bucket=bucket, Prefix=prefix)
@@ -353,7 +369,7 @@ def upload_to_s3(readable: IO[Any],
 
 @contextmanager
 def download_stream(s3_resource: "S3ServiceResource", bucket: str, key: str, checksum_to_verify: Optional[str] = None,
-                    extra_args: Optional[Dict[Any, Any]] = None, encoding: Optional[str] = None, errors: Optional[str] = None) -> Generator[IO[Any]]:
+                    extra_args: Optional[Dict[Any, Any]] = None, encoding: Optional[str] = None, errors: Optional[str] = None) -> Iterator[IO[Any]]:
     """Context manager that gives out a download stream to download data."""
     bucket_obj: Bucket = s3_resource.Bucket(bucket)
 

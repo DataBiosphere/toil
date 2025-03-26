@@ -117,7 +117,13 @@ class WritablePipe(ABC):
             # thread. To cover the small window before the reader takes over we also close it here.
             if self.readable_fh is not None:
                 # Close the file handle. The reader thread must be dead now.
-                os.close(self.readable_fh)
+                try:
+                    os.close(self.readable_fh)
+                except OSError as e:
+                    # OSError: [Errno 9] Bad file descriptor implies this file handle is already closed
+                    if not e.errno == 9:
+                        raise e
+
 
     @abstractmethod
     def readFrom(self, readable: IO[Any]) -> None:

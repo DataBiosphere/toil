@@ -37,7 +37,6 @@ if TYPE_CHECKING:
     from mypy_boto3_s3 import S3ServiceResource
     from mypy_boto3_s3.service_resource import Bucket
     from mypy_boto3_s3.service_resource import Object as S3Object
-    from mypy_boto3_sdb.type_defs import AttributeTypeDef
 
 from botocore.exceptions import ClientError, EndpointConnectionError
 
@@ -531,23 +530,3 @@ def boto3_pager(
     for page in paginator.paginate(**kwargs):
         # Invoke it and go through the pages, yielding from them
         yield from page.get(result_attribute_name, [])
-
-
-def get_item_from_attributes(attributes: list["AttributeTypeDef"], name: str) -> Any:
-    """
-    Given a list of attributes, find the attribute associated with the name and return its corresponding value.
-
-    The `attribute_list` will be a list of TypedDict's (which boto3 SDB functions commonly return),
-    where each TypedDict has a "Name" and "Value" key value pair.
-    This function grabs the value out of the associated TypedDict.
-
-    If the attribute with the name does not exist, the function will return None.
-
-    :param attributes: list of attributes
-    :param name: name of the attribute
-    :return: value of the attribute
-    """
-    return next(
-        (attribute["Value"] for attribute in attributes if attribute["Name"] == name),
-        None,
-    )
