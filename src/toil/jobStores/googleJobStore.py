@@ -465,9 +465,8 @@ class GoogleJobStore(AbstractJobStore):
     def _supports_url(cls, url, export=False):
         return url.scheme.lower() == "gs"
 
-    @classmethod
-    def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
-        blob = cls._get_blob_from_url(url)
+    def _write_to_url(self, readable: bytes, url: str, executable: bool = False) -> None:
+        blob = self._get_blob_from_url(url)
         blob.upload_from_file(readable)
 
     @classmethod

@@ -128,7 +128,7 @@ def parse_node_types(
     Inputs should look something like this:
 
     >>> parse_node_types('c5.4xlarge/c5a.4xlarge:0.42,t2.large')
-    [({'c5.4xlarge', 'c5a.4xlarge'}, 0.42), ({'t2.large'}, None)]
+    [({'c5a.4xlarge', 'c5.4xlarge'}, 0.42), ({'t2.large'}, None)]
 
     :param node_type_specs: A string defining node types
 
