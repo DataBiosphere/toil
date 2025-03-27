@@ -31,7 +31,8 @@ from typing import (Any,
                     TYPE_CHECKING,
                     IO)
 
-from boto3.s3.transfer import TransferConfig
+from botocore.exceptions import ClientError
+from boto.exception import BotoServerError, S3ResponseError
 
 from toil.lib.retry import retry, get_error_status, ErrorCondition
 from toil.lib.misc import printq
@@ -39,12 +40,6 @@ from toil.lib.aws import AWSServerErrors, session, build_tag_dict_from_env
 from toil.lib.aws.utils import enable_public_objects, flatten_tags
 from toil.lib.conversions import modify_url, MB, MIB, TB
 from toil.lib.pipes import WritablePipe, ReadablePipe, HashingPipe
-
-try:
-    from botocore.exceptions import ClientError
-    from boto.exception import BotoServerError, S3ResponseError
-except ImportError:
-    BotoServerError, S3ResponseError, ClientError = Exception, Exception, Exception
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client, S3ServiceResource
@@ -350,6 +345,7 @@ def upload_to_s3(readable: IO[Any],
         extra_args = {}
 
     s3_client = s3_resource.meta.client
+    from boto3.s3.transfer import TransferConfig
     config = TransferConfig(
         multipart_threshold=DEFAULT_AWS_CHUNK_SIZE,
         multipart_chunksize=DEFAULT_AWS_CHUNK_SIZE,
