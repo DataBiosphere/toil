@@ -320,6 +320,21 @@ def needs_rsync3(test_item: MT) -> MT:
     return test_item
 
 
+def _has_rsync3() -> bool:
+    try:
+        versionInfo = subprocess.check_output(["rsync", "--version"]).decode("utf-8")
+        if int(versionInfo.split()[2].split(".")[0]) < 3:
+            return False
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+pneeds_rsync3 = pytest.mark.skipif(
+    not _has_rsync3(), reason="This test depends on rsync version 3.0.0+."
+)
+
+
 def needs_online(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if we are meant to talk to the Internet."""
     test_item = _mark_test("online", test_item)
@@ -399,6 +414,12 @@ def needs_aws_ec2(test_item: MT) -> MT:
     # TODO: We assume that if this is set we have EC2 access.
     test_item = needs_env_var("TOIL_AWS_KEYNAME", "an AWS-stored SSH key")(test_item)
     return test_item
+
+
+pneeds_aws_ec2 = pytest.mark.skipif(
+    _skip_online() or not _aws_s3_avail() or not os.getenv("TOIL_AWS_KEYNAME"),
+    reason="Set 'TOIL_AWS_KEYNAME' to an AWS-stored SSH key to run this test",
+)
 
 
 def needs_aws_batch(test_item: MT) -> MT:
@@ -644,8 +665,8 @@ def needs_docker(test_item: MT) -> MT:
 
 
 pneeds_docker = pytest.mark.skipif(
-    _skip_online() or
-    os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true"
+    _skip_online()
+    or os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true"
     or not which("docker"),
     reason="Requested to skip docker test or docker is not installed.",
 )
@@ -926,6 +947,13 @@ def integrative(test_item: MT) -> MT:
             "Set TOIL_TEST_INTEGRATIVE=True to include this integration test, "
             "or run `make integration_test_local` to run all integration tests."
         )(test_item)
+
+
+pintegrative = pytest.mark.skipif(
+    os.getenv("TOIL_TEST_INTEGRATIVE", "").lower() != "true",
+    reason="Set TOIL_TEST_INTEGRATIVE=True to include this integration test, "
+    "or run `make integration_test_local` to run all integration tests.",
+)
 
 
 def slow(test_item: MT) -> MT:
