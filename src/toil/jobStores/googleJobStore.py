@@ -160,7 +160,7 @@ class GoogleJobStore(AbstractJobStore):
         self.storageClient, self.auth_notes = self.create_client()
 
     @classmethod
-    def create_client(cls) -> storage.Client, str:
+    def create_client(cls) -> tuple[storage.Client, str]:
         """
         Produce a client for Google Sotrage with the highest level of access we can get.
 
