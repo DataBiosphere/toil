@@ -95,7 +95,6 @@ def main():
         'src/toil/test/provisioners',
         'src/toil/test/server',
         'src/toil/test/sort',
-        'src/toil/test/src/retainTempDirTest.py',
         'src/toil/test/src/realtimeLoggerTest.py',
         'src/toil/test/src/promisedRequirementTest.py',
         'src/toil/test/src/jobDescriptionTest.py',
