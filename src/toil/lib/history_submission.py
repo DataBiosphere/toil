@@ -273,9 +273,9 @@ def create_history_submission(batch_size: Optional[int] = None, desired_tasks: O
 
     # By default, include the things we are set to track history for.
     if batch_size is None:
-        batch_size = 10 if HistoryManager.WORKFLOW_HISTORY_ENABLED else 0
+        batch_size = 10 if HistoryManager.enabled() else 0
     if desired_tasks is None:
-        desired_tasks = 50 if HistoryManager.JOB_HISTORY_ENABLED else 0
+        desired_tasks = 50 if HistoryManager.enabled_job() else 0
 
     # Collect together some workflows and some lists of tasks into a submission.
     submission = Submission()
@@ -331,10 +331,10 @@ def create_current_submission(workflow_id: str, attempt_number: int) -> Submissi
     submission = Submission()
     try:
         workflow_attempt = HistoryManager.get_workflow_attempt(workflow_id, attempt_number)
-        if workflow_attempt is not None and HistoryManager.WORKFLOW_HISTORY_ENABLED:
+        if workflow_attempt is not None and HistoryManager.enabled():
             if not workflow_attempt.submitted_to_dockstore:
                 submission.add_workflow_attempt(workflow_attempt)
-            if HistoryManager.JOB_HISTORY_ENABLED:
+            if HistoryManager.enabled_job():
                 try:
                     job_attempts = HistoryManager.get_unsubmitted_job_attempts(workflow_attempt.workflow_id, workflow_attempt.attempt_number)
                     submission.add_job_attempts(workflow_attempt, job_attempts)
