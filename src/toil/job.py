@@ -3387,7 +3387,7 @@ class FunctionWrappingJob(Job):
         userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
-    def getUserScript(self) -> Str:
+    def getUserScript(self) -> str:
         return self.userFunctionModule
 
     def _jobName(self) -> str:
