@@ -1,46 +1,50 @@
 import errno
 import multiprocessing
 import os
+from pathlib import Path
 from functools import partial
+from typing import Any, Optional
 
 from toil.lib.io import mkdtemp
 from toil.lib.threading import cpu_count
-from toil.test import ToilTest
 
 
-class SystemTest(ToilTest):
+class TestSystem:
     """Test various assumptions about the operating system's behavior."""
 
-    def testAtomicityOfNonEmptyDirectoryRenames(self):
+    def testAtomicityOfNonEmptyDirectoryRenames(self, tmp_path: Path) -> None:
         for _ in range(100):
-            parent = self._createTempDir(purpose="parent")
-            child = os.path.join(parent, "child")
+            parent = tmp_path / f"parent{_}"
+            parent.mkdir()
+            child = parent / "child"
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
             pool = multiprocessing.Pool(processes=cpu_count())
             try:
                 numTasks = cpu_count() * 10
-                grandChildIds = pool.map_async(
+                temp_grandChildIds = pool.map_async(
                     func=partial(
                         _testAtomicityOfNonEmptyDirectoryRenamesTask, parent, child
                     ),
                     iterable=list(range(numTasks)),
                 )
-                grandChildIds = grandChildIds.get()
+                grandChildIds = temp_grandChildIds.get()
             finally:
                 pool.close()
                 pool.join()
-            self.assertEqual(len(grandChildIds), numTasks)
+            assert len(grandChildIds) == numTasks
             # Assert that we only had one winner
             grandChildIds = [n for n in grandChildIds if n is not None]
-            self.assertEqual(len(grandChildIds), 1)
+            assert len(grandChildIds) == 1
             # Assert that the winner's grandChild wasn't silently overwritten by a looser
             expectedGrandChildId = grandChildIds[0]
-            actualGrandChild = os.path.join(child, "grandChild")
-            actualGrandChildId = os.stat(actualGrandChild).st_ino
-            self.assertEqual(actualGrandChildId, expectedGrandChildId)
+            actualGrandChild = child / "grandChild"
+            actualGrandChildId = actualGrandChild.stat().st_ino
+            assert actualGrandChildId == expectedGrandChildId
 
 
-def _testAtomicityOfNonEmptyDirectoryRenamesTask(parent, child, _):
+def _testAtomicityOfNonEmptyDirectoryRenamesTask(
+    parent: Path, child: Path, _: Any
+) -> Optional[int]:
     tmpChildDir = mkdtemp(dir=parent, prefix="child", suffix=".tmp")
     grandChild = os.path.join(tmpChildDir, "grandChild")
     open(grandChild, "w").close()
