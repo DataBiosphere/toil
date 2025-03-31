@@ -74,7 +74,6 @@ def main():
         'src/toil/lib/__init__.py',
         'src/toil/lib/generatedEC2Lists.py',
         'src/toil/lib/retry.py',
-        'src/toil/lib/threading.py',
         'src/toil/lib/objects.py',
         'src/toil/lib/io.py',
         'src/toil/lib/docker.py',
@@ -84,8 +83,7 @@ def main():
         'src/toil/lib/aws/__init__.py',
         'src/toil/server/utils.py',
         'src/toil/test',
-        'src/toil/utils/toilStats.py',
-        'src/toil/server/utils.py'
+        'src/toil/utils/toilStats.py'
     ]]
 
     def ignore(file_path):

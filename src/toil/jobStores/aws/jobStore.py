@@ -31,7 +31,6 @@ import json
 import logging
 import pickle
 import re
-import reprlib
 import stat
 import uuid
 import datetime
@@ -105,16 +104,13 @@ class AWSJobStore(AbstractJobStore):
     #        "files/{uuid4}/0/{original_filename}" or "files/{uuid4}/1/{original_filename}", where the file prefix
     #        "files/{uuid4}" should only point to one file.
     #        where 0 or 1 represent its executability (1 == executable).
-    #     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process. (check this!)
+    #     3. Logs: The written log files of jobs that have run, plus the log file for the main Toil process.
     #     4. Shared Files: These are a small set of special files.  Most are needed by all jobs:
     #         * environment.pickle   (environment variables)
     #         * config.pickle        (user options)
     #         * pid.log              (process ID of the workflow; when it finishes, the workflow either succeeded/failed)
-    #         * userScript           (hot deployment(?);  this looks like the job module;  poke this)
+    #         * userScript           (hot deployment;  this is the job module)
     #         * rootJobReturnValue   (workflow succeeded or not)
-    #         * TODO: are there any others?  do either vg or cactus use this?  should these have locks and when are they
-    #            accessed?  are these only written once, but read many times?
-    #         * TODO: A file with the date and toil version the workflow/bucket/jobstore was initialized with
     #
     # NOTES
     #  - The AWS jobstore does not use a database (directly, at least) currently.  We can get away with this because:
@@ -144,7 +140,6 @@ class AWSJobStore(AbstractJobStore):
         # TODO: parsing of user options seems like it should be done outside of this class;
         #  pass in only the bucket name and region?
         self.region, self.bucket_name = parse_jobstore_identifier(locator)
-        os.environ['AWS_DEFAULT_REGION'] = self.region
         boto3_session = establish_boto3_session(region_name=self.region)
         self.s3_resource = boto3_session.resource("s3")
         self.s3_client = boto3_session.client("s3")
@@ -156,7 +151,7 @@ class AWSJobStore(AbstractJobStore):
 
         # pickled job files named with uuid4
         self.job_key_prefix = 'jobs/'
-        # job-file associations; these are empty files mimicing a db w/naming convention: job_uuid4.file_uuid4
+        # job-file associations; these are empty files mimicking a db w/naming convention: job_uuid4.file_uuid4
         self.job_associations_key_prefix = 'job-associations/'
         # input/output files named with uuid4
         self.content_key_prefix = 'files/'
@@ -208,9 +203,10 @@ class AWSJobStore(AbstractJobStore):
             encrypted: bool = True
     ) -> None:
         """Use for small files.  Does not parallelize or use multipart."""
-        if not encrypted:  # only used if exporting to a URL
-            self.encryption_args = {}
+        # only used if exporting to a URL
+        encryption_args = {} if not encrypted else self.encryption_args
         bucket = bucket or self.bucket_name
+
         if isinstance(data, dict):
             data = json.dumps(data).encode('utf-8')
         elif isinstance(data, str):
@@ -219,27 +215,11 @@ class AWSJobStore(AbstractJobStore):
             data = b''
 
         assert isinstance(data, bytes)
-        try:
-            put_s3_object(s3_resource=self.s3_resource,
-                          bucket=bucket,
-                          key=f'{prefix}{identifier}',
-                          body=data,
-                          extra_args=self.encryption_args)
-        except self.s3_client.exceptions.NoSuchKey:
-            if prefix == self.job_key_prefix:
-                raise NoSuchJobException(identifier)
-            elif prefix == self.content_key_prefix:
-                raise NoSuchFileException(identifier)
-            else:
-                raise
-        except ClientError as e:
-            if e.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
-                if prefix == self.job_key_prefix:
-                    raise NoSuchJobException(identifier)
-                elif prefix == self.content_key_prefix:
-                    raise NoSuchFileException(identifier)
-                else:
-                    raise
+        put_s3_object(s3_resource=self.s3_resource,
+                      bucket=bucket,
+                      key=f'{prefix}{identifier}',
+                      body=data,
+                      extra_args=encryption_args)
 
     def read_from_bucket(self, identifier: str, prefix: str) -> bytes:  # type: ignore
         """Use for small files.  Does not parallelize or use multipart."""
@@ -291,12 +271,18 @@ class AWSJobStore(AbstractJobStore):
         except self.s3_client.exceptions.NoSuchKey:
             if check:
                 raise NoSuchJobException(job_id)
+            else:
+                raise
         return False
 
     def jobs(self) -> Iterator[JobDescription]:
         for result in list_s3_items(self.s3_resource, bucket=self.bucket_name, prefix=self.job_key_prefix):
-            job_id = result['Key'][len(self.job_key_prefix):]  # strip self.job_key_prefix
-            yield self.load_job(job_id)
+            try:
+                job_id = result['Key'][len(self.job_key_prefix):]  # strip self.job_key_prefix
+                yield self.load_job(job_id)
+            except NoSuchJobException:
+                # job may have been deleted between showing up in the list and getting loaded
+                pass
 
     def load_job(self, job_id: str) -> JobDescription:
         """Use a job_id to get a job from the jobstore's s3 bucket, unpickle, and return it."""
@@ -340,18 +326,18 @@ class AWSJobStore(AbstractJobStore):
 
     def write_file(self, local_path: str, job_id: Optional[str] = None, cleanup: bool = False) -> FileID:
         """
-        # Write a local file into the jobstore and return a file_id referencing it.
-        #
-        # job_id:
-        #     If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
-        #     file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
-        #
-        # cleanup:
-        #     If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
-        #     file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
-        #     TODO: we don't need cleanup; remove it and only use job_id
-        # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
+        Write a local file into the jobstore and return a file_id referencing it.
+
+        :param job_id:
+            If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
+            file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
+
+        :param cleanup:
+            If job_id AND cleanup are supplied, associate this file with that job.  When the job is deleted, the
+            file's metadata reference will be deleted as well (and Toil will believe the file is deleted).
+            TODO: we don't need cleanup; remove it and only use job_id
         """
+        # TODO: etag = compute_checksum_for_file(local_path, algorithm='etag')[len('etag$'):]
         file_id = str(uuid.uuid4())  # mint a new file_id
         file_attributes = os.stat(local_path)
         size = file_attributes.st_size
@@ -455,7 +441,8 @@ class AWSJobStore(AbstractJobStore):
 
     def get_file_size(self, file_id: str) -> int:
         """Do we need both get_file_size and _get_size???"""
-        return self._get_size(url=urlparse(f's3://{self.bucket_name}/{file_id}')) or 0
+        full_s3_key = self.existing_full_s3_key_from_file_id(file_id)
+        return self._get_size(url=urlparse(f's3://{self.bucket_name}/{full_s3_key}')) or 0
 
     @classmethod
     def _get_size(cls, url: ParseResult) -> Optional[int]:
@@ -725,7 +712,7 @@ class AWSJobStore(AbstractJobStore):
             log_msg = log_msg.encode('utf-8', errors='ignore')
         file_obj = BytesIO(log_msg)
 
-        key_name = f'{self.logs_key_prefix}{datetime.datetime.now()}'.replace(' ', '_')
+        key_name = f'{self.logs_key_prefix}{datetime.datetime.now()}{str(uuid.uuid4())}'.replace(' ', '_')
         self.s3_client.upload_fileobj(Bucket=self.bucket_name,
                                       Key=key_name,
                                       ExtraArgs=self.encryption_args,
@@ -784,8 +771,3 @@ def parse_jobstore_identifier(jobstore_identifier: str) -> Tuple[str, str]:
     if '--' in jobstore_name:
         raise ValueError(f"AWS jobstore names may not contain '--': {jobstore_name}")
     return region, bucket_name
-
-
-aRepr = reprlib.Repr()
-aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
-custom_repr = aRepr.repr

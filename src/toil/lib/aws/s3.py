@@ -75,7 +75,7 @@ class AWSBadEncryptionKeyError(Exception):
     pass
 
 
-# @retry(errors=[BotoServerError, S3ResponseError, ClientError])
+@retry(errors=[BotoServerError, S3ResponseError, ClientError])
 def create_s3_bucket(
     s3_resource: "S3ServiceResource",
     bucket_name: str,
