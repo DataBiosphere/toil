@@ -106,7 +106,6 @@ def main():
         'src/toil/test/src/restartDAGTest.py',
         'src/toil/test/src/promisesTest.py',
         'src/toil/test/src/checkpointTest.py',
-        'src/toil/test/src/threadingTest.py',
         'src/toil/test/src/jobFileStoreTest.py',
         'src/toil/test/src/userDefinedJobArgTypeTest.py',
         'src/toil/test/src/helloWorldTest.py',
