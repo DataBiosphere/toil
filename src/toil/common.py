@@ -139,7 +139,7 @@ class Config:
     batch_logs_dir: Optional[str]
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
-    statePollingWait: int
+    statePollingWait: float
     state_polling_timeout: int
     disableAutoDeployment: bool
 

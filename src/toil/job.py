@@ -816,7 +816,7 @@ class JobDescription(Requirer):
 
     def __init__(
         self,
-        requirements: Mapping[str, Union[int, str, bool]],
+        requirements: Mapping[str, Union[int, str, float, bool, list]],
         jobName: str,
         unitName: Optional[str] = "",
         displayName: Optional[str] = "",
@@ -4289,7 +4289,7 @@ class PromisedRequirement:
     C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
     """
 
-    def __init__(self, valueOrCallable, *args):
+    def __init__(self, valueOrCallable: Any, *args: Any) -> None:
         """
         Initialize this Promised Requirement.
 
@@ -4313,7 +4313,7 @@ class PromisedRequirement:
         self._func = dill.dumps(func)
         self._args = list(args)
 
-    def getValue(self):
+    def getValue(self) -> Any:
         """Return PromisedRequirement value."""
         func = dill.loads(self._func)
         return func(*self._args)
