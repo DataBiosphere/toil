@@ -87,7 +87,6 @@ def main():
         'src/toil/test/lib/aws',
         'src/toil/test/lib/test_conversions.py',
         'src/toil/test/lib/test_ec2.py',
-        'src/toil/test/lib/test_history.py',
         'src/toil/test/lib/test_misc.py',
         'src/toil/test/lib/test_trs.py',
         'src/toil/test/mesos',
