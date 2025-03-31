@@ -86,9 +86,9 @@ def get_data(filename: str) -> AbstractContextManager[Path]:
 @pytest.mark.usefixtures("rootpath")
 class ToilTest(unittest.TestCase):
     """
-    A common base class for Toil tests.
+    Legacy common base class for Toil tests.
 
-    Please have every test case directly or indirectly inherit this one.
+    New tests should be made in the 'pytest' style and not use this class.
 
     When running tests you may optionally set the TOIL_TEST_TEMP environment variable
     to the path of a directory where you want temporary test files be placed. The
