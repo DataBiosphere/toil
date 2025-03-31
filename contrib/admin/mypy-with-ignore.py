@@ -103,7 +103,6 @@ def main():
         'src/toil/test/src/resourceTest.py',
         'src/toil/test/src/fileStoreTest.py',
         'src/toil/test/src/__init__.py',
-        'src/toil/test/src/restartDAGTest.py',
         'src/toil/test/src/promisesTest.py',
         'src/toil/test/src/checkpointTest.py',
         'src/toil/test/src/jobFileStoreTest.py',
