@@ -421,7 +421,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             raise NotImplementedError()
 
     def __init__(
-        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: float
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.config = config

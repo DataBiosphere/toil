@@ -843,7 +843,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return sbatch_line
 
     def __init__(
-        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: float
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
         self.partitions = SlurmBatchSystem.PartitionSet()

@@ -33,10 +33,16 @@ class TestHistory:
     """
 
     @pytest.fixture(autouse=True, scope="function")
-    def private_history_manager(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
+    def private_history_manager(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> Generator[None]:
         try:
             with monkeypatch.context() as m:
-                m.setattr(HistoryManager, "database_path_override", str(tmp_path / "test-db.sqlite"))
+                m.setattr(
+                    HistoryManager,
+                    "database_path_override",
+                    str(tmp_path / "test-db.sqlite"),
+                )
                 m.setattr(HistoryManager, "JOB_HISTORY_ENABLED", True)
                 yield
         finally:
@@ -118,12 +124,18 @@ class TestHistory:
 
         # Make sure they are no longer matching
         assert len(HistoryManager.get_submittable_workflow_attempts()) == 0
-        assert len(HistoryManager.get_workflow_attempts_with_submittable_job_attempts()) == 0
-        assert len(
+        assert (
+            len(HistoryManager.get_workflow_attempts_with_submittable_job_attempts())
+            == 0
+        )
+        assert (
+            len(
                 HistoryManager.get_unsubmitted_job_attempts(
                     workflow_id, workflow_attempt_number
                 )
-            ) == 0
+            )
+            == 0
+        )
 
         # Make sure we still have data
         assert HistoryManager.count_workflows() == 1
@@ -164,7 +176,10 @@ class TestHistory:
         assert len(HistoryManager.get_fully_submitted_workflow_ids()) == 1
 
         # Make sure the older workflow is first.
-        assert HistoryManager.get_oldest_workflow_ids() == [workflow_id, other_workflow_id]
+        assert HistoryManager.get_oldest_workflow_ids() == [
+            workflow_id,
+            other_workflow_id,
+        ]
 
         # Delete the new workflow
         HistoryManager.delete_workflow(other_workflow_id)
