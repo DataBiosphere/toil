@@ -788,21 +788,32 @@ pneeds_cwl = pytest.mark.skipif(
 )
 
 
+def _wdl_available() -> bool:
+    try:
+        # noinspection PyUnresolvedReferences
+        import WDL  # noqa
+    except ImportError:
+        return False
+    return True
+
+
 def needs_wdl(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if miniwdl is installed
     and configured.
     """
     test_item = _mark_test("wdl", test_item)
-    try:
-        # noinspection PyUnresolvedReferences
-        import WDL  # noqa
-    except ImportError:
-        return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(
-            test_item
-        )
-    else:
+    if _wdl_available():
         return test_item
+    return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(
+        test_item
+    )
+
+
+pneeds_wdl = pytest.mark.skipif(
+    not _wdl_available(),
+    reason="Install Toil with the 'wdl' extra to include this test.",
+)
 
 
 def needs_server(test_item: MT) -> MT:

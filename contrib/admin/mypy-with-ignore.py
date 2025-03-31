@@ -111,7 +111,6 @@ def main():
         'src/toil/test/src/toilContextManagerTest.py',
         'src/toil/test/src/environmentTest.py',
         'src/toil/test/src/workerTest.py',
-        'src/toil/test/utils/toilDebugTest.py',
         'src/toil/test/utils/ABCWorkflowDebug',
         'src/toil/utils/toilStats.py'
     ]]
