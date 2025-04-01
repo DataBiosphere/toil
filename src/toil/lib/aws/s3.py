@@ -31,8 +31,11 @@ from typing import (Any,
                     TYPE_CHECKING,
                     IO)
 
-from botocore.exceptions import ClientError
-from boto.exception import BotoServerError, S3ResponseError
+try:
+    from botocore.exceptions import ClientError
+    from boto.exception import BotoServerError, S3ResponseError
+except ImportError:
+    BotoServerError, S3ResponseError, ClientError = Exception, Exception, Exception  # type: ignore
 
 from toil.lib.retry import retry, get_error_status, ErrorCondition
 from toil.lib.misc import printq
