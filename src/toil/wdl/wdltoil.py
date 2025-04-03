@@ -62,7 +62,7 @@ else:
 
 from functools import partial
 from urllib.error import HTTPError
-from urllib.parse import quote, unquote, urljoin, urlsplit, urlparse
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import WDL.Error
 import WDL.runtime.config
@@ -1668,24 +1668,19 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         logger.debug("Virtualizing %s", file)
 
-        # If enforce_existence is true, then if a file is detected as
-        # nonexistent, raise an error. Else, let it pass through
-        if enforce_existence is False:
-            # We only want to error on a nonexistent file in the output section
-            # Since we need to virtualize on task boundaries, don't enforce existence if on a boundary
-            if is_standard_url(file.value):
-                file_uri = Toil.normalize_uri(file.value)
+        # Make sure we have a scheme, and relative file paths are interpreted
+        # relative to the execution directory.
+        file_uri = Toil.normalize_uri(file.value, dir_path=self.execution_dir)
+        if not AbstractJobStore.url_exists(file_uri):
+            if enforce_existence:
+                raise FileNotFoundError(f"File at URI should exist but doesn't: {file_uri}")
             else:
-                abs_filepath = (
-                    os.path.join(self.execution_dir, file.value)
-                    if self.execution_dir is not None
-                    else os.path.abspath(file.value)
-                )
-                file_uri = Toil.normalize_uri(abs_filepath)
-
-            if not AbstractJobStore.url_exists(file_uri):
                 logger.debug("File appears nonexistent so marking it nonexistent")
+                # Mark the file nonexistent.
                 return set_file_nonexistent(file, True)
+
+        # Now throw away the URI we used just for existence checking and
+        # virtualize just from the base value.
         virtualized_filename = self._virtualize_filename(file.value)
         logger.debug(
             "For file %s got virtualized filename %s", file, virtualized_filename
@@ -1918,18 +1913,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             self._devirtualized_to_virtualized[filename] = result
             return result
         else:
-            # Otherwise this is a local file and we want to fake it as a Toil file store file
-            # Make it an absolute path
-            parsed = urlparse(filename)
-            if parsed.scheme == "file":
-                # conversion was already done by normalize_uri
-                abs_filename = unquote(parsed.path)
-            elif self.execution_dir is not None:
-                # To support relative paths from execution directory, join the execution dir and filename
-                # If filename is already an abs path, join() will not do anything
-                abs_filename = os.path.join(self.execution_dir, filename)
-            else:
-                abs_filename = os.path.abspath(filename)
+            # Otherwise this is a local file name or URI and we want to fake it
+            # as a Toil file store file
+
+            # Convert to a properly-absolutized file URI
+            file_uri = Toil.normalize_uri(filename, dir_path=self.execution_dir)
+            # Extract the absolute path name
+            abs_filename = unquote(urlsplit(file_uri).path)
 
             if abs_filename in self._devirtualized_to_virtualized:
                 # This is a previously devirtualized thing so we can just use the
@@ -1968,6 +1958,51 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
         super().__init__(*args, **kwargs)
 
         self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
+
+    def _virtualize_file(
+        self, file: WDL.Value.File, enforce_existence: bool = True
+    ) -> WDL.Value.File:
+        # When a workflow coerces a string path or file: URI to a File at
+        # workflow scope, we need to fill in the cache filesystem path.
+        if (
+            get_file_virtualized_value(file) is None
+            and get_shared_fs_path(file) is None
+            and (
+                not is_any_url(file.value)
+                or is_file_url(file.value)
+            )
+        ):
+            # This is a never-virtualized file that is a file path or URI and
+            # has no shared FS path associated with it. We just made it at
+            # workflow scope. (If it came from a task, it would have a
+            # virtualized value already.)
+
+            # If we are loading it at workflow scope, the file path can be used
+            # as the cache path.
+
+            if not is_any_url(file.value):
+                # Handle file path
+                cache_path = file.value
+            else:
+                # Handle pulling path out of file URI
+                cache_path = unquote(urlsplit(file.value).path)
+
+            # Apply the path
+            file = set_shared_fs_path(file, cache_path)
+
+            logger.info(
+                "Applied shared filesystem path %s to File %s that appears to "
+                "have been coerced from String at workflow scope.",
+                cache_path,
+                file
+            )
+
+        # Do the virtualization
+        return super()._virtualize_file(file, enforce_existence)
+
+        # TODO: If the workflow coerces a File to a String and back again, we
+        # should have some way to recover the toilfile: URL it had in the job
+        # store to avoid re-importing it.
 
     # This needs to be hash-compatible with MiniWDL.
     # MiniWDL hooks _virtualize_filename
@@ -3149,7 +3184,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             cached_bindings = virtualize_files(
                 cached_result, standard_library, enforce_existence=False
             )
-            
+
             # Throw away anything input but not available outside the call or
             # output.
             delete_dead_files(
@@ -3157,7 +3192,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
                 [cached_bindings, self._enclosing_bindings],
                 file_store
             )
-            
+
             # Postprocess and ship the output bindings.
             return self.postprocess(
                 cached_bindings
@@ -5234,7 +5269,7 @@ class WDLOutputsJob(WDLBaseJob):
 
         :param enclosing_bindings: Bindings outside the workflow call, with
             files that should not be cleaned up at the end of the workflow.
-    
+
         :param cache_key: If set and storing into the call cache is on, will
                cache the workflow execution result under the given key in a
                MiniWDL-compatible way.
@@ -5571,8 +5606,8 @@ def main() -> None:
             # can't start.
 
             # Both start and restart need us to have the workflow and the
-            # wdl_options WDLContext. 
-            
+            # wdl_options WDLContext.
+
             # MiniWDL load code internally uses asyncio.get_event_loop()
             # which might not get an event loop if somebody has ever called
             # set_event_loop. So we need to make sure an event loop is
