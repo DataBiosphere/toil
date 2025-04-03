@@ -275,6 +275,10 @@ levels in toil are based on priority from the logging module:
                         used to enable FUSE mounts for faster runtimes with Singularity.
                         When launching Toil-managed clusters, this will be set to true by --allowFuse.
                         (default: False)
+  --kubernetesPodSecurityContext KUBERNETES_POD_SECURITY_CONTEXT
+                        Path to a YAML defining a pod security context to apply to all pods.
+  --kubernetesSecurityContext KUBERNETES_SECURITY_CONTEXT
+                        Path to a YAML defining a security context to apply to all containers.
   --awsBatchRegion AWS_BATCH_REGION
                         The AWS region containing the AWS Batch queue to submit
                         to.
