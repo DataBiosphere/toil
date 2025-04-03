@@ -240,7 +240,6 @@ py313_main:
     - make test threads="${TEST_THREADS}" tests="src/toil/test/src src/toil/test/utils"
     - TOIL_SKIP_DOCKER=true make test threads="${TEST_THREADS}" tests=src/toil/test/lib
 
-
 slurm_test:
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"

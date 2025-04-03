@@ -31,7 +31,7 @@ from typing import (
     Optional,
     Union,
     cast,
-    overload,
+    overload
 )
 from urllib.error import HTTPError
 from urllib.parse import ParseResult, urlparse
@@ -88,7 +88,7 @@ class InvalidImportExportUrlException(Exception):
 class NoSuchJobException(Exception):
     """Indicates that the specified job does not exist."""
 
-    def __init__(self, jobStoreID: FileID):
+    def __init__(self, jobStoreID: Union[FileID, str]):
         """
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
@@ -98,7 +98,7 @@ class NoSuchJobException(Exception):
 class ConcurrentFileModificationException(Exception):
     """Indicates that the file was attempted to be modified by multiple processes at once."""
 
-    def __init__(self, jobStoreFileID: FileID):
+    def __init__(self, jobStoreFileID: Union[FileID, str]):
         """
         :param jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
@@ -110,7 +110,7 @@ class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
 
     def __init__(
-        self, jobStoreFileID: FileID, customName: Optional[str] = None, *extra: Any
+        self, jobStoreFileID: Union[FileID, str], customName: Optional[str] = None, *extra: Any
     ):
         """
         :param jobStoreFileID: the ID of the file that was mistakenly assumed to exist
@@ -138,11 +138,12 @@ class NoSuchJobStoreException(LocatorException):
     def __init__(self, locator: str, prefix: str):
         """
         :param str locator: The location of the job store
+        :param str prefix: The type of job store
         """
         super().__init__(
             "The job store '%s' does not exist, so there is nothing to restart.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -157,7 +158,7 @@ class JobStoreExistsException(LocatorException):
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
             "the job store with 'toil clean' to start the workflow from scratch.",
             locator,
-            prefix,
+            prefix
         )
 
 
@@ -224,7 +225,7 @@ class AbstractJobStore(ABC):
         ) as fileHandle:
             pickle.dump(self.__config, fileHandle, pickle.HIGHEST_PROTOCOL)
 
-    def resume(self) -> None:
+    def resume(self, sse_key_path: Optional[str] = None) -> None:
         """
         Connect this instance to the physical storage it represents and load the Toil configuration
         into the :attr:`AbstractJobStore.config` attribute.
@@ -748,7 +749,6 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError(f"No implementation for {url}")
 
-    @classmethod
     @abstractmethod
     def _write_to_url(
         cls,
@@ -1155,15 +1155,6 @@ class AbstractJobStore(ABC):
         """
         raise NotImplementedError()
 
-    @contextmanager
-    def batch(self) -> Iterator[None]:
-        """
-        If supported by the batch system, calls to create() with this context
-        manager active will be performed in a batch after the context manager
-        is released.
-        """
-        yield
-
     @deprecated(new_function_name="create_job")
     def create(self, jobDescription: JobDescription) -> JobDescription:
         return self.create_job(jobDescription)
@@ -1260,6 +1251,15 @@ class AbstractJobStore(ABC):
     @deprecated(new_function_name="update_job")
     def update(self, jobDescription: JobDescription) -> None:
         return self.update_job(jobDescription)
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """
+        If supported by the batch system, calls to create() with this context
+        manager active will be performed in a batch after the context manager
+        is released.
+        """
+        yield
 
     @abstractmethod
     def update_job(self, job_description: JobDescription) -> None:
@@ -1502,6 +1502,7 @@ class AbstractJobStore(ABC):
     ) -> ContextManager[IO[str]]: ...
 
     @abstractmethod
+    @contextmanager  # type: ignore
     def read_file_stream(
         self,
         file_id: Union[FileID, str],

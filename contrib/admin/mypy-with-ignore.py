@@ -22,7 +22,8 @@ def main():
 
     # TODO: Remove these paths as typing is added and mypy conflicts are addressed.
     # These are handled as path prefixes.
-    ignore_paths = [os.path.abspath(f) for f in [
+
+    ignore_paths = [os.path.join(pkg_root, f) for f in [
         'docs/_build',
         'docker/Dockerfile.py',
         'docs/conf.py',
@@ -66,7 +67,6 @@ def main():
         'src/toil/jobStores/aws/__init__.py',
         'src/toil/utils/__init__.py',
         'src/toil/lib/throttle.py',
-        'src/toil/lib/iterables.py',
         'src/toil/lib/bioio.py',
         'src/toil/lib/ec2.py',
         'src/toil/lib/expando.py',
