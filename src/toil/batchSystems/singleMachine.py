@@ -94,7 +94,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self,
         config: Config,
         maxCores: float,
-        maxMemory: int,
+        maxMemory: float,
         maxDisk: int,
         max_jobs: Optional[int] = None,
     ) -> None:

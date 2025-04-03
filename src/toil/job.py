@@ -51,11 +51,11 @@ from typing import (
 from urllib.error import HTTPError
 from urllib.parse import urlsplit, unquote, urljoin
 
-from toil import memoize
-
 import dill
 from configargparse import ArgParser
 
+from toil.lib.memoize import memoize
+from toil.lib.misc import StrPath
 from toil.lib.io import is_remote_url
 
 if sys.version_info < (3, 11):
@@ -140,8 +140,8 @@ class FilesDownloadedStoppingPointReached(DebugStoppingPointReached):
     """
 
     def __init__(
-        self, message, host_and_job_paths: Optional[list[tuple[str, str]]] = None
-    ):
+        self, message: str, host_and_job_paths: Optional[list[tuple[str, str]]] = None
+    ) -> None:
         super().__init__(message)
 
         # Save the host and user-code-visible paths of files, in case we're
@@ -307,7 +307,7 @@ def parse_accelerator(
                 parsed["model"] = possible_description
     elif isinstance(spec, dict):
         # It's a dict, so merge with the defaults.
-        parsed.update(spec)
+        parsed.update(cast(AcceleratorRequirement, spec))
         # TODO: make sure they didn't misspell keys or something
     else:
         raise TypeError(
@@ -816,7 +816,7 @@ class JobDescription(Requirer):
 
     def __init__(
         self,
-        requirements: Mapping[str, Union[int, str, bool]],
+        requirements: Mapping[str, Union[int, str, float, bool, list]],
         jobName: str,
         unitName: Optional[str] = "",
         displayName: Optional[str] = "",
@@ -1767,7 +1767,7 @@ class Job:
         # Holds flags set by set_debug_flag()
         self._debug_flags: set[str] = set()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Produce a useful logging string to identify this Job and distinguish it
         from its JobDescription.
@@ -1812,16 +1812,16 @@ class Job:
         return self.description.disk
 
     @disk.setter
-    def disk(self, val):
+    def disk(self, val: int) -> None:
         self.description.disk = val
 
     @property
-    def memory(self):
+    def memory(self) -> int:
         """The maximum number of bytes of memory the job will require to run."""
         return self.description.memory
 
     @memory.setter
-    def memory(self, val):
+    def memory(self, val: int) -> None:
         self.description.memory = val
 
     @property
@@ -1830,7 +1830,7 @@ class Job:
         return self.description.cores
 
     @cores.setter
-    def cores(self, val):
+    def cores(self, val: int) -> None:
         self.description.cores = val
 
     @property
@@ -1848,11 +1848,11 @@ class Job:
         return self.description.preemptible
 
     @deprecated(new_function_name="preemptible")
-    def preemptable(self):
+    def preemptable(self) -> bool:
         return self.description.preemptible
 
     @preemptible.setter
-    def preemptible(self, val):
+    def preemptible(self, val: bool) -> None:
         self.description.preemptible = val
 
     @property
@@ -1865,13 +1865,13 @@ class Job:
         return self.description.files_to_use
 
     @files_to_use.setter
-    def files_to_use(self, val: set[FileID]):
+    def files_to_use(self, val: set[FileID]) -> None:
         self.description.files_to_use = val
 
-    def add_to_files_to_use(self, val: FileID):
+    def add_to_files_to_use(self, val: FileID) -> None:
         self.description.files_to_use.add(val)
 
-    def remove_from_files_to_use(self, val: FileID):
+    def remove_from_files_to_use(self, val: FileID) -> None:
         self.description.files_to_use.remove(val)
 
     def assignConfig(self, config: Config) -> None:
@@ -2296,7 +2296,7 @@ class Job:
 
         return {self._registry[jid] for jid in roots}
 
-    def checkJobGraphConnected(self):
+    def checkJobGraphConnected(self) -> None:
         """
         :raises toil.job.JobGraphDeadlockException: if :func:`toil.job.Job.getRootJobs` does \
         not contain exactly one root job.
@@ -2312,7 +2312,7 @@ class Job:
                 "Graph does not contain exactly one" " root job: %s" % rootJobs
             )
 
-    def checkJobGraphAcylic(self):
+    def checkJobGraphAcylic(self) -> None:
         """
         :raises toil.job.JobGraphDeadlockException: if the connected component \
         of jobs containing this job contains any cycles of child/followOn dependencies \
@@ -2502,7 +2502,7 @@ class Job:
 
         @staticmethod
         def getDefaultOptions(
-            jobStore: Optional[str] = None, jobstore_as_flag: bool = False
+            jobStore: Optional[StrPath] = None, jobstore_as_flag: bool = False
         ) -> Namespace:
             """
             Get default options for a toil workflow.
@@ -2523,9 +2523,9 @@ class Job:
             )
             arguments = []
             if jobstore_as_flag and jobStore is not None:
-                arguments = ["--jobstore", jobStore]
+                arguments = ["--jobstore", str(jobStore)]
             if not jobstore_as_flag and jobStore is not None:
-                arguments = [jobStore]
+                arguments = [str(jobStore)]
             return parser.parse_args(args=arguments)
 
         @staticmethod
@@ -2581,13 +2581,13 @@ class Job:
 
         def __init__(
             self,
-            memory=None,
-            cores=None,
-            disk=None,
-            accelerators=None,
-            preemptible=None,
-            unitName=None,
-        ):
+            memory: Optional[ParseableIndivisibleResource] = None,
+            cores: Optional[ParseableDivisibleResource] = None,
+            disk: Optional[ParseableIndivisibleResource] = None,
+            accelerators: Optional[ParseableAcceleratorRequirement] = None,
+            preemptible: Optional[ParseableFlag] = None,
+            unitName: Optional[str] = "",
+        ) -> None:
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
@@ -2613,7 +2613,7 @@ class Job:
             self.hostID = None
 
         @abstractmethod
-        def start(self, job: "Job") -> Any:
+        def start(self, job: "ServiceHostJob") -> Any:
             """
             Start the service.
 
@@ -2626,7 +2626,7 @@ class Job:
             """
 
         @abstractmethod
-        def stop(self, job: "Job") -> None:
+        def stop(self, job: "ServiceHostJob") -> None:
             """
             Stops the service. Function can block until complete.
 
@@ -3313,7 +3313,9 @@ class FunctionWrappingJob(Job):
     Job used to wrap a function. In its `run` method the wrapped function is called.
     """
 
-    def __init__(self, userFunction, *args, **kwargs):
+    def __init__(
+        self, userFunction: Callable[[...], Any], *args: Any, **kwargs: Any
+    ) -> None:
         """
         :param callable userFunction: The function to wrap. It will be called with ``*args`` and
                ``**kwargs`` as arguments.
@@ -3336,7 +3338,9 @@ class FunctionWrappingJob(Job):
                 list(zip(argSpec.args[-len(argSpec.defaults) :], argSpec.defaults))
             )
 
-        def resolve(key, default=None, dehumanize=False):
+        def resolve(
+            key, default: Optional[Any] = None, dehumanize: bool = False
+        ) -> Any:
             try:
                 # First, try constructor arguments, ...
                 value = kwargs.pop(key)
@@ -3370,7 +3374,7 @@ class FunctionWrappingJob(Job):
         self._args = args
         self._kwargs = kwargs
 
-    def _getUserFunction(self):
+    def _getUserFunction(self) -> Callable[..., Any]:
         logger.debug(
             "Loading user function %s from module %s.",
             self.userFunctionName,
@@ -3379,14 +3383,14 @@ class FunctionWrappingJob(Job):
         userFunctionModule = self._loadUserModule(self.userFunctionModule)
         return getattr(userFunctionModule, self.userFunctionName)
 
-    def run(self, fileStore):
+    def run(self, fileStore: "AbstractFileStore") -> Any:
         userFunction = self._getUserFunction()
         return userFunction(*self._args, **self._kwargs)
 
-    def getUserScript(self):
+    def getUserScript(self) -> str:
         return self.userFunctionModule
 
-    def _jobName(self):
+    def _jobName(self) -> str:
         return ".".join(
             (
                 self.__class__.__name__,
@@ -3424,10 +3428,10 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     """
 
     @property
-    def fileStore(self):
+    def fileStore(self) -> "AbstractFileStore":
         return self._fileStore
 
-    def run(self, fileStore):
+    def run(self, fileStore: "AbstractFileStore") -> Any:
         userFunction = self._getUserFunction()
         rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
         return rValue
@@ -3523,7 +3527,7 @@ class EncapsulatedJob(Job):
     the same value after A or A.encapsulate() has been run.
     """
 
-    def __init__(self, job, unitName=None):
+    def __init__(self, job: Optional[Job], unitName: Optional[str] = None) -> None:
         """
         :param toil.job.Job job: the job to encapsulate.
         :param str unitName: human-readable name to identify this job instance.
@@ -3557,7 +3561,7 @@ class EncapsulatedJob(Job):
             self.encapsulatedJob = None
             self.encapsulatedFollowOn = None
 
-    def addChild(self, childJob):
+    def addChild(self, childJob: Job) -> Job:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Children cannot be added to EncapsulatedJob while it is running"
@@ -3573,7 +3577,7 @@ class EncapsulatedJob(Job):
             self.encapsulatedFollowOn, service, parentService=parentService
         )
 
-    def addFollowOn(self, followOnJob):
+    def addFollowOn(self, followOnJob: Job) -> Job:
         if self.encapsulatedFollowOn is None:
             raise RuntimeError(
                 "Follow-ons cannot be added to EncapsulatedJob while it is running"
@@ -3996,7 +4000,7 @@ class CombineImportsJob(Job):
         self._d = d
         super().__init__(**kwargs)
 
-    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
         """
         Merge the dicts
         """
@@ -4051,7 +4055,7 @@ class WorkerImportJob(Job):
                 path_to_fileid[file] = imported
         return path_to_fileid
 
-    def run(self, file_store: AbstractFileStore) -> Promised[Dict[str, FileID]]:
+    def run(self, file_store: "AbstractFileStore") -> Promised[Dict[str, FileID]]:
         """
         Import the workflow inputs and then create and run the workflow.
         :return: Promise of workflow outputs
@@ -4087,7 +4091,7 @@ class ImportsJob(Job):
         self._import_worker_disk = import_worker_disk
 
     def run(
-        self, file_store: AbstractFileStore
+        self, file_store: "AbstractFileStore"
     ) -> Tuple[Promised[Dict[str, FileID]], Dict[str, FileMetadata]]:
         """
         Import the workflow inputs and then create and run the workflow.
@@ -4285,7 +4289,7 @@ class PromisedRequirement:
     C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
     """
 
-    def __init__(self, valueOrCallable, *args):
+    def __init__(self, valueOrCallable: Any, *args: Any) -> None:
         """
         Initialize this Promised Requirement.
 
@@ -4309,7 +4313,7 @@ class PromisedRequirement:
         self._func = dill.dumps(func)
         self._args = list(args)
 
-    def getValue(self):
+    def getValue(self) -> Any:
         """Return PromisedRequirement value."""
         func = dill.loads(self._func)
         return func(*self._args)

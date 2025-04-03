@@ -310,7 +310,7 @@ class BatchSystemSupport(AbstractBatchSystem):
     """Partial implementation of AbstractBatchSystem, support methods."""
 
     def __init__(
-        self, config: Config, maxCores: float, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
     ) -> None:
         """
         Initialize initial state of the object.

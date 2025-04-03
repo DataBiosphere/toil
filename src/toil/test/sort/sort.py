@@ -23,6 +23,7 @@ from configargparse import ArgumentParser
 
 from toil.common import Toil
 from toil.job import Job
+from toil.lib.misc import StrPath
 from toil.realtimeLogger import RealtimeLogger
 
 defaultLines = 1000
@@ -207,7 +208,9 @@ def getMidPoint(file, fileStart, fileEnd):
     return len(line) + fileStart - 1
 
 
-def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
+def makeFileToSort(
+    fileName: StrPath, lines: int = defaultLines, lineLen: int = defaultLineLen
+) -> None:
     with open(fileName, "w") as f:
         for _ in range(lines):
             line = (

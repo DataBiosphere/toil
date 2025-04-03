@@ -74,6 +74,7 @@ from toil.lib.compatibility import deprecated
 from toil.lib.history import HistoryManager
 from toil.lib.history_submission import ask_user_about_publishing_metrics, create_history_submission, create_current_submission
 from toil.lib.io import AtomicFileCreate, try_path, get_toil_home
+from toil.lib.misc import StrPath
 from toil.lib.memoize import memoize
 from toil.lib.retry import retry
 from toil.lib.threading import ensure_filesystem_lockable
@@ -138,7 +139,7 @@ class Config:
     batch_logs_dir: Optional[str]
     """The backing scheduler will be instructed, if possible, to save logs
     to this directory, where the leader can read them."""
-    statePollingWait: int
+    statePollingWait: float
     state_polling_timeout: int
     disableAutoDeployment: bool
 
@@ -2032,7 +2033,7 @@ def cacheDirName(workflowID: str) -> str:
     return f"cache-{workflowID}"
 
 
-def getDirSizeRecursively(dirPath: str) -> int:
+def getDirSizeRecursively(dirPath: StrPath) -> int:
     """
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.

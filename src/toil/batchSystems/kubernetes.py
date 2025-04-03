@@ -148,7 +148,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         customObjects: NotRequired[CustomObjectsApi]
 
     def __init__(
-        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: int, maxMemory: float, maxDisk: int
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
