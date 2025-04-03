@@ -475,6 +475,8 @@ systems have issues!).
   --retryCount INT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
+  --stopOnFirstFailure BOOL
+                        Stop the workflow at the first complete job failure. 
   --enableUnlimitedPreemptibleRetries
                         If set, preemptible failures (or any failure due to an
                         instance getting unexpectedly terminated) will not count

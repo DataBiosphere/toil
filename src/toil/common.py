@@ -210,6 +210,7 @@ class Config:
 
     # Retrying/rescuing jobs
     retryCount: int
+    stop_on_first_failure: bool
     enableUnlimitedPreemptibleRetries: bool
     doubleMem: bool
     maxJobDuration: int
@@ -388,6 +389,7 @@ class Config:
 
         # Retrying/rescuing jobs
         set_option("retryCount")
+        set_option("stop_on_first_failure")
         set_option("enableUnlimitedPreemptibleRetries")
         set_option("doubleMem")
         set_option("maxJobDuration")
