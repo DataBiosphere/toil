@@ -502,7 +502,7 @@ class ToilBackend(WESBackend):
         }
 
     @handle_errors
-    def run_workflow(self, **args) -> dict[str, str]:
+    def run_workflow(self, **args: Any) -> dict[str, str]:
         """Run a workflow."""
         run_id = self.run_id_prefix + uuid.uuid4().hex
         run = self._get_run(run_id, should_exists=False)

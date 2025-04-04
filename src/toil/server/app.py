@@ -16,7 +16,7 @@ import logging
 import os
 
 import connexion  # type: ignore
-from connexion.options import SwaggerUIOptions
+from connexion.options import SwaggerUIOptions  # type: ignore[import-untyped]
 from configargparse import ArgumentParser
 
 from toil.lib.aws import get_current_aws_region, running_on_ec2, running_on_ecs
