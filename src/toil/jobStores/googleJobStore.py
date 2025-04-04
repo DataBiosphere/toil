@@ -20,8 +20,8 @@ import uuid
 from contextlib import contextmanager
 from functools import wraps
 from io import BytesIO
-from typing import IO, Optional
-from urllib.parse import ParseResult
+from typing import Any, IO, Iterator, Optional
+from urllib.parse import ParseResult, urlunparse
 
 from google.api_core.exceptions import (
     GoogleAPICallError,
@@ -90,6 +90,46 @@ def google_retry(f):
 
     return wrapper
 
+@contextmanager
+def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
+    """
+    Detect and usefully report permission errors.
+
+    If we fall back to anonymous credentials, but they don't have permission
+    for something, the Google Cloud Storage module will try to refresh them
+    behind the scenes. Then it will complain::
+
+        <class 'google.auth.exceptions.InvalidOperation'>: Anonymous credentials cannot be refreshed.
+    
+    We need to detect this and report that the real problem is that the user
+    has not set up any credentials. When you try to make the client
+    non-anonymously and don't have credentials set up, you get a nice error
+    from Google::
+
+        google.auth.exceptions.DefaultCredentialsError: Your default credentials were not found. To set up Application Default Credentials, see https://cloud.google.com/docs/authentication/external/set-up-adc for more information.
+
+    But we swallow that when we fall back to anonymous access.
+
+    So we take the URL and any notes from client setup here, and if something
+    goes wrong that looks like a permission problem we complain with the notes
+    attached.
+    """
+    try:
+        yield
+    except exceptions.InvalidOperation as e:
+        if "Anonymous credentials cannot be refreshed" in str(e):
+            raise RuntimeError(
+                "Google Storage tried to refresh anonymous credentials. "
+                "Are you sure you have set up your Google Account login "
+                "for applications with permission to access "
+                f"{urlunparse(url)}? "
+                "Maybe try `gcloud auth application-default login`? "
+                f"Client setup said: {notes}"
+            ) from e
+        else:
+            raise
+
+
 
 class GoogleJobStore(AbstractJobStore):
 
@@ -117,10 +157,10 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix + self.statsBaseID
 
         self.sseKey = None
-        self.storageClient = self.create_client()
+        self.storageClient, self.auth_notes = self.create_client()
 
     @classmethod
-    def create_client(cls) -> storage.Client:
+    def create_client(cls) -> tuple[storage.Client, str]:
         """
         Produce a client for Google Sotrage with the highest level of access we can get.
 
@@ -128,7 +168,27 @@ class GoogleJobStore(AbstractJobStore):
         Google Storage module's behavior.
 
         Warn if GOOGLE_APPLICATION_CREDENTIALS is set but not actually present.
+
+        :returns: the client, and any notes about why it might not have permissions.
         """
+
+        notes: list[str] = []
+        def add_note(message: str, *args: Any, warn: bool = False) -> None:
+            """
+            Add and possibly warn with a note about the client permissions.
+            """
+            note = message % args
+            if warn:
+                log.warning(note)
+            notes.append(note)
+        def compile_notes() -> str:
+            """
+            Make one string explainign why we might not have expected permissions.
+            """
+            if notes:
+                return f"Google authentication had {len(notes)} potential issues: {'; '.join(notes)}"
+            else:
+                return "Google authentication appeared successful."
 
         # Determine if we have an override environment variable for our credentials.
         # We get the path to check existence, but Google Storage works out what
@@ -139,38 +199,42 @@ class GoogleJobStore(AbstractJobStore):
         if credentials_path is not None and not os.path.exists(credentials_path):
             # If the file is missing, complain.
             # This variable holds a file name and not any sensitive data itself.
-            log.warning(
+            add_note(
                 "File '%s' from GOOGLE_APPLICATION_CREDENTIALS is unavailable! "
                 "We may not be able to authenticate!",
                 credentials_path,
+                warn=True
             )
 
         if credentials_path is None and os.path.exists(cls.nodeServiceAccountJson):
             try:
-                # load credentials from a particular file on GCE nodes if an override path is not set
+                # load credentials from a particular file on GCE nodes if an
+                # override path is not set
                 return storage.Client.from_service_account_json(
                     cls.nodeServiceAccountJson
-                )
+                ), compile_notes()
             except OSError:
                 # Probably we don't have permission to use the file.
-                log.warning(
+                add_note(
                     "File '%s' exists but didn't work to authenticate!",
                     cls.nodeServiceAccountJson,
+                    warn=True
                 )
 
         # Either a filename is specified, or our fallback file isn't there.
         try:
             # See if Google can work out how to authenticate.
-            return storage.Client()
-        except (DefaultCredentialsError, OSError):
+            return storage.Client(), compile_notes()
+        except (DefaultCredentialsError, OSError) as e:
             # Depending on which Google codepath or module version (???)
             # realizes we have no credentials, we can get an EnvironemntError,
             # or the new DefaultCredentialsError we are supposedly specced to
             # get.
+            add_note("Could not make authenticated client: %s", e)
 
             # Google can't find credentials, fall back to being anonymous.
             # This is likely to happen all the time so don't warn.
-            return storage.Client.create_anonymous_client()
+            return storage.Client.create_anonymous_client(), compile_notes()
 
     @google_retry
     def initialize(self, config=None):
@@ -406,19 +470,20 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     @google_retry
-    def _get_blob_from_url(cls, url, exists=False):
+    def _get_blob_from_url(cls, client: storage.Client, url: ParseResult, exists: bool = False) -> storage.blob.Blob:
         """
         Gets the blob specified by the url.
 
         caution: makes no api request. blob may not ACTUALLY exist
 
-        :param urlparse.ParseResult url: the URL
+        :param client: The Google Sotrage client to use to connect with.
 
-        :param bool exists: if True, then syncs local blob object with cloud
+        :param url: the URL
+
+        :param exists: if True, then syncs local blob object with cloud
         and raises exceptions if it doesn't exist remotely
 
         :return: the blob requested
-        :rtype: :class:`~google.cloud.storage.blob.Blob`
         """
         bucketName = url.netloc
         fileName = url.path
@@ -427,8 +492,7 @@ class GoogleJobStore(AbstractJobStore):
         if fileName.startswith("/"):
             fileName = fileName[1:]
 
-        storageClient = cls.create_client()
-        bucket = storageClient.bucket(bucket_name=bucketName)
+        bucket = client.bucket(bucket_name=bucketName)
         blob = bucket.blob(compat_bytes(fileName))
 
         if exists:
@@ -440,26 +504,34 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
-        try:
-            cls._get_blob_from_url(url, exists=True)
-            return True
-        except NoSuchFileException:
-            return False
+        client, auth_notes = cls.create_client()
+        with permission_error_reporter(url, auth_notes): 
+            try:
+                cls._get_blob_from_url(client, url, exists=True)
+                return True
+            except NoSuchFileException:
+                return False
 
     @classmethod
     def _get_size(cls, url):
-        return cls._get_blob_from_url(url, exists=True).size
+        client, auth_notes = cls.create_client()
+        with permission_error_reporter(url, auth_notes):
+            return cls._get_blob_from_url(client, url, exists=True).size
 
     @classmethod
     def _read_from_url(cls, url, writable):
-        blob = cls._get_blob_from_url(url, exists=True)
-        blob.download_to_file(writable)
-        return blob.size, False
+        client, auth_notes = cls.create_client()
+        with permission_error_reporter(url, auth_notes):
+            blob = cls._get_blob_from_url(client, url, exists=True)
+            blob.download_to_file(writable)
+            return blob.size, False
 
     @classmethod
     def _open_url(cls, url: ParseResult) -> IO[bytes]:
-        blob = cls._get_blob_from_url(url, exists=True)
-        return blob.open("rb")
+        client, auth_notes = cls.create_client()
+        with permission_error_reporter(url, auth_notes):
+            blob = cls._get_blob_from_url(client, url, exists=True)
+            return blob.open("rb")
 
     @classmethod
     def _supports_url(cls, url, export=False):
@@ -467,8 +539,10 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _write_to_url(cls, readable: bytes, url: str, executable: bool = False) -> None:
-        blob = cls._get_blob_from_url(url)
-        blob.upload_from_file(readable)
+        client, auth_notes = cls.create_client()
+        with permission_error_reporter(url, auth_notes):
+            blob = cls._get_blob_from_url(client, url)
+            blob.upload_from_file(readable)
 
     @classmethod
     def _list_url(cls, url: ParseResult) -> list[str]:
