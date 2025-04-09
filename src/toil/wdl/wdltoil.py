@@ -5644,7 +5644,7 @@ def main() -> None:
                 logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
 
             if lint_warnings_counter[0]:
-                logger.warning('Workflow lint warnings:\n%s', fp.getvalue().rstrip())
+                logger.warning('Workflow lint warnings:\n%s', lint_warnings_io.getvalue().rstrip())
                 if options.strict:
                     logger.critical(f'Workflow did not pass linting in strict mode')
                     # MiniWDL uses exit code 2 to indicate linting errors, so replicate that behavior
