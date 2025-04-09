@@ -81,7 +81,7 @@ cwl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[cwl]
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_revsort
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_revsort
 
 wdl_dependency_is_stand_alone:
   rules:
@@ -90,7 +90,7 @@ wdl_dependency_is_stand_alone:
   script:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[wdl]
-    - make test threads="${TEST_THREADS}" marker="${MARKER}" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/wdl/wdltoil_test.py::WDLTests::test_MD5sum
 
 quick_test_offline:
   rules:
@@ -270,10 +270,10 @@ cwl_v1.2:
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     # Run CWL integration tests excluded from cwl_misc
-    - time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and integrative'"
+    - time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and integrative'"
     # Run CWL conformance tests, with file store bypassed.
     # Only one test so do just one thread and log live.
-    - time make test threads=1 tests=src/toil/test/cwl/cwlTest.py::CWLv12Test::test_run_conformance_with_in_place_update
+    - time make test threads=1 tests=src/toil/test/cwl/cwlTest.py::TestCWLv12::test_run_conformance_with_in_place_update
   artifacts:
     reports:
       junit: "*.junit.xml"
@@ -303,7 +303,7 @@ cwl_badge:
     - make download_cwl_spec
     - rm -rf badges1.2
     # We have to run this on one thread to avoid a race condition: https://github.com/common-workflow-language/cwltest/issues/239
-    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
+    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
   allow_failure: true
   artifacts:
     paths:
@@ -326,7 +326,7 @@ cwl_badge_release:
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     - make download_cwl_spec
     - rm -rf badges1.2
-    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="1" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600'"
+    - make test tests="src/toil/test/cwl/spec_v12/conformance_tests.cwltest.yaml" dist=worksteal threads="${TEST_THREADS}" pytest_args="--cwl-runner-verbose --cwl-badgedir=badges1.2 --junit-xml=in-place-update-conformance-1.2.junit.xml --cwl-args='--relax-path-checks --clean=always --logDebug --statusWait=10 --retryCount=2 --eval-timeout=600 --bypass-file-store'"
   allow_failure: true
   artifacts:
     paths:
@@ -372,7 +372,7 @@ cwl_misc:
     - pwd
     - ${MAIN_PYTHON_PKG} -m virtualenv venv && . venv/bin/activate && pip install -U pip wheel && make prepare && make develop extras=[cwl,aws]
     - python setup_gitlab_docker.py  # login to increase the docker.io rate limit
-    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(CWLWorkflowTest or cwl_small) and not integrative'"
+    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and not integrative'"
 
 #cwl_v1.2_kubernetes:
 #  stage: main_tests
@@ -386,7 +386,7 @@ cwl_misc:
 #    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
 #    - if [[ ! -z "${KUBERNETES_DOCKER_HUB_MIRROR}" ]] ; then export SINGULARITY_DOCKER_HUB_MIRROR="${KUBERNETES_DOCKER_HUB_MIRROR}" ; fi
 #    - mkdir -p ${TOIL_WORKDIR}
-#    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::CWLv12Test::test_kubernetes_cwl_conformance_with_caching"
+#    - make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py::TestCWLv12::test_kubernetes_cwl_conformance src/toil/test/cwl/cwlTest.py::TestCWLv12::test_kubernetes_cwl_conformance_with_caching"
 #  artifacts:
 #    reports:
 #      junit: "*.junit.xml"
@@ -527,8 +527,8 @@ mesos:
     - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testAwsMesos
     - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testFileMesos
     - make test threads="${TEST_THREADS}" tests=src/toil/test/sort/sortTest.py::SortTest::testGoogleMesos
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance
-    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::CWLv10Test::test_mesos_cwl_conformance_with_caching
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::TestCWLv10::test_mesos_cwl_conformance
+    - make test threads="${TEST_THREADS}" tests=src/toil/test/cwl/cwlTest.py::TestCWLv10::test_mesos_cwl_conformance_with_caching
     - make test threads="${TEST_THREADS}" tests=src/toil/test/src/promisedRequirementTest.py::MesosPromisedRequirementsTest
     - make test threads="${TEST_THREADS}" tests="src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSStaticAutoscaleTest src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSAutoscaleTestMultipleNodeTypes src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster"
 

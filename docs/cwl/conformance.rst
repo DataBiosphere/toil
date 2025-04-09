@@ -1,7 +1,7 @@
 .. _cwlConformance:
 
-Toil CWL Conformance
-===========================
+CWL Conformance
+===============
 
 Note: To fully support `inplace_update`, ``--bypass-file-store`` should be enabled.
 See :ref:`inplaceupdaterequirement`.

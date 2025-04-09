@@ -121,6 +121,7 @@ endif
 endif
 
 develop: check_venv
+	python3 setup.py check
 	pip install -e .$(extras) $(packages)
 
 clean_develop: check_venv
@@ -178,7 +179,7 @@ test_offline: check_venv check_build_reqs
 # This target will run about 1 minute of tests, and stop at the first failure
 test_1min: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
-	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::CWLWorkflowTest::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)" --color=yes
+	    python -m pytest --log-format="%(asctime)s %(levelname)s %(message)s" -vv --timeout=10 --strict-markers --log-level DEBUG --log-cli-level INFO --maxfail=1 $(pytest_args) src/toil/test/batchSystems/batchSystemTest.py::SingleMachineBatchSystemTest::test_run_jobs src/toil/test/batchSystems/batchSystemTest.py::KubernetesBatchSystemBenchTest src/toil/test/server/serverTest.py::ToilWESServerBenchTest::test_get_service_info src/toil/test/cwl/cwlTest.py::TestCWLWorkflow::test_run_colon_output src/toil/test/jobStores/jobStoreTest.py::FileJobStoreTest::testUpdateBehavior -m "$(marker)" --color=yes
 
 ifdef TOIL_DOCKER_REGISTRY
 

@@ -2486,9 +2486,12 @@ class Job:
         """Used to setup and run Toil workflow."""
 
         @staticmethod
-        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgumentParser:
+        def getDefaultArgumentParser(jobstore_as_flag: bool = False) -> ArgParser:
             """
             Get argument parser with added toil workflow options.
+
+            This is the Right Way to get an argument parser in a Toil Python
+            workflow.
 
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
             :returns: The argument parser used by a toil workflow with added Toil options.
@@ -2533,6 +2536,13 @@ class Job:
             """
             Adds the default toil options to an :mod:`optparse` or :mod:`argparse`
             parser object.
+
+            Consider using :meth:`getDefaultArgumentParser` instead, which will
+            produce a parser of the correct class to use Toil's config file and
+            environment variables. If ther parser passed here is just an
+            :class:`argparse.ArgumentParser` and not a
+            :class:`configargparse.ArgParser`, the Toil config file and
+            environment variables will not be respected.
 
             :param parser: Options object to add toil options to.
             :param jobstore_as_flag: make the job store option a --jobStore flag instead of a required jobStore positional argument.
@@ -3140,7 +3150,7 @@ class Job:
             startTime = time.time()
             startClock = ResourceMonitor.get_total_cpu_time()
         baseDir = os.getcwd()
-        
+
         succeeded = False
         try:
             yield
@@ -4107,7 +4117,8 @@ class ImportsJob(Job):
                     # schedule the individual file
                     per_batch_files.append(filename)
                 file_batches.append(per_batch_files)
-                # reset batching calculation
+                # reset batch to empty
+                per_batch_files = []
                 per_batch_size = 0
             else:
                 per_batch_size += filesize

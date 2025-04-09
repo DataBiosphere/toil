@@ -250,6 +250,10 @@ levels in toil are based on priority from the logging module:
                         allocations.
   --slurmTime SLURM_TIME
                         Slurm job time limit, in [DD-]HH:MM:SS format.
+  --slurmPartition SLURM_PARTITION
+                        Partition to send Slurm jobs to.
+  --slurmGPUPartition SLURM_GPU_PARTITION
+                        Partition to send Slurm jobs to if they ask for GPUs.
   --slurmPE SLURM_PE    Special partition to send Slurm jobs to if they ask
                         for more than 1 CPU. Useful for Slurm clusters that do
                         not offer a partition accepting both single-core and
@@ -467,6 +471,8 @@ systems have issues!).
   --retryCount INT
                         Number of times to retry a failing job before giving
                         up and labeling job failed. default=1
+  --stopOnFirstFailure BOOL
+                        Stop the workflow at the first complete job failure. 
   --enableUnlimitedPreemptibleRetries
                         If set, preemptible failures (or any failure due to an
                         instance getting unexpectedly terminated) will not count
