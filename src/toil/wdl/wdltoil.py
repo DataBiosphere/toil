@@ -5501,27 +5501,32 @@ def main() -> None:
                         )
                         options.all_call_outputs = True
 
+                # This mutates document to add linting information, but doesn't print any lint errors itself
+                # or stop the workflow
                 WDL.Lint.lint(document)
 
-                strict = options.strict
-                shown = [0]
+                # We use a mutable variable and a generic file pointer to capture information about lint warnings
+                # Both will be populated inside outline()
+                # shown will be the number of lint warnings and fp will contain the text about lint warnings
+                lint_warnings_counter = [0]
 
-                fp = io.StringIO()
+                lint_warnings_io = io.StringIO()
                 outline(
                     document,
                     0,
-                    file=fp,
+                    file=lint_warnings_io,
                     show_called=(document.workflow is not None),
-                    shown=shown,
+                    shown=lint_warnings_counter,
                 )  # type: ignore[no-untyped-call]
 
                 if getattr(WDL.Lint, "_shellcheck_available", None) is False:
                     logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
 
-                if shown[0]:
+                if lint_warnings_counter[0]:
                     logger.warning('Workflow lint warnings:\n%s', fp.getvalue().rstrip())
-                    if strict:
+                    if options.strict:
                         logger.critical(f'Workflow did not pass linting in strict mode')
+                        # MiniWDL uses exit code 2 to indicate linting errors, so replicate that behavior
                         sys.exit(2)
 
                 # If our input really comes from a URI or path, remember it.

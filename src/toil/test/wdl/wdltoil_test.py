@@ -680,10 +680,10 @@ class WDLTests(BaseWDLTest):
 
         p = subprocess.Popen(
             self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
-        stderr = p.stderr.read().decode('utf-8')
+        stderr = p.stderr.read()
         p.wait()
         assert p.returncode == 2
-        assert 'Workflow did not pass linting in strict mode' in stderr
+        assert b'Workflow did not pass linting in strict mode' in stderr
 
 class WDLToilBenchTests(ToilTest):
     """Tests for Toil's MiniWDL-based implementation that don't run workflows."""
