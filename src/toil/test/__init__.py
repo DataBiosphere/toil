@@ -562,7 +562,16 @@ def needs_mesos(test_item: MT) -> MT:
         )(test_item)
     try:
         import psutil  # noqa
-        import pymesos  # type: ignore[import-not-found]
+        # If pymesos is installed, because it isn't typed, mypy sees an
+        # import-untyped error here.
+        #
+        # If pymesos *isn't* installed, mypy sees an import-not-found error
+        # here.
+        #
+        # If we ignore mypy errors by name, we'll get a mypy error for ignoring
+        # whichever one isn't actually occurring on the current system. So we
+        # need a blanket ignore here, or a much cleverer mypy.
+        import pymesos  # type: ignore
     except ImportError:
         return unittest.skip(
             "Install Mesos (and Toil with the 'mesos' extra) to include this test."
