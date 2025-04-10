@@ -395,6 +395,7 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _url_exists(cls, url: ParseResult) -> bool:
+        # Note that broken symlinks will not be shown to exist.
         return os.path.exists(cls._extract_path_from_url(url))
 
     @classmethod

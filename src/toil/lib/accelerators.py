@@ -103,7 +103,9 @@ def have_working_nvidia_docker_runtime() -> bool:
                 "all",
                 "ubuntu:20.04",
                 "nvidia-smi",
-            ]
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
     except (
         FileNotFoundError,
