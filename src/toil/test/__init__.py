@@ -327,6 +327,12 @@ def _has_rsync3() -> bool:
             return False
     except subprocess.CalledProcessError:
         return False
+    except ValueError:
+        # Don't have an int where we looked
+        return False
+    except IndexError:
+        # Don't have the field to look in
+        return False
     return True
 
 
