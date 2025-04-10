@@ -10,9 +10,9 @@ import time
 from collections.abc import Iterator
 from contextlib import closing
 from typing import Optional, Union
-try:
+if sys.version_info >= (3, 10):
     from typing import TypeAlias
-except ImportError:
+else:
     from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
