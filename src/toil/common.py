@@ -127,6 +127,8 @@ class Config:
     kubernetes_service_account: Optional[str]
     kubernetes_pod_timeout: float
     kubernetes_privileged: bool
+    kubernetes_pod_security_context: Optional[str]
+    kubernetes_security_context: Optional[str]
     tes_endpoint: str
     tes_user: str
     tes_password: str
