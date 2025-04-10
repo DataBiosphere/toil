@@ -11,38 +11,35 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import builtins
+from collections.abc import Callable, Generator
 import logging
 import os
+from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 import time
 import uuid
-from unittest.mock import patch
-
+from typing import Optional, Any, cast
 import pytest
-
-pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))  # noqa
-sys.path.insert(0, pkg_root)  # noqa
 
 import toil
 from toil import resolveEntryPoint
 from toil.common import Config, Toil
 from toil.job import Job
 from toil.lib.bioio import system
+from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.test import (
-    ToilTest,
     get_data,
-    get_temp_file,
-    integrative,
-    needs_aws_ec2,
-    needs_cwl,
-    needs_docker,
-    needs_rsync3,
-    slow,
+    pneeds_aws_ec2 as needs_aws_ec2,
+    pneeds_cwl as needs_cwl,
+    pneeds_docker as needs_docker,
+    pintegrative as integrative,
+    pneeds_rsync3 as needs_rsync3,
+    pslow as slow,
 )
-from toil.test.sort.sortTest import makeFileToSort
+from toil.test.sort.sort import makeFileToSort
 from toil.utils.toilStats import get_stats, process_data
 from toil.utils.toilStatus import ToilStatus
 from toil.version import python
@@ -50,95 +47,67 @@ from toil.version import python
 logger = logging.getLogger(__name__)
 
 
-class UtilsTest(ToilTest):
+@pytest.fixture(scope="function")
+def unsortedFile(tmp_path: Path) -> Generator[Path]:
+    try:
+        tempFile = tmp_path / "lines"
+        makeFileToSort(str(tempFile), 1000, 10)
+        yield tempFile
+    finally:
+        pass  # no cleanup needed
+
+
+@pytest.fixture(scope="function")
+def correctSort(unsortedFile: Path) -> list[str]:
+    with unsortedFile.open() as fileHandle:
+        lines = fileHandle.readlines()
+        lines.sort()
+        return lines
+
+
+class TestUtils:
     """
     Tests the utilities that toil ships with, e.g. stats and status, in conjunction with restart
     functionality.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.tempDir = self._createTempDir()
-        self.tempFile = get_temp_file(rootDir=self.tempDir)
-        self.outputFile = get_temp_file(rootDir=self.tempDir)
-        self.outputFile = "someSortedStuff.txt"
-        self.toilDir = os.path.join(self.tempDir, "jobstore")
-        self.assertFalse(os.path.exists(self.toilDir))
-        self.lines = 1000
-        self.lineLen = 10
-        self.N = 1000
-        makeFileToSort(self.tempFile, self.lines, self.lineLen)
-        # First make our own sorted version
-        with open(self.tempFile) as fileHandle:
-            self.correctSort = fileHandle.readlines()
-            self.correctSort.sort()
-
-        self.sort_workflow_cmd = [
-            python,
-            "-m",
-            "toil.test.sort.sort",
-            f"file:{self.toilDir}",
-            f"--fileToSort={self.tempFile}",
-            f"--outputFile={self.outputFile}",
-            "--clean=never",
-        ]
-
-        self.restart_sort_workflow_cmd = [
-            python,
-            "-m",
-            "toil.test.sort.restart_sort",
-            f"file:{self.toilDir}",
-        ]
-
-    def tearDown(self):
-        if os.path.exists(self.tempDir):
-            shutil.rmtree(self.tempDir)
-        if os.path.exists(self.toilDir):
-            shutil.rmtree(self.toilDir)
-
-        for f in [
-            self.tempFile,
-            self.outputFile,
-            os.path.join(self.tempDir, "output.txt"),
-        ]:
-            if os.path.exists(f):
-                os.remove(f)
-
-        ToilTest.tearDown(self)
+    N: int = 1000
 
     @property
-    def toilMain(self):
+    def toilMain(self) -> str:
         return resolveEntryPoint("toil")
 
-    @property
-    def cleanCommand(self):
-        return [self.toilMain, "clean", self.toilDir]
+    def cleanCommand(self, jobstore: Path) -> list[str]:
+        return [self.toilMain, "clean", str(jobstore)]
 
-    @property
-    def statsCommand(self):
-        return [self.toilMain, "stats", self.toilDir, "--pretty"]
+    def statsCommand(self, jobstore: Path) -> list[str]:
+        return [self.toilMain, "stats", str(jobstore), "--pretty"]
 
-    def statusCommand(self, failIfNotComplete=False):
-        commandTokens = [self.toilMain, "status", self.toilDir]
+    def statusCommand(
+        self, jobstore: Path, failIfNotComplete: bool = False
+    ) -> list[str]:
+        commandTokens = [self.toilMain, "status", str(jobstore)]
         if failIfNotComplete:
             commandTokens.append("--failIfNotComplete")
         return commandTokens
 
-    def test_config_functionality(self):
+    def test_config_functionality(self, tmp_path: Path) -> None:
         """Ensure that creating and reading back the config file works"""
-        config_file = os.path.abspath("config.yaml")
-        config_command = [self.toilMain, "config", config_file]
+        config_file = tmp_path / "config.yaml"
+        config_command = [self.toilMain, "config", str(config_file)]
         # make sure the command `toil config file_path` works
         try:
             subprocess.check_call(config_command)
         except subprocess.CalledProcessError:
-            self.fail("The toil config utility failed!")
+            pytest.fail("The toil config utility failed!")
 
         parser = Job.Runner.getDefaultArgumentParser()
         # make sure that toil can read from the generated config file
         try:
-            parser.parse_args(["random_jobstore", "--config", config_file])
-            with open(config_file) as cm:
+            parser.parse_args(
+                [str(tmp_path / "random_jobstore"), "--config", str(config_file)]
+            )
+            with config_file.open() as cm:
                 payload = cm.read()
                 expected = "workDir batchSystem symlinkImports defaultMemory retryCount"
                 assert all(
@@ -146,16 +115,19 @@ class UtilsTest(ToilTest):
                     for param in expected.split(" ")
                 ), f"Generated config contains { expected }"
         except SystemExit:
-            self.fail("Failed to parse the default generated config file!")
-        finally:
-            os.remove(config_file)
+            pytest.fail("Failed to parse the default generated config file!")
 
     @needs_rsync3
     @pytest.mark.timeout(1200)
     @needs_aws_ec2
     @integrative
+    @pytest.mark.rsync
+    @pytest.mark.online
+    @pytest.mark.aws_s3
+    @pytest.mark.integrative
     @slow
-    def testAWSProvisionerUtils(self):
+    @pytest.mark.slow
+    def testAWSProvisionerUtils(self) -> None:
         """
         Runs a number of the cluster utilities in sequence.
 
@@ -171,8 +143,8 @@ class UtilsTest(ToilTest):
         """
         # TODO: Run these for the other clouds.
         clusterName = f"cluster-utils-test{uuid.uuid4()}"
-        keyName = os.getenv("TOIL_AWS_KEYNAME").strip() or "id_rsa"
-        expected_owner = os.getenv("TOIL_OWNER_TAG") or keyName
+        keyName = os.getenv("TOIL_AWS_KEYNAME", "id_rsa").strip()
+        expected_owner = os.getenv("TOIL_OWNER_TAG", keyName)
 
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
@@ -216,7 +188,7 @@ class UtilsTest(ToilTest):
                 "Owner": expected_owner,
             }
             for key in tags:
-                self.assertEqual(leader.tags.get(key), tags[key])
+                assert cast(dict[str, str], leader.tags).get(key) == tags[key]
         finally:
             system(
                 [
@@ -229,22 +201,26 @@ class UtilsTest(ToilTest):
             )
 
     @slow
-    def testUtilsSort(self):
+    def testUtilsSort(
+        self, tmp_path: Path, unsortedFile: Path, correctSort: list[str]
+    ) -> None:
         """
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
+        jobstore = tmp_path / "jobstore"
+        outputFile = tmp_path / "someSortedStuff.txt"
         # Get the sort command to run
         toilCommand = [
             sys.executable,
             "-m",
             toil.test.sort.sort.__name__,
-            self.toilDir,
+            str(jobstore),
             "--logLevel=DEBUG",
             "--fileToSort",
-            self.tempFile,
+            str(unsortedFile),
             "--outputFile",
-            self.outputFile,
+            str(outputFile),
             "--N",
             str(self.N),
             "--stats",
@@ -253,11 +229,10 @@ class UtilsTest(ToilTest):
             "--badWorkerFailInterval=0.05",
         ]
         # Try restarting it to check that a JobStoreException is thrown
-        self.assertRaises(
-            subprocess.CalledProcessError, system, toilCommand + ["--restart"]
-        )
+        with pytest.raises(subprocess.CalledProcessError):
+            system(toilCommand + ["--restart"])
         # Check that trying to run it in restart mode does not create the jobStore
-        self.assertFalse(os.path.exists(self.toilDir))
+        assert not jobstore.exists()
 
         # Status command
         # Run the script for the first time
@@ -267,17 +242,15 @@ class UtilsTest(ToilTest):
         except (
             subprocess.CalledProcessError
         ):  # This happens when the script fails due to having unfinished jobs
-            system(self.statusCommand())
-            self.assertRaises(
-                subprocess.CalledProcessError,
-                system,
-                self.statusCommand(failIfNotComplete=True),
-            )
+            system(self.statusCommand(jobstore))
+            with pytest.raises(subprocess.CalledProcessError):
+                system(self.statusCommand(jobstore, failIfNotComplete=True))
             finished = False
-        self.assertTrue(os.path.exists(self.toilDir))
+        assert jobstore.exists()
 
         # Try running it without restart and check an exception is thrown
-        self.assertRaises(subprocess.CalledProcessError, system, toilCommand)
+        with pytest.raises(subprocess.CalledProcessError):
+            system(toilCommand)
 
         # Now restart it until done
         totalTrys = 1
@@ -288,49 +261,48 @@ class UtilsTest(ToilTest):
             except (
                 subprocess.CalledProcessError
             ):  # This happens when the script fails due to having unfinished jobs
-                system(self.statusCommand())
-                self.assertRaises(
-                    subprocess.CalledProcessError,
-                    system,
-                    self.statusCommand(failIfNotComplete=True),
-                )
+                system(self.statusCommand(jobstore))
+                with pytest.raises(subprocess.CalledProcessError):
+                    system(self.statusCommand(jobstore, failIfNotComplete=True))
                 if totalTrys > 16:
-                    self.fail()  # Exceeded a reasonable number of restarts
+                    pytest.fail("Exceeded a reasonable number of restarts")
                 totalTrys += 1
 
         # Check the toil status command does not issue an exception
-        system(self.statusCommand())
+        system(self.statusCommand(jobstore))
 
         # Check we can run 'toil stats'
-        system(self.statsCommand)
+        system(self.statsCommand(jobstore))
 
         # Check the file is properly sorted
-        with open(self.outputFile) as fileHandle:
+        with outputFile.open() as fileHandle:
             l2 = fileHandle.readlines()
-            self.assertEqual(self.correctSort, l2)
-
-        # Delete output file before next step
-        os.remove(self.outputFile)
+            assert correctSort == l2
 
         # Check we can run 'toil clean'
-        system(self.cleanCommand)
+        system(self.cleanCommand(jobstore))
 
     @slow
-    def testUtilsStatsSort(self):
+    @pytest.mark.slow
+    def testUtilsStatsSort(
+        self, tmp_path: Path, unsortedFile: Path, correctSort: list[str]
+    ) -> None:
         """
         Tests the stats commands on a complete run of the stats test.
         """
+        jobstore = tmp_path / "jobstore"
+        outputFile = tmp_path / "someSortedStuff.txt"
         # Get the sort command to run
         toilCommand = [
             sys.executable,
             "-m",
             toil.test.sort.sort.__name__,
-            self.toilDir,
+            str(jobstore),
             "--logLevel=DEBUG",
             "--fileToSort",
-            self.tempFile,
+            str(unsortedFile),
             "--outputFile",
-            self.outputFile,
+            str(outputFile),
             "--N",
             str(self.N),
             "--stats",
@@ -341,31 +313,29 @@ class UtilsTest(ToilTest):
 
         # Run the script for the first time
         system(toilCommand)
-        self.assertTrue(os.path.exists(self.toilDir))
+        assert jobstore.exists()
 
         # Check we can run 'toil stats'
-        system(self.statsCommand)
+        system(self.statsCommand(jobstore))
 
         # Check the file is properly sorted
-        with open(self.outputFile) as fileHandle:
+        with outputFile.open() as fileHandle:
             l2 = fileHandle.readlines()
-            self.assertEqual(self.correctSort, l2)
+            assert correctSort == l2
 
-        # Delete output file
-        os.remove(self.outputFile)
-
-    def testUnicodeSupport(self):
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+    def testUnicodeSupport(self, tmp_path: Path) -> None:
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.clean = "always"
         options.logLevel = "debug"
         Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
 
     @slow
-    def testMultipleJobsPerWorkerStats(self):
+    @pytest.mark.slow
+    def testMultipleJobsPerWorkerStats(self, tmp_path: Path) -> None:
         """
         Tests case where multiple jobs are run on 1 worker to ensure that all jobs report back their data
         """
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.clean = "never"
         options.stats = True
         Job.Runner.startToil(RunTwoJobsPerWorker(), options)
@@ -374,23 +344,28 @@ class UtilsTest(ToilTest):
         jobStore = Toil.resumeJobStore(config.jobStore)
         stats = get_stats(jobStore)
         collatedStats = process_data(jobStore.config, stats)
-        self.assertTrue(
-            len(collatedStats.job_types) == 2,
-            "Some jobs are not represented in the stats.",
-        )
+        assert (
+            len(collatedStats.job_types) == 2  # type: ignore[attr-defined]
+        ), "Some jobs are not represented in the stats."
 
-    def check_status(self, status, status_fn, process=None, seconds=20):
+    def check_status(
+        self,
+        jobstore: Path,
+        status: str,
+        status_fn: Callable[[str], str],
+        process: Optional[subprocess.Popen[Any]] = None,
+        seconds: int = 20,
+    ) -> None:
         time_elapsed = 0.0
         has_stopped = process.poll() is not None if process else False
-        current_status = status_fn(self.toilDir)
+        current_status = status_fn(str(jobstore))
         while current_status != status:
             if has_stopped:
                 # If the process has stopped and the stratus is wrong, it will never be right.
-                self.assertEqual(
-                    current_status,
-                    status,
-                    f"Process returned {process.returncode} without status reaching {status}; stuck at {current_status}",
-                )
+                assert process is not None
+                assert (
+                    current_status == status
+                ), f"Process returned {process.returncode} without status reaching {status}; stuck at {current_status}"
             logger.debug(
                 "Workflow is %s; waiting for %s (%s/%s elapsed)",
                 current_status,
@@ -401,52 +376,91 @@ class UtilsTest(ToilTest):
             time.sleep(0.5)
             time_elapsed += 0.5
             has_stopped = process.poll() is not None if process else False
-            current_status = status_fn(self.toilDir)
+            current_status = status_fn(str(jobstore))
             if time_elapsed > seconds:
-                self.assertEqual(
-                    current_status,
-                    status,
-                    f"Waited {seconds} seconds without status reaching {status}; stuck at {current_status}",
-                )
+                assert (
+                    current_status == status
+                ), "Waited {seconds} seconds without status reaching {status}; stuck at {current_status}"
 
-    def testGetPIDStatus(self):
+    def testGetPIDStatus(self, tmp_path: Path, unsortedFile: Path) -> None:
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
-        wf = subprocess.Popen(self.sort_workflow_cmd)
+        jobstore = tmp_path / "jobstore"
+        outputFile = tmp_path / "someSortedStuff.txt"
+        wf = subprocess.Popen(
+            [
+                python,
+                "-m",
+                "toil.test.sort.sort",
+                jobstore.as_uri(),
+                f"--fileToSort={unsortedFile}",
+                f"--outputFile={outputFile}",
+                "--clean=never",
+            ]
+        )
         self.check_status(
-            "RUNNING", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+            jobstore,
+            "RUNNING",
+            status_fn=ToilStatus.getPIDStatus,
+            process=wf,
+            seconds=60,
         )
         wf.wait()
         self.check_status(
-            "COMPLETED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+            jobstore,
+            "COMPLETED",
+            status_fn=ToilStatus.getPIDStatus,
+            process=wf,
+            seconds=60,
         )
 
         # TODO: we need to reach into the FileJobStore's files and delete this
         #  shared file. We assume we know its internal layout.
-        os.remove(os.path.join(self.toilDir, "files/shared/pid.log"))
+        os.remove(jobstore / "files/shared/pid.log")
         self.check_status(
-            "QUEUED", status_fn=ToilStatus.getPIDStatus, process=wf, seconds=60
+            jobstore,
+            "QUEUED",
+            status_fn=ToilStatus.getPIDStatus,
+            process=wf,
+            seconds=60,
         )
 
-    def testGetStatusFailedToilWF(self):
+    def testGetStatusFailedToilWF(self, tmp_path: Path, unsortedFile: Path) -> None:
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
         While this workflow could be called by importing and evoking its main function, doing so would remove the
         opportunity to test the 'RUNNING' functionality of getStatus().
         """
         # --badWorker is set to force failure.
-        wf = subprocess.Popen(self.sort_workflow_cmd + ["--badWorker=1"])
+        jobstore = tmp_path / "jobstore"
+        outputFile = tmp_path / "someSortedStuff.txt"
+        wf = subprocess.Popen(
+            [
+                python,
+                "-m",
+                "toil.test.sort.sort",
+                jobstore.as_uri(),
+                f"--fileToSort={unsortedFile}",
+                f"--outputFile={outputFile}",
+                "--clean=never",
+                "--badWorker=1",
+            ]
+        )
         self.check_status(
-            "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+            jobstore, "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
         )
         wf.wait()
         self.check_status(
-            "ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+            jobstore, "ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60
         )
 
     @needs_cwl
     @needs_docker
-    def testGetStatusFailedCWLWF(self):
+    @pytest.mark.cwl
+    @pytest.mark.docker
+    @pytest.mark.online
+    def testGetStatusFailedCWLWF(self, tmp_path: Path) -> None:
         """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
+        jobstore = tmp_path / "jobstore"
         with get_data("test/cwl/sorttool.cwl") as cwl_file:
             with get_data("test/cwl/whale.txt") as input_file:
                 # --badWorker is set to force failure.
@@ -454,63 +468,89 @@ class UtilsTest(ToilTest):
                     "toil-cwl-runner",
                     "--logDebug",
                     "--jobStore",
-                    self.toilDir,
+                    str(jobstore),
                     "--clean=never",
                     "--badWorker=1",
                     str(cwl_file),
                     "--reverse",
                     "--input",
                     str(input_file),
-                    f"--outdir={self.tempDir}",
+                    f"--outdir={tmp_path}",
                 ]
                 logger.info("Run command: %s", " ".join(cmd))
                 wf = subprocess.Popen(cmd)
                 self.check_status(
-                    "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                    jobstore,
+                    "RUNNING",
+                    status_fn=ToilStatus.getStatus,
+                    process=wf,
+                    seconds=60,
                 )
                 wf.wait()
                 self.check_status(
-                    "ERROR", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                    jobstore,
+                    "ERROR",
+                    status_fn=ToilStatus.getStatus,
+                    process=wf,
+                    seconds=60,
                 )
 
     @needs_cwl
     @needs_docker
-    def testGetStatusSuccessfulCWLWF(self):
+    @pytest.mark.cwl
+    @pytest.mark.docker
+    @pytest.mark.online
+    def testGetStatusSuccessfulCWLWF(self, tmp_path: Path) -> None:
         """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        jobstore = tmp_path / "jobstore"
         with get_data("test/cwl/sorttool.cwl") as cwl_file:
             with get_data("test/cwl/whale.txt") as input_file:
                 cmd = [
                     "toil-cwl-runner",
                     "--jobStore",
-                    self.toilDir,
+                    str(jobstore),
                     "--clean=never",
                     str(cwl_file),
                     "--reverse",
                     "--input",
                     str(input_file),
-                    f"--outdir={self.tempDir}",
+                    f"--outdir={tmp_path}",
                 ]
                 wf = subprocess.Popen(cmd)
                 self.check_status(
-                    "RUNNING", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                    jobstore,
+                    "RUNNING",
+                    status_fn=ToilStatus.getStatus,
+                    process=wf,
+                    seconds=60,
                 )
                 wf.wait()
                 self.check_status(
-                    "COMPLETED", status_fn=ToilStatus.getStatus, process=wf, seconds=60
+                    jobstore,
+                    "COMPLETED",
+                    status_fn=ToilStatus.getStatus,
+                    process=wf,
+                    seconds=60,
                 )
 
     @needs_cwl
-    @patch("builtins.print")
-    def testPrintJobLog(self, mock_print):
+    @pytest.mark.cwl
+    def testPrintJobLog(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
+        jobstore = tmp_path / "jobstore"
+        print_args: list[str] = []
+
+        def fake_print(*args: Any, **kwargs: Any) -> None:
+            print_args.extend(args)
         # Run a workflow that will always fail
         with get_data("test/cwl/alwaysfails.cwl") as cwl_file:
             cmd = [
                 "toil-cwl-runner",
                 "--logDebug",
                 "--jobStore",
-                self.toilDir,
+                str(jobstore),
                 "--clean=never",
+                f"--outdir={tmp_path/'outdir'}",
                 str(cwl_file),
                 "--message",
                 "Testing",
@@ -519,25 +559,38 @@ class UtilsTest(ToilTest):
             wf = subprocess.Popen(cmd)
             wf.wait()
             # print log and check output
-            status = ToilStatus(self.toilDir)
-            status.printJobLog()
+            status = ToilStatus(str(jobstore))
+            with monkeypatch.context() as m:
+                m.setattr(builtins, "print", fake_print)
+                status.printJobLog()
 
         # Make sure it printed some kind of complaint about the missing command.
-        args, kwargs = mock_print.call_args
-        self.assertIn("invalidcommand", args[0])
+        assert "invalidcommand" in print_args[0]
 
     @pytest.mark.timeout(1200)
-    def testRestartAttribute(self):
+    def testRestartAttribute(self, tmp_path: Path) -> None:
         """
         Test that the job store is only destroyed when we observe a successful workflow run.
         The following simulates a failing workflow that attempts to resume without restart().
         In this case, the job store should not be destroyed until restart() is called.
         """
+        jobstore = tmp_path / "jobstore"
         # Run a workflow that will always fail
-        cmd = self.restart_sort_workflow_cmd + ["--badWorker=1", "--logDebug"]
+        cmd = [
+            python,
+            "-m",
+            "toil.test.sort.restart_sort",
+            jobstore.as_uri(),
+            "--badWorker=1",
+            "--logDebug",
+        ]
         subprocess.run(cmd)
 
-        restart_cmd = self.restart_sort_workflow_cmd + [
+        restart_cmd = [
+            python,
+            "-m",
+            "toil.test.sort.restart_sort",
+            jobstore.as_uri(),
             "--badWorker=0",
             "--logDebug",
             "--restart",
@@ -545,23 +598,23 @@ class UtilsTest(ToilTest):
         subprocess.run(restart_cmd)
 
         # Check the job store exists after restart attempt
-        self.assertTrue(os.path.exists(self.toilDir))
+        assert jobstore.exists()
 
         successful_cmd = [
             python,
             "-m",
             "toil.test.sort.sort",
             "--logDebug",
-            "file:" + self.toilDir,
+            jobstore.as_uri(),
             "--restart",
         ]
         subprocess.run(successful_cmd)
 
         # Check the job store is destroyed after calling restart()
-        self.assertFalse(os.path.exists(self.toilDir))
+        assert not jobstore.exists()
 
 
-def printUnicodeCharacter():
+def printUnicodeCharacter() -> None:
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
@@ -573,8 +626,5 @@ class RunTwoJobsPerWorker(Job):
     Runs child job with same resources as self in an attempt to chain the jobs on the same worker
     """
 
-    def __init__(self):
-        Job.__init__(self)
-
-    def run(self, fileStore):
+    def run(self, fileStore: AbstractFileStore) -> None:
         self.addChildFn(printUnicodeCharacter)

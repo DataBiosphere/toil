@@ -40,6 +40,7 @@ from toil.batchSystems.abstractBatchSystem import (
 from toil.batchSystems.local_support import BatchSystemLocalSupport
 from toil.batchSystems.mesos import JobQueue, MesosShape, TaskData, ToilJob
 from toil.batchSystems.options import OptionSetter
+from toil.common import Config
 from toil.job import JobDescription
 from toil.lib.conversions import b_to_mib, mib_to_b
 from toil.lib.memoize import strict_bool
@@ -61,22 +62,26 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
     """
 
     @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment(cls) -> bool:
         return True
 
     @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup(cls) -> bool:
         return True
 
     class ExecutorInfo:
-        def __init__(self, nodeAddress, agentId, nodeInfo, lastSeen):
+        def __init__(
+            self, nodeAddress: str, agentId: str, nodeInfo: str, lastSeen: str
+        ) -> None:
             super().__init__()
             self.nodeAddress = nodeAddress
             self.agentId = agentId
             self.nodeInfo = nodeInfo
             self.lastSeen = lastSeen
 
-    def __init__(self, config, maxCores, maxMemory, maxDisk):
+    def __init__(
+        self, config: Config, maxCores: float, maxMemory: float, maxDisk: int
+    ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
         # The auto-deployed resource representing the user script. Will be passed along in every
@@ -165,13 +170,13 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
 
         self._startDriver(config)
 
-    def setUserScript(self, userScript):
+    def setUserScript(self, userScript: str) -> None:
         self.userScript = userScript
 
-    def ignoreNode(self, nodeAddress):
+    def ignoreNode(self, nodeAddress: str) -> None:
         self.ignoredNodes.add(nodeAddress)
 
-    def unignoreNode(self, nodeAddress):
+    def unignoreNode(self, nodeAddress: str) -> None:
         self.ignoredNodes.remove(nodeAddress)
 
     def issueBatchJob(
@@ -179,7 +184,7 @@ class MesosBatchSystem(BatchSystemLocalSupport, AbstractScalableBatchSystem, Sch
         command: str,
         jobNode: JobDescription,
         job_environment: Optional[dict[str, str]] = None,
-    ):
+    ) -> str:
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory
         is an int giving the number of bytes the job needs to run in and cores is the number of cpus

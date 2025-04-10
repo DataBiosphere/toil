@@ -13,33 +13,34 @@
 # limitations under the License.
 import codecs
 import logging
-import os
+from pathlib import Path
 import random
 import sys
 import time
 import traceback
+from typing import cast, Any, Literal
 from threading import Event, Thread
-from unittest import skipIf
 
 import pytest
 
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.exceptions import FailedJobsException
-from toil.job import Job
-from toil.leader import DeadlockException
-from toil.lib.retry import retry_flaky_test
-from toil.test import ToilTest, get_temp_file, slow
+from toil.job import Job, ServiceHostJob
+from toil.jobStores.abstractJobStore import AbstractJobStore
+from toil.batchSystems import DeadlockException
+from toil.test import pslow as slow
 
 logger = logging.getLogger(__name__)
 
 
-class JobServiceTest(ToilTest):
+class TestJobService:
     """
     Tests testing the Job.Service class
     """
 
     @slow
-    def testServiceSerialization(self):
+    @pytest.mark.slow
+    def testServiceSerialization(self, tmp_path: Path) -> None:
         """
         Tests that a service can receive a promise without producing a serialization
         error.
@@ -47,114 +48,119 @@ class JobServiceTest(ToilTest):
         job = Job()
         service = ToySerializableService("woot")
         startValue = job.addService(service)  # Add a first service to job
-        subService = ToySerializableService(startValue)  # Now create a child of
+        subService = ToySerializableService(
+            cast(str, startValue)
+        )  # Now create a child of
         # that service that takes the start value promise from the parent service
         job.addService(subService, parentService=service)  # This should work if
         # serialization on services is working correctly.
 
-        self.runToil(job)
+        self.runToil(tmp_path, job)
 
     @slow
-    def testService(self, checkpoint=False):
+    @pytest.mark.slow
+    def testService(self, tmp_path: Path, checkpoint: bool = False) -> None:
         """
         Tests the creation of a Job.Service with random failures of the worker.
         """
         for test in range(2):
-            outFile = get_temp_file(rootDir=self._createTempDir())  # Temporary file
+            outFile = tmp_path / f"test{test}"
             messageInt = random.randint(1, sys.maxsize)
-            try:
-                # Wire up the services/jobs
-                t = Job.wrapJobFn(
-                    serviceTest, outFile, messageInt, checkpoint=checkpoint
-                )
+            # Wire up the services/jobs
+            t = Job.wrapJobFn(serviceTest, outFile, messageInt, checkpoint=checkpoint)
 
-                # Run the workflow repeatedly until success
-                self.runToil(t)
+            # Run the workflow repeatedly until success
+            sub_tmp_path = tmp_path / str(test)
+            sub_tmp_path.mkdir()
+            self.runToil(sub_tmp_path, t)
 
-                # Check output
-                self.assertEqual(int(open(outFile).readline()), messageInt)
-            finally:
-                os.remove(outFile)
+            # Check output
+            assert int(outFile.read_text()) == messageInt
 
     @slow
-    @skipIf(
+    @pytest.mark.slow
+    @pytest.mark.skipif(
         SingleMachineBatchSystem.numCores < 4,
-        "Need at least four cores to run this test",
+        reason="Need at least four cores to run this test",
     )
-    def testServiceDeadlock(self):
+    def testServiceDeadlock(self, tmp_path: Path) -> None:
         """
         Creates a job with more services than maxServices, checks that deadlock is detected.
         """
-        outFile = get_temp_file(rootDir=self._createTempDir())
-        try:
+        outFile = tmp_path / "out"
 
-            def makeWorkflow():
-                job = Job()
-                r1 = job.addService(ToySerializableService("woot1"))
-                r2 = job.addService(ToySerializableService("woot2"))
-                r3 = job.addService(ToySerializableService("woot3"))
-                job.addChildFn(fnTest, [r1, r2, r3], outFile)
-                return job
+        def makeWorkflow() -> Job:
+            job = Job()
+            r1 = job.addService(ToySerializableService("woot1"))
+            r2 = job.addService(ToySerializableService("woot2"))
+            r3 = job.addService(ToySerializableService("woot3"))
+            job.addChildFn(fnTest, [r1, r2, r3], outFile)
+            return job
 
-            # This should fail as too few services available
-            try:
-                self.runToil(
-                    makeWorkflow(), badWorker=0.0, maxServiceJobs=2, deadlockWait=5
-                )
-            except DeadlockException:
-                print("Got expected deadlock exception")
-            else:
-                assert 0
+        # This should fail as too few services available
+        sub_tmp_path1 = tmp_path / "1"
+        sub_tmp_path1.mkdir()
+        with pytest.raises(DeadlockException):
+            self.runToil(
+                sub_tmp_path1,
+                makeWorkflow(),
+                badWorker=0.0,
+                maxServiceJobs=2,
+                deadlockWait=5,
+            )
 
-            # This should pass, as adequate services available
-            self.runToil(makeWorkflow(), maxServiceJobs=3)
-            # Check we get expected output
-            assert open(outFile).read() == "woot1 woot2 woot3"
-        finally:
-            os.remove(outFile)
+        # This should pass, as adequate services available
+        sub_tmp_path2 = tmp_path / "2"
+        sub_tmp_path2.mkdir()
+        self.runToil(sub_tmp_path2, makeWorkflow(), maxServiceJobs=3)
+        # Check we get expected output
+        assert outFile.read_text() == "woot1 woot2 woot3"
 
-    def testServiceWithCheckpoints(self):
+    def testServiceWithCheckpoints(self, tmp_path: Path) -> None:
         """
         Tests the creation of a Job.Service with random failures of the worker, making the root job use checkpointing to
         restart the subtree.
         """
-        self.testService(checkpoint=True)
+        self.testService(tmp_path, checkpoint=True)
 
     @slow
-    @skipIf(
+    @pytest.mark.slow
+    @pytest.mark.skipif(
         SingleMachineBatchSystem.numCores < 4,
-        "Need at least four cores to run this test",
+        reason="Need at least four cores to run this test",
     )
-    def testServiceRecursive(self, checkpoint=True):
+    def testServiceRecursive(self, tmp_path: Path, checkpoint: bool = True) -> None:
         """
         Tests the creation of a Job.Service, creating a chain of services and accessing jobs.
         Randomly fails the worker.
         """
         for test in range(1):
             # Temporary file
-            outFile = get_temp_file(rootDir=self._createTempDir())
+            outFile = tmp_path / f"test{test}"
             messages = [random.randint(1, sys.maxsize) for i in range(3)]
-            try:
-                # Wire up the services/jobs
-                t = Job.wrapJobFn(
-                    serviceTestRecursive, outFile, messages, checkpoint=checkpoint
-                )
+            # Wire up the services/jobs
+            t = Job.wrapJobFn(
+                serviceTestRecursive, outFile, messages, checkpoint=checkpoint
+            )
 
-                # Run the workflow repeatedly until success
-                self.runToil(t)
+            # Run the workflow repeatedly until success
+            sub_tmp_path = tmp_path / str(test)
+            sub_tmp_path.mkdir()
+            self.runToil(sub_tmp_path, t)
 
-                # Check output
-                self.assertEqual(list(map(int, open(outFile).readlines())), messages)
-            finally:
-                os.remove(outFile)
+            # Check output
+            assert list(map(int, outFile.open().readlines())) == messages
 
     @slow
-    @skipIf(
+    @pytest.mark.slow
+    @pytest.mark.skipif(
         SingleMachineBatchSystem.numCores < 4,
-        "Need at least four cores to run this test",
+        reason="Need at least four cores to run this test",
     )
     @pytest.mark.timeout(1200)
-    def testServiceParallelRecursive(self, checkpoint=True):
+    def testServiceParallelRecursive(
+        self, tmp_path: Path, checkpoint: bool = True
+    ) -> None:
         """
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
         Randomly fails the worker.
@@ -176,51 +182,54 @@ class JobServiceTest(ToilTest):
         logger.info("This test will fail spuriously with probability %s", p_test_failure)
 
         # We want to run the workflow through several times to test restarting, so we need it to often fail but reliably sometimes succeed, and almost always succeed when repeated.
-        
-        self.assertGreater(0.8, p_workflow_success)
-        self.assertGreater(p_workflow_success, 0.2)
-        self.assertGreater(0.001, p_test_failure)
-        
+
+        assert 0.8 > p_workflow_success
+        assert p_workflow_success > 0.2
+        assert 0.001 > p_test_failure
 
         for test in range(1):
             # Temporary file
-            outFiles = [get_temp_file(rootDir=self._createTempDir()) for j in range(BUNDLE_COUNT)]
+            outFiles = [tmp_path / f"test{test}_{j}" for j in range(BUNDLE_COUNT)]
             # We send 3 messages each in 2 sets, each of which needs a service and a client
             messageBundles = [
                 [random.randint(1, sys.maxsize) for i in range(BUNDLE_SIZE)] for j in range(BUNDLE_COUNT)
             ]
-            try:
-                # Wire up the services/jobs
-                t = Job.wrapJobFn(
-                    serviceTestParallelRecursive,
-                    outFiles,
-                    messageBundles,
-                    checkpoint=True,
-                )
+            # Wire up the services/jobs
+            t = Job.wrapJobFn(
+                serviceTestParallelRecursive,
+                outFiles,
+                messageBundles,
+                checkpoint=True,
+            )
 
-                # Run the workflow repeatedly until success
-                self.runToil(t, retryCount=RETRY_COUNT, badWorker=FAIL_FRACTION, max_attempts=MAX_ATTEMPTS)
+            # Run the workflow repeatedly until success
+            sub_tmp_path = tmp_path / str(test)
+            sub_tmp_path.mkdir()
+            self.runToil(
+                sub_tmp_path,
+                t,
+                retryCount=RETRY_COUNT,
+                badWorker=FAIL_FRACTION,
+                max_attempts=MAX_ATTEMPTS,
+            )
 
-                # Check output
-                for messages, outFile in zip(messageBundles, outFiles):
-                    self.assertEqual(
-                        list(map(int, open(outFile).readlines())), messages
-                    )
-            finally:
-                list(map(os.remove, outFiles))
+            # Check output
+            for messages, outFile in zip(messageBundles, outFiles):
+                assert list(map(int, outFile.open().readlines())) == messages
 
     def runToil(
         self,
-        rootJob,
-        retryCount=1,
-        badWorker=0.5,
-        badWorkedFailInterval=0.1,
-        maxServiceJobs=sys.maxsize,
-        deadlockWait=60,
-        max_attempts=50
-    ):
+        tmp_path: Path,
+        rootJob: Job,
+        retryCount: int = 1,
+        badWorker: float = 0.5,
+        badWorkedFailInterval: float = 0.1,
+        maxServiceJobs: int = sys.maxsize,
+        deadlockWait: int = 60,
+        max_attempts: int = 50,
+    ) -> None:
         # Create the runner for the workflow.
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.logLevel = "DEBUG"
 
         options.retryCount = retryCount
@@ -240,18 +249,14 @@ class JobServiceTest(ToilTest):
                 i = e.numberOfFailedJobs
                 logger.info("Workflow attempt %s/%s failed with %s failed jobs", total_tries, max_attempts, i)
                 if total_tries == max_attempts:
-                    self.fail()  # Exceeded a reasonable number of restarts
+                    pytest.fail(reason="Exceeded a reasonable number of restarts")
                 total_tries += 1
                 options.restart = True
         logger.info("Succeeded after %s/%s attempts", total_tries, max_attempts)
 
 
-class PerfectServiceTest(JobServiceTest):
-    def runToil(
-        self,
-        *args,
-        **kwargs
-    ):
+class TestPerfectServicet(TestJobService):
+    def runToil(self, *args: Any, **kwargs: Any) -> None:
         """
         Let us run all the tests in the other service test class, but without worker failures.
         """
@@ -262,13 +267,13 @@ class PerfectServiceTest(JobServiceTest):
         )
 
 
-def serviceTest(job, outFile, messageInt):
+def serviceTest(job: Job, outFile: Path, messageInt: int) -> None:
     """
     Creates one service and one accessing job, which communicate with two files to establish
     that both run concurrently.
     """
     # Clean out out-file
-    open(outFile, "w").close()
+    outFile.open("w").close()
     # We create a random number that is added to messageInt and subtracted by
     # the serviceAccessor, to prove that when service test is checkpointed and
     # restarted there is never a connection made between an earlier service and
@@ -284,13 +289,13 @@ def serviceTest(job, outFile, messageInt):
     )
 
 
-def serviceTestRecursive(job, outFile, messages):
+def serviceTestRecursive(job: Job, outFile: Path, messages: list[int]) -> None:
     """
     Creates a chain of services and accessing jobs, each paired together.
     """
     if len(messages) > 0:
         # Clean out out-file
-        open(outFile, "w").close()
+        outFile.open("w").close()
         to_add = random.randint(1, sys.maxsize)
         service = ToyService(messages[0] + to_add)
         child = job.addChildJobFn(
@@ -310,13 +315,15 @@ def serviceTestRecursive(job, outFile, messages):
             service = service2
 
 
-def serviceTestParallelRecursive(job, outFiles, messageBundles):
+def serviceTestParallelRecursive(
+    job: Job, outFiles: list[Path], messageBundles: list[list[int]]
+) -> None:
     """
     Creates multiple chains of services and accessing jobs.
     """
     for messages, outFile in zip(messageBundles, outFiles):
         # Clean out out-file
-        open(outFile, "w").close()
+        outFile.open("w").close()
         if len(messages) > 0:
             to_add = random.randint(1, sys.maxsize)
             service = ToyService(messages[0] + to_add)
@@ -338,7 +345,7 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
 
 
 class ToyService(Job.Service):
-    def __init__(self, messageInt, *args, **kwargs):
+    def __init__(self, messageInt: int, *args: Any, **kwargs: Any) -> None:
         """
         While established the service repeatedly:
              - reads an integer i from the inJobStoreFileID file
@@ -347,7 +354,7 @@ class ToyService(Job.Service):
         Job.Service.__init__(self, *args, **kwargs)
         self.messageInt = messageInt
 
-    def start(self, job):
+    def start(self, job: ServiceHostJob) -> tuple[str, str]:
         assert self.disk is not None
         assert self.memory is not None
         assert self.cores is not None
@@ -371,19 +378,24 @@ class ToyService(Job.Service):
         self.serviceThread.start()
         return (inJobStoreID, outJobStoreID)
 
-    def stop(self, job):
+    def stop(self, job: Job) -> None:
         self.terminate.set()
         self.serviceThread.join()
 
-    def check(self):
+    def check(self) -> Literal[True]:
         if self.error.isSet():
             raise RuntimeError("Service worker failed")
         return True
 
     @staticmethod
     def serviceWorker(
-        jobStore, terminate, error, inJobStoreID, outJobStoreID, messageInt
-    ):
+        jobStore: AbstractJobStore,
+        terminate: Event,
+        error: Event,
+        inJobStoreID: str,
+        outJobStoreID: str,
+        messageInt: int,
+    ) -> None:
         try:
             while True:
                 if terminate.isSet():  # Quit if we've got the terminate signal
@@ -395,8 +407,7 @@ class ToyService(Job.Service):
                 # Try reading a line from the input file
                 try:
                     with jobStore.read_file_stream(inJobStoreID) as f:
-                        f = codecs.getreader("utf-8")(f)
-                        line = f.readline()
+                        line = codecs.getreader("utf-8")(f).readline()
                 except:
                     logger.debug(
                         "Something went wrong reading a line: %s",
@@ -428,7 +439,12 @@ class ToyService(Job.Service):
             raise
 
 
-def serviceAccessor(job, communicationFiles, outFile, to_subtract):
+def serviceAccessor(
+    job: ServiceHostJob,
+    communicationFiles: tuple[str, str],
+    outFile: Path,
+    to_subtract: int,
+) -> None:
     """
     Writes a random integer iinto the inJobStoreFileID file, then tries 10 times reading
     from outJobStoreFileID to get a pair of integers, the first equal to i the second written into the outputFile.
@@ -462,7 +478,7 @@ def serviceAccessor(job, communicationFiles, outFile, to_subtract):
             logger.debug(
                 f"Matched key's: {key}, writing message: {int(message) - to_subtract} with to_subtract: {to_subtract}"
             )
-            with open(outFile, "a") as fH:
+            with outFile.open("a") as fH:
                 fH.write("%s\n" % (int(message) - to_subtract))
             return
 
@@ -470,26 +486,26 @@ def serviceAccessor(job, communicationFiles, outFile, to_subtract):
 
 
 class ToySerializableService(Job.Service):
-    def __init__(self, messageInt, *args, **kwargs):
+    def __init__(self, messageInt: str, *args: Any, **kwargs: Any) -> None:
         """
         Trivial service for testing serialization.
         """
         Job.Service.__init__(self, *args, **kwargs)
         self.messageInt = messageInt
 
-    def start(self, job):
+    def start(self, job: Job) -> str:
         return self.messageInt
 
-    def stop(self, job):
+    def stop(self, job: Job) -> None:
         pass
 
-    def check(self):
+    def check(self) -> Literal[True]:
         return True
 
 
-def fnTest(strings, outputFile):
+def fnTest(strings: list[str], outputFile: Path) -> None:
     """
     Function concatenates the strings together and writes them to the output file
     """
-    with open(outputFile, "w") as fH:
+    with outputFile.open("w") as fH:
         fH.write(" ".join(strings))

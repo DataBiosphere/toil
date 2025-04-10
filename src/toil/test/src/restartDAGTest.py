@@ -15,41 +15,43 @@
 
 import logging
 import os
-import shutil
+from pathlib import Path
 import signal
+from typing import Optional
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
 from toil.job import Job
-from toil.test import ToilTest, slow
+from toil.test import pslow as slow
+
+import pytest
 
 logger = logging.getLogger(__name__)
 
 
-class RestartDAGTest(ToilTest):
+class TestRestartDAG:
     """
     Tests that restarted job DAGs don't run children of jobs that failed in the first run till the
     parent completes successfully in the restart.
     """
 
-    def setUp(self):
-        super().setUp()
-        self.tempDir = self._createTempDir(purpose="tempDir")
-        self.testJobStore = self._getTestJobStorePath()
-
-    def tearDown(self):
-        super().tearDown()
-        shutil.rmtree(self.testJobStore)
+    @slow
+    @pytest.mark.slow
+    def testRestartedWorkflowSchedulesCorrectJobsOnFailedParent(
+        self, tmp_path: Path
+    ) -> None:
+        self._testRestartedWorkflowSchedulesCorrectJobs(tmp_path, "raise")
 
     @slow
-    def testRestartedWorkflowSchedulesCorrectJobsOnFailedParent(self):
-        self._testRestartedWorkflowSchedulesCorrectJobs("raise")
+    @pytest.mark.slow
+    def testRestartedWorkflowSchedulesCorrectJobsOnKilledParent(
+        self, tmp_path: Path
+    ) -> None:
+        self._testRestartedWorkflowSchedulesCorrectJobs(tmp_path, "kill")
 
-    @slow
-    def testRestartedWorkflowSchedulesCorrectJobsOnKilledParent(self):
-        self._testRestartedWorkflowSchedulesCorrectJobs("kill")
-
-    def _testRestartedWorkflowSchedulesCorrectJobs(self, failType):
+    def _testRestartedWorkflowSchedulesCorrectJobs(
+        self, tmp_path: Path, failType: str
+    ) -> None:
         """
         Creates a diamond DAG
             /->passingParent-\
@@ -63,19 +65,19 @@ class RestartDAGTest(ToilTest):
         :param str failType: Does failingParent fail on an assertionError, or is it killed.
         """
         # Specify options
-        options = Job.Runner.getDefaultOptions(self.testJobStore)
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.logLevel = "DEBUG"
         options.retryCount = 0
         options.clean = "never"
 
-        parentFile = os.path.join(self.tempDir, "parent")
-        childFile = os.path.join(self.tempDir, "child")
+        parentFile = tmp_path / "parent"
+        childFile = tmp_path / "child"
 
         # Make the first job
         root = Job.wrapJobFn(passingFn)
         passingParent = Job.wrapJobFn(passingFn)
-        failingParent = Job.wrapJobFn(failingFn, failType=failType, fileName=parentFile)
-        child = Job.wrapJobFn(passingFn, fileName=childFile)
+        failingParent = Job.wrapJobFn(failingFn, failType=failType, file=parentFile)
+        child = Job.wrapJobFn(passingFn, file=childFile)
 
         # define the DAG
         root.addChild(passingParent)
@@ -85,11 +87,12 @@ class RestartDAGTest(ToilTest):
 
         failReasons = []
 
-        assert not os.path.exists(childFile)
+        assert not childFile.exists()
 
+        errorRaised: Optional[BaseException] = None
         # Run the test
         for runMode in "start", "restart":
-            self.errorRaised = None
+            errorRaised = None
             try:
                 with Toil(options) as toil:
                     if runMode == "start":
@@ -98,70 +101,71 @@ class RestartDAGTest(ToilTest):
                         toil.restart()
             except Exception as e:
                 logger.exception(e)
-                self.errorRaised = e
+                errorRaised = e
             finally:
                 # The processing of an AssertionError and FailedJobsException is the same so we do
                 # it together in this finally clause.
-                if self.errorRaised is not None:
-                    if not os.path.exists(parentFile):
+                if errorRaised is not None:
+                    if not parentFile.exists():
                         failReasons.append(
                             'The failing parent file did not exist on toil "%s".'
                             % runMode
                         )
-                    if os.path.exists(childFile):
+                    if childFile.exists():
                         failReasons.append(
                             "The child file existed.  i.e. the child was run on "
                             'toil "%s".' % runMode
                         )
-                    if isinstance(self.errorRaised, FailedJobsException):
-                        if self.errorRaised.numberOfFailedJobs != 3:
+                    if isinstance(errorRaised, FailedJobsException):
+                        if errorRaised.numberOfFailedJobs != 3:
                             failReasons.append(
                                 'FailedJobsException was raised on toil "%s" but '
                                 "the number of failed jobs (%s) was not 3."
-                                % (runMode, self.errorRaised.numberOfFailedJobs)
+                                % (runMode, errorRaised.numberOfFailedJobs)
                             )
-                    elif isinstance(self.errorRaised, AssertionError):
+                    elif isinstance(errorRaised, AssertionError):
                         failReasons.append(
                             "Toil raised an AssertionError instead of a "
                             'FailedJobsException on toil "%s".' % runMode
                         )
                     else:
-                        failReasons.append("Toil raised error: %s" % self.errorRaised)
-                    self.errorRaised = None
+                        failReasons.append("Toil raised error: %s" % errorRaised)
+                    errorRaised = None
                     options.restart = True
                 else:
-                    self.fail('No errors were raised on toil "%s".' % runMode)
+                    pytest.fail('No errors were raised on toil "%s".' % runMode)
         if failReasons:
-            self.fail(
+            pytest.fail(
                 "Test failed for ({}) reasons:\n\t{}".format(
                     len(failReasons), "\n\t".join(failReasons)
                 )
             )
 
 
-def passingFn(job, fileName=None):
+def passingFn(job: Job, file: Optional[Path] = None) -> None:
     """
-    This function is guaranteed to pass as it does nothing out of the ordinary.  If fileName is
-    provided, it will be created.
+    This function is guaranteed to pass as it does nothing out of the ordinary.
 
-    :param str fileName: The name of a file that must be created if provided.
+    If "file" is provided, it will be created.
+
+    :param file: The path of a file that must be created if provided.
     """
-    if fileName is not None:
+    if file is not None:
         # Emulates system touch.
-        open(fileName, "w").close()
+        file.open("w").close()
 
 
-def failingFn(job, failType, fileName):
+def failingFn(job: Job, failType: str, file: Path) -> None:
     """
     This function is guaranteed to fail via a raised assertion, or an os.kill
 
     :param job: Job
-    :param str failType: 'raise' or 'kill
-    :param str fileName: The name of a file that must be created.
+    :param failType: 'raise' or 'kill
+    :param file: The path of a file that must be created.
     """
     assert failType in ("raise", "kill")
     # Use that function to avoid code redundancy
-    passingFn(job, fileName)
+    passingFn(job, file)
 
     if failType == "raise":
         assert False
