@@ -53,6 +53,12 @@ There are several environment variables that affect the way Toil runs.
 |                                      | batch systems such as gridengine, htcondor,         |
 |                                      | torque, slurm, and lsf.                             |
 +--------------------------------------+-----------------------------------------------------+
+| TOIL_HISTORY                         | Whether to enable the Toil history database.        |
+|                                      | Defaults to true.                                   |
++--------------------------------------+-----------------------------------------------------+
+| TOIL_JOB_HISTORY                     | Whether to enable per-job history in the Toil       |
+|                                      | history database. Defaults to false.                |
++--------------------------------------+-----------------------------------------------------+
 | TOIL_KUBERNETES_HOST_PATH            | A path on Kubernetes hosts that will be mounted as  |
 |                                      | the Toil work directory in the workers, to allow    |
 |                                      | for shared caching. Will be created if it doesn't   |

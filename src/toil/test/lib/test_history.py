@@ -43,7 +43,8 @@ class TestHistory:
                     "database_path_override",
                     str(tmp_path / "test-db.sqlite"),
                 )
-                m.setattr(HistoryManager, "JOB_HISTORY_ENABLED", True)
+                m.setattr(HistoryManager, "enabled", lambda: True)
+                m.setattr(HistoryManager, "enabled_job", lambda: True)
                 yield
         finally:
             pass  # no cleanup needed
