@@ -1659,6 +1659,15 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             logger.debug("File has no virtualized value so not changing value")
         return file
 
+    def _resolve_devirtualized_to_uri(self, devirtualized: str) -> str:
+        """
+        Get a URI pointing to whatever URI or divirtualized file path is provided.
+
+        Handles resolving symlinks using in-container paths if necessary.
+        """
+        
+        return Toil.normalize_uri(devirtualized, dir_path=self.execution_dir)
+        
     def _virtualize_file(
         self, file: WDL.Value.File, enforce_existence: bool = True
     ) -> WDL.Value.File:
@@ -1668,20 +1677,17 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         logger.debug("Virtualizing %s", file)
 
-        # Make sure we have a scheme, and relative file paths are interpreted
-        # relative to the execution directory.
-        file_uri = Toil.normalize_uri(file.value, dir_path=self.execution_dir)
-        if not AbstractJobStore.url_exists(file_uri):
+        try:
+            # Let the actual virtualization implementation signal a missing file
+            virtualized_filename = self._virtualize_filename(file.value)
+        except FileNotFoundError:
             if enforce_existence:
-                raise FileNotFoundError(f"File at URI should exist but doesn't: {file_uri}")
+                raise
             else:
                 logger.debug("File appears nonexistent so marking it nonexistent")
                 # Mark the file nonexistent.
                 return set_file_nonexistent(file, True)
 
-        # Now throw away the URI we used just for existence checking and
-        # virtualize just from the base value.
-        virtualized_filename = self._virtualize_filename(file.value)
         logger.debug(
             "For file %s got virtualized filename %s", file, virtualized_filename
         )
@@ -1864,9 +1870,12 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
         """
-        from a local path in write_dir, 'virtualize' into the filename as it should present in a File value
+        from a local path or other URL, 'virtualize' into the filename as it should present in a File value.
+
+        New in Toil: the path or URL may not actually exist.
 
         :param filename: Can be a local file path, URL (http, https, s3, gs), or toilfile
+        :raises FileNotFoundError: if the file doesn't actually exist (new addition in Toil over MiniWDL)
         """
 
         if is_toil_url(filename):
@@ -1886,7 +1895,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             try:
                 imported = self._file_store.import_file(filename)
             except FileNotFoundError:
-                logger.error(
+                # This might happen because we're also along the code path for
+                # optional file outputs.
+                logger.info(
                     "File at URL %s does not exist or is inaccessible." % filename
                 )
                 raise
@@ -1897,9 +1908,13 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     filename,
                     e.code,
                 )
+                # We don't need to handle translating error codes for not
+                # found; import_file does it already. 
                 raise
             if imported is None:
-                # Satisfy mypy, this should never happen though as we don't pass a shared file name (which is the only way import_file returns None)
+                # Satisfy mypy. This should never happen though as we don't
+                # pass a shared file name (which is the only way import_file
+                # returns None)
                 raise RuntimeError("Failed to import URL %s into jobstore." % filename)
             file_basename = os.path.basename(urlsplit(filename).path)
             # Get the URL to the parent directory and use that.
@@ -1908,8 +1923,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
             result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
             logger.debug("Virtualized %s as WDL file %s", filename, result)
-            # We can't put the Toil URI in the virtualized_to_devirtualized cache because it would point to the URL instead of a
-            # local file on the machine, so only store the forward mapping
+            # We can't put the Toil URI in the virtualized_to_devirtualized
+            # cache because it would point to the URL instead of a local file
+            # on the machine, so only store the forward mapping
             self._devirtualized_to_virtualized[filename] = result
             return result
         else:
@@ -1929,6 +1945,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     "Re-using virtualized WDL file %s for %s", result, filename
                 )
                 return result
+
+            if not os.path.exists(abs_filename):
+                raise FileNotFoundError(abs_filename)
 
             file_id = self._file_store.writeGlobalFile(abs_filename)
 
@@ -2404,6 +2423,8 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
         filenames.
         """
 
+        logger.debug("WDL task outputs stdlib asked to virtualize %s", filename)
+
         if not is_any_url(filename) and not filename.startswith("/"):
             # We are getting a bare relative path on the supposedly devirtualized side.
             # Find a real path to it relative to the current directory override.
@@ -2452,8 +2473,12 @@ class ToilWDLStdLibTaskOutputs(ToilWDLStdLibBase, WDL.StdLib.TaskOutputs):
                 logger.error(
                     "Handling broken symlink %s ultimately to %s", filename, here
                 )
+                # This should produce a FileNotFoundError since we think of
+                # broken symlinks as nonexistent.
+                raise FileNotFoundError(filename)
             filename = here
-
+        
+        logger.debug("WDL task outputs stdlib thinks we really need to virtualize %s", filename)
         return super()._virtualize_filename(filename)
 
 
