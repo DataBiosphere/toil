@@ -20,7 +20,7 @@ import random
 import sys
 from types import FrameType
 from uuid import uuid4
-from typing import cast
+from typing import cast, Union
 
 from toil.common import getNodeID
 from toil.lib.exceptions import panic, raise_
@@ -63,7 +63,7 @@ class TestMisc:
         # a list of the directories used in the test
         directories: list[StrPath] = [tmp_path]
         # A dict of {FILENAME: FILESIZE or FILELINK} for all files used in the test
-        files: dict[Path, int | str] = {}
+        files: dict[Path, Union[int, str]] = {}
         # Create a random directory structure
         for i in range(0, 10):
             directories.append(mkdtemp(dir=random.choice(directories), prefix="test"))
@@ -83,7 +83,7 @@ class TestMisc:
                 if len(files) == 0:
                     continue
                 linkSrc = random.choice(list(files.keys()))
-                fileName.hardlink_to(linkSrc)
+                os.link(linkSrc, fileName)
                 files[fileName] = "Link to %s" % linkSrc
 
         computedDirectorySize = getDirSizeRecursively(tmp_path)

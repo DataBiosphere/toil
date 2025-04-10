@@ -17,7 +17,7 @@ import logging
 import os
 from pathlib import Path
 import random
-from typing import cast, Optional, Any, NoReturn
+from typing import cast, Optional, Union, Any, NoReturn
 
 import pytest
 
@@ -666,7 +666,7 @@ class TestJob:
         list.
         """
 
-        def cyclic(fNode: int, visited: set[int], stack: list[int]) -> bool | int:
+        def cyclic(fNode: int, visited: set[int], stack: list[int]) -> Union[bool, int]:
             if fNode not in visited:
                 visited.add(fNode)
                 assert fNode not in stack
