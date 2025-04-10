@@ -14,34 +14,34 @@
 import logging
 import mimetypes
 import os
+from pathlib import Path
 import subprocess
 import sys
+from typing import Optional
 
-from toil.test import ToilTest, slow
+from toil.test import pslow as slow
 from toil.test.mesos import helloWorld
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-class RegularLogTest(ToilTest):
+class RegularLogTest:
 
-    def setUp(self) -> None:
-        super().setUp()
-        self.tempDir = self._createTempDir(purpose="tempDir")
-
-    def _getFiles(self, dir):
+    def _getFiles(self, dirpath: Path) -> list[str]:
         return [
-            os.path.join(dir, f)
-            for f in os.listdir(dir)
-            if os.path.isfile(os.path.join(dir, f))
+            os.path.join(dirpath, f)
+            for f in os.listdir(dirpath)
+            if os.path.isfile(os.path.join(dirpath, f))
         ]
 
-    def _assertFileTypeExists(self, dir, extension, encoding=None):
+    def _assertFileTypeExists(
+        self, dirpath: Path, extension: str, encoding: Optional[str] = None
+    ) -> None:
         # an encoding of None implies no compression
-        logger.info("Checking for %s file in %s", extension, dir)
-        onlyFiles = self._getFiles(dir)
-        logger.info("Found: %s", str(os.listdir(dir)))
+        logger.info("Checking for %s file in %s", extension, dirpath)
+        onlyFiles = self._getFiles(dirpath)
+        logger.info("Found: %s", str(os.listdir(dirpath)))
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         logger.info("Found matching: %s", str(onlyLogs))
         assert onlyLogs
@@ -57,10 +57,10 @@ class RegularLogTest(ToilTest):
                         assert f.read().startswith(b"\x1f\x8b")
                     else:
                         mime = mimetypes.guess_type(log)
-                        self.assertEqual(mime[1], encoding)
+                        assert mime[1] == encoding
 
     @slow
-    def testLogToMaster(self):
+    def testLogToMaster(self) -> None:
         toilOutput = subprocess.check_output(
             [
                 sys.executable,
@@ -74,7 +74,7 @@ class RegularLogTest(ToilTest):
         )
         assert helloWorld.childMessage in toilOutput.decode("utf-8")
 
-    def testWriteLogs(self):
+    def testWriteLogs(self, tmp_path: Path) -> None:
         subprocess.check_call(
             [
                 sys.executable,
@@ -83,13 +83,13 @@ class RegularLogTest(ToilTest):
                 "./toilTest",
                 "--clean=always",
                 "--logLevel=debug",
-                "--writeLogs=%s" % self.tempDir,
+                f"--writeLogs={tmp_path}",
             ]
         )
-        self._assertFileTypeExists(self.tempDir, ".log")
+        self._assertFileTypeExists(tmp_path, ".log")
 
     @slow
-    def testWriteGzipLogs(self):
+    def testWriteGzipLogs(self, tmp_path: Path) -> None:
         subprocess.check_call(
             [
                 sys.executable,
@@ -98,13 +98,13 @@ class RegularLogTest(ToilTest):
                 "./toilTest",
                 "--clean=always",
                 "--logLevel=debug",
-                "--writeLogsGzip=%s" % self.tempDir,
+                f"--writeLogsGzip={tmp_path}",
             ]
         )
-        self._assertFileTypeExists(self.tempDir, ".log.gz", "gzip")
+        self._assertFileTypeExists(tmp_path, ".log.gz", "gzip")
 
     @slow
-    def testMultipleLogToMaster(self):
+    def testMultipleLogToMaster(self) -> None:
         toilOutput = subprocess.check_output(
             [
                 sys.executable,
@@ -118,7 +118,7 @@ class RegularLogTest(ToilTest):
         )
         assert helloWorld.parentMessage in toilOutput.decode("utf-8")
 
-    def testRegularLog(self):
+    def testRegularLog(self) -> None:
         toilOutput = subprocess.check_output(
             [
                 sys.executable,
