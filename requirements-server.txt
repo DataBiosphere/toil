@@ -1,8 +1,8 @@
-connexion[swagger-ui]>=2.10.0, <4
-flask>=2.0,<2.3
-werkzeug>=2.0,<4
-flask-cors==5.0.1
-gunicorn==23.0.0
-celery>=5.1.0, <6
-wes-service>=4.0.0, <5
-ruamel.yaml>=0.15,<0.19
+connexion[swagger-ui]>=3,<4
+flask>=3,<4
+werkzeug>=3,<4
+flask-cors>=5.0.1,<6
+gunicorn>=23.0.0,<24
+celery>=5.4.0,<6
+wes-service>=5.0.0,<6
+ruamel.yaml>=0.18.7,<1
