@@ -826,19 +826,18 @@ class WDLTests(BaseWDLTest):
 
     def test_check(self):
         """Test that Toil's lint check works"""
-        wdl = os.path.abspath("src/toil/test/wdl/lint_error.wdl")
+        with get_data("test/wdl/lint_error.wdl") as wdl:
+            out = subprocess.check_output(
+                self.base_command + [wdl, "-o", self.output_dir, "--logInfo"], stderr=subprocess.STDOUT)
 
-        out = subprocess.check_output(
-            self.base_command + [wdl, "-o", self.output_dir, "--logInfo"], stderr=subprocess.STDOUT)
+            assert b'UnnecessaryQuantifier' in out
 
-        assert b'UnnecessaryQuantifier' in out
-
-        p = subprocess.Popen(
-            self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
-        stderr = p.stderr.read()
-        p.wait()
-        assert p.returncode == 2
-        assert b'Workflow did not pass linting in strict mode' in stderr
+            p = subprocess.Popen(
+                self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
+            stderr = p.stderr.read()
+            p.wait()
+            assert p.returncode == 2
+            assert b'Workflow did not pass linting in strict mode' in stderr
 
 class WDLToilBenchTests(ToilTest):
     """Tests for Toil's MiniWDL-based implementation that don't run workflows."""

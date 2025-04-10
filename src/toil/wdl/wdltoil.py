@@ -5628,9 +5628,7 @@ def main() -> None:
 
             # We use a mutable variable and a generic file pointer to capture information about lint warnings
             # Both will be populated inside outline()
-            # shown will be the number of lint warnings and fp will contain the text about lint warnings
             lint_warnings_counter = [0]
-
             lint_warnings_io = io.StringIO()
             outline(
                 document,
