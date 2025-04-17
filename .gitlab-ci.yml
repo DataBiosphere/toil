@@ -87,6 +87,32 @@ lint:
     check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
     # make diff_pydocstyle_report
 
+# We make sure to also lint with our oldest supported Python version on every PR.
+py39_lint:
+  rules:
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+  stage: linting_and_dependencies
+  cache:
+    key: cache-python3.9
+    paths:
+      - .cache/pip
+      - .mypy_cache
+  script: |
+    pwd
+    echo -e "\e[0Ksection_start:`date +%s`:prepare\r\e[0KDownload and install all dependencies (except htcondor)"
+    python3.9 -m virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    python3.9 -m pip freeze
+    python3.9 --version
+    echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:mypy\r\e[0KCheck the Python types with mypy"
+    make mypy
+    echo -e "\e[0Ksection_end:`date +%s`:mypy\r\e[0K"
+    echo -e "\e[0Ksection_start:`date +%s`:docs\r\e[0KBuild the docs"
+    make docs
+    echo -e "\e[0Ksection_end:`date +%s`:docs\r\e[0K"
+    check-jsonschema --schemafile https://json.schemastore.org/dependabot-2.0.json .github/dependabot.yml
+    # make diff_pydocstyle_report
+
 cwl_dependency_is_stand_alone:
   rules:
     - if: $CI_PIPELINE_SOURCE != "schedule"

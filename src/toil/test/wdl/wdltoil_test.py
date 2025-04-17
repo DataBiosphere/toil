@@ -750,6 +750,47 @@ class TestWDL:
 
         assert result_text == "Hello World!\nMy name is potato."
 
+    # TODO: Should this move to the TRS/Dockstore tests file?
+    @pytest.mark.integrative
+    @needs_singularity_or_docker
+    def test_dockstore_metrics_publication(
+        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+    ) -> None:
+        wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
+        # Needs an input but doesn't provide a good one.
+        json_input = json.dumps(
+            {
+                "hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"
+            }
+        )
+
+        env = dict(os.environ)
+        # Set credentials we got permission to publish from the Dockstore team,
+        # and work on the staging Dockstore.
+        env["TOIL_TRS_ROOT"] = "https://staging.dockstore.org"
+        env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
+        # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
+        env["TOIL_HISTORY"] = "True"
+
+        output_log = subprocess.check_output(
+            self.base_command
+            + [
+                wdl_file,
+                json_input,
+                "--logDebug",
+                "-o",
+                str(tmp_path),
+                "--outputDialect",
+                "miniwdl",
+                "--publishWorkflowMetrics=current",
+            ]
+            + (extra_args or []),
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+        assert b'Workflow metrics were accepted by Dockstore.' in output_log
+
     @slow
     @needs_docker_cuda
     def test_giraffe_deepvariant(self, tmp_path: Path) -> None:
@@ -866,6 +907,23 @@ class TestWDL:
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
+    def test_check(self, tmp_path: Path) -> None:
+        """Test that Toil's lint check works"""
+        with get_data("test/wdl/lint_error.wdl") as wdl:
+            out = subprocess.check_output(
+                self.base_command + [str(wdl), "-o", str(tmp_path), "--logInfo"], stderr=subprocess.STDOUT)
+
+            assert b'UnnecessaryQuantifier' in out
+
+            p = subprocess.Popen(
+                self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
+            # Not actually a test assert; we need this to teach MyPy that we
+            # get an stderr when we pass stderr=subprocess.PIPE.
+            assert p.stderr is not None
+            stderr = p.stderr.read()
+            p.wait()
+            assert p.returncode == 2
+            assert b'Workflow did not pass linting in strict mode' in stderr
 
 class TestWDLToilBench(unittest.TestCase):
     """Tests for Toil's MiniWDL-based implementation that don't run workflows."""
