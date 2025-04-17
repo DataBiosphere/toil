@@ -266,7 +266,7 @@ class TestWDL:
 
     def test_string_file_coercion(self, tmp_path: Path) -> None:
         """
-        Test if input Files can be coreced to string and back.
+        Test if input Files can be coerced to string and back.
         """
         with get_data("test/wdl/testfiles/string_file_coercion.wdl") as wdl:
             with get_data("test/wdl/testfiles/string_file_coercion.json") as json_file:
