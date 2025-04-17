@@ -907,16 +907,19 @@ class TestWDL:
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
-    def test_check(self):
+    def test_check(self, tmp_path: Path) -> None:
         """Test that Toil's lint check works"""
         with get_data("test/wdl/lint_error.wdl") as wdl:
             out = subprocess.check_output(
-                self.base_command + [wdl, "-o", self.output_dir, "--logInfo"], stderr=subprocess.STDOUT)
+                self.base_command + [str(wdl), "-o", str(tmp_path), "--logInfo"], stderr=subprocess.STDOUT)
 
             assert b'UnnecessaryQuantifier' in out
 
             p = subprocess.Popen(
                 self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
+            # Not actually a test assert; we need this to teach MyPy that we
+            # get an stderr when we pass stderr=subprocess.PIPE.
+            assert p.stderr is not None
             stderr = p.stderr.read()
             p.wait()
             assert p.returncode == 2
