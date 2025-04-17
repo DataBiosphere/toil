@@ -68,7 +68,8 @@ import WDL.Error
 import WDL.runtime.config
 from configargparse import ArgParser, Namespace
 from WDL._util import byte_size_units, chmod_R_plus
-from WDL.CLI import print_error
+from WDL.CLI import print_error, outline
+import WDL.Lint
 from WDL.runtime.backend.docker_swarm import SwarmContainer
 from WDL.runtime.backend.singularity import SingularityContainer
 from WDL.runtime.error import DownloadFailed
@@ -5680,6 +5681,32 @@ def main() -> None:
                         "Inferring --allCallOutputs=True to preserve probable actual outputs of a croo WDL file."
                     )
                     options.all_call_outputs = True
+        
+            # This mutates document to add linting information, but doesn't print any lint errors itself
+            # or stop the workflow
+            WDL.Lint.lint(document)
+
+            # We use a mutable variable and a generic file pointer to capture information about lint warnings
+            # Both will be populated inside outline()
+            lint_warnings_counter = [0]
+            lint_warnings_io = io.StringIO()
+            outline(
+                document,
+                0,
+                file=lint_warnings_io,
+                show_called=(document.workflow is not None),
+                shown=lint_warnings_counter,
+            )  # type: ignore[no-untyped-call]
+
+            if getattr(WDL.Lint, "_shellcheck_available", None) is False:
+                logger.info("Suggestion: install shellcheck (www.shellcheck.net) to check task commands")
+
+            if lint_warnings_counter[0]:
+                logger.warning('Workflow lint warnings:\n%s', lint_warnings_io.getvalue().rstrip())
+                if options.strict:
+                    logger.critical(f'Workflow did not pass linting in strict mode')
+                    # MiniWDL uses exit code 2 to indicate linting errors, so replicate that behavior
+                    sys.exit(2)
 
             # Get the execution directory
             execution_dir = os.getcwd()
