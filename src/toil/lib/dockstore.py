@@ -373,6 +373,7 @@ def send_metrics(trs_workflow_id: str, trs_version: str, workflow_runs: list[Run
     try:
         result = web_session.post(endpoint_url, params=submission_params, json=to_post, headers=headers)
         result.raise_for_status()
+        logger.debug("Workflow metrics were accepted by Dockstore. Dockstore response code: %s", result.status_code)
     except requests.HTTPError as e:
         logger.warning("Workflow metrics were not accepted by Dockstore. Dockstore complained: %s", e.response.text)
         raise
