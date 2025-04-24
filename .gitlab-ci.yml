@@ -5,6 +5,7 @@ variables:
   PYTHONIOENCODING: "utf-8"
   DEBIAN_FRONTEND: "noninteractive"
   TOIL_OWNER_TAG: "shared"
+  TOIL_HISTORY: "0"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   MAIN_PYTHON_PKG: "python3.13"
   # Used to tell pytest which tests to be run by specifying markers,
