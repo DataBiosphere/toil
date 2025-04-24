@@ -48,6 +48,7 @@ from toil.cwl.utils import (
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.job import WorkerImportJob
 from toil.lib.threading import cpu_count
 from toil.test import (
     get_data,
@@ -2010,12 +2011,16 @@ def test_import_on_workers() -> None:
 
     with get_data("test/cwl/download.cwl") as cwl_file:
         with get_data("test/cwl/directory/directory/file.txt") as file_path:
+            # To make sure we see every job issued with a leader log message
+            # that we can then detect for the test, we need to turn off
+            # chaining.
             args = [
                 "--runImportsOnWorkers",
                 "--importWorkersDisk=10MiB",
                 "--realTimeLogging=True",
                 "--logLevel=INFO",
                 "--logColors=False",
+                "--disableChaining=True",
                 str(cwl_file),
                 "--input",
                 str(file_path),
@@ -2036,7 +2041,7 @@ else:
 
 class ImportWorkersMessageHandler(_stream_handler):
     """
-    Detect the import workers log message and set a flag.
+    Detect whether any WorkerImportJob jobs ran during a workflow.
     """
 
     def __init__(self) -> None:
@@ -2045,7 +2050,9 @@ class ImportWorkersMessageHandler(_stream_handler):
         super().__init__(sys.stderr)
 
     def emit(self, record: logging.LogRecord) -> None:
+        # We get the job name from the class since we already started failing
+        # this test once due to it being renamed.
         if (record.msg % record.args).startswith(
-            "Issued job 'CWLImportJob' CWLImportJob"
+            f"Issued job '{WorkerImportJob.__name__}'"
         ):
             self.detected = True
