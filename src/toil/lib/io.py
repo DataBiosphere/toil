@@ -45,6 +45,9 @@ REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
 ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
 def is_standard_url(filename: str) -> bool:
+    """
+    Return True if the given URL is a non-Toil, non-file: URL.
+    """
     return is_url_with_scheme(filename, STANDARD_SCHEMES)
 
 def is_remote_url(filename: str) -> bool:
@@ -72,11 +75,18 @@ def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
     return False
 
 def is_toil_url(filename: str) -> bool:
+    """
+    Return True if a URL is a toilfile: URL.
+    """
     return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
 
 def is_file_url(filename: str) -> bool:
-    return is_url_with_scheme(filename, ["file:"])
+    """
+    Return True if a URL is a file: URL.
 
+    Will return False for bare paths.
+    """
+    return is_url_with_scheme(filename, ["file:"])
 
 def mkdtemp(
     suffix: Optional[str] = None,

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
+import sys
 import types
 from importlib.machinery import SourceFileLoader
 from tempfile import NamedTemporaryFile
@@ -143,7 +144,6 @@ def import_version():
         # First make sure we can find it (in case we're happening during an
         # install where the source tree isn't on the path already).
         # See <https://github.com/pypa/setuptools/discussions/3909#discussioncomment-5718455>
-        import sys
         sys.path.append(os.path.dirname(__file__))
 
         import version_template
