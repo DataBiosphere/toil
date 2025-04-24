@@ -1113,12 +1113,13 @@ def cwl_v1_0_spec(tmp_path: Path) -> Generator[Path]:
     finally:
         pass  # no cleanup
 
-
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv10:
+class TestCWLv10Conformance:
     """
     Run the CWL 1.0 conformance tests in various environments.
     """
@@ -1296,11 +1297,13 @@ def cwl_v1_1_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv11:
+class TestCWLv11Conformance:
     """
     Run the CWL 1.1 conformance tests in various environments.
     """
@@ -1384,11 +1387,13 @@ def cwl_v1_2_spec(tmp_path: Path) -> Generator[Path]:
         pass  # no cleanup
 
 
+@pytest.mark.integrative
+@pytest.mark.conformance
 @needs_cwl
 @needs_online
 @pytest.mark.cwl
 @pytest.mark.online
-class TestCWLv12:
+class TestCWLv12Conformance:
     """
     Run the CWL 1.2 conformance tests in various environments.
     """
