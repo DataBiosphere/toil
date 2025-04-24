@@ -264,6 +264,27 @@ class TestWDL:
             assert isinstance(result["url_to_file.first_line"], str)
             assert result["url_to_file.first_line"] == "chr1\t248387328"
 
+    def test_string_file_coercion(self, tmp_path: Path) -> None:
+        """
+        Test if input Files can be coerced to string and back.
+        """
+        with get_data("test/wdl/testfiles/string_file_coercion.wdl") as wdl:
+            with get_data("test/wdl/testfiles/string_file_coercion.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path),
+                        "--logInfo",
+                        "--retryCount=0"
+                    ]
+                )
+                result = json.loads(result_json)
+
+                assert "StringFileCoercion.output_file" in result
+
     @needs_docker
     def test_wait(self, tmp_path: Path) -> None:
         """
