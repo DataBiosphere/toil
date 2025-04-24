@@ -3572,7 +3572,7 @@ class CWLInstallImportsJob(Job):
         basedir: str,
         skip_remote: bool,
         bypass_file_store: bool,
-        import_data: Promised[list[dict[str, FileID]]],
+        import_data: list[Promised[dict[str, FileID]]],
         **kwargs: Any,
     ) -> None:
         """
@@ -3667,7 +3667,7 @@ class CWLInstallImportsJob(Job):
         candidate_to_fileid: dict[str, FileID] = {
             k: v for mapping in unwrap(
                 self.import_data
-            ) for k, v in mapping.items()
+            ) for k, v in unwrap(mapping).items()
         }
 
         initialized_job_order = unwrap(self.initialized_job_order)
