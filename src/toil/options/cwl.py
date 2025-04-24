@@ -3,6 +3,8 @@ from argparse import ArgumentParser
 
 from configargparse import SUPPRESS
 
+from toil.src.toil.lib.conversions import human2bytes
+from toil.src.toil.options.common import make_open_interval_action
 from toil.version import baseVersion
 
 
@@ -413,6 +415,14 @@ def add_cwl_options(parser: ArgumentParser, suppress: bool = True) -> None:
         help=suppress_help
         or "Do not apply CWL specification default ramMin, so that Toil --defaultMemory applies.",
         dest="cwl_default_ram",
+    )
+    parser.add_argument(
+        "--cwl-min-ram",
+        type=human2bytes,
+        action=make_open_interval_action(1),
+        help=suppress_help
+        or "Specify a minimum memory allocation for all tasks "
+        " except those using the Toil --defaultMemory",
     )
     parser.add_argument(
         "--destBucket",
