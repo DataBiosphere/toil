@@ -5402,6 +5402,13 @@ class WDLOutputsJob(WDLBaseJob):
             output_bindings, standard_library=standard_library
         )
 
+        # TODO: Unify the rest of this with task output managment somehow
+
+        # Upload any files in the outputs if not uploaded already.
+        # We need this because it's possible to create new files in a workflow
+        # outputs section.
+        output_bindings = virtualize_files(output_bindings, standard_library)
+
         if self._cache_key is not None:
             output_bindings = fill_execution_cache(
                 self._cache_key, output_bindings, file_store, self._wdl_options
