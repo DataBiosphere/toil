@@ -12,6 +12,7 @@ workflow read_file {
 
     output {
         Array[String] lines = the_lines
+        File remade_file = write_lines(the_lines)
     }
 
 }

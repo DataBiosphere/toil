@@ -354,6 +354,13 @@ class TestWDL:
                 "This is a different line"
             ]
 
+            # Since we were catching
+            # <https://github.com/DataBiosphere/toil/issues/5247> at file
+            # export, make sure we actually exported a file.
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_lines.remade_file"])
+
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
         """
