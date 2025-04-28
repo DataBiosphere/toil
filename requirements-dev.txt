@@ -3,7 +3,7 @@ pytest-cov>=2.12.1,<7
 pytest-timeout>=1.4.2,<3
 pytest-subtests
 stubserver>=1.1,<2
-setuptools>=65.5.1,<80
+setuptools>=65.5.1,<81
 sphinx>=7,<9
 sphinx-autoapi>=3.2.1,<4
 astroid>=3,<4
