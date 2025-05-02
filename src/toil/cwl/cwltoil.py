@@ -194,14 +194,17 @@ class SkipNull:
 
 
 def trim_mounts_op_down(file_or_directory: CWLObjectType) -> None:
+    """
+    No-op function for mount-point trimming.
+    """
     return
 
 
 def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
     """
-    Return None if we don't have a local path or file URI
-    :param file_or_directory:
-    :return:
+    Get the local bare path or file: URI for a CWL file or directory, or None.
+    
+    :return: None if we don't have a local path or file URI
     """
     # Since we only consider mountable paths, if path is not file URI or bare path, don't consider it
     path = cast(str, file_or_directory.get('location') or file_or_directory.get('path'))
@@ -214,6 +217,8 @@ def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
 
 def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child_results: list[bool]) -> bool:
     """
+    Remove subtrees of the CWL file or directory object tree that only have redundant stuff in them.
+
     Nonredundant for something in a directory means its path or location is not within the parent directory or doesn't match its basename
     Nonredundant for something in a secondary file means its path or location is not adjacent to the primary file or doesn't match its basename
 
