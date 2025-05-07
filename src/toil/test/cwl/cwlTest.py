@@ -1915,16 +1915,13 @@ def test_trim_mounts_op() -> None:
     """
     Make sure our logic fo removing duplicate listings when loading inputs to a job work
     """
-    structure = {
-        "input_directory": {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
-    }
-    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+    structure1 = {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
+    visit_cwl_class_and_reduce(structure1, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
 
     # nothing should have been removed
-    assert structure['input_directory']['listing'][0]['contents'] == 'hello world'
+    assert len(structure1['listing']) == 1
 
-
-    structure = {
+    structure2 = {
         "class": "Directory",
         "location": "file:///home/heaucques/Documents/toil/test_dir",
         "basename": "test_dir",
@@ -1949,12 +1946,12 @@ def test_trim_mounts_op() -> None:
         ],
         "path": "/home/heaucques/Documents/toil/test_dir"
     }
-    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+    visit_cwl_class_and_reduce(structure2, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
 
     # everything should have been removed
-    assert len(structure['listing']) == 0
+    assert len(structure2['listing']) == 0
 
-    structure = {
+    structure3 = {
         "class": "Directory",
         "location": "file:///home/heaucques/Documents/toil/test_dir",
         "basename": "test_dir",
@@ -1979,10 +1976,10 @@ def test_trim_mounts_op() -> None:
         ],
         "path": "/home/heaucques/Documents/toil/test_dir"
     }
-    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+    visit_cwl_class_and_reduce(structure3, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
 
     # everything except the nested directory should be removed
-    assert len(structure['listing']) == 1
+    assert len(structure3['listing']) == 1
 
 
 @needs_cwl
