@@ -45,6 +45,8 @@ from toil.cwl.utils import (
     download_structure,
     visit_cwl_class_and_reduce,
     visit_top_cwl_class,
+    trim_mounts_op_up,
+    trim_mounts_op_down
 )
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -1904,6 +1906,83 @@ def test_visit_cwl_class_and_reduce() -> None:
     assert up_count == 3
     # Only 2 child relationships
     assert up_child_count == 2
+
+
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_trim_mounts_op() -> None:
+    """
+    Make sure our logic fo removing duplicate listings when loading inputs to a job work
+    """
+    structure = {
+        "input_directory": {"class": "Directory", "basename": "directory", "listing": [{"class": "File", "basename": "file", "contents": "hello world"}]}
+    }
+    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+
+    # nothing should have been removed
+    assert structure['input_directory']['listing'][0]['contents'] == 'hello world'
+
+
+    structure = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/nested_dir",
+                "basename": "nested_dir",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/test_dir/nested_dir"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+
+    # everything should have been removed
+    assert len(structure['listing']) == 0
+
+    structure = {
+        "class": "Directory",
+        "location": "file:///home/heaucques/Documents/toil/test_dir",
+        "basename": "test_dir",
+        "listing": [
+            {
+                "class": "Directory",
+                "location": "file:///home/heaucques/Documents/thing",
+                "basename": "thing2",
+                "listing": [],
+                "path": "/home/heaucques/Documents/toil/thing2"
+            },
+            {
+                "class": "File",
+                "location": "file:///home/heaucques/Documents/toil/test_dir/test_file",
+                "basename": "test_file",
+                "size": 0,
+                "nameroot": "test_file",
+                "nameext": "",
+                "path": "/home/heaucques/Documents/toil/test_dir/test_file",
+                "checksum": "sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709"
+            }
+        ],
+        "path": "/home/heaucques/Documents/toil/test_dir"
+    }
+    visit_cwl_class_and_reduce(structure, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
+
+    # everything except the nested directory should be removed
+    assert len(structure['listing']) == 1
 
 
 @needs_cwl
