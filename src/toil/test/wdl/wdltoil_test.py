@@ -308,6 +308,59 @@ class TestWDL:
             assert isinstance(result["wait.result"], str)
             assert result["wait.result"] == "waited"
 
+    def test_restart(self, tmp_path: Path) -> None:
+        """
+        Test if a WDL workflow can be restarted and finish successfully.
+        """
+        with get_data("test/wdl/testfiles/read_file.wdl") as wdl:
+            out_dir = tmp_path / "out"
+            file_path = tmp_path / "file"
+            jobstore_path = tmp_path / "tree"
+            command = (
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    str(out_dir),
+                    "-i",
+                    json.dumps({"read_file.input_string": str(file_path)}),
+                    "--jobStore",
+                    str(jobstore_path),
+                    "--retryCount=0"
+                ]
+            )
+            with pytest.raises(subprocess.CalledProcessError):
+                # The first time we run it, it should fail because it's trying
+                # to work on a nonexistent file from a string path.
+                result_json = subprocess.check_output(
+                    command + ["--logCritical"]
+                )
+
+            # Then create the file
+            with open(file_path, "w") as f:
+                f.write("This is a line\n")
+                f.write("This is a different line")
+            
+            # Now it should work
+            result_json = subprocess.check_output(
+                    command + ["--restart"]
+                )
+            result = json.loads(result_json)
+
+            assert "read_file.lines" in result
+            assert isinstance(result["read_file.lines"], list)
+            assert result["read_file.lines"] == [
+                "This is a line",
+                "This is a different line"
+            ]
+
+            # Since we were catching
+            # <https://github.com/DataBiosphere/toil/issues/5247> at file
+            # export, make sure we actually exported a file.
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_file.remade_file"])
+
     @needs_singularity_or_docker
     def test_workflow_file_deletion(self, tmp_path: Path) -> None:
         """
