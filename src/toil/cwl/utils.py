@@ -20,8 +20,10 @@ import posixpath
 import stat
 from collections.abc import Iterable, MutableMapping, MutableSequence
 from pathlib import PurePosixPath
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, Callable, TypeVar, Union, Optional, cast, MutableSequence, MutableMapping
+from urllib.parse import unquote, urlparse
 
+from cwltool.utils import CWLObjectType, CWLOutputType
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -219,3 +221,80 @@ def download_structure(
             # TODO: why?
             index[dest_path] = value
             existing[value] = dest_path
+
+
+def trim_mounts_op_down(file_or_directory: CWLObjectType) -> None:
+    """
+    No-op function for mount-point trimming.
+    """
+    return
+
+
+def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
+    """
+    Get the local bare path or file: URI for a CWL file or directory, or None.
+
+    :return: None if we don't have a local path or file URI
+    """
+    # Since we only consider mountable paths, if path is not file URI or bare path, don't consider it
+    path = unquote(cast(str, file_or_directory.get('location') or file_or_directory.get('path')))
+    scheme = urlparse(path).scheme
+    if scheme == '' or scheme == 'file':
+        return path
+    else:
+        return None
+
+
+def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child_results: list[bool]) -> bool:
+    """
+    Remove subtrees of the CWL file or directory object tree that only have redundant stuff in them.
+
+    Nonredundant for something in a directory means its path or location is not within the parent directory or doesn't match its basename
+    Nonredundant for something in a secondary file means its path or location is not adjacent to the primary file or doesn't match its basename
+
+    If on a File:
+    Returns True if anything in secondary files is nonredundant or has nonredundant children to this file, false otherwise
+    If on a Directory:
+    Returns True if anything in top level listing is nonredundant or has nonredundant children, otherwise false.
+    If something in the listing is redundant and all children are redundant, then delete it
+    :param file_or_directory: CWL file or CWL directory type
+    :return: boolean
+    """
+    if file_or_directory.get('location') is None and file_or_directory.get('path') is None:
+        # file or directory is defined by contents or listing respectively, this is not redundant
+        return True
+    own_path = sniff_location(file_or_directory)
+    if own_path is None:
+        return True
+    # basename should be set as we are the implementation
+    own_basename = cast(str, file_or_directory['basename'])
+
+    # If the basename does not match the path, then this is nonredundant
+    if not own_path.endswith("/" + own_basename):
+        return True
+
+    if file_or_directory['class'] == 'File':
+        if any(child_results):
+            # one of the children was detected as not redundant
+            return True
+        for secondary in cast(MutableSequence[MutableMapping[str, CWLOutputType]], file_or_directory.get('secondaryFiles', [])):
+            # secondary files should already be flagged nonredundant if they don't have either a path or location
+            secondary_path = sniff_location(secondary)
+            secondary_basename = cast(str, secondary['basename'])
+            # If we swap the secondary basename for the primary basename in the primary path, and they don't match, then they are nonredundant
+            if os.path.join(own_path[:-len(own_basename)], secondary_basename) != secondary_path:
+                return True
+    else:
+        listings = cast(MutableSequence[MutableMapping[str, CWLOutputType]], file_or_directory.get('listing', []))
+        if len(listings) == 0:
+            return False
+        # We assume child_results is in the same order as the directory listing
+        # iterate backwards to avoid iteration issues
+        for i in range(len(listings) - 1, -1, -1):
+            if child_results[i] is False:
+                if os.path.join(own_path, cast(str, listings[i]['basename'])) == sniff_location(listings[i]):
+                    del listings[i]
+        # If one of the listings was nonredundant, then this directory is also nonredundant
+        if any(child_results):
+            return True
+    return False

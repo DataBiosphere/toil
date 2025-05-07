@@ -34,7 +34,6 @@ import stat
 import sys
 import textwrap
 import uuid
-from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence
 from tempfile import NamedTemporaryFile, TemporaryFile, gettempdir
 from threading import Thread
 from typing import (
@@ -121,7 +120,7 @@ from toil.cwl.utils import (
     CWL_UNSUPPORTED_REQUIREMENT_EXIT_CODE,
     download_structure,
     get_from_structure,
-    visit_cwl_class_and_reduce,
+    visit_cwl_class_and_reduce, trim_mounts_op_down, trim_mounts_op_up,
 )
 from toil.exceptions import FailedJobsException
 from toil.fileStores import FileID
@@ -2750,6 +2749,9 @@ class CWLJob(CWLNamedJob):
         logger.debug("Loaded order:\n%s", self.cwljob)
 
         cwljob = resolve_dict_w_promises(self.cwljob, file_store)
+
+        # Deletes duplicate listings
+        visit_cwl_class_and_reduce(cwljob, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
