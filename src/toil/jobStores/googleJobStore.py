@@ -43,6 +43,7 @@ from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
+from toil.lib.url import URLAccess
 
 log = logging.getLogger(__name__)
 
@@ -131,7 +132,7 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
 
 
 
-class GoogleJobStore(AbstractJobStore):
+class GoogleJobStore(AbstractJobStore, URLAccess):
 
     nodeServiceAccountJson = "/root/service_account.json"
 
