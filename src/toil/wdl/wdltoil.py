@@ -1142,17 +1142,29 @@ def evaluate_decls_to_bindings(
     standard_library: ToilWDLStdLibBase,
     include_previous: bool = False,
     drop_missing_files: bool = False,
+    expressions_are_defaults: bool = False,
 ) -> WDLBindings:
     """
     Evaluate decls with a given bindings environment and standard library.
+    
     Creates a new bindings object that only contains the bindings from the given decls.
     Guarantees that each decl in `decls` can access the variables defined by the previous ones.
+    
     :param all_bindings: Environment to use when evaluating decls
     :param decls: Decls to evaluate
     :param standard_library: Standard library
-    :param include_previous: Whether to include the existing environment in the new returned environment. This will be false for outputs where only defined decls should be included
-    :param drop_missing_files: Whether to coerce nonexistent files to null. The coerced elements will be checked that the transformation is valid.
-    Currently should only be enabled in output sections, see https://github.com/openwdl/wdl/issues/673#issuecomment-2248828116
+    :param include_previous: Whether to include the existing environment in the
+        new returned environment. This will be false for outputs where only
+        defined decls should be included
+    :param drop_missing_files: Whether to coerce nonexistent files to null. The
+        coerced elements will be checked that the transformation is valid.
+        Currently should only be enabled in output sections, see
+        https://github.com/openwdl/wdl/issues/673#issuecomment-2248828116.
+    :param expressions_are_defaults: If True, value expressions in decls are
+        treated as default values, and there may be existing values in the
+        incoming environment that take precedence. If False, each decl is taken
+        to be a fresh definition, and expressions are always evaluated and
+        used.
     :return: New bindings object
     """
     # all_bindings contains current bindings + previous all_bindings
@@ -1162,9 +1174,14 @@ def evaluate_decls_to_bindings(
         drop_if_missing, standard_library=standard_library
     )
     for each_decl in decls:
-        output_value = evaluate_defaultable_decl(
-            each_decl, all_bindings, standard_library
-        )
+        if expressions_are_defaults:
+            output_value = evaluate_defaultable_decl(
+                each_decl, all_bindings, standard_library
+            )
+        else:
+            output_value = evaluate_decl(
+                each_decl, all_bindings, standard_library
+            )
         if drop_missing_files:
             dropped_output_value = map_over_typed_files_in_value(
                 output_value, drop_if_missing_with_workdir
@@ -2534,11 +2551,15 @@ def evaluate_decl(
     """
     Evaluate the expression of a declaration node, or raise an error.
     """
-
-    return evaluate_named_expression(
-        node, node.name, node.type, node.expr, environment, stdlib
-    )
-
+    try:
+        return evaluate_named_expression(
+            node, node.name, node.type, node.expr, environment, stdlib
+        )
+    except Exception:
+        # If something goes wrong, dump.
+        logger.exception("Evaluation failed for %s", node)
+        log_bindings(logger.error, "Statement was evaluated in:", [environment])
+        raise
 
 def evaluate_call_inputs(
     context: WDL.Error.SourceNode | WDL.Error.SourcePosition,
@@ -2581,33 +2602,28 @@ def evaluate_defaultable_decl(
     If the name of the declaration is already defined in the environment, return its value. Otherwise, return the evaluated expression.
     """
 
-    try:
-        if (
-            node.name in environment
-            and not isinstance(environment[node.name], WDL.Value.Null)
-        ) or (
-            isinstance(environment.get(node.name), WDL.Value.Null)
-            and node.type.optional
-        ):
-            logger.debug("Name %s is already defined, not using default", node.name)
-            if not isinstance(environment[node.name].type, type(node.type)):
-                return environment[node.name].coerce(node.type)
-            else:
-                return environment[node.name]
+    if (
+        node.name in environment
+        and not isinstance(environment[node.name], WDL.Value.Null)
+    ) or (
+        isinstance(environment.get(node.name), WDL.Value.Null)
+        and node.type.optional
+    ):
+        logger.debug("Name %s is already defined, not using default", node.name)
+        if not isinstance(environment[node.name].type, type(node.type)):
+            return environment[node.name].coerce(node.type)
         else:
-            if node.type is not None and not node.type.optional and node.expr is None:
-                # We need a value for this but there isn't one.
-                raise WDL.Error.EvalError(
-                    node,
-                    f"Value for {node.name} was not provided and no default value is available",
-                )
-            logger.info("Defaulting %s to %s", node.name, node.expr)
-            return evaluate_decl(node, environment, stdlib)
-    except Exception:
-        # If something goes wrong, dump.
-        logger.exception("Evaluation failed for %s", node)
-        log_bindings(logger.error, "Statement was evaluated in:", [environment])
-        raise
+            return environment[node.name]
+    else:
+        if node.type is not None and not node.type.optional and node.expr is None:
+            # We need a value for this but there isn't one.
+            raise WDL.Error.EvalError(
+                node,
+                f"Value for {node.name} was not provided and no default value is available",
+            )
+        logger.info("Defaulting %s to %s", node.name, node.expr)
+        return evaluate_decl(node, environment, stdlib)
+    
 
 
 # TODO: make these stdlib methods???
@@ -3228,7 +3244,11 @@ class WDLTaskWrapperJob(WDLBaseJob):
             logger.debug("Evaluating task code")
             # Evaluate all the inputs that aren't pre-set
             bindings = evaluate_decls_to_bindings(
-                self._task.inputs, bindings, standard_library, include_previous=True
+                self._task.inputs,
+                bindings,
+                standard_library,
+                include_previous=True,
+                expressions_are_defaults=True
             )
         if self._task.postinputs:
             # Evaluate all the postinput decls.
@@ -5244,6 +5264,7 @@ class WDLWorkflowJob(WDLSectionJob):
                     bindings,
                     standard_library,
                     include_previous=True,
+                    expressions_are_defaults=True,
                 )
             finally:
                 # Report all files are downloaded now that all expressions are evaluated.
@@ -5319,9 +5340,8 @@ class WDLOutputsJob(WDLBaseJob):
 
         try:
             if self._workflow.outputs is not None:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
+                # Output section is declared and is nonempty, so evaluate normally.
+                # Don't drop nonexistent files here; we do that later.
                 output_bindings = evaluate_decls_to_bindings(
                     self._workflow.outputs, unwrap(self._bindings), standard_library
                 )
@@ -5332,7 +5352,8 @@ class WDLOutputsJob(WDLBaseJob):
             if self._workflow.outputs is None or self._wdl_options.get(
                 "all_call_outputs", False
             ):
-                # The output section is not declared, or we want to keep task outputs anyway.
+                # The output section is not declared, or we want to keep task
+                # outputs anyway on top of an already-evaluated output section.
 
                 # Get all task outputs and return that
                 # First get all task output names
@@ -5363,16 +5384,6 @@ class WDLOutputsJob(WDLBaseJob):
                         output_bindings = output_bindings.bind(
                             binding.name, binding.value
                         )
-            else:
-                # Output section is declared and is nonempty, so evaluate normally
-
-                # Combine the bindings from the previous job
-                output_bindings = evaluate_decls_to_bindings(
-                    self._workflow.outputs,
-                    unwrap(self._bindings),
-                    standard_library,
-                    drop_missing_files=True,
-                )
         finally:
             # We don't actually know when all our files are downloaded since
             # anything we evaluate might devirtualize inside any expression.
@@ -5390,6 +5401,13 @@ class WDLOutputsJob(WDLBaseJob):
         output_bindings = drop_missing_files(
             output_bindings, standard_library=standard_library
         )
+
+        # TODO: Unify the rest of this with task output managment somehow
+
+        # Upload any files in the outputs if not uploaded already.
+        # We need this because it's possible to create new files in a workflow
+        # outputs section.
+        output_bindings = virtualize_files(output_bindings, standard_library)
 
         if self._cache_key is not None:
             output_bindings = fill_execution_cache(
