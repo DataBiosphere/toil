@@ -31,6 +31,8 @@ from toil.test import (
     slow,
 )
 
+from toil.test.cwl.cwlTest import TestCWLv12Conformance
+
 log = logging.getLogger(__name__)
 
 
@@ -237,6 +239,16 @@ class CWLOnARMTest(AbstractClusterTest):
 
     @needs_env_var("CI_COMMIT_SHA", "a git commit sha")
     def test_cwl_on_arm(self) -> None:
+        # Import the test we want to run remotely, so we know right away if it exists.
+        test_method = TestCWLv12Conformance.test_run_conformance
+
+        # Work out how to describe it as a pytest test spec.
+        # __qualname__ gives classname.methodname
+        test_name = test_method.__qualname__.replace(".", "::")
+        # The module path is the file path under src, with dots.
+        test_path = test_class.__module__.replace(".", "/")
+        test_spec = f"src/{test_path}.py::{test_name}"
+
         # Make a cluster
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
@@ -276,12 +288,12 @@ class CWLOnARMTest(AbstractClusterTest):
             ]
         )
 
-        # Runs the TestCWLv12 on an ARM instance
+        # Runs the test on an ARM instance
         self.sshUtil(
             [
                 "bash",
                 "-c",
-                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s src/toil/test/cwl/cwlTest.py::TestCWLv12::test_run_conformance",
+                f". .{self.venvDir}/bin/activate && cd {self.cwl_test_dir}/toil && pytest --log-cli-level DEBUG -r s {test_spec}",
             ]
         )
 

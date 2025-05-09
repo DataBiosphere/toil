@@ -1531,7 +1531,7 @@ class TestCWLv12Conformance:
         TOIL_WES_ENDPOINT=http://localhost:8080 \
         TOIL_WES_USER=test \
         TOIL_WES_PASSWORD=password \
-        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
+        python -m pytest src/toil/test/cwl/cwlTest.py::TestCWLv12Conformance::test_wes_server_cwl_conformance -vv --log-level INFO --log-cli-level INFO
         """
         endpoint = os.environ.get("TOIL_WES_ENDPOINT")
         extra_args = [f"--wes_endpoint={endpoint}"]
