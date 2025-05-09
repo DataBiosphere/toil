@@ -94,7 +94,7 @@ def main() -> None:
         # If we try to do SSH port forwarding without any other options, but
         # IPv6 is turned off on the host, we might get complaints that we
         # "Cannot assign requested address" on ports on [::1].
-        sshOptions.extend("-4")
+        sshOptions.append("-4")
 
     try:
         cluster.getLeader().sshAppliance(
