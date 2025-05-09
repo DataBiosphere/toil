@@ -845,25 +845,29 @@ class TestWDL:
         env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
         # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
         env["TOIL_HISTORY"] = "True"
+        
+        try:
+            output_log = subprocess.check_output(
+                self.base_command
+                + [
+                    wdl_file,
+                    json_input,
+                    "--logDebug",
+                    "-o",
+                    str(tmp_path),
+                    "--outputDialect",
+                    "miniwdl",
+                    "--publishWorkflowMetrics=current",
+                ]
+                + (extra_args or []),
+                stderr=subprocess.STDOUT,
+                env=env,
+            ).decode("utf-8", errors="replace")
+        except subprocess.CalledProcessError as e:
+            logger.error("Test run of Toil failed: %s", e.stdout.decode("utf-8", errors="replace"))
+            raise
 
-        output_log = subprocess.check_output(
-            self.base_command
-            + [
-                wdl_file,
-                json_input,
-                "--logDebug",
-                "-o",
-                str(tmp_path),
-                "--outputDialect",
-                "miniwdl",
-                "--publishWorkflowMetrics=current",
-            ]
-            + (extra_args or []),
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
-
-        assert b'Workflow metrics were accepted by Dockstore.' in output_log
+        assert "Workflow metrics were accepted by Dockstore." in output_log, f"No acceptance message in log: {output_log}"
 
     @slow
     @needs_docker_cuda
