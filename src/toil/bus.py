@@ -69,12 +69,14 @@ import tempfile
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import IO, Any, Callable, NamedTuple, Optional, TypeVar, cast
+from typing import IO, Any, Callable, NamedTuple, Optional, TypeVar, TYPE_CHECKING, cast
 
 from pubsub.core import Publisher
 from pubsub.core.listener import Listener
 from pubsub.core.topicobj import Topic
 from pubsub.core.topicutils import ALL_TOPICS
+
+from toil.lib.misc import FileDescriptorOrPath
 
 logger = logging.getLogger(__name__)
 
@@ -434,7 +436,7 @@ class MessageBus:
         connection._set_bus(self)
         return connection
 
-    def connect_output_file(self, file_path: str) -> Any:
+    def connect_output_file(self, file_path: FileDescriptorOrPath) -> Any:
         """
         Send copies of all messages to the given output file.
 
@@ -736,7 +738,7 @@ class JobStatus:
         )  # if the exit code is -1 and the job id is specified, we assume the job is running
 
 
-def replay_message_bus(path: str) -> dict[str, JobStatus]:
+def replay_message_bus(path: FileDescriptorOrPath) -> dict[str, JobStatus]:
     """
     Replay all the messages and work out what they mean for jobs.
 

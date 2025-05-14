@@ -20,7 +20,7 @@ from toil.test import get_temp_file
 
 # used by cactus
 # TODO: only used in utilsTest.py; move this there once out of cactus
-def system(command):
+def system(command: list[str]) -> None:
     """
     A convenience wrapper around subprocess.check_call that logs the command before passing it
     on. The command can be either a string or a sequence of strings. If it is a string shell=True

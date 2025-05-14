@@ -21,6 +21,7 @@ cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
 import datetime
+import io
 import logging
 import math
 import os
@@ -50,7 +51,8 @@ else:
 from typing import Protocol, TypedDict, runtime_checkable
 
 import urllib3
-import yaml
+import ruamel.yaml as yaml
+import json
 
 # The Right Way to use the Kubernetes module is to `import kubernetes` and then you get all your stuff as like ApiClient. But this doesn't work for the stubs: the stubs seem to only support importing things from the internal modules in `kubernetes` where they are actually defined. See for example <https://github.com/MaterializeInc/kubernetes-stubs/issues/9 and <https://github.com/MaterializeInc/kubernetes-stubs/issues/10>. So we just import all the things we use into our global namespace here.
 from kubernetes.client import (
@@ -77,6 +79,7 @@ from kubernetes.client import (
     V1ResourceRequirements,
     V1SecretVolumeSource,
     V1SecurityContext,
+    V1PodSecurityContext,
     V1Toleration,
     V1Volume,
     V1VolumeMount,
@@ -148,7 +151,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         customObjects: NotRequired[CustomObjectsApi]
 
     def __init__(
-        self, config: Config, maxCores: int, maxMemory: int, maxDisk: int
+        self, config: Config, maxCores: int, maxMemory: float, maxDisk: int
     ) -> None:
         super().__init__(config, maxCores, maxMemory, maxDisk)
 
@@ -314,7 +317,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 del here[k]
 
         drop_boring(root_dict)
-        return yaml.dump(root_dict)
+        s = io.StringIO()
+        YAML = yaml.YAML(typ='safe')
+        YAML.dump(root_dict, s)
+        return s.getvalue()
 
     @overload
     def _api(
@@ -803,6 +809,26 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     ],
                 )
 
+    class FakeResponse:
+        data: str
+
+    T = TypeVar('T')
+    def _load_kubernetes_object(self, file: str, cls: type[T]) -> T:
+        """
+        Deserialize a YAML representation into a Kubernetes object
+        :param file: Path to YAML file
+        :param cls: Kubernetes API model type for deserialized object
+        :return: Deserialized object
+        """
+        YAML = yaml.YAML(typ='safe')
+        object_def = YAML.load(open('container.yaml').read())
+        # The kubernetes API does not have an actual deserializer, so this is a workaround
+        # See: https://github.com/kubernetes-client/python/issues/977
+        faked_response = self.FakeResponse()
+        faked_response.data = json.dumps(object_def)
+        return ApiClient().deserialize(faked_response, cls)
+
+
     def _create_pod_spec(
         self,
         command: str,
@@ -946,17 +972,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             volume_mounts=mounts,
         )
 
+        if self.config.kubernetes_security_context:
+            container.security_context = self._load_kubernetes_object(self.config.kubernetes_security_context, V1SecurityContext)
+
         # In case security context rules are not allowed to be set, we only apply
         # a security context at all if we need to turn on privileged mode.
         if self.config.kubernetes_privileged:
-            container.security_context = V1SecurityContext(
-                privileged=self.config.kubernetes_privileged
-            )
+            if container.security_context is None:
+                container.security_context = V1SecurityContext()
+            container.security_context.privileged = self.config.kubernetes_privileged
 
         # Wrap the container in a spec
         pod_spec = V1PodSpec(
             containers=[container], volumes=volumes, restart_policy="Never"
         )
+
+        if self.config.kubernetes_pod_security_context:
+            pod_spec.security_context = self._load_kubernetes_object(self.config.kubernetes_pod_security_context, V1PodSecurityContext)
+
         # Tell the spec where to land
         placement.apply(pod_spec)
 
@@ -2126,7 +2159,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             "privileged operations, such as FUSE. On Toil-managed clusters with --enableFuse, "
             "this is set to True. (default: %(default)s)",
         )
-
+        parser.add_argument("--kubernetesPodSecurityContext",
+                            dest='kubernetes_pod_security_context',
+                            type=str,
+                            env_var="TOIL_KUBERNETES_POD_SECURITY_CONTEXT",
+                            default=None,
+                            help="Path to a YAML defining a pod security context to apply to all pods.")
+        parser.add_argument("--kubernetesSecurityContext",
+                            dest='kubernetes_security_context',
+                            type=str,
+                            env_var="TOIL_KUBERNETES_SECURITY_CONTEXT",
+                            default=None,
+                            help="Path to a YAML defining a security context to apply to all containers.")
     OptionType = TypeVar("OptionType")
 
     @classmethod
@@ -2138,3 +2182,5 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         )
         setOption("kubernetes_pod_timeout")
         setOption("kubernetes_privileged")
+        setOption("kubernetes_pod_security_context")
+        setOption("kubernetes_security_context")

@@ -1686,8 +1686,30 @@ class AbstractJobStore(ABC):
         sharedFileName: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> ContextManager[IO[bytes]]:
+    ) -> Union[ContextManager[IO[str]], ContextManager[IO[bytes]]]:
         return self.read_shared_file_stream(sharedFileName, encoding, errors)
+
+    @overload
+    @abstractmethod
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: str,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[str]]:
+        """If encoding is specified, then a text file handle is provided."""
+
+    @overload
+    @abstractmethod
+    @contextmanager
+    def read_shared_file_stream(
+        self,
+        shared_file_name: str,
+        encoding: Literal[None] = None,
+        errors: Optional[str] = None,
+    ) -> Iterator[IO[bytes]]:
+        """If no encoding is provided, then a bytest file handle is provided."""
 
     @abstractmethod
     @contextmanager
@@ -1696,7 +1718,7 @@ class AbstractJobStore(ABC):
         shared_file_name: str,
         encoding: Optional[str] = None,
         errors: Optional[str] = None,
-    ) -> Iterator[IO[bytes]]:
+    ) -> Union[Iterator[IO[str]], Iterator[IO[bytes]]]:
         """
         Returns a context manager yielding a readable file handle to the global file referenced
         by the given name.
@@ -1711,7 +1733,6 @@ class AbstractJobStore(ABC):
                 are the same as for open(). Defaults to 'strict' when an encoding is specified.
 
         :return: a context manager yielding a readable file handle
-        :rtype: Iterator[IO[bytes]]
         """
         raise NotImplementedError()
 

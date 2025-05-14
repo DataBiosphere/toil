@@ -6,7 +6,9 @@ import shutil
 import string
 import subprocess
 import unittest
-from typing import Any, Optional, Union
+from collections.abc import Generator
+from pathlib import Path
+from typing import Any, Optional, Union, cast
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -34,20 +36,6 @@ from toil.wdl.wdltoil import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@needs_wdl
-class BaseWDLTest(ToilTest):
-    """Base test class for WDL tests."""
-
-    def setUp(self) -> None:
-        """Runs anew before each test to create farm fresh temp dirs."""
-        self.output_dir = os.path.join("/tmp/", "toil-wdl-test-" + str(uuid4()))
-        os.makedirs(self.output_dir)
-
-    def tearDown(self) -> None:
-        if os.path.exists(self.output_dir):
-            shutil.rmtree(self.output_dir)
 
 
 WDL_CONFORMANCE_TEST_REPO = "https://github.com/DataBiosphere/wdl-conformance-tests.git"
@@ -84,18 +72,11 @@ WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL = [
 ]
 
 
-class WDLConformanceTests(BaseWDLTest):
-    """
-    WDL conformance tests for Toil.
-    """
-
-    wdl_dir = "wdl-conformance-tests"
-
-    @classmethod
-    def setUpClass(cls) -> None:
-
+@pytest.fixture(scope="function")
+def wdl_conformance_test_repo(tmp_path: Path) -> Generator[Path]:
+    try:
         p = subprocess.Popen(
-            f"git clone {WDL_CONFORMANCE_TEST_REPO} {cls.wdl_dir} && cd {cls.wdl_dir} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}",
+            f"git clone {WDL_CONFORMANCE_TEST_REPO} {str(tmp_path)} && cd {str(tmp_path)} && git checkout {WDL_CONFORMANCE_TEST_COMMIT}",
             shell=True,
         )
 
@@ -103,12 +84,17 @@ class WDLConformanceTests(BaseWDLTest):
 
         if p.returncode > 0:
             raise RuntimeError("Could not clone WDL conformance tests")
+        yield tmp_path
+    finally:
+        pass  # no cleanup needed
 
-        os.chdir(cls.wdl_dir)
 
-        cls.base_command = [exactPython, "run.py", "--runner", "toil-wdl-runner"]
+class TestWDLConformance:
+    """
+    WDL conformance tests for Toil.
+    """
 
-    def check(self, p: subprocess.CompletedProcess) -> None:
+    def check(self, p: "subprocess.CompletedProcess[bytes]") -> None:
         """
         Make sure a call completed or explain why it failed.
         """
@@ -126,81 +112,121 @@ class WDLConformanceTests(BaseWDLTest):
         p.check_returncode()
 
     @slow
-    def test_unit_tests_v11(self):
+    def test_unit_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
         # There are still some bugs with the WDL spec, use a fixed version until
         # See comments of https://github.com/openwdl/wdl/pull/669
+        os.chdir(wdl_conformance_test_repo)
         repo_url = "https://github.com/stxue1/wdl.git"
         repo_branch = "wdl-1.1.3-fixes"
-        command = f"{exactPython} setup_unit_tests.py -v 1.1 --extra-patch-data unit_tests_patch_data.yaml --repo {repo_url} --branch {repo_branch} --force-pull"
-        p = subprocess.run(command.split(" "), capture_output=True)
-        self.check(p)
-        command = f"{exactPython} run_unit.py -r toil-wdl-runner -v 1.1 --progress --exclude-numbers {','.join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL])}"
-        p = subprocess.run(command.split(" "), capture_output=True)
+        commands1 = [
+            exactPython,
+            "setup_unit_tests.py",
+            "-v",
+            "1.1",
+            "--extra-patch-data",
+            "unit_tests_patch_data.yaml",
+            "--repo",
+            repo_url,
+            "--branch",
+            repo_branch,
+            "--force-pull",
+        ]
+        p1 = subprocess.run(commands1, capture_output=True)
+        self.check(p1)
+        commands2 = [
+            exactPython,
+            "run_unit.py",
+            "-r",
+            "toil-wdl-runner",
+            "-v",
+            "1.1",
+            "--progress",
+            "--exclude-numbers",
+            ",".join([str(t) for t in WDL_UNIT_TESTS_UNSUPPORTED_BY_TOIL]),
+        ]
+        p2 = subprocess.run(commands2, capture_output=True)
+        self.check(p2)
+
+    # estimated running time: 10 minutes
+    @slow
+    def test_conformance_tests_v10(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        commands = [
+            exactPython,
+            "run.py",
+            "--runner",
+            "toil-wdl-runner",
+            "--conformance-file",
+            "conformance.yaml",
+            "-v",
+            "1.0",
+        ]
+        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
+            commands.append("--exclude-numbers")
+            commands.append(
+                ",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL])
+            )
+        p = subprocess.run(commands, capture_output=True)
+
         self.check(p)
 
     # estimated running time: 10 minutes
     @slow
-    def test_conformance_tests_v10(self):
-        command = self.base_command + ["-v", "1.0"]
+    def test_conformance_tests_v11(self, wdl_conformance_test_repo: Path) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        commands = [
+            exactPython,
+            "run.py",
+            "--runner",
+            "toil-wdl-runner",
+            "--conformance-file",
+            "conformance.yaml",
+            "-v",
+            "1.1",
+        ]
         if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
-            command.append("--exclude-numbers")
-            command.append(
+            commands.append("--exclude-numbers")
+            commands.append(
                 ",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL])
             )
-        p = subprocess.run(command, capture_output=True)
-
-        self.check(p)
-
-    # estimated running time: 10 minutes
-    @slow
-    def test_conformance_tests_v11(self):
-        command = self.base_command + ["-v", "1.1"]
-        if WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL:
-            command.append("--exclude-numbers")
-            command.append(
-                ",".join([str(t) for t in WDL_CONFORMANCE_TESTS_UNSUPPORTED_BY_TOIL])
-            )
-        p = subprocess.run(command, capture_output=True)
+        p = subprocess.run(commands, capture_output=True)
 
         self.check(p)
 
     @slow
-    def test_conformance_tests_integration(self):
-        ids_to_run = "encode,tut01,tut02,tut03,tut04"
+    def test_conformance_tests_integration(
+        self, wdl_conformance_test_repo: Path
+    ) -> None:
+        os.chdir(wdl_conformance_test_repo)
+        commands = [
+            exactPython,
+            "run.py",
+            "--runner",
+            "toil-wdl-runner",
+            "-v",
+            "1.0",
+            "--conformance-file",
+            "integration.yaml",
+            "--id",
+            "encode,tut01,tut02,tut03,tut04",
+        ]
         p = subprocess.run(
-            self.base_command
-            + [
-                "-v",
-                "1.0",
-                "--conformance-file",
-                "integration.yaml",
-                "--id",
-                ids_to_run,
-            ],
+            commands,
             capture_output=True,
         )
 
         self.check(p)
 
-    @classmethod
-    def tearDownClass(cls) -> None:
-        upper_dir = os.path.dirname(os.getcwd())
-        os.chdir(upper_dir)
-        shutil.rmtree("wdl-conformance-tests")
 
-
-class WDLTests(BaseWDLTest):
+class TestWDL:
     """Tests for Toil's MiniWDL-based implementation."""
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        """Runs once for all tests."""
-        cls.base_command = [exactPython, "-m", "toil.wdl.wdltoil"]
+    base_command = [exactPython, "-m", "toil.wdl.wdltoil"]
 
     # We inherit a testMD5sum but it is going to need Singularity or Docker
     # now. And also needs to have a WDL 1.0+ WDL file. So we replace it.
     @needs_singularity_or_docker
-    def test_MD5sum(self):
+    def test_MD5sum(self, tmp_path: Path) -> None:
         """Test if Toil produces the same outputs as known good outputs for WDL's
         GATK tutorial #1."""
         with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
@@ -211,7 +237,7 @@ class WDLTests(BaseWDLTest):
                         str(wdl),
                         str(json_file),
                         "-o",
-                        self.output_dir,
+                        str(tmp_path),
                         "--logDebug",
                         "--retryCount=0",
                     ]
@@ -223,23 +249,44 @@ class WDLTests(BaseWDLTest):
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
-    def test_url_to_file(self):
+    def test_url_to_file(self, tmp_path: Path) -> None:
         """
         Test if web URL strings can be coerced to usable Files.
         """
         with get_data("test/wdl/testfiles/url_to_file.wdl") as wdl:
             result_json = subprocess.check_output(
                 self.base_command
-                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+                + [str(wdl), "-o", str(tmp_path), "--logInfo", "--retryCount=0"]
             )
             result = json.loads(result_json)
 
             assert "url_to_file.first_line" in result
             assert isinstance(result["url_to_file.first_line"], str)
-            self.assertEqual(result["url_to_file.first_line"], "chr1\t248387328")
+            assert result["url_to_file.first_line"] == "chr1\t248387328"
+
+    def test_string_file_coercion(self, tmp_path: Path) -> None:
+        """
+        Test if input Files can be coerced to string and back.
+        """
+        with get_data("test/wdl/testfiles/string_file_coercion.wdl") as wdl:
+            with get_data("test/wdl/testfiles/string_file_coercion.json") as json_file:
+                result_json = subprocess.check_output(
+                    self.base_command
+                    + [
+                        str(wdl),
+                        str(json_file),
+                        "-o",
+                        str(tmp_path),
+                        "--logInfo",
+                        "--retryCount=0"
+                    ]
+                )
+                result = json.loads(result_json)
+
+                assert "StringFileCoercion.output_file" in result
 
     @needs_docker
-    def test_wait(self):
+    def test_wait(self, tmp_path: Path) -> None:
         """
         Test if Bash "wait" works in WDL scripts.
         """
@@ -249,7 +296,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path),
                     "--logInfo",
                     "--retryCount=0",
                     "--wdlContainer=docker",
@@ -259,26 +306,80 @@ class WDLTests(BaseWDLTest):
 
             assert "wait.result" in result
             assert isinstance(result["wait.result"], str)
-            self.assertEqual(result["wait.result"], "waited")
+            assert result["wait.result"] == "waited"
 
+    def test_restart(self, tmp_path: Path) -> None:
+        """
+        Test if a WDL workflow can be restarted and finish successfully.
+        """
+        with get_data("test/wdl/testfiles/read_file.wdl") as wdl:
+            out_dir = tmp_path / "out"
+            file_path = tmp_path / "file"
+            jobstore_path = tmp_path / "tree"
+            command = (
+                self.base_command
+                + [
+                    str(wdl),
+                    "-o",
+                    str(out_dir),
+                    "-i",
+                    json.dumps({"read_file.input_string": str(file_path)}),
+                    "--jobStore",
+                    str(jobstore_path),
+                    "--retryCount=0"
+                ]
+            )
+            with pytest.raises(subprocess.CalledProcessError):
+                # The first time we run it, it should fail because it's trying
+                # to work on a nonexistent file from a string path.
+                result_json = subprocess.check_output(
+                    command + ["--logCritical"]
+                )
+
+            # Then create the file
+            with open(file_path, "w") as f:
+                f.write("This is a line\n")
+                f.write("This is a different line")
+            
+            # Now it should work
+            result_json = subprocess.check_output(
+                    command + ["--restart"]
+                )
+            result = json.loads(result_json)
+
+            assert "read_file.lines" in result
+            assert isinstance(result["read_file.lines"], list)
+            assert result["read_file.lines"] == [
+                "This is a line",
+                "This is a different line"
+            ]
+
+            # Since we were catching
+            # <https://github.com/DataBiosphere/toil/issues/5247> at file
+            # export, make sure we actually exported a file.
+            assert "read_file.remade_file" in result
+            assert isinstance(result["read_file.remade_file"], str)
+            assert os.path.exists(result["read_file.remade_file"])
 
     @needs_singularity_or_docker
-    def test_workflow_file_deletion(self):
+    def test_workflow_file_deletion(self, tmp_path: Path) -> None:
         """
         Test if Toil can delete non-output outputs at the end of a workflow.
         """
         # Keep a job store around to inspect for files.
-        job_store = os.path.join(self._createTempDir("jobStore"), "tree")
+        (tmp_path / "jobStore").mkdir()
+        job_store = tmp_path / "jobStore" / "tree"
 
         # Make a working directory to run in
-        work_dir = self._createTempDir("workDir")
+        work_dir = tmp_path / "workDir"
+        work_dir.mkdir()
         # Make the file that will be imported from a string in the workflow
-        referenced_file = os.path.join(work_dir, "localfile.txt")
-        with open(referenced_file, 'w') as f:
+        referenced_file = work_dir / "localfile.txt"
+        with referenced_file.open("w") as f:
             f.write("This file is imported by local path in the workflow")
         # Make the file to pass as input
-        sent_in_file = os.path.join(work_dir, "sent_in.txt")
-        with open(sent_in_file, 'w') as f:
+        sent_in_file = work_dir / "sent_in.txt"
+        with sent_in_file.open("w") as f:
             f.write("This file is sent in as input")
 
         with get_data("test/wdl/testfiles/drop_files.wdl") as wdl:
@@ -287,13 +388,13 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path / "output"),
                     "--jobStore",
                     job_store,
                     "--clean=never",
                     "--logInfo",
                     "--retryCount=0",
-                    '--input={"file_in": "sent_in.txt"}',
+                    '--input={"file_in": "' + str(sent_in_file) + '"}',
                 ],
                 cwd=work_dir,
             )
@@ -301,12 +402,12 @@ class WDLTests(BaseWDLTest):
 
             # Get all the file values in the job store.
             all_file_values = set()
-            for directory, _, files in os.walk(job_store):
+            for directory, _, files in os.walk(
+                job_store
+            ):  # can't switch to job_store.walk() until Python 3.12 is the minimum version
                 for filename in files:
-                    with open(
-                        os.path.join(directory, filename),
-                        encoding="utf-8",
-                        errors="replace",
+                    with (Path(directory) / filename).open(
+                        encoding="utf-8", errors="replace"
                     ) as f:
                         all_file_values.add(f.read().rstrip())
 
@@ -342,10 +443,10 @@ class WDLTests(BaseWDLTest):
             assert "This file is sent in as input" in all_file_values
 
             # Make sure we didn't somehow delete the file sent as input
-            assert os.path.exists(sent_in_file)
+            assert sent_in_file.exists()
 
     @needs_singularity_or_docker
-    def test_all_call_outputs(self):
+    def test_all_call_outputs(self, tmp_path: Path) -> None:
         """
         Test if Toil can collect all call outputs from a workflow that doesn't expose them.
         """
@@ -353,7 +454,7 @@ class WDLTests(BaseWDLTest):
             # With no flag we don't include the call outputs
             result_json = subprocess.check_output(
                 self.base_command
-                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+                + [str(wdl), "-o", str(tmp_path), "--logInfo", "--retryCount=0"]
             )
             result = json.loads(result_json)
 
@@ -368,7 +469,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path),
                     "--logInfo",
                     "--retryCount=0",
                     "--allCallOutputs=false",
@@ -387,7 +488,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path),
                     "--logInfo",
                     "--retryCount=0",
                     "--allCallOutputs=on",
@@ -401,7 +502,7 @@ class WDLTests(BaseWDLTest):
             assert "wf.should_never_output" not in result
 
     @needs_singularity_or_docker
-    def test_croo_detection(self):
+    def test_croo_detection(self, tmp_path: Path) -> None:
         """
         Test if Toil can detect and do something sensible with Cromwell Output Organizer workflows.
         """
@@ -409,7 +510,7 @@ class WDLTests(BaseWDLTest):
             # With no flag we should include all task outputs
             result_json = subprocess.check_output(
                 self.base_command
-                + [str(wdl), "-o", self.output_dir, "--logInfo", "--retryCount=0"]
+                + [str(wdl), "-o", str(tmp_path), "--logInfo", "--retryCount=0"]
             )
             result = json.loads(result_json)
 
@@ -424,7 +525,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path),
                     "--logInfo",
                     "--retryCount=0",
                     "--allCallOutputs=off",
@@ -438,22 +539,24 @@ class WDLTests(BaseWDLTest):
             assert "wf.should_never_output" not in result
 
     @needs_singularity_or_docker
-    def test_caching(self):
+    def test_caching(self, tmp_path: Path) -> None:
         """
         Test if Toil can cache task runs.
         """
         with get_data("test/wdl/testfiles/random.wdl") as wdl:
+            cachedir = tmp_path / "cache"
+            cachedir.mkdir()
             caching_env = dict(os.environ)
             caching_env["MINIWDL__CALL_CACHE__GET"] = "true"
             caching_env["MINIWDL__CALL_CACHE__PUT"] = "true"
-            caching_env["MINIWDL__CALL_CACHE__DIR"] = self._createTempDir("cache")
+            caching_env["MINIWDL__CALL_CACHE__DIR"] = str(cachedir)
 
             result_json = subprocess.check_output(
                 self.base_command
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path / "out1"),
                     "--logInfo",
                     "--retryCount=0",
                     '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}',
@@ -470,7 +573,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path / "out2"),
                     "--logInfo",
                     "--retryCount=0",
                     '--inputs={"random.task_1_input": 1, "random.task_2_input": 1}',
@@ -496,7 +599,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path / "out3"),
                     "--logInfo",
                     "--retryCount=0",
                     '--inputs={"random.task_1_input": 2, "random.task_2_input": 1}',
@@ -522,7 +625,7 @@ class WDLTests(BaseWDLTest):
                 + [
                     str(wdl),
                     "-o",
-                    self.output_dir,
+                    str(tmp_path / "out4"),
                     "--logInfo",
                     "--retryCount=0",
                     '--inputs={"random.task_1_input": 1, "random.task_2_input": 2}',
@@ -547,13 +650,13 @@ class WDLTests(BaseWDLTest):
                 != result_not_cached["random.value_written"]
             )
 
-    def test_url_to_optional_file(self):
+    def test_url_to_optional_file(self, tmp_path: Path) -> None:
         """
         Test if missing and error-producing URLs are handled correctly for optional File? values.
         """
         with get_data("test/wdl/testfiles/url_to_optional_file.wdl") as wdl:
 
-            def run_for_code(code: int) -> dict:
+            def run_for_code(code: int) -> dict[str, Any]:
                 """
                 Run a workflow coercing URL to File? where the URL returns the given status code.
 
@@ -567,32 +670,32 @@ class WDLTests(BaseWDLTest):
                         str(wdl),
                         json_value,
                         "-o",
-                        self.output_dir,
+                        str(tmp_path),
                         "--logInfo",
                         "--retryCount=0",
                     ]
                 )
                 result = json.loads(result_json)
-                return result
+                return cast(dict[str, Any], json.loads(result_json))
 
             # Check files that exist
             result = run_for_code(200)
             assert "url_to_optional_file.out_file" in result
-            self.assertNotEqual(result["url_to_optional_file.out_file"], None)
+            assert result["url_to_optional_file.out_file"] is not None
 
             for code in (404, 410):
                 # Check files that definitely don't
                 result = run_for_code(code)
                 assert "url_to_optional_file.out_file" in result
-                self.assertEqual(result["url_to_optional_file.out_file"], None)
+                assert result["url_to_optional_file.out_file"] is None
 
             for code in (402, 418, 500, 502):
                 # Check that cases where the server refuses to say if the file
                 # exists stop the workflow.
-                with self.assertRaises(subprocess.CalledProcessError):
+                with pytest.raises(subprocess.CalledProcessError):
                     run_for_code(code)
 
-    def test_missing_output_directory(self):
+    def test_missing_output_directory(self, tmp_path: Path) -> None:
         """
         Test if Toil can run a WDL workflow into a new directory.
         """
@@ -604,14 +707,16 @@ class WDLTests(BaseWDLTest):
                         str(wdl),
                         str(json_file),
                         "-o",
-                        os.path.join(self.output_dir, "does", "not", "exist"),
+                        str(tmp_path / "does" / "not" / "exist"),
                         "--logDebug",
                         "--retryCount=0",
                     ]
                 )
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test(self, extra_args: Optional[list[str]] = None) -> None:
+    def test_miniwdl_self_test(
+        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+    ) -> None:
         """Test if the MiniWDL self test runs and produces the expected output."""
         with get_data("test/wdl/miniwdl_self_test/self_test.wdl") as wdl_file:
             with get_data("test/wdl/miniwdl_self_test/inputs.json") as json_file:
@@ -623,7 +728,7 @@ class WDLTests(BaseWDLTest):
                         str(json_file),
                         "--logDebug",
                         "-o",
-                        self.output_dir,
+                        str(tmp_path),
                         "--outputDialect",
                         "miniwdl",
                     ]
@@ -678,15 +783,19 @@ class WDLTests(BaseWDLTest):
                 ]
 
     @needs_singularity_or_docker
-    def test_miniwdl_self_test_by_reference(self) -> None:
+    def test_miniwdl_self_test_by_reference(self, tmp_path: Path) -> None:
         """
         Test if the MiniWDL self test works when passing input files by URL reference.
         """
-        self.test_miniwdl_self_test(extra_args=["--referenceInputs=True"])
+        self.test_miniwdl_self_test(
+            tmp_path=tmp_path, extra_args=["--referenceInputs=True"]
+        )
 
     @pytest.mark.integrative
     @needs_singularity_or_docker
-    def test_dockstore_trs(self, extra_args: Optional[list[str]] = None) -> None:
+    def test_dockstore_trs(
+        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+    ) -> None:
         wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
         # Needs an input but doesn't provide a good one.
         json_input = json.dumps(
@@ -702,7 +811,7 @@ class WDLTests(BaseWDLTest):
                 json_input,
                 "--logDebug",
                 "-o",
-                self.output_dir,
+                str(tmp_path),
                 "--outputDialect",
                 "miniwdl",
             ]
@@ -713,23 +822,64 @@ class WDLTests(BaseWDLTest):
         with open(result.get("outputs", {}).get("hello_world.helloFile")) as f:
             result_text = f.read().strip()
 
-        self.assertEqual(result_text, "Hello World!\nMy name is potato.")
+        assert result_text == "Hello World!\nMy name is potato."
+
+    # TODO: Should this move to the TRS/Dockstore tests file?
+    @pytest.mark.integrative
+    @needs_singularity_or_docker
+    def test_dockstore_metrics_publication(
+        self, tmp_path: Path, extra_args: Optional[list[str]] = None
+    ) -> None:
+        wdl_file = "#workflow/github.com/dockstore/bcc2020-training/HelloWorld:master"
+        # Needs an input but doesn't provide a good one.
+        json_input = json.dumps(
+            {
+                "hello_world.hello.myName": "https://raw.githubusercontent.com/dockstore/bcc2020-training/refs/heads/master/wdl-training/exercise1/name.txt"
+            }
+        )
+
+        env = dict(os.environ)
+        # Set credentials we got permission to publish from the Dockstore team,
+        # and work on the staging Dockstore.
+        env["TOIL_TRS_ROOT"] = "https://staging.dockstore.org"
+        env["TOIL_DOCKSTORE_TOKEN"] = "99cf5578ebe94b194d7864630a86258fa3d6cedcc17d757b5dd49e64ee3b68c3"
+        # Enable history for when <https://github.com/DataBiosphere/toil/pull/5258> merges
+        env["TOIL_HISTORY"] = "True"
+
+        output_log = subprocess.check_output(
+            self.base_command
+            + [
+                wdl_file,
+                json_input,
+                "--logDebug",
+                "-o",
+                str(tmp_path),
+                "--outputDialect",
+                "miniwdl",
+                "--publishWorkflowMetrics=current",
+            ]
+            + (extra_args or []),
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+
+        assert b'Workflow metrics were accepted by Dockstore.' in output_log
 
     @slow
     @needs_docker_cuda
-    def test_giraffe_deepvariant(self):
+    def test_giraffe_deepvariant(self, tmp_path: Path) -> None:
         """Test if Giraffe and GPU DeepVariant run. This could take 25 minutes."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
 
-        json_dir = self._createTempDir()
+        json_dir = tmp_path / "json"
+        json_dir.mkdir()
         base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a"
 
         wdl_file = f"{base_uri}/workflows/giraffe_and_deepvariant.wdl"
-        json_file = os.path.abspath(os.path.join(json_dir, "inputs.json"))
-        with open(json_file, "w") as fp:
+        json_file = json_dir / "inputs.json"
+        with json_file.open("w") as fp:
             # Write some inputs. We need to override the example inputs to use a GPU container, but that means we need absolute input URLs.
             json.dump(
-                fp,
                 {
                     "GiraffeDeepVariant.INPUT_READ_FILE_1": f"{base_uri}/tests/small_sim_graph/reads_1.fastq.gz",
                     "GiraffeDeepVariant.INPUT_READ_FILE_2": f"{base_uri}/tests/small_sim_graph/reads_2.fastq.gz",
@@ -742,11 +892,19 @@ class WDLTests(BaseWDLTest):
                     "GiraffeDeepVariant.OUTPUT_GAF": True,
                     "GiraffeDeepVariant.runDeepVariantCallVariants.in_dv_gpu_container": "google/deepvariant:1.3.0-gpu",
                 },
+                fp,
             )
 
         result_json = subprocess.check_output(
             self.base_command
-            + [wdl_file, json_file, "-o", self.output_dir, "--outputDialect", "miniwdl"]
+            + [
+                wdl_file,
+                json_file,
+                "-o",
+                str(tmp_path / "out"),
+                "--outputDialect",
+                "miniwdl",
+            ]
         )
         result = json.loads(result_json)
 
@@ -766,13 +924,12 @@ class WDLTests(BaseWDLTest):
 
     @slow
     @needs_singularity_or_docker
-    def test_giraffe(self):
+    def test_giraffe(self, tmp_path: Path) -> None:
         """Test if Giraffe runs. This could take 12 minutes. Also we scale it down but it still demands lots of memory."""
         # TODO: enable test if nvidia-container-runtime and Singularity are installed but Docker isn't.
         # TODO: Reduce memory requests with custom/smaller inputs.
         # TODO: Skip if node lacks enough memory.
 
-        json_dir = self._createTempDir()
         base_uri = "https://raw.githubusercontent.com/vgteam/vg_wdl/65dd739aae765f5c4dedd14f2e42d5a263f9267a"
         wdl_file = f"{base_uri}/workflows/giraffe.wdl"
         json_file = f"{base_uri}/params/giraffe.json"
@@ -783,7 +940,7 @@ class WDLTests(BaseWDLTest):
                 wdl_file,
                 json_file,
                 "-o",
-                self.output_dir,
+                str(tmp_path),
                 "--outputDialect",
                 "miniwdl",
                 "--scale",
@@ -809,13 +966,13 @@ class WDLTests(BaseWDLTest):
 
     @needs_singularity_or_docker
     @needs_google_storage
-    def test_gs_uri(self):
+    def test_gs_uri(self, tmp_path: Path) -> None:
         """Test if Toil can access Google Storage URIs."""
         with get_data("test/wdl/md5sum/md5sum.1.0.wdl") as wdl:
             with get_data("test/wdl/md5sum/md5sum-gs.json") as json_file:
                 result_json = subprocess.check_output(
                     self.base_command
-                    + [str(wdl), str(json_file), "-o", self.output_dir, "--logDebug"]
+                    + [str(wdl), str(json_file), "-o", str(tmp_path), "--logDebug"]
                 )
                 result = json.loads(result_json)
 
@@ -824,11 +981,28 @@ class WDLTests(BaseWDLTest):
                 assert os.path.exists(result["ga4ghMd5.value"])
                 assert os.path.basename(result["ga4ghMd5.value"]) == "md5sum.txt"
 
+    def test_check(self, tmp_path: Path) -> None:
+        """Test that Toil's lint check works"""
+        with get_data("test/wdl/lint_error.wdl") as wdl:
+            out = subprocess.check_output(
+                self.base_command + [str(wdl), "-o", str(tmp_path), "--logInfo"], stderr=subprocess.STDOUT)
 
-class WDLToilBenchTests(ToilTest):
+            assert b'UnnecessaryQuantifier' in out
+
+            p = subprocess.Popen(
+                self.base_command + [wdl, "--strict=True", "--logCritical"], stderr=subprocess.PIPE)
+            # Not actually a test assert; we need this to teach MyPy that we
+            # get an stderr when we pass stderr=subprocess.PIPE.
+            assert p.stderr is not None
+            stderr = p.stderr.read()
+            p.wait()
+            assert p.returncode == 2
+            assert b'Workflow did not pass linting in strict mode' in stderr
+
+class TestWDLToilBench(unittest.TestCase):
     """Tests for Toil's MiniWDL-based implementation that don't run workflows."""
 
-    def test_coalesce(self):
+    def test_coalesce(self) -> None:
         """
         Test if WDLSectionJob can coalesce WDL decls.
 
@@ -947,7 +1121,7 @@ class WDLToilBenchTests(ToilTest):
 
         return WDL.Expr.String(pos, parts)
 
-    def test_remove_common_leading_whitespace(self):
+    def test_remove_common_leading_whitespace(self) -> None:
         """
         Make sure leading whitespace removal works properly.
         """
@@ -1062,7 +1236,7 @@ class WDLToilBenchTests(ToilTest):
         trimmed = remove_common_leading_whitespace(expr)
         assert trimmed.command == True
 
-    def test_choose_human_readable_directory(self):
+    def test_choose_human_readable_directory(self) -> None:
         """
         Test to make sure that we pick sensible but non-colliding directories to put files in.
         """
@@ -1086,18 +1260,18 @@ class WDLToilBenchTests(ToilTest):
         same_id = choose_human_readable_directory(
             "root", "taskname", "111-222-333", state
         )
-        self.assertEqual(same_id, first_chosen)
+        assert same_id == first_chosen
 
         # If we use a different ID we should get a different result still obeying the constraints
         diff_id = choose_human_readable_directory(
             "root", "taskname", "222-333-444", state
         )
-        self.assertNotEqual(diff_id, first_chosen)
+        assert diff_id != first_chosen
         assert diff_id.startswith("root")
         assert "taskname" in diff_id
         assert "222-333-444" not in diff_id
 
-    def test_uri_packing(self):
+    def test_uri_packing(self) -> None:
         """
         Test to make sure Toil URI packing brings through the required information.
         """
@@ -1115,54 +1289,50 @@ class WDLToilBenchTests(ToilTest):
         unpacked = unpack_toil_uri(uri)
 
         # Make sure we got what we put in
-        self.assertEqual(unpacked[0], file_id)
-        self.assertEqual(unpacked[0].size, file_id.size)
-        self.assertEqual(unpacked[0].executable, file_id.executable)
+        assert unpacked[0] == file_id
+        assert unpacked[0].size == file_id.size
+        assert unpacked[0].executable == file_id.executable
 
-        self.assertEqual(unpacked[1], task_path)
+        assert unpacked[1] == task_path
 
         # TODO: We don't make the UUIDs back into UUID objects
-        self.assertEqual(unpacked[2], str(dir_id))
+        assert unpacked[2] == str(dir_id)
 
-        self.assertEqual(unpacked[3], file_basename)
+        assert unpacked[3] == file_basename
 
-    def test_disk_parse(self):
+    def test_disk_parse(self) -> None:
         """
         Test to make sure the disk parsing is correct
         """
         # Test cromwell compatibility
         spec = "local-disk 5 SSD"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
-        self.assertEqual(specified_mount_point, None)
-        self.assertEqual(part_size, 5)
-        self.assertEqual(part_suffix, "GB")
+        assert specified_mount_point is None
+        assert part_size == 5
+        assert part_suffix == "GB"
 
         # Test spec conformance
         # https://github.com/openwdl/wdl/blob/e43e042104b728df1f1ad6e6145945d2b32331a6/SPEC.md?plain=1#L5072-L5082
         spec = "10"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
-        self.assertEqual(specified_mount_point, None)
-        self.assertEqual(part_size, 10)
-        self.assertEqual(part_suffix, "GiB")  # WDL spec default
+        assert specified_mount_point is None
+        assert part_size == 10
+        assert part_suffix == "GiB"  # WDL spec default
 
         spec = "1 MB"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
-        self.assertEqual(specified_mount_point, None)
-        self.assertEqual(part_size, 1)
-        self.assertEqual(part_suffix, "MB")
+        assert specified_mount_point is None
+        assert part_size == 1
+        assert part_suffix == "MB"
 
         spec = "MOUNT_POINT 3"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
-        self.assertEqual(specified_mount_point, "MOUNT_POINT")
-        self.assertEqual(part_size, 3)
-        self.assertEqual(part_suffix, "GiB")
+        assert specified_mount_point == "MOUNT_POINT"
+        assert part_size == 3
+        assert part_suffix == "GiB"
 
         spec = "MOUNT_POINT 2 MB"
         specified_mount_point, part_size, part_suffix = parse_disks(spec, spec)
-        self.assertEqual(specified_mount_point, "MOUNT_POINT")
-        self.assertEqual(part_size, 2)
-        self.assertEqual(part_suffix, "MB")
-
-
-if __name__ == "__main__":
-    unittest.main()  # run all tests
+        assert specified_mount_point == "MOUNT_POINT"
+        assert part_size == 2
+        assert part_suffix == "MB"

@@ -9,10 +9,16 @@ import sys
 import time
 from collections.abc import Iterator
 from contextlib import closing
-from typing import Optional
+from typing import Optional, Union
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 logger = logging.getLogger(__name__)
 
+StrPath: TypeAlias = Union[str, os.PathLike[str]]
+FileDescriptorOrPath: TypeAlias = Union[int, bytes, os.PathLike[bytes], StrPath]
 
 def get_public_ip() -> str:
     """Get the IP that this machine uses to contact the internet.

@@ -11,32 +11,38 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections.abc import Callable
 import collections
 import logging
 import os
+from pathlib import Path
 import random
-import unittest
+from typing import cast, Optional, Union, Any, NoReturn
 
 import pytest
 
 from toil.common import Toil
 from toil.exceptions import FailedJobsException
-from toil.job import Job, JobFunctionWrappingJob, JobGraphDeadlockException
-from toil.test import ToilTest, get_temp_file, slow
+from toil.job import (
+    FunctionWrappingJob,
+    Job,
+    JobFunctionWrappingJob,
+    JobGraphDeadlockException,
+    ServiceHostJob,
+    Promise,
+)
+from toil.lib.misc import FileDescriptorOrPath
+from toil.test import pslow as slow
 
-logger = logging.getLogger(__name__)
+from pytest_subtests import SubTests
 
 
-class JobTest(ToilTest):
+class TestJob:
     """Tests the job class."""
 
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        logging.basicConfig(level=logging.DEBUG)
-
     @slow
-    def testStatic(self):
+    @pytest.mark.slow
+    def testStatic(self, tmp_path: Path) -> None:
         r"""
         Create a DAG of jobs non-dynamically and run it. DAG is::
 
@@ -48,39 +54,35 @@ class JobTest(ToilTest):
 
         Follow on is marked by ``->``
         """
-        outFile = get_temp_file(rootDir=self._createTempDir())
-        try:
+        outFile = tmp_path / "out"
+        # Create the jobs
+        A = Job.wrapFn(fn1Test, "A", outFile)
+        B = Job.wrapFn(fn1Test, A.rv(), outFile)
+        C = Job.wrapFn(fn1Test, B.rv(), outFile)
+        D = Job.wrapFn(fn1Test, C.rv(), outFile)
+        E = Job.wrapFn(fn1Test, D.rv(), outFile)
+        F = Job.wrapFn(fn1Test, E.rv(), outFile)
+        # Connect them into a workflow
+        A.addChild(B)
+        A.addChild(C)
+        B.addChild(C)
+        B.addFollowOn(E)
+        C.addFollowOn(D)
+        A.addFollowOn(F)
 
-            # Create the jobs
-            A = Job.wrapFn(fn1Test, "A", outFile)
-            B = Job.wrapFn(fn1Test, A.rv(), outFile)
-            C = Job.wrapFn(fn1Test, B.rv(), outFile)
-            D = Job.wrapFn(fn1Test, C.rv(), outFile)
-            E = Job.wrapFn(fn1Test, D.rv(), outFile)
-            F = Job.wrapFn(fn1Test, E.rv(), outFile)
-            # Connect them into a workflow
-            A.addChild(B)
-            A.addChild(C)
-            B.addChild(C)
-            B.addFollowOn(E)
-            C.addFollowOn(D)
-            A.addFollowOn(F)
+        # Create the runner for the workflow.
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.logLevel = "INFO"
+        options.retryCount = 100
+        options.badWorker = 0.5
+        options.badWorkerFailInterval = 0.01
+        # Run the workflow, the return value being the number of failed jobs
+        Job.Runner.startToil(A, options)
 
-            # Create the runner for the workflow.
-            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
-            options.retryCount = 100
-            options.badWorker = 0.5
-            options.badWorkerFailInterval = 0.01
-            # Run the workflow, the return value being the number of failed jobs
-            Job.Runner.startToil(A, options)
+        # Check output
+        assert open(outFile).readline() == "ABCDEFG"
 
-            # Check output
-            self.assertEqual(open(outFile).readline(), "ABCDEFG")
-        finally:
-            os.remove(outFile)
-
-    def testStatic2(self):
+    def testStatic2(self, tmp_path: Path) -> None:
         r"""
         Create a DAG of jobs non-dynamically and run it. DAG is::
 
@@ -92,84 +94,68 @@ class JobTest(ToilTest):
 
         Follow on is marked by ``->``
         """
-        outFile = get_temp_file(rootDir=self._createTempDir())
-        try:
+        outFile = tmp_path / "out"
 
-            # Create the jobs
-            A = Job.wrapFn(fn1Test, "A", outFile)
-            B = Job.wrapFn(fn1Test, A.rv(), outFile)
-            C = Job.wrapFn(fn1Test, B.rv(), outFile)
-            D = Job.wrapFn(fn1Test, C.rv(), outFile)
+        # Create the jobs
+        A = Job.wrapFn(fn1Test, "A", outFile)
+        B = Job.wrapFn(fn1Test, A.rv(), outFile)
+        C = Job.wrapFn(fn1Test, B.rv(), outFile)
+        D = Job.wrapFn(fn1Test, C.rv(), outFile)
 
-            # Connect them into a workflow
-            A.addChild(B)
-            A.addFollowOn(C)
-            C.addChild(D)
+        # Connect them into a workflow
+        A.addChild(B)
+        A.addFollowOn(C)
+        C.addChild(D)
 
-            # Create the runner for the workflow.
-            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
-            options.retryCount = 100
-            options.badWorker = 0.5
-            options.badWorkerFailInterval = 0.01
-            # Run the workflow, the return value being the number of failed jobs
-            Job.Runner.startToil(A, options)
+        # Create the runner for the workflow.
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
+        options.logLevel = "INFO"
+        options.retryCount = 100
+        options.badWorker = 0.5
+        options.badWorkerFailInterval = 0.01
+        # Run the workflow, the return value being the number of failed jobs
+        Job.Runner.startToil(A, options)
 
-            # Check output
-            self.assertEqual(open(outFile).readline(), "ABCDE")
-        finally:
-            os.remove(outFile)
+        # Check output
+        assert open(outFile).readline() == "ABCDE"
 
     @slow
-    def testTrivialDAGConsistency(self):
-        options = Job.Runner.getDefaultOptions(self._createTempDir() + "/jobStore")
+    @pytest.mark.slow
+    def testTrivialDAGConsistency(self, tmp_path: Path) -> None:
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobStore")
         options.clean = "always"
         options.logLevel = "debug"
         i = Job.wrapJobFn(trivialParent)
         with Toil(options) as toil:
-            try:
+            with pytest.raises(FailedJobsException):
                 toil.start(i)
-            except FailedJobsException:
-                # we expect this exception to be raised
-                pass
-            else:
-                self.fail()
 
     @pytest.mark.timeout(300)
-    def testDAGConsistency(self):
-        options = Job.Runner.getDefaultOptions(self._createTempDir() + "/jobStore")
+    def testDAGConsistency(self, tmp_path: Path) -> None:
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobStore")
         options.clean = "always"
         options.logLevel = "debug"
         i = Job.wrapJobFn(parent)
         with Toil(options) as toil:
-            try:
+            with pytest.raises(FailedJobsException):
                 toil.start(i)
-            except FailedJobsException:
-                # we expect this exception to be raised
-                pass
-            else:
-                self.fail()
 
     @slow
-    def testSiblingDAGConsistency(self):
+    @pytest.mark.slow
+    def testSiblingDAGConsistency(self, tmp_path: Path) -> None:
         """
         Slightly more complex case. The stranded job's predecessors are siblings instead of
         parent/child.
         """
-        options = Job.Runner.getDefaultOptions(self._createTempDir() + "/jobStore")
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobStore")
         options.clean = "always"
         options.logLevel = "debug"
         i = Job.wrapJobFn(diamond)
         with Toil(options) as toil:
-            try:
+            with pytest.raises(FailedJobsException):
                 toil.start(i)
-            except FailedJobsException:
-                # we expect this exception to be raised
-                pass
-            else:
-                self.fail()
 
-    def testDeadlockDetection(self):
+    def testDeadlockDetection(self) -> None:
         """
         Randomly generate job graphs with various types of cycle in them and
         check they cause an exception properly. Also check that multiple roots
@@ -181,19 +167,19 @@ class JobTest(ToilTest):
             childEdges = self.makeRandomDAG(nodeNumber)
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
-            self.assertTrue(self.isAcyclic(adjacencyList))
+            assert self.isAcyclic(adjacencyList)
 
             # Add in follow-on edges - these are returned as a list, and as a set of augmented
             # edges in the adjacency list
             # edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
-            self.assertTrue(self.isAcyclic(adjacencyList))
+            assert self.isAcyclic(adjacencyList)
             # Make the job graph
             rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, None)
             rootJob.checkJobGraphAcylic()  # This should not throw an exception
             rootJob.checkJobGraphConnected()  # Nor this
             # Check root detection explicitly
-            self.assertEqual(rootJob.getRootJobs(), {rootJob})
+            assert rootJob.getRootJobs() == {rootJob}
 
             # Test making multiple roots
             childEdges2 = childEdges.copy()
@@ -203,23 +189,17 @@ class JobTest(ToilTest):
             rootJob2 = self.makeJobGraph(
                 nodeNumber + 1, childEdges2, followOnEdges, None, False
             )
-            try:
+            with pytest.raises(JobGraphDeadlockException):
                 rootJob2.checkJobGraphConnected()
-                self.assertTrue(False)  # Multiple roots were not detected
-            except JobGraphDeadlockException:
-                pass  # This is the expected behaviour
 
-            def checkChildEdgeCycleDetection(fNode, tNode):
+            def checkChildEdgeCycleDetection(fNode: int, tNode: int) -> None:
                 childEdges.add((fNode, tNode))  # Create a cycle
                 adjacencyList[fNode].add(tNode)
-                self.assertTrue(not self.isAcyclic(adjacencyList))
-                try:
+                assert not self.isAcyclic(adjacencyList)
+                with pytest.raises(JobGraphDeadlockException):
                     self.makeJobGraph(
                         nodeNumber, childEdges, followOnEdges, None
                     ).checkJobGraphAcylic()
-                    self.assertTrue(False)  # A cycle was not detected
-                except JobGraphDeadlockException:
-                    pass  # This is the expected behaviour
                 # Remove the edges
                 childEdges.remove((fNode, tNode))
                 adjacencyList[fNode].remove(tNode)
@@ -228,15 +208,12 @@ class JobTest(ToilTest):
                     nodeNumber, childEdges, followOnEdges, None, False
                 ).checkJobGraphAcylic()
 
-            def checkFollowOnEdgeCycleDetection(fNode, tNode):
+            def checkFollowOnEdgeCycleDetection(fNode: int, tNode: int) -> None:
                 followOnEdges.add((fNode, tNode))  # Create a cycle
-                try:
+                with pytest.raises(JobGraphDeadlockException):
                     self.makeJobGraph(
                         nodeNumber, childEdges, followOnEdges, None, False
                     ).checkJobGraphAcylic()
-                    # self.assertTrue(False) #The cycle was not detected
-                except JobGraphDeadlockException:
-                    pass  # This is the expected behaviour
                 # Remove the edges
                 followOnEdges.remove((fNode, tNode))
                 # Check is now acyclic again
@@ -279,7 +256,10 @@ class JobTest(ToilTest):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
 
     @slow
-    def testNewCheckpointIsLeafVertexNonRootCase(self):
+    @pytest.mark.slow
+    def testNewCheckpointIsLeafVertexNonRootCase(
+        self, tmp_path: Path, subtests: SubTests
+    ) -> None:
         """
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
         identifies leaf vertices incorrectly
@@ -293,17 +273,20 @@ class JobTest(ToilTest):
 
         """
 
-        def createWorkflow():
+        def createWorkflow() -> tuple[Job, FunctionWrappingJob]:
             rootJob = Job.wrapJobFn(simpleJobFn, "Parent")
             childCheckpointJob = rootJob.addChildJobFn(
                 simpleJobFn, "Child", checkpoint=True
             )
             return rootJob, childCheckpointJob
 
-        self.runNewCheckpointIsLeafVertexTest(createWorkflow)
+        self.runNewCheckpointIsLeafVertexTest(tmp_path, subtests, createWorkflow)
 
     @slow
-    def testNewCheckpointIsLeafVertexRootCase(self):
+    @pytest.mark.slow
+    def testNewCheckpointIsLeafVertexRootCase(
+        self, tmp_path: Path, subtests: SubTests
+    ) -> None:
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
                               omits the workflow root job
@@ -315,13 +298,18 @@ class JobTest(ToilTest):
 
         """
 
-        def createWorkflow():
+        def createWorkflow() -> tuple[Job, Job]:
             rootJob = Job.wrapJobFn(simpleJobFn, "Root", checkpoint=True)
             return rootJob, rootJob
 
-        self.runNewCheckpointIsLeafVertexTest(createWorkflow)
+        self.runNewCheckpointIsLeafVertexTest(tmp_path, subtests, createWorkflow)
 
-    def runNewCheckpointIsLeafVertexTest(self, createWorkflowFn):
+    def runNewCheckpointIsLeafVertexTest(
+        self,
+        tmp_path: Path,
+        subtests: SubTests,
+        createWorkflowFn: Callable[[], tuple[Job, Job]],
+    ) -> None:
         """
         Test verification that a checkpoint job is a leaf vertex using both
         valid and invalid cases.
@@ -333,51 +321,65 @@ class JobTest(ToilTest):
 
         """
 
-        logger.debug("Test checkpoint job that is a leaf vertex")
-        self.runCheckpointVertexTest(*createWorkflowFn(), expectedException=None)
+        with subtests.test(msg="Test checkpoint job that is a leaf vertex"):
+            sub_tmp_path1 = tmp_path / "1"
+            sub_tmp_path1.mkdir()
+            self.runCheckpointVertexTest(
+                *createWorkflowFn(), tmp_path=sub_tmp_path1, expectedException=None
+            )
 
-        logger.debug(
-            "Test checkpoint job that is not a leaf vertex due to the presence of a service"
-        )
-        self.runCheckpointVertexTest(
-            *createWorkflowFn(),
-            checkpointJobService=TrivialService("LeafTestService"),
-            expectedException=JobGraphDeadlockException
-        )
+        with subtests.test(
+            msg="Test checkpoint job that is not a leaf vertex due to the presence of a service"
+        ):
+            sub_tmp_path2 = tmp_path / "2"
+            sub_tmp_path2.mkdir()
+            self.runCheckpointVertexTest(
+                *createWorkflowFn(),
+                tmp_path=sub_tmp_path2,
+                checkpointJobService=TrivialService("LeafTestService"),
+                expectedException=JobGraphDeadlockException,
+            )
 
-        logger.debug(
-            "Test checkpoint job that is not a leaf vertex due to the presence of a child job"
-        )
-        self.runCheckpointVertexTest(
-            *createWorkflowFn(),
-            checkpointJobChild=Job.wrapJobFn(simpleJobFn, "LeafTestChild"),
-            expectedException=JobGraphDeadlockException
-        )
+        with subtests.test(
+            msg="Test checkpoint job that is not a leaf vertex due to the presence of a child job"
+        ):
+            sub_tmp_path3 = tmp_path / "3"
+            sub_tmp_path3.mkdir()
+            self.runCheckpointVertexTest(
+                *createWorkflowFn(),
+                tmp_path=sub_tmp_path3,
+                checkpointJobChild=Job.wrapJobFn(simpleJobFn, "LeafTestChild"),
+                expectedException=JobGraphDeadlockException,
+            )
 
-        logger.debug(
-            "Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job"
-        )
-        self.runCheckpointVertexTest(
-            *createWorkflowFn(),
-            checkpointJobFollowOn=Job.wrapJobFn(simpleJobFn, "LeafTestFollowOn"),
-            expectedException=JobGraphDeadlockException
-        )
+        with subtests.test(
+            msg="Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job"
+        ):
+            sub_tmp_path4 = tmp_path / "4"
+            sub_tmp_path4.mkdir()
+            self.runCheckpointVertexTest(
+                *createWorkflowFn(),
+                tmp_path=sub_tmp_path4,
+                checkpointJobFollowOn=Job.wrapJobFn(simpleJobFn, "LeafTestFollowOn"),
+                expectedException=JobGraphDeadlockException,
+            )
 
     def runCheckpointVertexTest(
         self,
-        workflowRootJob,
-        checkpointJob,
-        checkpointJobService=None,
-        checkpointJobChild=None,
-        checkpointJobFollowOn=None,
-        expectedException=None,
-    ):
+        workflowRootJob: Job,
+        checkpointJob: Job,
+        tmp_path: Path,
+        checkpointJobService: Optional[Job.Service] = None,
+        checkpointJobChild: Optional[Job] = None,
+        checkpointJobFollowOn: Optional[Job] = None,
+        expectedException: Optional[type[Exception]] = None,
+    ) -> None:
         """
         Modifies the checkpoint job according to the given parameters
         then runs the workflow, checking for the expected exception, if any.
         """
 
-        self.assertTrue(checkpointJob.checkpoint)
+        assert checkpointJob.checkpoint
 
         if checkpointJobService is not None:
             checkpointJob.addService(checkpointJobService)
@@ -387,38 +389,37 @@ class JobTest(ToilTest):
             checkpointJob.addFollowOn(checkpointJobFollowOn)
 
         # Run the workflow and check for the expected behavior
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options = Job.Runner.getDefaultOptions(tmp_path / "jobstore")
         options.logLevel = "INFO"
         if expectedException is None:
             Job.Runner.startToil(workflowRootJob, options)
         else:
-            try:
+            with pytest.raises(expectedException):
                 Job.Runner.startToil(workflowRootJob, options)
-                self.fail("The expected exception was not thrown")
-            except expectedException as ex:
-                logger.debug("The expected exception was thrown: %s", repr(ex))
 
     @slow
-    def testEvaluatingRandomDAG(self):
+    @pytest.mark.slow
+    def testEvaluatingRandomDAG(self, tmp_path: Path) -> None:
         """
         Randomly generate test input then check that the job graph can be
         run successfully, using the existence of promises
         to validate the run.
         """
-        jobStore = self._getTestJobStorePath()
+        jobStore = tmp_path / "jobstore"
         for test in range(5):
             # Temporary file
-            tempDir = self._createTempDir(purpose="tempDir")
+            tempDir = tmp_path / f"tempDir{test}"
+            tempDir.mkdir()
             # Make a random DAG for the set of child edges
             nodeNumber = random.choice(range(2, 8))
             childEdges = self.makeRandomDAG(nodeNumber)
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
-            self.assertTrue(self.isAcyclic(adjacencyList))
+            assert self.isAcyclic(adjacencyList)
             # Add in follow on edges - these are returned as a list, and as a set of augmented
             # edges in the adjacency list
             followOnEdges = self.addRandomFollowOnEdges(adjacencyList)
-            self.assertTrue(self.isAcyclic(adjacencyList))
+            assert self.isAcyclic(adjacencyList)
             # Make the job graph
             rootJob = self.makeJobGraph(nodeNumber, childEdges, followOnEdges, tempDir)
             # Run the job  graph
@@ -450,7 +451,7 @@ class JobTest(ToilTest):
                 except FailedJobsException as e:
                     numberOfFailedJobs = e.numberOfFailedJobs
                     if totalTrys > 32:  # p(fail after this many restarts) ~= 0.5**32
-                        self.fail()  # Exceeded a reasonable number of restarts
+                        pytest.fail("Exceeded a reasonable number of restarts")
                     totalTrys += 1
 
             # For each job check it created a valid output file and add the ordering
@@ -458,9 +459,9 @@ class JobTest(ToilTest):
             # so we can check they are compatible with the relationships defined by the job DAG.
             ordering = None
             for i in range(nodeNumber):
-                with open(os.path.join(tempDir, str(i))) as fH:
+                with (tempDir / str(i)).open() as fH:
                     ordering = list(map(int, fH.readline().split()))
-                    self.assertEqual(int(ordering[-1]), i)
+                    assert int(ordering[-1]) == i
                     for j in ordering[:-1]:
                         adjacencyList[int(j)].add(i)
             # Check the ordering retains an acyclic graph
@@ -469,16 +470,16 @@ class JobTest(ToilTest):
                 print("CHILD EDGES", childEdges)
                 print("FOLLOW ON EDGES", followOnEdges)
                 print("ADJACENCY LIST", adjacencyList)
-            self.assertTrue(self.isAcyclic(adjacencyList))
+            assert self.isAcyclic(adjacencyList)
 
     @staticmethod
-    def getRandomEdge(nodeNumber):
+    def getRandomEdge(nodeNumber: int) -> tuple[int, int]:
         assert nodeNumber > 1
         fNode = random.choice(range(nodeNumber - 1))
         return fNode, random.choice(range(fNode + 1, nodeNumber))
 
     @staticmethod
-    def makeRandomDAG(nodeNumber):
+    def makeRandomDAG(nodeNumber: int) -> set[tuple[int, int]]:
         """
         Makes a random dag with "nodeNumber" nodes in which all nodes are connected. Return value
         is list of edges, each of form (a, b), where a and b are integers >= 0 < nodeNumber
@@ -492,56 +493,58 @@ class JobTest(ToilTest):
         edges = {(random.choice(range(i)), i) for i in range(1, nodeNumber)}
         # Add extra random edges until there are edgeNumber edges
         while len(edges) < edgeNumber:
-            edges.add(JobTest.getRandomEdge(nodeNumber))
+            edges.add(TestJob.getRandomEdge(nodeNumber))
         return edges
 
     @staticmethod
-    def getAdjacencyList(nodeNumber, edges):
+    def getAdjacencyList(
+        nodeNumber: int, edges: set[tuple[int, int]]
+    ) -> list[set[int]]:
         """
         Make adjacency list representation of edges
         """
-        adjacencyList = [set() for _ in range(nodeNumber)]
+        adjacencyList: list[set[int]] = [set() for _ in range(nodeNumber)]
         for fNode, tNode in edges:
             adjacencyList[fNode].add(tNode)
         return adjacencyList
 
-    def reachable(self, node, adjacencyList, followOnAdjacencyList=None):
+    def reachable(self, node: int, adjacencyList: list[set[int]]) -> set[int]:
         """
         Find the set of nodes reachable from this node (including the node). Return is a set of
         integers.
         """
-        visited = set()
+        visited: set[int] = set()
 
-        def dfs(fNode):
+        def dfs(fNode: int) -> None:
             if fNode not in visited:
                 visited.add(fNode)
                 list(map(dfs, adjacencyList[fNode]))
-                if followOnAdjacencyList is not None:
-                    list(map(dfs, followOnAdjacencyList[fNode]))
 
         dfs(node)
         return visited
 
-    def addRandomFollowOnEdges(self, childAdjacencyList):
+    def addRandomFollowOnEdges(
+        self, childAdjacencyList: list[set[int]]
+    ) -> set[tuple[int, int]]:
         """
         Adds random follow on edges to the graph, represented as an adjacency list. The follow on
         edges are returned as a set and their augmented edges are added to the adjacency list.
         """
 
-        def makeAugmentedAdjacencyList():
+        def makeAugmentedAdjacencyList() -> list[set[int]]:
             augmentedAdjacencyList = [
                 childAdjacencyList[i].union(followOnAdjacencyList[i])
                 for i in range(len(childAdjacencyList))
             ]
 
-            def addImpliedEdges(node, followOnEdges):
+            def addImpliedEdges(node: int, followOnEdges: set[int]) -> None:
                 # Let node2 be a child of node or a successor of a child of node.
                 # For all node2 the following adds an edge to the augmented
                 # adjacency list from node2 to each followOn of node
 
-                visited = set()
+                visited: set[int] = set()
 
-                def f(node2):
+                def f(node2: int) -> None:
                     if node2 not in visited:
                         visited.add(node2)
                         for i in followOnEdges:
@@ -556,10 +559,10 @@ class JobTest(ToilTest):
             return augmentedAdjacencyList
 
         followOnEdges = set()
-        followOnAdjacencyList = [set() for i in childAdjacencyList]
+        followOnAdjacencyList: list[set[int]] = [set() for i in childAdjacencyList]
         # Loop to create the follow on edges (try 1000 times)
         while random.random() > 0.001:
-            fNode, tNode = JobTest.getRandomEdge(len(childAdjacencyList))
+            fNode, tNode = TestJob.getRandomEdge(len(childAdjacencyList))
 
             # Make an adjacency list including augmented edges and proposed
             # follow on edge
@@ -583,17 +586,22 @@ class JobTest(ToilTest):
         return followOnEdges
 
     def makeJobGraph(
-        self, nodeNumber, childEdges, followOnEdges, outPath, addServices=True
-    ):
+        self,
+        nodeNumber: int,
+        childEdges: set[tuple[int, int]],
+        followOnEdges: set[tuple[int, int]],
+        outPath: Optional[Path],
+        addServices: bool = True,
+    ) -> Job:
         """
         Converts a DAG into a job graph. childEdges and followOnEdges are the lists of child and
         followOn edges.
         """
         # Map of jobs to the list of promises they have
-        jobsToPromisesMap = {}
+        jobsToPromisesMap: dict[FunctionWrappingJob, list[Promise]] = {}
 
-        def makeJob(string):
-            promises = []
+        def makeJob(string: str) -> FunctionWrappingJob:
+            promises: list[Promise] = []
             job = Job.wrapFn(
                 fn2Test,
                 promises,
@@ -610,7 +618,9 @@ class JobTest(ToilTest):
         jobs = [makeJob(str(i)) for i in range(nodeNumber)]
 
         # Record predecessors for sampling
-        predecessors = collections.defaultdict(list)
+        predecessors: dict[FunctionWrappingJob, list[FunctionWrappingJob]] = (
+            collections.defaultdict(list)
+        )
 
         # Make the edges
         for fNode, tNode in childEdges:
@@ -624,7 +634,9 @@ class JobTest(ToilTest):
         jobsToRvs = {
             job: (
                 job.addService(
-                    TrivialService(job.rv(), cores=0.1, memory="0.5G", disk="0.1G")
+                    TrivialService(
+                        cast(str, job.rv()), cores=0.1, memory="0.5G", disk="0.1G"
+                    )
                 )
                 if addServices
                 else job.rv()
@@ -632,7 +644,7 @@ class JobTest(ToilTest):
             for job in jobs
         }
 
-        def getRandomPredecessor(job):
+        def getRandomPredecessor(job: FunctionWrappingJob) -> FunctionWrappingJob:
             predecessor = random.choice(list(predecessors[job]))
             while random.random() > 0.5 and len(predecessors[predecessor]) > 0:
                 predecessor = random.choice(list(predecessors[predecessor]))
@@ -648,13 +660,13 @@ class JobTest(ToilTest):
 
         return jobs[0]
 
-    def isAcyclic(self, adjacencyList):
+    def isAcyclic(self, adjacencyList: list[set[int]]) -> bool:
         """
         Returns true if there are any cycles in the graph, which is represented as an adjacency
         list.
         """
 
-        def cyclic(fNode, visited, stack):
+        def cyclic(fNode: int, visited: set[int], stack: list[int]) -> Union[bool, int]:
             if fNode not in visited:
                 visited.add(fNode)
                 assert fNode not in stack
@@ -665,18 +677,18 @@ class JobTest(ToilTest):
                 assert stack.pop() == fNode
             return fNode in stack
 
-        visited = set()
+        visited: set[int] = set()
         for i in range(len(adjacencyList)):
             if cyclic(i, visited, []):
                 return False
         return True
 
 
-def simpleJobFn(job, value):
+def simpleJobFn(job: ServiceHostJob, value: str) -> None:
     job.fileStore.log_to_leader(value)
 
 
-def fn1Test(string, outputFile):
+def fn1Test(string: str, outputFile: FileDescriptorOrPath) -> str:
     """
     Function appends the next character after the last character in the given
     string to the string, writes the string to a file, and returns it. For
@@ -689,7 +701,7 @@ def fn1Test(string, outputFile):
     return rV
 
 
-def fn2Test(pStrings, s, outputFile):
+def fn2Test(pStrings: list[str], s: str, outputFile: Path) -> str:
     """
     Function concatenates the strings in pStrings and s, in that order, and writes the result to
     the output file. Returns s.
@@ -699,7 +711,7 @@ def fn2Test(pStrings, s, outputFile):
     return s
 
 
-def trivialParent(job):
+def trivialParent(job: Job) -> None:
     strandedJob = JobFunctionWrappingJob(child)
     failingJob = JobFunctionWrappingJob(errorChild)
 
@@ -708,7 +720,7 @@ def trivialParent(job):
     failingJob.addChild(strandedJob)
 
 
-def parent(job):
+def parent(job: Job) -> None:
     childJob = JobFunctionWrappingJob(child)
     strandedJob = JobFunctionWrappingJob(child)
     failingJob = JobFunctionWrappingJob(errorChild)
@@ -719,7 +731,7 @@ def parent(job):
     failingJob.addChild(strandedJob)
 
 
-def diamond(job):
+def diamond(job: Job) -> None:
     childJob = JobFunctionWrappingJob(child)
     strandedJob = JobFunctionWrappingJob(child)
     failingJob = JobFunctionWrappingJob(errorChild)
@@ -730,32 +742,28 @@ def diamond(job):
     failingJob.addChild(strandedJob)
 
 
-def child(job):
+def child(job: Job) -> None:
     assert job.cores is not None
     assert job.disk is not None
     assert job.memory is not None
     assert job.preemptible is not None
 
 
-def errorChild(job):
+def errorChild(job: Job) -> NoReturn:
     raise RuntimeError("Child failure")
 
 
 class TrivialService(Job.Service):
-    def __init__(self, message, *args, **kwargs):
+    def __init__(self, message: str, *args: Any, **kwargs: Any) -> None:
         """Service that does nothing, used to check for deadlocks"""
         Job.Service.__init__(self, *args, **kwargs)
         self.message = message
 
-    def start(self, job):
+    def start(self, job: ServiceHostJob) -> str:
         return self.message
 
-    def stop(self, job):
+    def stop(self, job: ServiceHostJob) -> None:
         pass
 
-    def check(self):
-        pass
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def check(self) -> bool:
+        return True

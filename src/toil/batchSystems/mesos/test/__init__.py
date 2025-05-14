@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from contextlib import closing
 from shutil import which
 from urllib.request import urlopen
+from typing import Optional
 
 from toil.lib.retry import retry
 from toil.lib.threading import ExceptionalThread, cpu_count
@@ -25,7 +26,7 @@ class MesosTestSupport:
         with closing(urlopen("http://127.0.0.1:5050/version")) as content:
             content.read()
 
-    def _startMesos(self, numCores=None):
+    def _startMesos(self, numCores: Optional[int] = None) -> None:
         if numCores is None:
             numCores = cpu_count()
         shutil.rmtree("/tmp/mesos", ignore_errors=True)
@@ -52,7 +53,7 @@ class MesosTestSupport:
             log.warning("Forcibly killing child which ignored SIGTERM")
             process.kill()
 
-    def _stopMesos(self):
+    def _stopMesos(self) -> None:
         self._stopProcess(self.agent.popen)
         self.agent.join()
         self._stopProcess(self.master.popen)

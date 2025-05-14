@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from contextlib import contextmanager, AbstractContextManager
 import datetime
 import logging
 import os
@@ -29,7 +28,7 @@ import uuid
 import zoneinfo
 from abc import ABCMeta, abstractmethod
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from importlib.resources import as_file, files
 from inspect import getsource
 from pathlib import Path
@@ -41,7 +40,10 @@ from unittest.util import strclass
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
-from toil import ApplianceImageNotFound, applianceSelf, toilPackageDirPath
+import pytest
+from typing_extensions import Self
+
+from toil import ApplianceImageNotFound, applianceSelf
 from toil.lib.accelerators import (
     have_working_nvidia_docker_runtime,
     have_working_nvidia_smi,
@@ -52,12 +54,11 @@ from toil.lib.memoize import memoize
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.version import distVersion
 
-import pytest
-
 try:
     from botocore.exceptions import ProxyConnectionError
 except ImportError:
-    class ProxyConnectionError(BaseException):
+
+    class ProxyConnectionError(BaseException):  # type: ignore[no-redef]
         ...
 
 logger = logging.getLogger(__name__)
@@ -82,11 +83,12 @@ def get_data(filename: str) -> AbstractContextManager[Path]:
     return _fallback_get_data(filename)
 
 
+@pytest.mark.usefixtures("rootpath")
 class ToilTest(unittest.TestCase):
     """
-    A common base class for Toil tests.
+    Legacy common base class for Toil tests.
 
-    Please have every test case directly or indirectly inherit this one.
+    New tests should be made in the 'pytest' style and not use this class.
 
     When running tests you may optionally set the TOIL_TEST_TEMP environment variable
     to the path of a directory where you want temporary test files be placed. The
@@ -98,6 +100,7 @@ class ToilTest(unittest.TestCase):
     Otherwise, left-over files will not be removed.
     """
 
+    _rootpath: Path
     _tempBaseDir: Optional[str] = None
     _tempDirs: list[str] = []
 
@@ -114,9 +117,7 @@ class ToilTest(unittest.TestCase):
         super().setUpClass()
         tempBaseDir = os.environ.get("TOIL_TEST_TEMP", None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
-            tempBaseDir = os.path.abspath(
-                os.path.join(cls._projectRootPath(), tempBaseDir)
-            )
+            tempBaseDir = os.path.abspath(cls._rootpath / tempBaseDir)
             os.makedirs(tempBaseDir, exist_ok=True)
         cls._tempBaseDir = tempBaseDir
 
@@ -179,28 +180,6 @@ class ToilTest(unittest.TestCase):
         assert region
         return region.group(1)
 
-    @classmethod
-    def _getUtilScriptPath(cls, script_name: str) -> str:
-        return os.path.join(toilPackageDirPath(), "utils", script_name + ".py")
-
-    @classmethod
-    def _projectRootPath(cls) -> str:
-        """
-        Return the path to the project root.
-
-        i.e. the directory that typically contains the .git and src subdirectories.
-        This method has limited utility. It only works if in "develop"
-        mode, since it assumes the existence of a src subdirectory which, in a regular install
-        wouldn't exist. Then again, in that mode project root has no meaning anyways.
-        """
-        assert re.search(r"__init__\.pyc?$", __file__)
-        projectRootPath = os.path.dirname(os.path.abspath(__file__))
-        packageComponents = __name__.split(".")
-        expectedSuffix = os.path.join("src", *packageComponents)
-        assert projectRootPath.endswith(expectedSuffix)
-        projectRootPath = projectRootPath[: -len(expectedSuffix)]
-        return projectRootPath
-
     def _createTempDir(self, purpose: Optional[str] = None) -> str:
         return self._createTempDirEx(self._testMethodName, purpose)
 
@@ -227,57 +206,6 @@ class ToilTest(unittest.TestCase):
         # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
         os.rmdir(path)
         return path
-
-    @classmethod
-    def _getSourceDistribution(cls) -> str:
-        """
-        Find the sdist tarball for this project and return the path to it.
-
-        Also assert that the sdist is up-to date
-        """
-        sdistPath = os.path.join(
-            cls._projectRootPath(), "dist", "toil-%s.tar.gz" % distVersion
-        )
-        assert os.path.isfile(sdistPath), (
-            "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
-        )
-        excluded = set(
-            cast(
-                str,
-                cls._run(
-                    "git",
-                    "ls-files",
-                    "--others",
-                    "-i",
-                    "--exclude-standard",
-                    capture=True,
-                    cwd=cls._projectRootPath(),
-                ),
-            ).splitlines()
-        )
-        dirty = cast(
-            str,
-            cls._run(
-                "find",
-                "src",
-                "-type",
-                "f",
-                "-newer",
-                sdistPath,
-                capture=True,
-                cwd=cls._projectRootPath(),
-            ),
-        ).splitlines()
-        assert all(path.startswith("src") for path in dirty)
-        dirty_set = set(dirty)
-        dirty_set.difference_update(excluded)
-        assert (
-            not dirty_set
-        ), "Run 'make clean_sdist sdist'. Files newer than {}: {!r}".format(
-            sdistPath,
-            list(dirty_set),
-        )
-        return sdistPath
 
     @classmethod
     def _run(cls, command: str, *args: str, **kwargs: Any) -> Optional[str]:
@@ -392,6 +320,27 @@ def needs_rsync3(test_item: MT) -> MT:
     return test_item
 
 
+def _has_rsync3() -> bool:
+    try:
+        versionInfo = subprocess.check_output(["rsync", "--version"]).decode("utf-8")
+        if int(versionInfo.split()[2].split(".")[0]) < 3:
+            return False
+    except subprocess.CalledProcessError:
+        return False
+    except ValueError:
+        # Don't have an int where we looked
+        return False
+    except IndexError:
+        # Don't have the field to look in
+        return False
+    return True
+
+
+pneeds_rsync3 = pytest.mark.skipif(
+    not _has_rsync3(), reason="This test depends on rsync version 3.0.0+."
+)
+
+
 def needs_online(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if we are meant to talk to the Internet."""
     test_item = _mark_test("online", test_item)
@@ -400,15 +349,17 @@ def needs_online(test_item: MT) -> MT:
     return test_item
 
 
-pneeds_online = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true", reason="Skipping online test."
-)
+def _skip_online() -> bool:
+    return os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true"
+
+
+pneeds_online = pytest.mark.skipif(_skip_online(), reason="Skipping online test.")
 
 
 def needs_aws_s3(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
-    test_item = _mark_test("aws-s3", needs_online(test_item))
+    test_item = _mark_test("aws_s3", needs_online(test_item))
     try:
         from boto3 import Session
 
@@ -456,7 +407,7 @@ def _aws_s3_avail() -> bool:
 
 
 pneeds_aws_s3 = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true" or not _aws_s3_avail(),
+    _skip_online() or not _aws_s3_avail(),
     reason="Install Toil with the 'aws' extra or configure AWS credentials to include this test.",
 )
 
@@ -464,11 +415,17 @@ pneeds_aws_s3 = pytest.mark.skipif(
 def needs_aws_ec2(test_item: MT) -> MT:
     """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
     # Assume we need S3 as well as EC2
-    test_item = _mark_test("aws-ec2", needs_aws_s3(test_item))
+    test_item = _mark_test("aws_ec2", needs_aws_s3(test_item))
     # In addition to S3 we also need an SSH key to deploy with.
     # TODO: We assume that if this is set we have EC2 access.
     test_item = needs_env_var("TOIL_AWS_KEYNAME", "an AWS-stored SSH key")(test_item)
     return test_item
+
+
+pneeds_aws_ec2 = pytest.mark.skipif(
+    _skip_online() or not _aws_s3_avail() or not os.getenv("TOIL_AWS_KEYNAME"),
+    reason="Set 'TOIL_AWS_KEYNAME' to an AWS-stored SSH key to run this test",
+)
 
 
 def needs_aws_batch(test_item: MT) -> MT:
@@ -477,7 +434,7 @@ def needs_aws_batch(test_item: MT) -> MT:
     is usable.
     """
     # Assume we need S3 as well as Batch
-    test_item = _mark_test("aws-batch", needs_aws_s3(test_item))
+    test_item = _mark_test("aws_batch", needs_aws_s3(test_item))
     # Assume we have Batch if the user has set these variables.
     test_item = needs_env_var("TOIL_AWS_BATCH_QUEUE", "an AWS Batch queue name or ARN")(
         test_item
@@ -508,9 +465,9 @@ def needs_google_storage(test_item: MT) -> MT:
     Cloud is installed and we ought to be able to access public Google Storage
     URIs.
     """
-    test_item = _mark_test("google-storage", needs_online(test_item))
+    test_item = _mark_test("google_storage", needs_online(test_item))
     try:
-        from google.cloud import storage  # noqa
+        from google.cloud import storage  # type: ignore[import-untyped]
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'google' extra to include this test."
@@ -523,7 +480,7 @@ def needs_google_project(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to run only if we have a Google Cloud project set.
     """
-    test_item = _mark_test("google-project", needs_online(test_item))
+    test_item = _mark_test("google_project", needs_online(test_item))
     test_item = needs_env_var("TOIL_GOOGLE_PROJECTID", "a Google project ID")(test_item)
     return test_item
 
@@ -573,11 +530,11 @@ def _is_kubernetes_installed_and_configured() -> bool:
         import kubernetes
 
         try:
-            kubernetes.config.load_kube_config()
-        except kubernetes.config.ConfigException:
+            kubernetes.config.load_kube_config()  # type: ignore[attr-defined]
+        except kubernetes.config.ConfigException:  # type: ignore[attr-defined]
             try:
-                kubernetes.config.load_incluster_config()
-            except kubernetes.config.ConfigException:
+                kubernetes.config.load_incluster_config()  # type: ignore[attr-defined]
+            except kubernetes.config.ConfigException:  # type: ignore[attr-defined]
                 return False
     except ImportError:
         return False
@@ -596,8 +553,7 @@ def needs_kubernetes(test_item: MT) -> MT:
 
 
 pneeds_kubernetes = pytest.mark.skipif(
-    os.getenv("TOIL_SKIP_ONLINE", "").lower() == "true"
-    or not _is_kubernetes_installed_and_configured(),
+    _skip_online() or not _is_kubernetes_installed_and_configured(),
     reason="Configure Kubernetes (~/.kube/config, $KUBECONFIG, "
     "or current pod) to include this test.",
 )
@@ -612,7 +568,16 @@ def needs_mesos(test_item: MT) -> MT:
         )(test_item)
     try:
         import psutil  # noqa
-        import pymesos  # noqa
+        # If pymesos is installed, because it isn't typed, mypy sees an
+        # import-untyped error here.
+        #
+        # If pymesos *isn't* installed, mypy sees an import-not-found error
+        # here.
+        #
+        # If we ignore mypy errors by name, we'll get a mypy error for ignoring
+        # whichever one isn't actually occurring on the current system. So we
+        # need a blanket ignore here, or a much cleverer mypy.
+        import pymesos  # type: ignore
     except ImportError:
         return unittest.skip(
             "Install Mesos (and Toil with the 'mesos' extra) to include this test."
@@ -620,7 +585,7 @@ def needs_mesos(test_item: MT) -> MT:
     return test_item
 
 
-def _mesos_avail() -> None:
+def _mesos_avail() -> bool:
     if not (which("mesos-master") or which("mesos-agent")):
         return False
     try:
@@ -654,7 +619,7 @@ def needs_htcondor(test_item: MT) -> MT:
     """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test("htcondor", test_item)
     try:
-        import htcondor
+        import htcondor  # type: ignore[import-not-found]
 
         htcondor.Collector(os.getenv("TOIL_HTCONDOR_COLLECTOR")).query(
             constraint="False"
@@ -715,7 +680,9 @@ def needs_docker(test_item: MT) -> MT:
 
 
 pneeds_docker = pytest.mark.skipif(
-    (os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true" or not which("docker")),
+    _skip_online()
+    or os.getenv("TOIL_SKIP_DOCKER", "").lower() == "true"
+    or not which("docker"),
     reason="Requested to skip docker test or docker is not installed.",
 )
 
@@ -783,7 +750,7 @@ def needs_docker_cuda(test_item: MT) -> MT:
 
 
 pneeds_docker_cuda = pytest.mark.skipif(
-    not have_working_nvidia_docker_runtime(),
+    _skip_online() or not have_working_nvidia_docker_runtime(),
     reason="Install nvidia-container-runtime on your Docker server and configure an 'nvidia' runtime to include this test.",
 )
 
@@ -836,21 +803,32 @@ pneeds_cwl = pytest.mark.skipif(
 )
 
 
+def _wdl_available() -> bool:
+    try:
+        # noinspection PyUnresolvedReferences
+        import WDL  # noqa
+    except ImportError:
+        return False
+    return True
+
+
 def needs_wdl(test_item: MT) -> MT:
     """
     Use as a decorator before test classes or methods to only run them if miniwdl is installed
     and configured.
     """
     test_item = _mark_test("wdl", test_item)
-    try:
-        # noinspection PyUnresolvedReferences
-        import WDL  # noqa
-    except ImportError:
-        return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(
-            test_item
-        )
-    else:
+    if _wdl_available():
         return test_item
+    return unittest.skip("Install Toil with the 'wdl' extra to include this test.")(
+        test_item
+    )
+
+
+pneeds_wdl = pytest.mark.skipif(
+    not _wdl_available(),
+    reason="Install Toil with the 'wdl' extra to include this test.",
+)
 
 
 def needs_server(test_item: MT) -> MT:
@@ -860,7 +838,7 @@ def needs_server(test_item: MT) -> MT:
     test_item = _mark_test("server_mode", test_item)
     try:
         # noinspection PyUnresolvedReferences
-        import connexion
+        import connexion  # type: ignore[import-untyped]
 
         print(connexion.__file__)  # keep this import from being removed.
     except ImportError:
@@ -915,7 +893,7 @@ def _is_wes_server_avail() -> bool:
 
 
 pneeds_wes_server = pytest.mark.skipif(
-    not _is_wes_server_avail(),
+    _skip_online() or not _is_wes_server_avail(),
     reason="Set TOIL_WES_ENDPOINT, or run a WES server at that location to include this test.",
 )
 
@@ -997,6 +975,13 @@ def integrative(test_item: MT) -> MT:
         )(test_item)
 
 
+pintegrative = pytest.mark.skipif(
+    os.getenv("TOIL_TEST_INTEGRATIVE", "").lower() != "true",
+    reason="Set TOIL_TEST_INTEGRATIVE=True to include this integration test, "
+    "or run `make integration_test_local` to run all integration tests.",
+)
+
+
 def slow(test_item: MT) -> MT:
     """
     Use this decorator to identify tests that are slow and not critical.
@@ -1050,7 +1035,11 @@ def timeLimit(seconds: int) -> Generator[None, None, None]:
         signal.alarm(0)
 
 
-def make_tests(generalMethod, targetClass, **kwargs):
+def make_tests(
+    generalMethod: Callable[[Any], Any],
+    targetClass: Optional[Callable[[Any], Any]],
+    **kwargs: Any,
+) -> None:
     """
     This method dynamically generates test methods using the generalMethod as a template. Each
     generated function is the result of a unique combination of parameters applied to the
@@ -1106,7 +1095,9 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
     """
 
-    def permuteIntoLeft(left, rParamName, right):
+    def permuteIntoLeft(
+        left: dict[str, dict[str, str]], rParamName: str, right: dict[str, str]
+    ) -> None:
         """
         Permutes values in right dictionary into each parameter: value dict pair in the left
         dictionary. Such that the left dictionary will contain a new set of keys each of which is
@@ -1141,10 +1132,10 @@ def make_tests(generalMethod, targetClass, **kwargs):
                 left[prmValName + nextPrmVal] = aggDict
             left.pop(prmValName)
 
-    def insertMethodToClass():
+    def insertMethodToClass() -> None:
         """Generate and insert test methods."""
 
-        def fx(self, prms=prms):
+        def fx(self: Any, prms: Any = prms) -> Any:
             if prms is not None:
                 return generalMethod(self, **prms)
             else:
@@ -1254,7 +1245,7 @@ class ApplianceTestSupport(ToilTest):
             self.containerName = str(uuid.uuid4())
             self.popen: Optional[subprocess.Popen[bytes]] = None
 
-        def __enter__(self) -> "Appliance":
+        def __enter__(self) -> Self:
             with self.lock:
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
