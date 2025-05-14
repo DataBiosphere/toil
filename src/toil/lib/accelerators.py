@@ -34,7 +34,7 @@ def have_working_nvidia_smi() -> bool:
     it can fulfill a CUDARequirement.
     """
     try:
-        subprocess.check_call(["nvidia-smi"])
+        subprocess.check_call(["nvidia-smi"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (
         FileNotFoundError,
         PermissionError,
