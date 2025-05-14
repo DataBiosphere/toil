@@ -934,7 +934,7 @@ def set_shared_fs_path(inode: AnyINode, path: str) -> AnyINode:
     assert not path.startswith(
         "file://"
     ), f"Cannot assign URI shared FS path of {path} to {inode}"
-    new_inode = WDL.Value.File(inode.value, inode.expr)
+    new_inode = class(inode)(inode.value, inode.expr)
     clone_metadata(inode, new_file)
     setattr(new_inode, SHARED_PATH_ATTR, path)
     return new_inode
@@ -1234,6 +1234,9 @@ class NonDownloadingSize(WDL.StdLib._Size):
     using the FileID's stored size info.
     """
 
+    # TODO: For WDL 1.2, this needs to handle directories and also recursively
+    # finding files and directories inside container values.
+
     def _call_eager(
         self, expr: WDL.Expr.Apply, arguments: list[WDL.Value.Base]
     ) -> WDL.Value.Base:
@@ -1287,63 +1290,68 @@ class NonDownloadingSize(WDL.StdLib._Size):
         return WDL.Value.Float(total_size)
 
 
-def extract_file_values(environment: WDLBindings) -> list[str]:
+def extract_inode_values(environment: WDLBindings) -> list[str]:
     """
-    Get a list of all File object values in the given bindings.
-    """
-    filenames = list()
-
-    def add_filename(file: WDL.Value.File) -> WDL.Value.File:
-        filenames.append(file.value)
-        return file
-
-    map_over_inodes_in_bindings(environment, add_filename)
-    return filenames
-
-def extract_file_virtualized_values(environment: WDLBindings) -> list[str]:
-    """
-    Get a list of all File object virtualized values in the given bindings.
-
-    If a file hasn't been virtualized, it won't contribute to the list.
+    Get a list of all File or Directory object values in the given bindings.
     """
     values = list()
 
-    def add_value(file: WDL.Value.File) -> WDL.Value.File:
-        value = get_inode_virtualized_value(file)
-        if value is not None:
-            values.append(value)
-        return file
+    def add_value(inode: AnyINode) -> AnyINode:
+        values.append(inode.value)
+        return inode
 
     map_over_inodes_in_bindings(environment, add_value)
     return values
 
-def convert_files(
+def extract_inode_virtualized_values(environment: WDLBindings) -> list[str]:
+    """
+    Get a list of all File/Directory object virtualized values in the bindings.
+
+    If a value hasn't been virtualized, it won't contribute to the list.
+    """
+    values = list()
+
+    def add_value(inode: AnyINode) -> AnyINode:
+        value = get_inode_virtualized_value(inode)
+        if value is not None:
+            values.append(value)
+        return inode
+
+    map_over_inodes_in_bindings(environment, add_value)
+    return values
+
+def virtualize_inodes_in_bindings(
     environment: WDLBindings,
     file_to_id: Dict[str, FileID],
-    file_to_data: Dict[str, FileMetadata],
+    file_to_metadata: Dict[str, FileMetadata],
     task_path: str,
 ) -> WDLBindings:
     """
-    Fill in the virtualized_value fields for File objects in a WDL environment.
+    Fill in the virtualized_value fields for File/Directory objects.
 
     :param environment: Bindings to evaluate on. Will not be modified.
     :param file_to_id: Maps from imported URI to Toil FileID with the data.
-    :param file_to_data: Maps from WDL-level file calue to metadata about the
-        file, including URI that would have been imported.
+    :param file_to_metadata: Maps from WDL-level file value to metadata about
+        the file, including URI that would have been imported.
     :return: new bindings object with the annotated File objects in it.
     """
-    dir_ids = {t[1] for t in file_to_data.values()}
+    dir_ids = {t[1] for t in file_to_metadata.values()}
     dir_to_id = {k: uuid.uuid4() for k in dir_ids}
 
-    def convert_file_to_uri(file: WDL.Value.File) -> WDL.Value.File:
+    def virtualize_inode(inode: AnyINode) -> AnyINode:
         """
         Produce a WDL File with the virtualized_value set to the Toil URI for
         the already-imported data, but the same value.
         """
-        candidate_uri = file_to_data[file.value][0]
+
+        if isinstance(inode, WDL.Value.Directory):
+            # TODO: Implement directory virtualization here!
+            return inode
+
+        candidate_uri = file_to_metadata[inode.value][0]
         file_id = file_to_id[candidate_uri]
 
-        # Work out what the basename for the file was
+        # Work out what the basename for the inode was
         file_basename = os.path.basename(urlsplit(candidate_uri).path)
 
         if file_basename == "":
@@ -1354,15 +1362,13 @@ def convert_files(
             )
 
         toil_uri = pack_toil_uri(
-            file_id, task_path, dir_to_id[file_to_data[file.value][1]], file_basename
+            file_id, task_path, dir_to_id[file_to_metadata[inode.value][1]], file_basename
         )
 
         # Don't mutate the original file object
-        new_file = WDL.Value.File(file.value)
-        setattr(new_file, "virtualized_value", toil_uri)
-        return new_file
+        return set_inode_virtualized_value(inode, toil_uri)
 
-    return map_over_inodes_in_bindings(environment, convert_file_to_uri)
+    return map_over_inodes_in_bindings(environment, virtualize_inode)
 
 
 def convert_remote_files(
@@ -2685,10 +2691,10 @@ def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[W
 
     # Get all the files in the first bindings and not any of the others.
     unused_files = set(
-        extract_file_virtualized_values(internal_bindings)
+        extract_inode_virtualized_values(internal_bindings)
     ).difference(
         *(
-            extract_file_virtualized_values(bindings)
+            extract_inode_virtualized_values(bindings)
             for bindings in live_bindings_list
         )
     )
@@ -5535,8 +5541,8 @@ class WDLInstallImportsJob(Job):
         :return: Promise of transformed workflow inputs
         """
         candidate_to_fileid = unwrap(self._import_data)[0]
-        file_to_data = unwrap(self._import_data)[1]
-        return convert_files(self._inputs, candidate_to_fileid, file_to_data, self._task_path)
+        file_to_metadata = unwrap(self._import_data)[1]
+        return virtualize_inodes_in_bindings(self._inputs, candidate_to_fileid, file_to_metadata, self._task_path)
 
 
 class WDLImportWrapper(WDLSectionJob):
@@ -5572,15 +5578,15 @@ class WDLImportWrapper(WDLSectionJob):
         self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
-        filenames = extract_file_values(self._inputs)
-        file_to_data = get_file_sizes(
+        filenames = extract_inode_values(self._inputs)
+        file_to_metadata = get_file_sizes(
             filenames,
             file_store.jobStore,
             self._inputs_search_path,
             include_remote_files=self._import_remote_files,
             execution_dir=self._wdl_options.get("execution_dir")
         )
-        imports_job = ImportsJob(file_to_data, self._import_workers_threshold, self._import_workers_disk)
+        imports_job = ImportsJob(file_to_metadata, self._import_workers_threshold, self._import_workers_disk)
         self.addChild(imports_job)
         install_imports_job = WDLInstallImportsJob(
             self._target.name, self._inputs, imports_job.rv()
