@@ -240,7 +240,8 @@ class CWLOnARMTest(AbstractClusterTest):
     @needs_env_var("CI_COMMIT_SHA", "a git commit sha")
     def test_cwl_on_arm(self) -> None:
         # Import the test we want to run remotely, so we know right away if it exists.
-        test_method = TestCWLv12Conformance.test_run_conformance
+        test_class = TestCWLv12Conformance
+        test_method = test_class.test_run_conformance
 
         # Work out how to describe it as a pytest test spec.
         # __qualname__ gives classname.methodname
