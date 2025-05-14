@@ -1,5 +1,5 @@
 connexion[swagger-ui]>=2.10.0, <4
-flask>=2.0,<2.3
+flask>=2.0,<3.2
 werkzeug>=2.0,<4
 flask-cors==5.0.1
 gunicorn==23.0.0
