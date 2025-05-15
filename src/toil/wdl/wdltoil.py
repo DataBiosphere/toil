@@ -52,6 +52,7 @@ from typing import (
     TypedDict,
     IO,
     Protocol,
+    overload,
 )
 
 if sys.version_info < (3, 10):
@@ -126,6 +127,24 @@ WDLINode = Union[WDL.Value.File, WDL.Value.Directory]
 
 # Some functions take either a File or Directory and return the same type.
 AnyINode = TypeVar("AnyINode", bound=WDLINode)
+
+# TODO: Is there a way to get out of needing this? Or make this support N types?
+class INodeTransform(Protocol):
+    """
+    A type for a function that transforms a File or Directory to a modified copy or None.
+
+    If you use Callable[[AnyINode], AnyINode] as an argument type, it makes *your
+    function* generic on the type variable; it doesn't mean that you take a
+    function that is itself generic on the type variable. So we define a
+    complicated type for functions that transform inodes to the same type of
+    inodes.
+    """
+    @overload
+    def __call__(self, __file: WDL.Value.File) -> WDL.Value.File | None:
+        ...
+    @overload
+    def __call__(self, __directory: WDL.Value.Directory) -> WDL.Value.Directory | None:
+        ...
 
 def is_inode(value: WDL.Value.Base) -> TypeGuard[WDLINode]:
     """
@@ -1208,9 +1227,6 @@ def evaluate_decls_to_bindings(
     # all_bindings contains current bindings + previous all_bindings
     # bindings only contains the decl bindings themselves so that bindings from other sections prior aren't included
     bindings: WDLBindings = WDL.Env.Bindings()
-    drop_if_missing_with_workdir = partial(
-        drop_if_missing, standard_library=standard_library
-    )
     for each_decl in decls:
         if expressions_are_defaults:
             output_value = evaluate_defaultable_decl(
@@ -1222,7 +1238,7 @@ def evaluate_decls_to_bindings(
             )
         if drop_missing_files:
             dropped_output_value = map_over_typed_inodes_in_value(
-                output_value, drop_if_missing_with_workdir
+                output_value, missing_inode_dropper(standard_library)
             )
             # Typecheck that the new binding value with dropped files is valid for the declaration's type
             # If a dropped file exists where the type is not optional File?, raise FileNotFoundError
@@ -1707,24 +1723,28 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         return _f
 
-    def _devirtualize_file(self, file: WDL.Value.File) -> WDL.Value.File:
+    def _devirtualize_file(self, inode: AnyINode) -> AnyINode:
+        """
+        Extend _devirtualize_file to also work on Directory objects.
+        """
+
         # We track whether files do not exist with the nonexistent flag in order to coerce to Null/error on use
-        logger.debug("Devirtualizing %s", file)
-        if get_inode_nonexistent(file):
-            logger.debug("File is marked nonexistent so passing it through")
-            return file
-        virtualized_filename = get_inode_virtualized_value(file)
+        logger.debug("Devirtualizing %s", inode)
+        if get_inode_nonexistent(inode):
+            logger.debug("Marked nonexistent so passing it through")
+            return inode
+        virtualized_filename = get_inode_virtualized_value(inode)
         if virtualized_filename is not None:
             devirtualized_path = self._devirtualize_filename(virtualized_filename)
-            file = set_inode_value(file, devirtualized_path)
+            inode = set_inode_value(inode, devirtualized_path)
             logger.debug(
-                "For virtualized filename %s got devirtualized file %s",
+                "For virtualized filename %s got devirtualized %s",
                 virtualized_filename,
-                file,
+                inode,
             )
         else:
-            logger.debug("File has no virtualized value so not changing value")
-        return file
+            logger.debug("No virtualized value, so not changing value")
+        return inode
 
     def _resolve_devirtualized_to_uri(self, devirtualized: str) -> str:
         """
@@ -2676,7 +2696,7 @@ def evaluate_defaultable_decl(
 
 
 # TODO: make these stdlib methods???
-def devirtualize_files(
+def devirtualize_inodes(
     environment: WDLBindings, stdlib: ToilWDLStdLibBase
 ) -> WDLBindings:
     """
@@ -2684,20 +2704,24 @@ def devirtualize_files(
     that are actually available to command line commands.
     The same virtual file always maps to the same devirtualized filename even with duplicates
     """
-    logger.debug("Devirtualizing files")
+    logger.debug("Devirtualizing files and directories")
     return map_over_inodes_in_bindings(environment, stdlib._devirtualize_file)
 
 
-def virtualize_files(
+def virtualize_inodes(
     environment: WDLBindings, stdlib: ToilWDLStdLibBase, enforce_existence: bool = True
 ) -> WDLBindings:
     """
-    Make sure all the File values embedded in the given bindings point to files
+    Make sure all the File/Directory values embedded in the given bindings point to files
     that are usable from other machines.
     """
-    logger.debug("Virtualizing files")
-    virtualize_func = partial(
-        stdlib._virtualize_file, enforce_existence=enforce_existence
+    logger.debug("Virtualizing files and directories")
+    virtualize_func = cast(
+        INodeTransform,
+        partial(
+            stdlib._virtualize_file,
+            enforce_existence=enforce_existence
+        )
     )
     return map_over_inodes_in_bindings(environment, virtualize_func)
 
@@ -2767,10 +2791,9 @@ def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
             task_container.input_path_map[host_path] = container_path
             task_container.input_path_map_rev[container_path] = host_path
 
-
 def drop_if_missing(
-    inode: AnyINode, standard_library: ToilWDLStdLibBase
-) -> AnyINode | None:
+    inode: WDLINode, standard_library: ToilWDLStdLibBase
+) -> WDLINode | None:
     """
     Return None if a File/Directory doesn't exist, or its path if it does.
     """
@@ -2825,6 +2848,23 @@ def drop_if_missing(
             )
             return None
 
+def missing_inode_dropper(standard_library: ToilWDLStdLibBase) -> INodeTransform:
+    """
+    Get a function to null out missing File/Directory values.
+
+    A function to do this needs a standard library to get ahold of a current
+    directory to use when resolving strings to paths.
+    """
+
+    # We need this to wrap partial() because MyPy can't really understand the
+    # effects of partial() on making a function match a protocol.
+    return cast(
+        INodeTransform,
+        partial(
+            drop_if_missing,
+            standard_library=standard_library
+        )
+    )
 
 def drop_missing_files(
     environment: WDLBindings, standard_library: ToilWDLStdLibBase
@@ -2836,11 +2876,7 @@ def drop_missing_files(
     Files must not be virtualized.
     """
 
-    # Determine where to evaluate relative paths relative to
-    drop_if_missing_with_workdir = partial(
-        drop_if_missing, standard_library=standard_library
-    )
-    return map_over_inodes_in_bindings(environment, drop_if_missing_with_workdir)
+    return map_over_inodes_in_bindings(environment, missing_inode_dropper(standard_library))
 
 
 def get_paths_in_bindings(environment: WDLBindings) -> list[str]:
@@ -2868,7 +2904,7 @@ def get_paths_in_bindings(environment: WDLBindings) -> list[str]:
 
 def map_over_inodes_in_bindings(
     environment: WDLBindings,
-    transform: Callable[[AnyINode], AnyINode | None],
+    transform: INodeTransform,
 ) -> WDLBindings:
     """
     Run all File values embedded in the given bindings through the given
@@ -2884,7 +2920,7 @@ def map_over_inodes_in_bindings(
 
 def map_over_inodes_in_binding(
     binding: WDL.Env.Binding[WDL.Value.Base],
-    transform: Callable[[AnyINode], AnyINode | None],
+    transform: INodeTransform,
 ) -> WDL.Env.Binding[WDL.Value.Base]:
     """
     Run all File values' types and values embedded in the given binding's value through the given
@@ -2899,10 +2935,6 @@ def map_over_inodes_in_binding(
         binding.info,
     )
 
-class InodeTransform(Protocol):
-    def __call__(self, __inode: AnyINode) -> AnyINode | None:
-        ...
-
 # TODO: We want to type this to say, for anything descended from a WDL type, we
 # return something descended from the same WDL type or a null. But I can't
 # quite do that with generics, since you could pass in some extended WDL value
@@ -2911,7 +2943,7 @@ class InodeTransform(Protocol):
 # For now we assume that any types extending the WDL value types will implement
 # compatible constructors.
 def map_over_typed_inodes_in_value(
-    value: WDL.Value.Base, transform: InodeTransform
+    value: WDL.Value.Base, transform: INodeTransform
 ) -> WDL.Value.Base:
     """
     Run all File values embedded in the given value through the given
@@ -3275,7 +3307,7 @@ class WDLTaskWrapperJob(WDLBaseJob):
             # times?
 
             # Load output bindings from the cache
-            cached_bindings = virtualize_files(
+            cached_bindings = virtualize_inodes(
                 cached_result, standard_library, enforce_existence=False
             )
 
@@ -3426,8 +3458,8 @@ class WDLTaskWrapperJob(WDLBaseJob):
         # all the inputs and decls, and the runtime, with files virtualized.
         run_job = WDLTaskJob(
             self._task,
-            virtualize_files(bindings, standard_library, enforce_existence=False),
-            virtualize_files(
+            virtualize_inodes(bindings, standard_library, enforce_existence=False),
+            virtualize_inodes(
                 runtime_bindings, standard_library, enforce_existence=False
             ),
             self._enclosing_bindings,
@@ -3900,7 +3932,7 @@ class WDLTaskJob(WDLBaseJob):
             # but must be next to its BAM.
             #
             # TODO: MiniWDL can parallelize the fetch
-            bindings = devirtualize_files(bindings, standard_library)
+            bindings = devirtualize_inodes(bindings, standard_library)
 
             # Make the container object
             # TODO: What is this?
@@ -4043,7 +4075,7 @@ class WDLTaskJob(WDLBaseJob):
                 miniwdl_logger,
                 {
                     binding.name: binding.value
-                    for binding in devirtualize_files(
+                    for binding in devirtualize_inodes(
                         runtime_bindings, standard_library
                     )
                 },
@@ -4248,7 +4280,7 @@ class WDLTaskJob(WDLBaseJob):
 
         # Upload any files in the outputs if not uploaded already. Accounts for
         # how relative paths may still need to be container-relative.
-        output_bindings = virtualize_files(output_bindings, outputs_library)
+        output_bindings = virtualize_inodes(output_bindings, outputs_library)
 
         if self._cache_key is not None:
             # We might need to save to the execution cache
@@ -4326,7 +4358,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
             value = evaluate_decl(self._node, incoming_bindings, standard_library)
             bindings = incoming_bindings.bind(self._node.name, value)
             # TODO: Only virtualize the new binding
-            return self.postprocess(virtualize_files(bindings, standard_library, enforce_existence=False))
+            return self.postprocess(virtualize_inodes(bindings, standard_library, enforce_existence=False))
         elif isinstance(self._node, WDL.Tree.Call):
             # This is a call of a task or workflow
 
@@ -4348,7 +4380,7 @@ class WDLWorkflowNodeJob(WDLBaseJob):
                 inputs_mapping,
             )
             # Prepare call inputs to move to another node
-            input_bindings = virtualize_files(input_bindings, standard_library, enforce_existence=False)
+            input_bindings = virtualize_inodes(input_bindings, standard_library, enforce_existence=False)
 
             # Bindings may also be added in from the enclosing workflow inputs
             # TODO: this is letting us also inject them from the workflow body.
@@ -4480,7 +4512,7 @@ class WDLWorkflowNodeListJob(WDLBaseJob):
                 )
 
         # TODO: Only virtualize the new bindings created
-        return self.postprocess(virtualize_files(current_bindings, standard_library, enforce_existence=False))
+        return self.postprocess(virtualize_inodes(current_bindings, standard_library, enforce_existence=False))
 
 
 class WDLCombineBindingsJob(WDLBaseJob):
@@ -5304,7 +5336,7 @@ class WDLWorkflowJob(WDLSectionJob):
         cached_result, cache_key = poll_execution_cache(self._workflow, bindings)
         if cached_result is not None:
             return self.postprocess(
-                virtualize_files(
+                virtualize_inodes(
                     cached_result, standard_library, enforce_existence=False
                 )
             )
@@ -5324,7 +5356,7 @@ class WDLWorkflowJob(WDLSectionJob):
                     [(p, p) for p in standard_library.get_local_paths()]
                 )
 
-        bindings = virtualize_files(bindings, standard_library, enforce_existence=False)
+        bindings = virtualize_inodes(bindings, standard_library, enforce_existence=False)
         # Make jobs to run all the parts of the workflow
         sink = self.create_subgraph(self._workflow.body, [], bindings)
 
@@ -5459,7 +5491,7 @@ class WDLOutputsJob(WDLBaseJob):
         # Upload any files in the outputs if not uploaded already.
         # We need this because it's possible to create new files in a workflow
         # outputs section.
-        output_bindings = virtualize_files(output_bindings, standard_library)
+        output_bindings = virtualize_inodes(output_bindings, standard_library)
 
         if self._cache_key is not None:
             output_bindings = fill_execution_cache(
@@ -5905,18 +5937,19 @@ def main() -> None:
             devirtualized_to_virtualized: dict[str, str] = dict()
             virtualized_to_devirtualized: dict[str, str] = dict()
 
-            # Fetch all the output files
-            def devirtualize_output(file: WDL.Value.File) -> WDL.Value.File:
+            # Fetch all the output files and directories
+            def devirtualize_output(inode: AnyINode) -> AnyINode:
                 """
-                'devirtualize' a file using the "toil" object instead of a filestore.
-                Returns its local path.
+                'devirtualize' a file/directory using the Toil object.
+
+                :returns: its local path.
                 """
                 # Make sure the output directory exists if we have output files
                 # that might need to use it.
-                filename = get_inode_virtualized_value(file) or file.value
+                reference = get_inode_virtualized_value(inode) or inode.value
                 os.makedirs(output_directory, exist_ok=True)
                 new_value = ToilWDLStdLibBase.devirtualize_to(
-                    filename,
+                    reference,
                     output_directory,
                     toil,
                     devirtualization_state,
@@ -5925,7 +5958,7 @@ def main() -> None:
                     virtualized_to_devirtualized,
                     export=True,
                 )
-                return set_inode_value(file, new_value)
+                return set_inode_value(inode, new_value)
 
             # Make all the files local files
             output_bindings = map_over_inodes_in_bindings(
