@@ -5530,7 +5530,7 @@ class WDLImportWrapper(WDLSectionJob):
         wdl_options: WDLContext,
         inputs_search_path: list[str],
         import_remote_files: bool,
-        import_workers_threshold: ParseableIndivisibleResource,
+        import_workers_batchsize: ParseableIndivisibleResource,
         import_workers_disk: ParseableIndivisibleResource,
         **kwargs: Any,
     ):
@@ -5544,7 +5544,7 @@ class WDLImportWrapper(WDLSectionJob):
         self._target = target
         self._inputs_search_path = inputs_search_path
         self._import_remote_files = import_remote_files
-        self._import_workers_threshold = import_workers_threshold
+        self._import_workers_batchsize = import_workers_batchsize
         self._import_workers_disk = import_workers_disk
 
     def run(self, file_store: AbstractFileStore) -> Promised[WDLBindings]:
@@ -5556,7 +5556,7 @@ class WDLImportWrapper(WDLSectionJob):
             include_remote_files=self._import_remote_files,
             execution_dir=self._wdl_options.get("execution_dir")
         )
-        imports_job = ImportsJob(file_to_data, self._import_workers_threshold, self._import_workers_disk)
+        imports_job = ImportsJob(file_to_data, self._import_workers_batchsize, self._import_workers_disk)
         self.addChild(imports_job)
         install_imports_job = WDLInstallImportsJob(
             self._target.name, self._inputs, imports_job.rv()
@@ -5588,7 +5588,7 @@ def make_root_job(
             wdl_options=wdl_options,
             inputs_search_path=inputs_search_path,
             import_remote_files=options.reference_inputs,
-            import_workers_threshold=options.import_workers_threshold,
+            import_workers_batchsize=options.import_workers_batchsize,
             import_workers_disk=options.import_workers_disk
         )
     else:

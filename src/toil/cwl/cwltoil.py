@@ -3684,7 +3684,7 @@ class CWLImportWrapper(CWLNamedJob):
         file_to_data: dict[str, FileMetadata],
         options: Namespace,
     ):
-        super().__init__(local=False, disk=options.import_workers_threshold)
+        super().__init__(local=False, disk=options.import_workers_batchsize)
         self.initialized_job_order = initialized_job_order
         self.tool = tool
         self.options = options
@@ -3694,7 +3694,7 @@ class CWLImportWrapper(CWLNamedJob):
     def run(self, file_store: AbstractFileStore) -> Any:
         imports_job = ImportsJob(
             self.file_to_data,
-            self.options.import_workers_threshold,
+            self.options.import_workers_batchsize,
             self.options.import_workers_disk,
         )
         self.addChild(imports_job)

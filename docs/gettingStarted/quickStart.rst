@@ -150,6 +150,59 @@ For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
 Toil's customization options are available in Python workflows. Run ``python3 helloWorld.py --help`` to see a complete list of available options.
 
+
+.. _mitochondriaExample:
+Determining haplotype from mitochondria sequence
+--------------------
+
+Let's run a more realistic workflow with Toil. This workflow is mitochondrial variant calling: It will take the human reference genome and sequenced reads from an individual and determine how that person's mitochondrial DNA differs from the reference genome.
+
+
+This workflow will take approximately 30 minutes to run.
+
+To run this workflow, run the following command::
+
+      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json
+
+
+.. note::
+        ``--logInfo`` runs the workflow with INFO level logging. For different levels of logging, see ``--logLevel``, ``--logCritical``, ``--logError``, ``--logWarning``, ``--logDebug``, and ``--logTrace``.
+        ``--container docker`` uses Docker as the container backend. By default, Toil will run with Singularity. To set explicitly, use ``--container singularity``.
+        ``--outputFile`` will put the workflow JSON outputs into a file. If omitted, Toil will put the workflow outputs onto the commandline.
+
+Unless fakeroot support is set up for Singularity, this particular workflow must be run with Docker because it assumes commands in the container will run as root.
+WDL workflows sometimes depend on non-spec compliant behaviors. To see if Toil has an workaround option, see :ref:`wdlOptions`.
+
+Once the workflow is done running, you can look at your JSON output with ``jq . mitochondria.json``. For example, if we want the ``out_vcf`` output from the workflow, we can run ``jq -r '.["MitochondriaPipeline.out_vcf"]' mitochondria.json`` to get its path::
+
+    /private/groups/patenlab/toil-dev/mitochondria/wdl-out-c6o9mjop/MitochondriaPipeline.AlignAndCall.FilterContamination/HG02571.GRCh38.chrM.vcf
+
+To open the VCF file, we can run ``less $(jq -r '.["MitochondriaPipeline.out_vcf"]' mitochondria.json)``
+
+.. note::
+        For outputs that aren't files, their values are directly in the JSON. For example, with ``jq '.["MitochondriaPipeline.median_coverage"]' mitochondria.json``::
+
+            4183.5
+
+
+Toil uses a jobstore to store all of a workflow's files and to communicate between workers. If not specified, Toil will use an ephemeral directory that is deleted after Toil is done running.
+To control where those files are placed or allow a workflow to be restarted, you can use the ``--jobStore`` option. If you specify a jobstore explicitly, the jobstore will stick around if the workflow fails. To keep the jobstore after a successful completion, use ``--clean never``. To remove the jobstore even after a failing run, use ``--clean always``.
+
+On a cluster, the jobstore must be somewhere accessible to all worker nodes. Here's an example of running the workflow with a specified jobstore::
+
+      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json --jobstore mitochondriaJobstore
+
+Toil supports several batch systems. By default, Toil will use ``single_machine``, which will run everything on the local machine. Other batch systems are available. For example, you can use `--batchSystem slurm` to run on a Slurm cluster::
+
+      (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json --jobStore mitochondriaJobstore --batchSystem slurm
+
+See :ref:``runningSlurm`` for more information, including how to specify time limits and partitions.
+
+Sometimes, a workflow may fail. If this is the case, the workflow can be restarted from the point of failure with ``--restart``, as long as you still have the jobstore::
+
+    (venv) $ toil-wdl-runner MitochondriaPipeline.wdl -i ExampleInputsMitochondriaPipeline.json --logInfo --container docker --outputFile mitochondria.json --jobStore mitochondriaJobstore --batchSystem slurm
+
+
 .. _runningDetail:
 
 A (more) real-world example
