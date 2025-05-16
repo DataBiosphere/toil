@@ -461,7 +461,7 @@ class AbstractJobStore(ABC):
 
     def _import_file(
         self,
-        otherCls: Type[URLAccess],
+        otherCls: Type["URLAccess"],
         uri: ParseResult,
         shared_file_name: Optional[str] = None,
         hardlink: bool = False,
@@ -475,7 +475,7 @@ class AbstractJobStore(ABC):
 
         Raises FileNotFoundError if the file does not exist.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                reading from the given URL and getting the file size from the URL.
 
         :param ParseResult uri: The location of the file to import.
@@ -529,7 +529,7 @@ class AbstractJobStore(ABC):
         """
         Refer to exportFile docstring for information about this method.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.
@@ -546,7 +546,7 @@ class AbstractJobStore(ABC):
         """
         Refer to exportFile docstring for information about this method.
 
-        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+        :param URLAccess otherCls: The class of URLAccess that supports
                exporting to the given URL. Note that the type annotation here is not completely
                accurate. This is not an instance, it's a class, but there is no way to reflect
                that in :pep:`484` type hints.

@@ -27,31 +27,31 @@ class TestURLAccess():
     """
 
     @needs_online
-    def test_get_url_access(self):
+    def test_get_url_access(self) -> bool:
         url = URLAccess()
         self.assertTrue(url.url_exists("https://httpstat.us/200"))
 
     @needs_aws_s3
-    def test_get_size(self):
+    def test_get_size(self) -> bool:
         url = URLAccess()
         size = url.get_size("s3://toil-datasets/hello.txt")
         self.assertIsInstance(size, int)
         self.assertGreater(size, 0)
 
     @needs_aws_s3
-    def test_get_is_directory(self):
+    def test_get_is_directory(self) -> bool:
         url = URLAccess()
         self.assertFalse(url.get_is_directory("s3://toil-datasets/hello.txt"))
 
     @needs_aws_s3
-    def test_list_url(self):
+    def test_list_url(self) -> bool:
         url = URLAccess()
         test_dir = url.list_url("s3://1000genomes/")
         self.assertIsInstance(test_dir, list)
         self.assertGreater(len(test_dir), 0)
 
     @needs_aws_s3
-    def test_read_from_url(self):
+    def test_read_from_url(self) -> bool:
         import io
         url = URLAccess()
         output = io.BytesIO()
@@ -62,7 +62,7 @@ class TestURLAccess():
         self.assertGreater(len(output.getvalue()), 0)
 
     @needs_aws_s3
-    def test_open_url(self):
+    def test_open_url(self) -> bool:
         url = URLAccess()
         with url.open_url("s3://toil-datasets/hello.txt") as readable:
             content = readable.read()
