@@ -149,6 +149,7 @@ from toil.jobStores.utils import JobStoreUnavailableException, generate_locator
 from toil.lib.io import mkdtemp
 from toil.lib.threading import ExceptionalThread, global_mutex
 from toil.statsAndLogging import DEFAULT_LOGLEVEL
+from toil.lib.url import URLAccess
 
 logger = logging.getLogger(__name__)
 
@@ -1395,7 +1396,7 @@ class ToilFsAccess(StdFsAccess):
             destination = path
         else:
             # The destination is something else.
-            if AbstractJobStore.get_is_directory(path):
+            if URLAccess.get_is_directory(path):
                 # Treat this as a directory
                 if path not in self.dir_to_download:
                     logger.debug(
@@ -1405,14 +1406,14 @@ class ToilFsAccess(StdFsAccess):
 
                     # Recursively fetch all the files in the directory.
                     def download_to(url: str, dest: str) -> None:
-                        if AbstractJobStore.get_is_directory(url):
+                        if URLAccess.get_is_directory(url):
                             os.mkdir(dest)
-                            for part in AbstractJobStore.list_url(url):
+                            for part in URLAccess.list_url(url):
                                 download_to(
                                     os.path.join(url, part), os.path.join(dest, part)
                                 )
                         else:
-                            AbstractJobStore.read_from_url(url, open(dest, "wb"))
+                            URLAccess.read_from_url(url, open(dest, "wb"))
 
                     download_to(path, dest_dir)
                     self.dir_to_download[path] = dest_dir
@@ -1425,7 +1426,7 @@ class ToilFsAccess(StdFsAccess):
                     # Try to grab it with a jobstore implementation, and save it
                     # somewhere arbitrary.
                     dest_file = NamedTemporaryFile(delete=False)
-                    AbstractJobStore.read_from_url(path, dest_file)
+                    URLAccess.read_from_url(path, dest_file)
                     dest_file.close()
                     self.dir_to_download[path] = dest_file.name
                 destination = self.dir_to_download[path]
@@ -1483,7 +1484,7 @@ class ToilFsAccess(StdFsAccess):
             return open(self._abs(fn), mode)
         else:
             # This should be supported by a job store.
-            byte_stream = AbstractJobStore.open_url(fn)
+            byte_stream = URLAccess.open_url(fn)
             if "b" in mode:
                 # Pass stream along in binary
                 return byte_stream
@@ -1520,7 +1521,7 @@ class ToilFsAccess(StdFsAccess):
             return True
         else:
             # This should be supported by a job store.
-            return AbstractJobStore.url_exists(path)
+            return URLAccess.url_exists(path)
 
     def size(self, path: str) -> int:
         parse = urlparse(path)
@@ -1549,7 +1550,7 @@ class ToilFsAccess(StdFsAccess):
             )
         else:
             # This should be supported by a job store.
-            size = AbstractJobStore.get_size(path)
+            size = URLAccess.get_size(path)
             if size is None:
                 # get_size can be unimplemented or unavailable
                 raise RuntimeError(f"Could not get size of {path}")
@@ -1572,7 +1573,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: we assume CWL can't call deleteGlobalFile and so the file always exists
             return isinstance(found, str)
         else:
-            return self.exists(fn) and not AbstractJobStore.get_is_directory(fn)
+            return self.exists(fn) and not URLAccess.get_is_directory(fn)
 
     def isdir(self, fn: str) -> bool:
         logger.debug("ToilFsAccess checking type of %s", fn)
@@ -1592,7 +1593,7 @@ class ToilFsAccess(StdFsAccess):
             # TODO: We assume directories can't be deleted.
             return isinstance(found, dict)
         else:
-            status = AbstractJobStore.get_is_directory(fn)
+            status = URLAccess.get_is_directory(fn)
             logger.debug("AbstractJobStore said: %s", status)
             return status
 
@@ -1626,7 +1627,7 @@ class ToilFsAccess(StdFsAccess):
         else:
             return [
                 os.path.join(fn, entry.rstrip("/"))
-                for entry in AbstractJobStore.list_url(fn)
+                for entry in URLAccess.list_url(fn)
             ]
 
     def join(self, path: str, *paths: str) -> str:
@@ -1736,7 +1737,7 @@ def toil_get_file(
                                 pipe.write(data)
                     else:
                         # Stream from some other URI
-                        AbstractJobStore.read_from_url(uri, pipe)
+                        URLAccess.read_from_url(uri, pipe)
             except OSError as e:
                 # The other side of the pipe may have been closed by the
                 # reading thread, which is OK.
@@ -1779,7 +1780,7 @@ def toil_get_file(
                     # Open that path exclusively to make sure we created it
                     with open(src_path, "xb") as fh:
                         # Download into the file
-                        size, executable = AbstractJobStore.read_from_url(uri, fh)
+                        size, executable = URLAccess.read_from_url(uri, fh)
                         if executable:
                             # Set the execute bit in the file's permissions
                             os.chmod(src_path, os.stat(src_path).st_mode | stat.S_IXUSR)

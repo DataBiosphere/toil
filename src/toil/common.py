@@ -86,6 +86,7 @@ from toil.provisioners import add_provisioner_options, cluster_factory
 from toil.realtimeLogger import RealtimeLogger
 from toil.statsAndLogging import add_logging_options, set_logging_from_options
 from toil.version import dockerRegistry, dockerTag, version, baseVersion
+from toil.lib.url import URLAccess
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -1397,7 +1398,7 @@ class Toil(ContextManager["Toil"]):
             self._batchSystem.setUserScript(userScriptResource)
 
     def url_exists(self, src_uri: str) -> bool:
-        return self._jobStore.url_exists(self.normalize_uri(src_uri))
+        return URLAccess.url_exists(self.normalize_uri(src_uri))
 
     # Importing a file with a shared file name returns None, but without one it
     # returns a file ID. Explain this to MyPy.
