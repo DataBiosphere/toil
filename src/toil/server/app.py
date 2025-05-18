@@ -16,6 +16,7 @@ import logging
 import os
 
 import connexion  # type: ignore
+from connexion.options import SwaggerUIOptions  # type: ignore[import-untyped]
 from configargparse import ArgumentParser
 
 from toil.lib.aws import get_current_aws_region, running_on_ec2, running_on_ecs
@@ -133,8 +134,10 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
     """
     Create a "connexion.FlaskApp" instance with Toil server configurations.
     """
+    swagger_ui_options = SwaggerUIOptions(swagger_ui=args.swagger_ui)
+
     flask_app = connexion.FlaskApp(
-        __name__, specification_dir="api_spec/", options={"swagger_ui": args.swagger_ui}
+        __name__, specification_dir="api_spec/", swagger_ui_options=swagger_ui_options
     )
 
     flask_app.app.config["JSON_SORT_KEYS"] = False
@@ -164,16 +167,16 @@ def create_app(args: argparse.Namespace) -> "connexion.FlaskApp":
     if isinstance(backend, ToilBackend):
         # We extend the WES API to allow presenting log data
         base_url = "/toil/wes/v1"
-        flask_app.app.add_url_rule(
+        flask_app.add_url_rule(
             f"{base_url}/logs/<run_id>/stdout", view_func=backend.get_stdout
         )
-        flask_app.app.add_url_rule(
+        flask_app.add_url_rule(
             f"{base_url}/logs/<run_id>/stderr", view_func=backend.get_stderr
         )
         # To be a well-behaved AGC engine we can implement the default status check endpoint
-        flask_app.app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
+        flask_app.add_url_rule("/engine/v1/status", view_func=backend.get_health)
         # And we can provide lost humans some information on what they are looking at
-        flask_app.app.add_url_rule("/", view_func=backend.get_homepage)
+        flask_app.add_url_rule("/", view_func=backend.get_homepage)
 
     return flask_app
 
@@ -201,9 +204,12 @@ def start_server(args: argparse.Namespace) -> None:
     else:
         # start a production WSGI server
         run_app(
-            flask_app.app,
+            flask_app,
             options={
                 "bind": f"{host}:{port}",
                 "workers": args.workers,
+                # The uvicorn worker class must be specified for gunicorn to work on connexion 3
+                # https://github.com/spec-first/connexion/issues/1755#issuecomment-1778522142
+                "worker_class": "uvicorn.workers.UvicornWorker"
             },
         )
