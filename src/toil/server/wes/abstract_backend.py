@@ -241,12 +241,7 @@ class WESBackend:
         for k, v in args.items():
             if k == "workflow_attachment":
                 for file in (v or []):
-                    sp = file.filename.split("/")
-                    fn = []
-                    for p in sp:
-                        if p not in ("", ".", ".."):
-                            fn.append(secure_filename(p))
-                    dest = os.path.join(temp_dir, *fn)
+                    dest = os.path.join(temp_dir, self.secure_path(file.filename))
                     if not os.path.isdir(os.path.dirname(dest)):
                         os.makedirs(os.path.dirname(dest))
                     self.log_for_run(
