@@ -64,6 +64,8 @@ CWL 1.2 Optional Features
 
 .. |docker| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/docker.json%3Fjob=cwl_badge
 
+.. |env_var| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/env_var.json%3Fjob=cwl_badge
+
 .. |expression_tool| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/expression_tool.json%3Fjob=cwl_badge
 
 .. |format_checking| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/format_checking.json%3Fjob=cwl_badge
@@ -82,7 +84,11 @@ CWL 1.2 Optional Features
 
 .. |multiple_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/multiple_input.json%3Fjob=cwl_badge
 
+.. |multiple| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/multiple.json%3Fjob=cwl_badge
+
 .. |networkaccess| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/networkaccess.json%3Fjob=cwl_badge
+
+.. |require| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/require.json%3Fjob=cwl_badge
 
 .. |resource| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/resource.json%3Fjob=cwl_badge
 
@@ -90,7 +96,13 @@ CWL 1.2 Optional Features
 
 .. |schema_def| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/schema_def.json%3Fjob=cwl_badge
 
+.. |secondary_files| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/secondary_files.json%3Fjob=cwl_badge
+
+.. |shell_command| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/shell_command.json%3Fjob=cwl_badge
+
 .. |step_input| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/step_input.json%3Fjob=cwl_badge
+
+.. |subworkflow| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/subworkflow.json%3Fjob=cwl_badge
 
 .. |timelimit| image:: https://flat.badgen.net/https/ucsc-ci.com/api/v4/projects/3/jobs/artifacts/master/raw/badges1.2/timelimit.json%3Fjob=cwl_badge
 
