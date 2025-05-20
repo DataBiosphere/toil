@@ -4,5 +4,5 @@ werkzeug>=2.0,<4
 flask-cors==5.0.1
 gunicorn==23.0.0
 celery>=5.1.0, <6
-wes-service>=4.0.0, <5
+wes-service>=4.0.0, <6
 ruamel.yaml>=0.15,<0.19
