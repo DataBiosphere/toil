@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import logging
 import pkgutil
 import warnings
@@ -21,6 +20,7 @@ from typing import TYPE_CHECKING, Callable
 
 from toil.lib.compatibility import deprecated
 from toil.lib.memoize import memoize
+import toil.lib.plugins
 
 if TYPE_CHECKING:
     from toil.batchSystems.abstractBatchSystem import AbstractBatchSystem
@@ -40,17 +40,14 @@ def add_batch_system_factory(
 
     :param class_factory: A function that returns a batch system class (NOT an instance), which implements :class:`toil.batchSystems.abstractBatchSystem.AbstractBatchSystem`.
     """
-    _registry_keys.append(key)
-    _registry[key] = class_factory
+    toil.lib.plugins.register_plugin("batch_system", key, class_factory)
 
 
 def get_batch_systems() -> Sequence[str]:
     """
-    Get the names of all the availsble batch systems.
+    Get the names of all the available batch systems.
     """
-    _load_all_plugins()
-
-    return _registry_keys
+    return toil.lib.plugins.get_plugin_names("batch_system")
 
 
 def get_batch_system(key: str) -> type["AbstractBatchSystem"]:
@@ -60,8 +57,7 @@ def get_batch_system(key: str) -> type["AbstractBatchSystem"]:
     :raises: KeyError if the key is not the name of a batch system, and
              ImportError if the batch system's class cannot be loaded.
     """
-
-    return _registry[key]()
+    return toil.lib.plugins.get_plugin("batch_system", key)()
 
 
 DEFAULT_BATCH_SYSTEM = "single_machine"
@@ -126,114 +122,15 @@ def kubernetes_batch_system_factory():
 
 
 #####
-# Registry implementation
+# Registers all built-in batch system
 #####
 
-_registry: dict[str, Callable[[], type["AbstractBatchSystem"]]] = {
-    "aws_batch": aws_batch_batch_system_factory,
-    "single_machine": single_machine_batch_system_factory,
-    "grid_engine": gridengine_batch_system_factory,
-    "lsf": lsf_batch_system_factory,
-    "mesos": mesos_batch_system_factory,
-    "slurm": slurm_batch_system_factory,
-    "torque": torque_batch_system_factory,
-    "htcondor": htcondor_batch_system_factory,
-    "kubernetes": kubernetes_batch_system_factory,
-}
-_registry_keys = list(_registry.keys())
-
-# We will load any packages starting with this prefix and let them call
-# add_batch_system_factory()
-_PLUGIN_NAME_PREFIX = "toil_batch_system_"
-
-
-@memoize
-def _load_all_plugins() -> None:
-    """
-    Load all the batch system plugins that are installed.
-    """
-
-    for finder, name, is_pkg in pkgutil.iter_modules():
-        # For all installed packages
-        if name.startswith(_PLUGIN_NAME_PREFIX):
-            # If it is a Toil batch system plugin, import it
-            importlib.import_module(name)
-
-
-#####
-# Deprecated API
-#####
-
-# We used to directly access these constants, but now the Right Way to use this
-# module is add_batch_system_factory() to register and get_batch_systems() to
-# get the list/get_batch_system() to get a class by name.
-
-
-def __getattr__(name):
-    """
-    Implement a fallback attribute getter to handle deprecated constants.
-
-    See <https://stackoverflow.com/a/48242860>.
-    """
-    if name == "BATCH_SYSTEM_FACTORY_REGISTRY":
-        warnings.warn(
-            "BATCH_SYSTEM_FACTORY_REGISTRY is deprecated; use get_batch_system() or add_batch_system_factory()",
-            DeprecationWarning,
-        )
-        return _registry
-    elif name == "BATCH_SYSTEMS":
-        warnings.warn(
-            "BATCH_SYSTEMS is deprecated; use get_batch_systems()", DeprecationWarning
-        )
-        return _registry_keys
-    else:
-        raise AttributeError(f"Module {__name__} ahs no attribute {name}")
-
-
-@deprecated(new_function_name="add_batch_system_factory")
-def addBatchSystemFactory(
-    key: str, batchSystemFactory: Callable[[], type["AbstractBatchSystem"]]
-):
-    """
-    Deprecated method to add a batch system.
-    """
-    return add_batch_system_factory(key, batchSystemFactory)
-
-
-#####
-# Testing utilities
-#####
-
-# We need a snapshot save/restore system for testing. We can't just tamper with
-# the globals because module-level globals are their own references, so we
-# can't touch this module's global name bindings from a client module.
-
-
-def save_batch_system_plugin_state() -> (
-    tuple[list[str], dict[str, Callable[[], type["AbstractBatchSystem"]]]]
-):
-    """
-    Return a snapshot of the plugin registry that can be restored to remove
-    added plugins. Useful for testing the plugin system in-process with other
-    tests.
-    """
-
-    snapshot = (list(_registry_keys), dict(_registry))
-    return snapshot
-
-
-def restore_batch_system_plugin_state(
-    snapshot: tuple[list[str], dict[str, Callable[[], type["AbstractBatchSystem"]]]]
-):
-    """
-    Restore the batch system registry state to a snapshot from
-    save_batch_system_plugin_state().
-    """
-
-    # We need to apply the snapshot without rebinding the names, because that
-    # won't affect modules that imported the names.
-    wanted_batch_systems, wanted_registry = snapshot
-    _registry_keys.clear()
-    _registry_keys.extend(wanted_batch_systems)
-    _registry.clear()
-    _registry.update(wanted_registry)
+add_batch_system_factory("aws_batch", aws_batch_batch_system_factory)
+add_batch_system_factory("single_machine", single_machine_batch_system_factory)
+add_batch_system_factory("grid_engine", gridengine_batch_system_factory)
+add_batch_system_factory("lsf", lsf_batch_system_factory)
+add_batch_system_factory("mesos", mesos_batch_system_factory)
+add_batch_system_factory("slurm", slurm_batch_system_factory)
+add_batch_system_factory("torque", torque_batch_system_factory)
+add_batch_system_factory("htcondor", htcondor_batch_system_factory)
+add_batch_system_factory("kubernetes", kubernetes_batch_system_factory)
