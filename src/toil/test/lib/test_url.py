@@ -16,6 +16,8 @@ import logging
 
 from toil.lib.misc import get_user_name
 from toil.lib.url import URLAccess
+from toil.test import needs_aws_s3, needs_online
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
@@ -27,44 +29,38 @@ class TestURLAccess():
     """
 
     @needs_online
-    def test_get_url_access(self) -> bool:
-        url = URLAccess()
-        self.assertTrue(url.url_exists("https://httpstat.us/200"))
+    def test_get_url_access(self) -> None:
+        assert URLAccess.url_exists("https://httpstat.us/200")
 
     @needs_aws_s3
-    def test_get_size(self) -> bool:
-        url = URLAccess()
-        size = url.get_size("s3://toil-datasets/hello.txt")
-        self.assertIsInstance(size, int)
-        self.assertGreater(size, 0)
+    def test_get_size(self) -> None:
+        size = URLAccess.get_size("s3://toil-datasets/hello.txt")
+        assert isinstance(size, int)
+        assert size > 0
 
     @needs_aws_s3
-    def test_get_is_directory(self) -> bool:
-        url = URLAccess()
-        self.assertFalse(url.get_is_directory("s3://toil-datasets/hello.txt"))
+    def test_get_is_directory(self) -> None:
+        assert not URLAccess.get_is_directory("s3://toil-datasets/hello.txt")
 
     @needs_aws_s3
-    def test_list_url(self) -> bool:
-        url = URLAccess()
-        test_dir = url.list_url("s3://1000genomes/")
-        self.assertIsInstance(test_dir, list)
-        self.assertGreater(len(test_dir), 0)
+    def test_list_url(self) -> None:
+        test_dir = URLAccess.list_url("s3://1000genomes/")
+        assert isinstance(test_dir, list)
+        assert len(test_dir) > 0
 
     @needs_aws_s3
-    def test_read_from_url(self) -> bool:
+    def test_read_from_url(self) -> None:
         import io
-        url = URLAccess()
         output = io.BytesIO()
-        size, executable = url.read_from_url("s3://toil-datasets/hello.txt", output)
-        self.assertIsInstance(size, int)
-        self.assertGreater(size, 0)
-        self.assertFalse(executable)
-        self.assertGreater(len(output.getvalue()), 0)
+        size, executable = URLAccess.read_from_url("s3://toil-datasets/hello.txt", output)
+        assert isinstance(size, int)
+        assert size > 0
+        assert not executable
+        assert len(output.getvalue()) > 0
 
     @needs_aws_s3
-    def test_open_url(self) -> bool:
-        url = URLAccess()
-        with url.open_url("s3://toil-datasets/hello.txt") as readable:
+    def test_open_url(self) -> None:
+        with URLAccess.open_url("s3://toil-datasets/hello.txt") as readable:
             content = readable.read()
-            self.assertIsInstance(content, bytes)
-            self.assertGreater(len(content), 0)
+            assert isinstance(content, bytes)
+            assert len(content) > 0
