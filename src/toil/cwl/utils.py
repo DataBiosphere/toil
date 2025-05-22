@@ -232,15 +232,20 @@ def trim_mounts_op_down(file_or_directory: CWLObjectType) -> None:
 
 def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
     """
-    Get the local bare path or file: URI for a CWL file or directory, or None.
+    Get the local bare path for a CWL file or directory, or None.
 
     :return: None if we don't have a local path or file URI
     """
+    if file_or_directory.get('location') is None and file_or_directory.get('path') is None:
+        # file or directory is defined by contents or listing respectively, this is not redundant
+        return None
     # Since we only consider mountable paths, if path is not file URI or bare path, don't consider it
-    path = unquote(cast(str, file_or_directory.get('location') or file_or_directory.get('path')))
-    scheme = urlparse(path).scheme
-    if scheme == '' or scheme == 'file':
-        return path
+    path_or_url = cast(str, file_or_directory.get('location') or file_or_directory.get('path'))
+    parsed = urlparse(path_or_url)
+    if parsed.scheme == 'file':
+        return unquote(parsed.path)
+    elif parsed.scheme == '':
+        return path_or_url
     else:
         return None
 
@@ -260,9 +265,6 @@ def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child
     :param file_or_directory: CWL file or CWL directory type
     :return: boolean
     """
-    if file_or_directory.get('location') is None and file_or_directory.get('path') is None:
-        # file or directory is defined by contents or listing respectively, this is not redundant
-        return True
     own_path = sniff_location(file_or_directory)
     if own_path is None:
         return True
@@ -298,3 +300,9 @@ def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child
         if any(child_results):
             return True
     return False
+
+def remove_redundant_mounts(cwljob: CWLObjectType) -> None:
+    """
+    Remove any redundant mount points from the listing. Modifies the CWL object in place.
+    """
+    visit_cwl_class_and_reduce(cwljob, ["Directory", "File"], trim_mounts_op_down, trim_mounts_op_up)
