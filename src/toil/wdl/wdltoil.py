@@ -5662,6 +5662,7 @@ def main() -> None:
             document: WDL.Tree.Document = WDL.load(
                 wdl_uri,
                 read_source=toil_read_source,
+                check_quant=options.quant_check
             )
 
             # See if we're going to run a workflow or a task
