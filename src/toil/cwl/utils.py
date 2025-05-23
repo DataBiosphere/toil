@@ -20,10 +20,22 @@ import posixpath
 import stat
 from collections.abc import Iterable, MutableMapping, MutableSequence
 from pathlib import PurePosixPath
-from typing import Any, Callable, TypeVar, Union, Optional, cast, MutableSequence, MutableMapping
+from typing import (
+    Any,
+    Callable,
+    TypeVar,
+    Union,
+    Optional,
+    cast,
+    MutableSequence,
+    MutableMapping,
+    TYPE_CHECKING,
+)
 from urllib.parse import unquote, urlparse
 
-from cwltool.utils import CWLObjectType, CWLOutputType
+if TYPE_CHECKING:
+    # This module needs to be importable even if cwltool is not installed.
+    from cwltool.utils import CWLObjectType, CWLOutputType
 from toil.fileStores import FileID
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.jobStores.abstractJobStore import AbstractJobStore
@@ -223,14 +235,14 @@ def download_structure(
             existing[value] = dest_path
 
 
-def trim_mounts_op_down(file_or_directory: CWLObjectType) -> None:
+def trim_mounts_op_down(file_or_directory: "CWLObjectType") -> None:
     """
     No-op function for mount-point trimming.
     """
     return
 
 
-def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
+def sniff_location(file_or_directory: "CWLObjectType") -> Optional[str]:
     """
     Get the local bare path for a CWL file or directory, or None.
 
@@ -250,7 +262,7 @@ def sniff_location(file_or_directory: CWLObjectType) -> Optional[str]:
         return None
 
 
-def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child_results: list[bool]) -> bool:
+def trim_mounts_op_up(file_or_directory: "CWLObjectType", op_down_ret: None, child_results: list[bool]) -> bool:
     """
     Remove subtrees of the CWL file or directory object tree that only have redundant stuff in them.
 
@@ -301,7 +313,7 @@ def trim_mounts_op_up(file_or_directory: CWLObjectType, op_down_ret: None, child
             return True
     return False
 
-def remove_redundant_mounts(cwljob: CWLObjectType) -> None:
+def remove_redundant_mounts(cwljob: "CWLObjectType") -> None:
     """
     Remove any redundant mount points from the listing. Modifies the CWL object in place.
     """
