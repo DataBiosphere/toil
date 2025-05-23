@@ -113,7 +113,7 @@ def get_directory_item(dir_path: str) -> Union[DirectoryContents, str]:
     if remaining_path is None:
         return contents
     
-    here = contents
+    here: Union[str, DirectoryContents] = contents
     for part in remaining_path.split("/"):
         if not isinstance(here, dict):
             # We're trying to go inside a file
@@ -149,7 +149,7 @@ def directory_contents_items(contents: DirectoryContents) -> Iterator[tuple[str,
             for child_path, child_value in directory_contents_items(v):
                 yield (f"{k}/{child_path}", child_value)
 
-def directory_items(dir_path) -> Iterator[tuple[str, Union[str, None]]]:
+def directory_items(dir_path: str) -> Iterator[tuple[str, Union[str, None]]]:
     """
     Yield each file or directory under the given path, including itself.
 

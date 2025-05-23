@@ -1900,7 +1900,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     The URL will end in / if it is a directory.
                     """
                     if url.endswith("/"):
-                        os.mkdirs(dest, exist_ok=True)
+                        os.makedirs(dest, exist_ok=True)
                         for child in AbstractJobStore.list_url(url.rstrip("/")):
                             download_recursively(f"{url}/{child}", os.path.join(dest, child.rstrip("/")))
                     else:
@@ -1933,7 +1933,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         dest_path: str,
         file_source: AbstractFileStore | Toil,
         export: Optional[bool] = None,
-    ):
+    ) -> None:
         """
         Given a filename/URI, write it to the given dest_path.
 
