@@ -420,7 +420,7 @@ cwl_v1.2:
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     # Run CWL integration tests excluded from cwl_misc
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the tests excluded from cwl_misc"
-    time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and integrative'"
+    time make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k 'integrative and not conformance'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
   artifacts:
     reports:
@@ -545,7 +545,7 @@ cwl_misc:
     python setup_gitlab_docker.py  # login to increase the docker.io rate limit
     echo -e "\e[0Ksection_end:`date +%s`:prepare\r\e[0K"
     echo -e "\e[0Ksection_start:`date +%s`:test\r\e[0KRun the miscellaneous CWL tests"
-    make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k '(TestCWLWorkflow or cwl_small) and not integrative'"
+    make test threads="${TEST_THREADS}" tests="src/toil/test/cwl/cwlTest.py -k 'not integrative and not conformance'"
     echo -e "\e[0Ksection_end:`date +%s`:test\r\e[0K"
 
 #cwl_v1.2_kubernetes:
