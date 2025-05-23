@@ -619,7 +619,7 @@ def needs_htcondor(test_item: MT) -> MT:
     """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test("htcondor", test_item)
     try:
-        import htcondor  # type: ignore[import-not-found]
+        import htcondor  # type: ignore
 
         htcondor.Collector(os.getenv("TOIL_HTCONDOR_COLLECTOR")).query(
             constraint="False"
