@@ -38,10 +38,11 @@ def get_toil_home() -> str:
     return dir_path
 
 TOIL_URI_SCHEME = "toilfile:"
+TOIL_DIR_URI_SCHEME = "toildir:"
 
 
 STANDARD_SCHEMES = ["http:", "https:", "s3:", "gs:", "ftp:"]
-REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME]
+REMOTE_SCHEMES = STANDARD_SCHEMES + [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME]
 ALL_SCHEMES = REMOTE_SCHEMES + ["file:"]
 
 def is_standard_url(filename: str) -> bool:
@@ -76,9 +77,21 @@ def is_url_with_scheme(filename: str, schemes: list[str]) -> bool:
 
 def is_toil_url(filename: str) -> bool:
     """
+    Return True if a URL is a toilfile: or toildir: URL.
+    """
+    return is_url_with_scheme(filename, [TOIL_URI_SCHEME, TOIL_DIR_URI_SCHEME])
+
+def is_toil_file_url(filename: str) -> bool:
+    """
     Return True if a URL is a toilfile: URL.
     """
     return is_url_with_scheme(filename, [TOIL_URI_SCHEME])
+
+def is_toil_dir_url(filename: str) -> bool:
+    """
+    Return True if a URL is a toildir: URL.
+    """
+    return is_url_with_scheme(filename, [TOIL_DIR_URI_SCHEME])
 
 def is_file_url(filename: str) -> bool:
     """

@@ -110,8 +110,16 @@ from toil.jobStores.abstractJobStore import (
 from toil.lib.exceptions import UnimplementedURLException
 from toil.lib.accelerators import get_individual_local_accelerators
 from toil.lib.conversions import VALID_PREFIXES, convert_units, human2bytes
+from toil.lib.directory import (
+    DirectoryContents,
+    decode_directory,
+    encode_directory,
+    directory_item_exists,
+    get_directory_item,
+    directory_contents_items,
+)
 from toil.lib.trs import resolve_workflow
-from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_remote_url
+from toil.lib.io import mkdtemp, is_any_url, is_file_url, TOIL_URI_SCHEME, is_standard_url, is_toil_url, is_toil_file_url, is_toil_dir_url, is_remote_url
 from toil.lib.memoize import memoize
 from toil.lib.misc import get_user_name
 from toil.lib.resources import ResourceMonitor
@@ -1755,31 +1763,31 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         
         return Toil.normalize_uri(devirtualized, dir_path=self.execution_dir)
         
-    def _virtualize_file(
-        self, file: WDL.Value.File, enforce_existence: bool = True
-    ) -> WDL.Value.File:
-        if get_inode_virtualized_value(file) is not None:
+    def _virtualize_inode(
+        self, inode: AnyINode, enforce_existence: bool = True
+    ) -> AnyINode:
+        if get_inode_virtualized_value(inode) is not None:
             # Already virtualized
-            return file
+            return inode
 
-        logger.debug("Virtualizing %s", file)
+        logger.debug("Virtualizing %s", inode)
 
         try:
-            # Let the actual virtualization implementation signal a missing file
-            virtualized_filename = self._virtualize_filename(file.value)
+            # Let the actual virtualization implementation signal a missing path
+            virtualized_filename = self._virtualize_filename(inode.value)
         except FileNotFoundError:
             if enforce_existence:
                 raise
             else:
                 logger.debug("File appears nonexistent so marking it nonexistent")
-                # Mark the file nonexistent.
-                return set_inode_nonexistent(file, True)
+                # Mark the inode nonexistent.
+                return set_inode_nonexistent(inode, True)
 
         logger.debug(
-            "For file %s got virtualized filename %s", file, virtualized_filename
+            "For %s got virtualized value %s", inode, virtualized_filename
         )
-        marked_file = set_inode_virtualized_value(file, virtualized_filename)
-        return marked_file
+        marked_inode = set_inode_virtualized_value(inode, virtualized_filename)
+        return marked_inode
 
     @memoize
     def _devirtualize_filename(self, filename: str) -> str:
@@ -1798,8 +1806,14 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
         )
         return result
 
-    @staticmethod
+    # TODO: Make this populate the caches for internal entries in directories.
+    # TODO: Make a One True Filesystem Hierarchy so we don't have to worry
+    # about the same file/subtree existing in different places but also all
+    # subtrees can exist. Otherwise populating the cache doesn't really make
+    # sense since the same file can exist in multiple directory trees.
+    @classmethod
     def _devirtualize_uri(
+        cls,
         filename: str,
         dest_dir: str,
         file_source: AbstractFileStore | Toil,
@@ -1811,16 +1825,62 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
 
         :param export: Always create exported copies of files rather than views that a FileStore might clean up.
         """
-        if filename.startswith(TOIL_URI_SCHEME):
+        if is_toil_dir_url(filename):
+            # This is either a directory or an indirect reference to something.
+            found = get_directory_item(filename)
+            if isinstance(found, str):
+                # This is a leaf file, so just devirtualize that
+                return cls._devirtualize_uri(found, dest_dir, file_source, state, export)
+            else:
+                # This is a directory and we have its decoded structure.
+
+                # TODO: If we already downloaded Files that came from inside
+                # this Directory, we can't keep all the files from inside this
+                # Directory properly sibling to them, because they might not
+                # have the proper relative path structure between them. We need
+                # to recursively replicate the whole directory structure when
+                # downloading any individual File actually to properly comply
+                # with the WDL spec. See
+                # <https://github.com/openwdl/wdl/blob/wdl-1.2/SPEC.md#task-input-localization>
+
+                # TODO: Track source task for a directory
+
+                # TODO: Track original directory basename
+
+                # For now just drop the directory under a random path
+                dest_path = os.path.join(dest_dir, str(uuid.uuid4()))
+
+                for relative_path, item_value in directory_contents_items(found):
+                    item_path = os.path.join(dest_path, relative_path)
+                    if item_value is None:
+                        # Make directories to hold things (and empty directories)
+                        os.mkdir(item_path)
+                    else:
+                        # Download files
+                        cls._write_uri_to(item_value, item_path, file_source, export)
+                    
+                assert os.path.exists(dest_path)
+                assert os.path.isdir(dest_path)
+                logger.info("Successfully devirtualized directory to %s", dest_path)
+
+                # Don't do the file download stuff because this is a directory
+                return dest_path
+        
+        elif is_toil_file_url(filename):
             # This is a reference to the Toil filestore.
-            # Deserialize the FileID
-            file_id, task_path, parent_id, file_basename = unpack_toil_uri(filename)
+            # Deserialize the metadata about where the file came from
+            _, task_path, parent_id, file_basename = unpack_toil_uri(filename)
 
             # Decide where it should be put.
             dir_path = choose_human_readable_directory(
                 dest_dir, task_path, parent_id, state
             )
         else:
+            # This is a standard URI to a file or directory.
+
+            # TODO: We have the same sibling problem here when mixing directory
+            # trees and individual files.
+
             # Parse the URL and extract the basename
             file_basename = os.path.basename(urlsplit(filename).path)
             # Get the URL to the directory this thing came from. Remember
@@ -1830,13 +1890,62 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Turn it into a string we can make a directory for
             dir_path = os.path.join(dest_dir, quote(parent_url, safe=""))
 
+            if AbstractJobStore.get_is_directory(filename):
+                # Download recursively
+
+                def download_recursively(url: str, dest: str) -> None:
+                    """
+                    Recursively download the given URL to the given path.
+
+                    The URL will end in / if it is a directory.
+                    """
+                    if url.endswith("/"):
+                        os.mkdirs(dest, exist_ok=True)
+                        for child in AbstractJobStore.list_url(url.rstrip("/")):
+                            download_recursively(f"{url}/{child}", os.path.join(dest, child.rstrip("/")))
+                    else:
+                        cls._write_uri_to(url, dest, file_source, export)
+
+                dest_path = os.path.join(dir_path, file_basename)
+                download_recursively(filename.rstrip("/") + "/", dest_path)
+
+                # We did the directory, don't do any file logic
+                return dest_path
+
         if not os.path.exists(dir_path):
             # Make sure the chosen directory exists
             os.mkdir(dir_path)
         # And decide the file goes in it.
         dest_path = os.path.join(dir_path, file_basename)
 
-        if filename.startswith(TOIL_URI_SCHEME):
+        # Actually do the download
+        cls._write_uri_to(filename, dest_path, file_source, export)
+
+        # Return where we put it
+        return dest_path
+    
+    
+
+    @classmethod
+    def _write_uri_to(
+        cls,
+        filename: str,
+        dest_path: str,
+        file_source: AbstractFileStore | Toil,
+        export: Optional[bool] = None,
+    ):
+        """
+        Given a filename/URI, write it to the given dest_path.
+
+        Only handles single files, not directories.
+
+        :param export: Always create exported copies of files rather than views
+            that a FileStore might clean up.
+        """
+        if is_toil_file_url(filename):
+            # Deserialize file ID
+            # TODO: we already deserialized the metadata in _devirtualize_uri
+            file_id = unpack_toil_uri(filename)[0]
             # Get a local path to the file
             if isinstance(file_source, Toil) or export:
                 # Read from the Toil context
@@ -1851,6 +1960,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 result = file_source.readGlobalFile(
                     file_id, dest_path, mutable=False, symlink=True
                 )
+                if result != dest_path:
+                    # We definitely want this to be put where we asked.
+                    raise RuntimeError(f"Tried to read file to {dest_path} but it went to {result} instead")
             else:
                 raise RuntimeError(f"Unsupported file source: {file_source}")
         else:
@@ -1863,11 +1975,9 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                     # Set the execute bit in the file's permissions
                     os.chmod(dest_path, os.stat(dest_path).st_mode | stat.S_IXUSR)
 
-            result = dest_path
-        return result
-
-    @staticmethod
+    @classmethod
     def devirtualize_to(
+        cls,
         filename: str,
         dest_dir: str,
         file_source: AbstractFileStore | Toil,
@@ -1923,7 +2033,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 )
                 return result
             # Actually need to download/put in place/export
-            result = ToilWDLStdLibBase._devirtualize_uri(
+            result = cls._devirtualize_uri(
                 filename, dest_dir, file_source, state, export=export
             )
             if devirtualized_to_virtualized is not None:
@@ -1957,7 +2067,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
     @memoize
     def _virtualize_filename(self, filename: str) -> str:
         """
-        from a local path or other URL, 'virtualize' into the filename as it should present in a File value.
+        From a local path or other URL, 'virtualize' into the filename as it should present in a File/Directory value.
 
         New in Toil: the path or URL may not actually exist.
 
@@ -1969,30 +2079,60 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             # Already virtual
             logger.debug("Already virtual: %s", filename)
             return filename
-        elif is_standard_url(filename):
+        
+        # Make all the bare paths absolute file URIs
+        normalized_uri = Toil.normalize_uri(filename, dir_path=self.execution_dir)
+
+        if AbstractJobStore.get_is_directory(normalized_uri):
+            # Need to handle this as a directory, since it exists and is a directory
+
+            def handle_directory(dir_location: str) -> DirectoryContents:
+                """
+                Recursively find all child files and directories and virtualize the files.
+                """
+                contents: DirectoryContents = {}
+                for child in AbstractJobStore.list_url(dir_location):
+                    child_location = dir_location.rstrip("/") + "/" + child
+                    if child.endswith("/"):
+                        # Child is a directory, so recurse
+                        contents[child.rstrip("/")] = handle_directory(child_location)
+                    else:
+                        # Child is a file
+                        contents[child] = self._virtualize_filename(child_location)
+                return contents
+
+            contents = handle_directory(normalized_uri)
+            
+            # TODO: Use a parent ID for this directory so we can make
+            # subling directories stay next to each other.
+            result = encode_directory(contents)
+            self._devirtualized_to_virtualized[normalized_uri] = result
+            return result
+        elif is_standard_url(normalized_uri):
             # This is a URL (http, s3, etc) that we want to virtualize
             # First check the cache
-            if filename in self._devirtualized_to_virtualized:
+            if normalized_uri in self._devirtualized_to_virtualized:
                 # Note: this is a little duplicative with the local file path branch, but the keys are different
-                result = self._devirtualized_to_virtualized[filename]
+                result = self._devirtualized_to_virtualized[normalized_uri]
                 logger.debug(
-                    "Re-using virtualized WDL file %s for %s", result, filename
+                    "Re-using virtualized WDL %s for %s", result, normalized_uri
                 )
                 return result
+
             try:
-                imported = self._file_store.import_file(filename)
+                imported = self._file_store.import_file(normalized_uri)
             except FileNotFoundError:
                 # This might happen because we're also along the code path for
                 # optional file outputs.
                 logger.info(
-                    "File at URL %s does not exist or is inaccessible." % filename
+                    "URL %s does not exist or is inaccessible." % normalized_uri
                 )
                 raise
             except HTTPError as e:
                 # Something went wrong with the connection
                 logger.error(
-                    "File %s could not be downloaded due to HTTP error %d",
-                    filename,
+                    "%s could not be downloaded due to HTTP error %d",
+                    normalized_uri,
                     e.code,
                 )
                 # We don't need to handle translating error codes for not
@@ -2002,34 +2142,32 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
                 # Satisfy mypy. This should never happen though as we don't
                 # pass a shared file name (which is the only way import_file
                 # returns None)
-                raise RuntimeError("Failed to import URL %s into jobstore." % filename)
-            file_basename = os.path.basename(urlsplit(filename).path)
+                raise RuntimeError("Failed to import URL %s into jobstore." % normalized_uri)
+            file_basename = os.path.basename(urlsplit(normalized_uri).path)
             # Get the URL to the parent directory and use that.
-            parent_dir = urljoin(filename, ".")
+            parent_dir = urljoin(normalized_uri, ".")
             # Pack a UUID of the parent directory
             dir_id = self._parent_dir_to_ids.setdefault(parent_dir, uuid.uuid4())
             result = pack_toil_uri(imported, self.task_path, dir_id, file_basename)
-            logger.debug("Virtualized %s as WDL file %s", filename, result)
+            logger.debug("Virtualized %s as WDL %s", normalized_uri, result)
             # We can't put the Toil URI in the virtualized_to_devirtualized
             # cache because it would point to the URL instead of a local file
             # on the machine, so only store the forward mapping
-            self._devirtualized_to_virtualized[filename] = result
+            self._devirtualized_to_virtualized[normalized_uri] = result
             return result
         else:
             # Otherwise this is a local file name or URI and we want to fake it
             # as a Toil file store file
 
-            # Convert to a properly-absolutized file URI
-            file_uri = Toil.normalize_uri(filename, dir_path=self.execution_dir)
             # Extract the absolute path name
-            abs_filename = unquote(urlsplit(file_uri).path)
+            abs_filename = unquote(urlsplit(normalized_uri).path)
 
             if abs_filename in self._devirtualized_to_virtualized:
                 # This is a previously devirtualized thing so we can just use the
                 # virtual version we remembered instead of reuploading it.
                 result = self._devirtualized_to_virtualized[abs_filename]
                 logger.debug(
-                    "Re-using virtualized WDL file %s for %s", result, filename
+                    "Re-using virtualized WDL %s for %s", result, filename
                 )
                 return result
 
@@ -2043,7 +2181,7 @@ class ToilWDLStdLibBase(WDL.StdLib.Base):
             result = pack_toil_uri(
                 file_id, self.task_path, parent_id, os.path.basename(abs_filename)
             )
-            logger.debug("Virtualized %s as WDL file %s", filename, result)
+            logger.debug("Virtualized %s as WDL %s", filename, result)
             # Remember the upload in case we share a cache
             self._devirtualized_to_virtualized[abs_filename] = result
             # And remember the local path in case we want a redownload
@@ -2065,46 +2203,47 @@ class ToilWDLStdLibWorkflow(ToilWDLStdLibBase):
 
         self._miniwdl_cache: Optional[WDL.runtime.cache.CallCache] = None
 
-    def _virtualize_file(
-        self, file: WDL.Value.File, enforce_existence: bool = True
-    ) -> WDL.Value.File:
-        # When a workflow coerces a string path or file: URI to a File at
-        # workflow scope, we need to fill in the cache filesystem path.
+    def _virtualize_inode(
+        self, inode: AnyINode, enforce_existence: bool = True
+    ) -> AnyINode:
+        # When a workflow coerces a string path or file: URI to a File or
+        # Directory at workflow scope, we need to fill in the cache filesystem
+        # path.
         if (
-            get_inode_virtualized_value(file) is None
-            and get_shared_fs_path(file) is None
+            get_inode_virtualized_value(inode) is None
+            and get_shared_fs_path(inode) is None
             and (
-                not is_any_url(file.value)
-                or is_file_url(file.value)
+                not is_any_url(inode.value)
+                or is_file_url(inode.value)
             )
         ):
-            # This is a never-virtualized file that is a file path or URI and
+            # This is a never-virtualized inode that is a path or URI and
             # has no shared FS path associated with it. We just made it at
             # workflow scope. (If it came from a task, it would have a
             # virtualized value already.)
 
-            # If we are loading it at workflow scope, the file path can be used
+            # If we are loading it at workflow scope, the inode path can be used
             # as the cache path.
 
-            if not is_any_url(file.value):
-                # Handle file path
-                cache_path = file.value
+            if not is_any_url(inode.value):
+                # Handle path
+                cache_path = inode.value
             else:
                 # Handle pulling path out of file URI
-                cache_path = unquote(urlsplit(file.value).path)
+                cache_path = unquote(urlsplit(inode.value).path)
 
             # Apply the path
-            file = set_shared_fs_path(file, cache_path)
+            inode = set_shared_fs_path(inode, cache_path)
 
             logger.info(
-                "Applied shared filesystem path %s to File %s that appears to "
+                "Applied shared filesystem path %s to %s that appears to "
                 "have been coerced from String at workflow scope.",
                 cache_path,
-                file
+                inode
             )
 
         # Do the virtualization
-        return super()._virtualize_file(file, enforce_existence)
+        return super()._virtualize_inode(inode, enforce_existence)
 
         # TODO: If the workflow coerces a File to a String and back again, we
         # should have some way to recover the toilfile: URL it had in the job
@@ -2719,7 +2858,7 @@ def virtualize_inodes(
     virtualize_func = cast(
         INodeTransform,
         partial(
-            stdlib._virtualize_file,
+            stdlib._virtualize_inode,
             enforce_existence=enforce_existence
         )
     )
@@ -2752,11 +2891,16 @@ def delete_dead_files(internal_bindings: WDLBindings, live_bindings_list: list[W
 def add_paths(task_container: TaskContainer, host_paths: Iterable[str]) -> None:
     """
     Based off of WDL.runtime.task_container.add_paths from miniwdl
-    Maps the host path to the container paths
+    Maps the host path to the container paths.
+    Makes sure directories have trailing slashes.
     """
     # partition the paths by host directory
     host_paths_by_dir: dict[str, set[str]] = {}
     for host_path in host_paths:
+        if os.path.isdir(host_path) and not host_path.endswith("/"):
+            # We need the mount to have a trailing slash or Docker won't be
+            # able to mount a directory.
+            host_path = host_path + "/"
         host_path_strip = host_path.rstrip("/")
         if (
             host_path not in task_container.input_path_map
@@ -2806,8 +2950,13 @@ def drop_if_missing(
 
     if reference is not None and is_any_url(reference):
         try:
-            if reference.startswith(TOIL_URI_SCHEME) or AbstractJobStore.url_exists(
-                reference
+            if (
+                is_toil_file_url(reference) or 
+                (
+                    is_toil_dir_url(reference) and
+                    directory_item_exists(reference)
+                ) or 
+                AbstractJobStore.url_exists(reference)
             ):
                 # We assume anything in the filestore actually exists.
                 devirtualized_filename = standard_library._devirtualize_filename(
@@ -4092,8 +4241,12 @@ class WDLTaskJob(WDLBaseJob):
             # TODO: MiniWDL deals with directory paths specially here.
             def get_path_in_container(inode: AnyINode) -> AnyINode | None:
                 if get_inode_nonexistent(inode) is False:
+                    inode_path = inode.value.rstrip("/")
+                    if isinstance(inode, WDL.Value.Directory):
+                        # The path map has trailing slashes on directories
+                        inode_path += "/"
                     return set_inode_value(
-                        inode, task_container.input_path_map[inode.value]
+                        inode, task_container.input_path_map[inode_path]
                     )
                 return None
 

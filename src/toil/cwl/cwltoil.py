@@ -111,6 +111,11 @@ from toil.batchSystems.abstractBatchSystem import InsufficientSystemResources
 from toil.batchSystems.registry import DEFAULT_BATCH_SYSTEM
 from toil.common import Config, Toil, addOptions
 from toil.cwl import check_cwltool_version
+from toil.lib.directory import (
+    DirectoryContents,
+    decode_directory,
+    encode_directory,
+)
 from toil.lib.trs import resolve_workflow
 from toil.lib.misc import call_command
 from toil.provisioners.clusterScaler import JobTooBigError
@@ -1217,79 +1222,6 @@ def toil_make_tool(
 # When a file we want to have is missing, we can give it this sentinel location
 # URI instead of raising an error right away, in case it is optional.
 MISSING_FILE = "missing://"
-
-DirectoryContents = dict[str, Union[str, "DirectoryContents"]]
-
-
-def check_directory_dict_invariants(contents: DirectoryContents) -> None:
-    """
-    Make sure a directory structure dict makes sense. Throws an error
-    otherwise.
-
-    Currently just checks to make sure no empty-string keys exist.
-    """
-
-    for name, item in contents.items():
-        if name == "":
-            raise RuntimeError(
-                "Found nameless entry in directory: " + json.dumps(contents, indent=2)
-            )
-        if isinstance(item, dict):
-            check_directory_dict_invariants(item)
-
-
-def decode_directory(
-    dir_path: str,
-) -> tuple[DirectoryContents, Optional[str], str]:
-    """
-    Decode a directory from a "toildir:" path to a directory (or a file in it).
-
-    Returns the decoded directory dict, the remaining part of the path (which may be
-    None), and the deduplication key string that uniquely identifies the
-    directory.
-    """
-    if not dir_path.startswith("toildir:"):
-        raise RuntimeError(f"Cannot decode non-directory path: {dir_path}")
-
-    # We will decode the directory and then look inside it
-
-    # Since this was encoded by upload_directory we know the
-    # next piece is encoded JSON describing the directory structure,
-    # and it can't contain any slashes.
-    parts = dir_path[len("toildir:") :].split("/", 1)
-
-    # Before the first slash is the encoded data describing the directory contents
-    dir_data = parts[0]
-
-    # Decode what to download
-    contents = json.loads(
-        base64.urlsafe_b64decode(dir_data.encode("utf-8")).decode("utf-8")
-    )
-
-    check_directory_dict_invariants(contents)
-
-    if len(parts) == 1 or parts[1] == "/":
-        # We didn't have any subdirectory
-        return contents, None, dir_data
-    else:
-        # We have a path below this
-        return contents, parts[1], dir_data
-
-
-def encode_directory(contents: DirectoryContents) -> str:
-    """
-    Encode a directory from a "toildir:" path to a directory (or a file in it).
-
-    Takes the directory dict, which is a dict from name to URI for a file or
-    dict for a subdirectory.
-    """
-
-    check_directory_dict_invariants(contents)
-
-    return "toildir:" + base64.urlsafe_b64encode(
-        json.dumps(contents).encode("utf-8")
-    ).decode("utf-8")
-
 
 class ToilFsAccess(StdFsAccess):
     """
