@@ -31,6 +31,7 @@ from google.api_core.exceptions import (
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import exceptions, storage
 
+from toil import memoize
 from toil.jobStores.abstractJobStore import (
     AbstractJobStore,
     JobStoreExistsException,
@@ -161,9 +162,10 @@ class GoogleJobStore(AbstractJobStore, URLAccess):
         self.storageClient, self.auth_notes = self.create_client()
 
     @classmethod
+    @memoize
     def create_client(cls) -> tuple[storage.Client, str]:
         """
-        Produce a client for Google Sotrage with the highest level of access we can get.
+        Produce a client for Google Storage with the highest level of access we can get.
 
         Fall back to anonymous access if no project is available, unlike the
         Google Storage module's behavior.
