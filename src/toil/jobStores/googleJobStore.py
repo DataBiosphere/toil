@@ -28,7 +28,7 @@ from google.api_core.exceptions import (
     InternalServerError,
     ServiceUnavailable,
 )
-from google.auth.exceptions import DefaultCredentialsError
+from google.auth.exceptions import DefaultCredentialsError, InvalidOperation
 from google.cloud import exceptions, storage
 
 from toil import memoize
@@ -44,6 +44,7 @@ from toil.lib.compatibility import compat_bytes
 from toil.lib.io import AtomicFileCreate
 from toil.lib.misc import truncExpBackoff
 from toil.lib.retry import old_retry
+from toil.lib.url import URLAccess
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +118,7 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
     """
     try:
         yield
-    except exceptions.InvalidOperation as e:
+    except InvalidOperation as e:
         if "Anonymous credentials cannot be refreshed" in str(e):
             raise RuntimeError(
                 "Google Storage tried to refresh anonymous credentials. "
@@ -132,7 +133,7 @@ def permission_error_reporter(url: ParseResult, notes: str) -> Iterator[None]:
 
 
 
-class GoogleJobStore(AbstractJobStore):
+class GoogleJobStore(AbstractJobStore, URLAccess):
 
     nodeServiceAccountJson = "/root/service_account.json"
 
