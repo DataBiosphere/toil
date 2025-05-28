@@ -2034,6 +2034,29 @@ def test_import_on_workers() -> None:
 
         assert detector.detected is True
 
+@needs_cwl
+@pytest.mark.cwl
+@pytest.mark.cwl_small
+def test_missing_tmpdir_and_tmp_outdir(tmp_path: Path) -> None:
+    """
+    tmpdir_prefix and tmp_outdir_prefix do not need to exist prior to running the workflow
+    """
+    tmpdir_prefix = os.path.join(tmp_path, "tmpdir/blah")
+    tmp_outdir_prefix = os.path.join(tmp_path, "tmp_outdir/blah")
+
+    assert not os.path.exists(os.path.dirname(tmpdir_prefix))
+    assert not os.path.exists(os.path.dirname(tmp_outdir_prefix))
+    with get_data("test/cwl/echo_string.cwl") as cwl_file:
+        cmd = [
+            "toil-cwl-runner",
+            f"--jobStore=file:{tmp_path / 'jobstore'}",
+            "--strict-memory-limit",
+            f'--tmpdir-prefix={tmpdir_prefix}',
+            f'--tmp-outdir-prefix={tmp_outdir_prefix}',
+            str(cwl_file),
+        ]
+        p = subprocess.run(cmd)
+        assert p.returncode == 0
 
 # StreamHandler is generic, _typeshed doesn't exist at runtime, do a bit of typing trickery, see https://github.com/python/typeshed/issues/5680
 if TYPE_CHECKING:

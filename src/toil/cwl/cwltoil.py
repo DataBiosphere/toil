@@ -4242,6 +4242,8 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         options.tmpdir_prefix or DEFAULT_TMPDIR_PREFIX
     )
     tmp_outdir_prefix = options.tmp_outdir_prefix or tmpdir_prefix
+    # tmpdir_prefix and tmp_outdir_prefix must not be checked for existence as they may exist on a worker only path
+    # See https://github.com/DataBiosphere/toil/issues/5310
     workdir = options.workDir or tmp_outdir_prefix
 
     if options.jobStore is None:
@@ -4302,11 +4304,12 @@ def main(args: Optional[list[str]] = None, stdout: TextIO = sys.stdout) -> int:
         # of filestore files and caches those.
         logger.debug("CWL task caching is turned on. Bypassing file store.")
         options.bypass_file_store = True
+
+        # Ensure the cache directory exists
+        # Only ensure the caching directory exists as that must be local.
+        os.makedirs(os.path.abspath(options.cachedir), exist_ok=True)
     if options.mpi_config_file is not None:
         runtime_context.mpi_config = MpiConfig.load(options.mpi_config_file)
-    if cwltool.main.check_working_directories(runtime_context) is not None:
-        logger.error("Failed to create directory. If using tmpdir_prefix, tmpdir_outdir_prefix, or cachedir, consider changing directory locations.")
-        return 1
     setattr(runtime_context, "bypass_file_store", options.bypass_file_store)
     if options.bypass_file_store and options.destBucket:
         # We use the file store to write to buckets, so we can't do this (yet?)
